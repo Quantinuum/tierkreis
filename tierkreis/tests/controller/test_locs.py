@@ -44,6 +44,23 @@ def test_to_from_str(node_location: Loc, loc_str: str):
 
 
 @pytest.mark.parametrize(
+    ["node_location", "loc_str"],
+    [
+        (node_location_1, "-.N1.L0.N3.L2.N0.M7"),
+        (node_location_2, "-.N0.L0.N3.N8"),
+        (node_location_3, "-"),
+        (node_location_4, ""),
+        (Loc().N(1).L(3), "-.N1.L2"),
+        (Loc().N(1).L(2), "-.N1.L1"),
+        (Loc().N(1).L(0), "-.N1"),
+    ],
+)
+def test_parent(node_location: Loc, loc_str: str) -> None:
+    parent = node_location.parent()
+    assert parent == Loc(loc_str)
+
+
+@pytest.mark.parametrize(
     ["node_location", "node_step", "loc_str"],
     [
         (node_location_1, ("N", 1), "-.L0.N3.L2.N0.M7.N10"),

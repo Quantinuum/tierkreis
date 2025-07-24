@@ -103,7 +103,7 @@ cli_params = [
             "n:tierkreis/tests/cli/data/n",
             "factorial:tierkreis/tests/cli/data/factorial",
         ],
-        {"value": 120},
+        {"factorial_output": 120},
     ),
 ]
 

@@ -1,9 +1,9 @@
 from typing import NamedTuple
-from tierkreis.builder import GraphBuilder
+import tierkreis.builtins.stubs as tkr_builtins
 from tierkreis.controller.data.core import EmptyModel
+from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.models import TKR
-from tierkreis.builtins.stubs import igt, iadd
+from tierkreis.models import TKR
 
 
 def _loop_body_multiple_acc_untyped() -> GraphData:
@@ -82,11 +82,11 @@ def _loop_body_multiple_acc() -> GraphBuilder[MultipleAcc, MultipleAccOut]:
     three = g.const(3)
     five = g.const(5)
 
-    should_continue = g.task(igt(a=five, b=acc))
+    should_continue = g.task(tkr_builtins.igt(a=five, b=acc))
 
-    new_acc = g.task(iadd(a=acc, b=one))
-    new_acc2 = g.task(iadd(a=acc2, b=two))
-    new_acc3 = g.task(iadd(a=acc3, b=three))
+    new_acc = g.task(tkr_builtins.iadd(a=acc, b=one))
+    new_acc2 = g.task(tkr_builtins.iadd(a=acc2, b=two))
+    new_acc3 = g.task(tkr_builtins.iadd(a=acc3, b=three))
 
     g.outputs(
         MultipleAccOut(
@@ -117,5 +117,46 @@ def loop_multiple_acc() -> GraphBuilder[EmptyModel, LoopMultipleAccOut]:
     loop = g.loop(body, MultipleAcc(acc1, acc2, acc3), "my_loop")
 
     g.outputs(LoopMultipleAccOut(acc1=loop.acc1, acc2=loop.acc2, acc3=loop.acc3))
+
+    return g
+
+
+class Scoping(NamedTuple):
+    current: TKR[int]
+    end: TKR[int]
+
+
+class ScopingOut(NamedTuple):
+    should_continue: TKR[bool]
+    current: TKR[int]
+
+
+def _loop_body_scoping() -> GraphBuilder[Scoping, ScopingOut]:
+    g = GraphBuilder(Scoping, ScopingOut)
+
+    one = g.const(1)
+
+    next = g.task(tkr_builtins.iadd(g.inputs.current, one))
+    should_continue = g.task(tkr_builtins.neq(g.inputs.end, g.inputs.current))
+
+    g.outputs(ScopingOut(should_continue=should_continue, current=next))
+
+    return g
+
+
+class LoopScopingOut(NamedTuple):
+    result: TKR[int]
+
+
+def loop_scoping() -> GraphBuilder[EmptyModel, LoopScopingOut]:
+    g = GraphBuilder(EmptyModel, LoopScopingOut)
+
+    start = g.const(0)
+    end = g.const(10)
+
+    body = _loop_body_scoping()
+    loop = g.loop(body, Scoping(start, end), "scoped_loop")
+
+    g.outputs(LoopScopingOut(result=loop.current))
 
     return g

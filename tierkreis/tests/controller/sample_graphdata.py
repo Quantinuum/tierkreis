@@ -123,7 +123,7 @@ def factorial() -> GraphData:
     if_false = g.const(1)
 
     out = g.if_else(pred, if_true, if_false)("value")
-    g.output({"value": out})
+    g.output({"factorial_output": out})
     return g
 
 
