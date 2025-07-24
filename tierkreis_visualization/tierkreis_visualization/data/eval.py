@@ -1,12 +1,9 @@
 import json
-from typing import Optional, assert_never
+from typing import Optional
 
-from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.graph import GraphData, IfElse, NodeDef
 from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.storage.adjacency import in_edges
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis_core import GraphData, Loc, NodeDef, NodeDescription
 
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge
@@ -15,7 +12,7 @@ from tierkreis_visualization.routers.models import PyGraph
 
 
 def node_status(
-    is_finished: bool, definition: Optional[NodeDef], has_error: bool = False
+    is_finished: bool, definition: Optional[NodeDescription], has_error: bool = False
 ) -> NodeStatus:
     if is_finished:
         return "Finished"
@@ -35,12 +32,14 @@ def check_error(node_location: Loc, errored_nodes: list[Loc]) -> bool:
 def add_conditional_edges(
     storage: ControllerStorage,
     loc: Loc,
-    i: NodeIndex,
-    node: IfElse,
+    i: int,
+    node: NodeDef.IfElse | NodeDef.EagerIfElse,
     py_edges: list[PyEdge],
 ):
     try:
-        pred = json.loads(storage.read_output(loc.N(node.pred[0]), node.pred[1]))
+        pred = json.loads(
+            storage.read_output(loc.N(node.pred.node_index), node.pred.port_id)
+        )
     except (FileNotFoundError, TierkreisError):
         pred = None
 
@@ -65,7 +64,7 @@ def add_conditional_edges(
 def get_eval_node(
     storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
 ) -> PyGraph:
-    thunk = storage.read_output(node_location.N(-1), "body")
+    thunk = storage.read_output(node_location.exterior(), "body")
     graph = ptype_from_bytes(thunk, GraphData)
 
     pynodes: list[PyNode] = []
@@ -76,7 +75,7 @@ def get_eval_node(
         is_finished = storage.is_node_finished(new_location)
         has_error = check_error(new_location, errored_nodes)
         try:
-            definition = storage.read_node_def(new_location)
+            definition = storage.read_node_description(new_location)
         except (FileNotFoundError, TierkreisError):
             definition = None
 
@@ -84,45 +83,63 @@ def get_eval_node(
         started_time = storage.read_started_time(new_location) or ""
         finished_time = storage.read_finished_time(new_location) or ""
         value: str | None = None
-        match node.type:
-            case "function":
-                name = node.function_name
-            case "ifelse":
-                name = node.type
+        node_type: str
+        match node:
+            case NodeDef.Func():
+                name = node.name
+                node_type = "function"
+            case NodeDef.IfElse():
+                name = "ifelse"
+                node_type = "ifelse"
                 add_conditional_edges(storage, node_location, i, node, py_edges)
-            case "map" | "eval" | "loop" | "eifelse":
-                name = node.type
-            case "const":
-                name = node.type
+            case NodeDef.Map():
+                name = "map"
+                node_type = "map"
+            case NodeDef.Eval():
+                name = "eval"
+                node_type = "eval"
+            case NodeDef.Loop():
+                name = "loop"
+                node_type = "loop"
+            case NodeDef.EagerIfElse():
+                name = "eifelse"
+                node_type = "eifelse"
+            case NodeDef.Const():
+                name = "const"
+                node_type = "const"
                 value = outputs_from_loc(storage, node_location.N(i), "value")
-            case "output":
-                name = node.type
+            case NodeDef.Output():
+                name = "output"
+                node_type = "output"
                 if len(node.inputs) == 1:
-                    (idx, p) = next(iter(node.inputs.values()))
+                    ref = next(iter(node.inputs.values()))
                     try:
-                        value = outputs_from_loc(storage, node_location.N(idx), p)
+                        value = outputs_from_loc(
+                            storage, node_location.extend_from_ref(ref), ref.port_id
+                        )
                     except (FileNotFoundError, TierkreisError):
                         value = None
-            case "input":
-                name = node.type
+            case NodeDef.Input():
+                name = "input"
+                node_type = "input"
                 value = node.name
             case _:
-                assert_never(node)
+                raise ValueError(f"Unhandled NodeDef of type: {type(node)}")
 
         pynode = PyNode(
             id=new_location,
             status=status,
             function_name=name,
             node_location=new_location,
-            node_type=node.type,
+            node_type=node_type,
             value=value,
             started_time=started_time,
             finished_time=finished_time,
-            outputs=list(node.outputs),
+            outputs=list(definition.outputs) if definition is not None else [],
         )
         pynodes.append(pynode)
 
-        for p0, (idx, p1) in in_edges(node).items():
+        for p0, (idx, p1) in node.in_edges.items():
             value: str | None = None
 
             try:

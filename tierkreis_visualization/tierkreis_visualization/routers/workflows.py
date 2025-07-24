@@ -50,7 +50,7 @@ async def handle_websocket(
             if not path.parts:
                 continue
             loc = path.parts[0]
-            if loc.startswith(node_location):
+            if loc.startswith(str(node_location)):
                 relevant_changes.add(loc)
 
         if relevant_changes:

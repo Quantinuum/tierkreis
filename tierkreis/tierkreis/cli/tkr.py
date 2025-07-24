@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tierkreis.cli.run_workflow import run_workflow
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
+from tierkreis_core import GraphData
 
 
 def _import_from_path(module_name: str, file_path: str) -> Any:

@@ -1,9 +1,9 @@
 from typing import Generic, NamedTuple, TypeVar
 from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins.stubs import head, igt, tkr_len
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
+from tierkreis_core import GraphData
 
 
 class FoldGraphOuterInputs[A: PType, B: PType](NamedTuple):

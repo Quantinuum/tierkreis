@@ -1,6 +1,6 @@
 from typing import Literal
 from pydantic import BaseModel
-from tierkreis.controller.data.location import Loc
+from tierkreis_core import Loc
 
 NodeStatus = Literal["Not started", "Started", "Error", "Finished"]
 NodeType = Literal[
@@ -13,7 +13,7 @@ class PyNode(BaseModel):
     status: NodeStatus
     function_name: str
     node_type: NodeType
-    node_location: str = ""
+    node_location: Loc = Loc("")
     outputs: list[str]
     value: str | None = None
     started_time: str

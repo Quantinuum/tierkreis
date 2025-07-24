@@ -89,10 +89,14 @@ version = "2.0.9"
 source = { editable = "../../../" }
 dependencies = [
     { name = "pydantic" },
+    { name = "tierkreis-core" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = "~=2.5" }]
+requires-dist = [
+    { name = "pydantic", specifier = "~=2.5" },
+    { name = "tierkreis-core", editable = "../../../../tierkreis_core" },
+]
 
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]
@@ -100,6 +104,10 @@ dev = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "pytest" },
 ]
+
+[[package]]
+name = "tierkreis-core"
+source = { editable = "../../../../tierkreis_core" }
 
 [[package]]
 name = "typing-extensions"

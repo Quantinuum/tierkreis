@@ -6,7 +6,7 @@ import sys
 from types import TracebackType
 from typing import Callable, TypeVar
 
-from tierkreis.controller.data.core import PortID
+from tierkreis_core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.data.models import (
     PModel,

@@ -5,8 +5,8 @@ from time import time_ns
 from uuid import UUID
 
 from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
     ControllerStorage,
+    StorageEntryMetadata,
 )
 
 

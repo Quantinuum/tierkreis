@@ -12,7 +12,8 @@ from tierkreis.controller.data.models import (
     init_tmodel,
 )
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.data.graph import GraphData, ValueRef
+from tierkreis_core import GraphData, ExteriorRef, ValueRef
+import tierkreis_core
 
 
 @dataclass
@@ -33,7 +34,7 @@ class Function[Out](TNamedModel, Protocol):
 
 @dataclass
 class TypedGraphRef[Ins: TModel, Outs: TModel]:
-    graph_ref: ValueRef
+    graph_ref: ExteriorRef | ValueRef
     outputs_type: type[Outs]
     inputs_type: type[Ins]
 
@@ -77,12 +78,12 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         return self.data
 
     def ref(self) -> TypedGraphRef[Inputs, Outputs]:
-        return TypedGraphRef((-1, "body"), self.outputs_type, self.inputs_type)
+        return TypedGraphRef(ExteriorRef("body"), self.outputs_type, self.inputs_type)
 
     def outputs(self, outputs: Outputs):
         self.data.output(inputs=dict_from_tmodel(outputs))
 
-    def const[T: PType](self, value: T) -> TKR[T]:
+    def const[T: tierkreis_core.aliases.Value](self, value: T) -> TKR[T]:
         idx, port = self.data.const(value)
         return TKR[T](idx, port)
 
@@ -105,9 +106,9 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     def _graph_const[A: TModel, B: TModel](
         self, graph: "GraphBuilder[A, B]"
     ) -> TypedGraphRef[A, B]:
-        idx, port = self.data.const(graph.data.model_dump())
+        idx, port = self.data.const(graph.data)
         return TypedGraphRef[A, B](
-            graph_ref=(idx, port),
+            graph_ref=ValueRef(idx, port),
             outputs_type=graph.outputs_type,
             inputs_type=graph.inputs_type,
         )
@@ -117,7 +118,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         ins = dict_from_tmodel(f)
         idx, _ = self.data.func(name, ins)("dummy")
         OutModel = f.out()
-        outputs = [(idx, x) for x in model_fields(OutModel)]
+        outputs = [ValueRef(idx, x) for x in model_fields(OutModel)]
         return init_tmodel(OutModel, outputs)
 
     @overload
@@ -131,7 +132,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             body = self._graph_const(body)
 
         idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(a))("dummy")
-        outputs = [(idx, x) for x in model_fields(body.outputs_type)]
+        outputs = [ValueRef(idx, x) for x in model_fields(body.outputs_type)]
         return init_tmodel(body.outputs_type, outputs)
 
     @overload
@@ -155,16 +156,16 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.loop(g, dict_from_tmodel(a), "should_continue", name)(
             "dummy"
         )
-        outputs = [(idx, x) for x in model_fields(body.outputs_type)]
+        outputs = [ValueRef(idx, x) for x in model_fields(body.outputs_type)]
         return init_tmodel(body.outputs_type, outputs)
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
-        ins = (ref.node_index, ref.port_id)
+        ins = ValueRef(ref.node_index, ref.port_id)
         idx, _ = self.data.func("builtins.unfold_values", {"value": ins})("dummy")
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
-        value_ref = (refs._value.node_index, refs._value.port_id)
+        value_ref = ValueRef(refs._value.node_index, refs._value.port_id)
         idx, _ = self.data.func("builtins.fold_values", {"values_glob": value_ref})(
             "dummy"
         )
@@ -187,7 +188,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         ins = dict_from_tmodel(aes._value)
         idx, _ = self.data.map(body.graph_ref, ins)("x")
 
-        refs = [(idx, s + "-*") for s in model_fields(body.outputs_type)]
+        refs = [ValueRef(idx, s + "-*") for s in model_fields(body.outputs_type)]
         return TList(init_tmodel(body.outputs_type, refs))
 
     @overload

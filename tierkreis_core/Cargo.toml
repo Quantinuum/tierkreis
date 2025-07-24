@@ -1,0 +1,31 @@
+[package]
+name = "tierkreis_core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "tierkreis_core"
+# There is also an rlib target to use for type stub generation.
+crate-type = ["cdylib", "rlib"]
+path = "rust/lib.rs"
+
+[dependencies]
+anyhow = "1.0.98"
+indexmap = { version = "2.12.0", features = ["serde"] }
+pyo3 = { version = "0.27.0", features = ["indexmap", "abi3-py310", "experimental-inspect"] }
+pythonize = "0.27.0"
+serde = { version = "1.0.219", features = ["serde_derive"] }
+serde_json = "1.0.141"
+
+# For stub generation
+pyo3-introspection = { version = "0.27", optional = true }
+regex = { version = "1.12", optional = true }
+
+[features]
+stub-generation = ["pyo3-introspection", "regex"]
+
+[[bin]]
+name = "tierkreis-core-stubs-gen"
+required-features = ["stub-generation"]
+path = "rust/bin/tierkreis-core-stubs-gen.rs"

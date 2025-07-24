@@ -6,13 +6,14 @@ from unittest import mock
 from uuid import UUID
 
 from tierkreis.cli.tkr import load_graph, _load_inputs, main
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.exceptions import TierkreisError
+from tierkreis_core import GraphData
 
 from tests.controller.sample_graphdata import simple_eval
 
 simple_eval_graph = simple_eval()
+
 
 graph_params = [
     ("tests.controller.sample_graphdata:simple_eval", simple_eval_graph),
@@ -112,6 +113,7 @@ cli_params = [
     "args,result", cli_params, ids=["simple_eval_cli", "factorial_cli"]
 )
 def test_end_to_end(args: list[str], result: dict[str, bytes]) -> None:
+    print(simple_eval().model_dump_json())
     with mock.patch.object(sys, "argv", args):
         main()
     for key, value in result.items():

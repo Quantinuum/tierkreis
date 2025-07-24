@@ -4,12 +4,11 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
-from typing import Any, assert_never
+from typing import Any
 from uuid import UUID
-from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.controller.data.core import PortID
 from tierkreis.exceptions import TierkreisError
+from tierkreis_core import NodeDef, NodeDescription, PortID, NodeStep
 
 logger = logging.getLogger(__name__)
 
@@ -120,13 +119,13 @@ class ControllerStorage(ABC):
     def clean_graph_files(self) -> None:
         self.delete(self.workflow_dir)
 
-    def write_node_def(self, node_location: Loc, node: NodeDef):
-        bs = NodeDefModel(root=node).model_dump_json().encode()
+    def write_node_description(self, node_location: Loc, node: NodeDescription):
+        bs = node.model_dump_json().encode()
         self.write(self._nodedef_path(node_location), bs)
 
-    def read_node_def(self, node_location: Loc) -> NodeDef:
+    def read_node_description(self, node_location: Loc) -> NodeDescription:
         bs = self.read(self._nodedef_path(node_location))
-        return NodeDefModel(**json.loads(bs)).root
+        return NodeDescription.model_load_json(bs.decode())
 
     def write_worker_call_args(
         self,
@@ -259,8 +258,8 @@ class ControllerStorage(ABC):
         return datetime.fromtimestamp(since_epoch).isoformat()
 
     def read_loop_trace(self, node_location: Loc, output_name: PortID) -> list[bytes]:
-        definition = self.read_node_def(node_location)
-        if definition.type != "loop":
+        description = self.read_node_description(node_location)
+        if not isinstance(description.definition, NodeDef.Loop):
             raise TierkreisError("Can only read traces from loop nodes.")
         result = []
 
@@ -277,7 +276,7 @@ class ControllerStorage(ABC):
 
     def write_debug_data(self, name: str, loc: Loc) -> None:
         self.mkdir(self.debug_path)
-        data = StorageDebugData(loop_loc=loc)
+        data = StorageDebugData(loop_loc=str(loc))
         self.write(self.debug_path / name, json.dumps(asdict(data)).encode())
 
     def read_debug_data(self, name: str) -> dict[str, Any]:
@@ -291,23 +290,27 @@ class ControllerStorage(ABC):
         descs: set[Loc] = set()
         step, parent = loc.pop_last()
         match step:
-            case "-":
+            case NodeStep.Root():
                 pass
-            case ("N", _):
-                nodedef = self.read_node_def(loc)
-                if nodedef.type == "output":
+            case NodeStep.Node():
+                nodedef = self.read_node_description(loc)
+                if isinstance(nodedef.definition, NodeDef.Output):
                     descs.update(self.dependents(parent))
                 for output in nodedef.outputs.values():
                     descs.add(parent.N(output))
                     descs.update(self.dependents(parent.N(output)))
-            case ("M", _):
+            case NodeStep.Map():
                 descs.update(self.dependents(parent))
-            case ("L", idx):
+            case NodeStep.Loop():
                 latest_idx = self.latest_loop_iteration(parent).peek_index()
-                [descs.add(parent.L(i)) for i in range(idx + 1, latest_idx + 1)]
+                assert latest_idx is not None  # Should be impossible
+                [
+                    descs.add(parent.L(i))
+                    for i in range(step.loop_index + 1, latest_idx + 1)
+                ]
                 descs.update(self.dependents(parent))
             case _:
-                assert_never(step)
+                raise ValueError(f"Unhandled NodeStep of type: {type(step)}")
 
         return descs
 
@@ -319,8 +322,8 @@ class ControllerStorage(ABC):
 
         Returns the invalidated nodes."""
 
-        nodedef = self.read_node_def(loc)
-        if nodedef.type != "function":
+        nodedef = self.read_node_description(loc)
+        if not isinstance(nodedef.definition, NodeDef.Func):
             raise TierkreisError("Can only restart task/function nodes.")
 
         # Remove fully invalidated nodes.

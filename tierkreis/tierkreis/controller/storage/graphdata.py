@@ -4,23 +4,30 @@ from typing import Any
 
 
 from pydantic import BaseModel, Field
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import (
-    Eval,
-    GraphData,
-    NodeDef,
-    graph_node_from_loc,
+from tierkreis.controller.data.location import (
+    Loc,
+    OutputLoc,
+    WorkerCallArgs,
 )
-from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.protocol import (
     StorageEntryMetadata,
     ControllerStorage,
 )
 from tierkreis.exceptions import TierkreisError
+from tierkreis_core import (
+    PortID,
+    NodeDef,
+    GraphData,
+    NodeDescription,
+    NodeStep,
+    new_eval_root,
+)
 
 
 class NodeData(BaseModel):
     """Internal storage class to store all necessary node information."""
+
+    model_config = {"arbitrary_types_allowed": True}
 
     definition: NodeDef | None = None
     call_args: WorkerCallArgs | None = None
@@ -73,17 +80,18 @@ class GraphDataStorage(ControllerStorage):
     def write(self, path: Path, value: bytes) -> None:
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
-    def write_node_def(self, node_location: Loc, node: NodeDef) -> None:
+    def write_node_description(self, node_location: Loc, node: NodeDescription) -> None:
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
-    def read_node_def(self, node_location: Loc) -> NodeDef:
+    def read_node_description(self, node_location: Loc) -> NodeDescription:
         try:
-            if node_location.pop_last()[0][0] in ["M", "L"]:
-                return Eval((-1, "body"), {})
+            (last_step, _) = node_location.pop_last()
+            if isinstance(last_step, (NodeStep.Map, NodeStep.Loop)):
+                return NodeDescription(new_eval_root({}))
         except (TierkreisError, TypeError):
-            return Eval((-1, "body"), {})
-        node, _ = graph_node_from_loc(node_location, self.graph)
-        return node
+            return NodeDescription(new_eval_root({}))
+        desc = self.graph.query_node_description(node_location)
+        return desc
 
     def write_worker_call_args(
         self,
@@ -129,11 +137,13 @@ class GraphDataStorage(ControllerStorage):
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
     def read_output(self, node_location: Loc, output_name: PortID) -> bytes:
-        node, graph = graph_node_from_loc(node_location, self.graph)
-        if -1 == node_location.peek_index() and output_name == "body":
-            return graph.model_dump_json().encode()
+        desc = self.graph.query_node_description(node_location)
+        if node_location.last_step_exterior() and output_name == "body":
+            if desc.outer_graph is None:
+                raise ValueError("Empty outer_graph for node with a `body` port")
+            return desc.outer_graph.model_dump_json().encode()
 
-        outputs = _build_node_outputs(node)
+        outputs = _build_node_outputs(desc)
         if output_name in outputs:
             if output := outputs[output_name]:
                 return output
@@ -141,8 +151,8 @@ class GraphDataStorage(ControllerStorage):
         raise TierkreisError(f"No output named {output_name} in node {node_location}")
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
-        node, _ = graph_node_from_loc(node_location, self.graph)
-        outputs = _build_node_outputs(node)
+        desc = self.graph.query_node_description(node_location)
+        outputs = _build_node_outputs(desc)
         return list(filter(lambda k: k != "*", outputs.keys()))
 
     def is_node_started(self, node_location: Loc) -> bool:
@@ -161,8 +171,8 @@ class GraphDataStorage(ControllerStorage):
         return None
 
 
-def _build_node_outputs(node: NodeDef) -> dict[PortID, None | bytes]:
-    outputs: dict[PortID, None | bytes] = {val: None for val in node.outputs}
+def _build_node_outputs(desc: NodeDescription) -> dict[PortID, None | bytes]:
+    outputs: dict[PortID, None | bytes] = {val: None for val in desc.outputs}
     if "*" in outputs:
         outputs["0"] = None
     return outputs

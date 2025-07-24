@@ -1,6 +1,7 @@
 [tool.uv.workspace]
 members = [
     "tierkreis",
+    "tierkreis_core",
     "tierkreis_visualization",
     "tierkreis_workers/*worker",
 ]
@@ -33,3 +34,13 @@ docs = [
     "furo>=2025.7.19",
 ]
 examples = ["pyscf>=2.9.0"]
+
+[tool.uv.sources]
+tierkreis_core = { workspace = true }
+quantinuum-sphinx = { git = "https://github.com/CQCL/quantinuum-sphinx.git" }
+
+[tool.maturin]
+module-name = "tierkreis_core._tierkreis_core"
+python-source = "tierkreis_core/python/"
+manifest-path = "tierkreis_core/Cargo.toml"
+features = ["pyo3/extension-module"]

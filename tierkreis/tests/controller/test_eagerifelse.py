@@ -14,7 +14,7 @@ from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.controller.data.graph import GraphData
+from tierkreis_core import GraphData
 
 
 def eagerifelse_long_running() -> GraphData:
