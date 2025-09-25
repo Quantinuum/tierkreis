@@ -29,7 +29,6 @@ class WorkerFileStorage:
             return fh.read()
 
     def write_output(self, path: Path, value: bytes) -> None:
-        self.resolve(path).parent.mkdir(parents=True, exist_ok=True)
         with open(self.resolve(path), "wb+") as fh:
             fh.write(value)
 

@@ -97,6 +97,7 @@ class PathStorageBase(PathStorageBackend):
             logs_path=self.logs_path.relative_to(self.tkr_dir),
         )
         self._write(call_args_path, node_definition.model_dump_json().encode())
+        self._touch(self._outputs_dir(node_location), is_dir=True)
 
         if (parent := node_location.parent()) is not None:
             self._metadata_path(parent).touch()
