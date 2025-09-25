@@ -29,16 +29,22 @@ class InMemoryWorkerStorage:
         return self.controller_storage.files[path].value
 
     def write_output(self, path: Path, value: bytes) -> None:
+        print("worker write_output")
+        print(path, value)
         self.controller_storage.files[path] = InMemoryFileData(value)
 
     def glob(self, path_string: str) -> list[str]:
+        print("___glob___")
+        print(path_string)
         files = [str(x) for x in self.controller_storage.files.keys()]
+        print(files)
         matching = fnmatch.filter(files, path_string)
+        print(matching)
         return matching
 
     def mark_done(self, path: Path) -> None:
-        self.controller_storage.touch(path)
+        self.controller_storage._touch(path)
 
     def write_error(self, path: Path, error_logs: str) -> None:
-        logger.error(error_logs)
+        print(error_logs)
         raise TierkreisError("Error occured when running graph in-memory.")

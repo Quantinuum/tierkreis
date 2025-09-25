@@ -1,17 +1,15 @@
-from glob import glob
 import os
 import shutil
 from pathlib import Path
 from time import time_ns
 from uuid import UUID
 
-from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
-    ControllerStorage,
-)
+from tierkreis.controller.storage.pathstorage import PathStorageBase, StatResult
+
+logger = logging.getLogger(__name__)
 
 
-class ControllerFileStorage(ControllerStorage):
+class FileSystemBackend:
     def __init__(
         self,
         workflow_id: UUID,
@@ -23,33 +21,31 @@ class ControllerFileStorage(ControllerStorage):
         self.workflow_id = workflow_id
         self.name = name
         if do_cleanup:
-            self.delete(self.workflow_dir)
+            self._delete()
 
-    def delete(self, path: Path) -> None:
+    def _delete(self) -> None:
         uid = os.getuid()
         tmp_dir = Path(f"/tmp/{uid}/tierkreis/archive/{self.workflow_id}/{time_ns()}")
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        if self.exists(path):
-            shutil.move(path, tmp_dir)
+        tmp_dir.mkdir(parents=True)
+        workflow_dir = self.tkr_dir / str(self.workflow_id)
+        if self._exists(workflow_dir):
+            shutil.move(workflow_dir, tmp_dir)
 
-    def exists(self, path: Path) -> bool:
+    def _exists(self, path: Path) -> bool:
         return path.exists()
 
-    def list_subpaths(self, path: Path) -> list[Path]:
-        return [Path(x) for x in glob(f"{path}*/*")]
+    def _list_output_paths(self, output_dir: Path) -> list[Path]:
+        return [x for x in output_dir.iterdir() if x.is_file()]
 
-    def link(self, src: Path, dst: Path) -> None:
+    def _link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         os.link(src, dst)
 
-    def mkdir(self, path: Path) -> None:
-        return path.mkdir(parents=True, exist_ok=True)
-
-    def read(self, path: Path) -> bytes:
+    def _read(self, path: Path) -> bytes:
         with open(path, "rb") as fh:
             return fh.read()
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    def _touch(self, path: Path, is_dir: bool = False) -> None:
         if is_dir:
             path.mkdir(parents=True, exist_ok=True)
             return
@@ -57,10 +53,13 @@ class ControllerFileStorage(ControllerStorage):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
-    def stat(self, path: Path) -> StorageEntryMetadata:
-        return StorageEntryMetadata(path.stat().st_mtime)
+    def _stat(self, path: Path) -> StatResult:
+        return StatResult(path.stat().st_mtime)
 
-    def write(self, path: Path, value: bytes) -> None:
+    def _write(self, path: Path, value: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "wb+") as fh:
             fh.write(value)
+
+
+class ControllerFileStorage(FileSystemBackend, PathStorageBase): ...

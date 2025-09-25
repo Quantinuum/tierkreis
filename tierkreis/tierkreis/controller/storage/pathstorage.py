@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
@@ -9,9 +10,9 @@ from tierkreis.controller.data.core import PortID
 from tierkreis.exceptions import TierkreisError
 
 
-class StatResult(Protocol):
-    @property
-    def st_mtime(self) -> float: ...
+@dataclass
+class StatResult:
+    st_mtime: float
 
 
 class PathStorageBackend(Protocol):
@@ -21,7 +22,7 @@ class PathStorageBackend(Protocol):
 
     def _delete(self) -> None: ...
     def _exists(self, path: Path) -> bool: ...
-    def _iterdir(self, dir: Path) -> list[Path]: ...
+    def _list_output_paths(self, output_dir: Path) -> list[Path]: ...
     def _link(self, src: Path, dst: Path) -> None: ...
     def _read(self, path: Path) -> bytes: ...
     def _stat(self, path: Path) -> StatResult: ...
@@ -100,7 +101,7 @@ class PathStorageBase(PathStorageBackend):
         self._touch(self._outputs_dir(node_location), is_dir=True)
 
         if (parent := node_location.parent()) is not None:
-            self._metadata_path(parent).touch()
+            self._touch(self._metadata_path(parent))
 
         return call_args_path.relative_to(self.tkr_dir)
 
@@ -116,7 +117,7 @@ class PathStorageBase(PathStorageBackend):
         old_port: PortID,
     ) -> None:
         new_dir = self._output_path(new_location, new_port)
-        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        self._touch(self._outputs_dir(new_location), is_dir=True)
         try:
             self._link(self._output_path(old_location, old_port), new_dir)
         except FileNotFoundError as e:
@@ -140,26 +141,23 @@ class PathStorageBase(PathStorageBackend):
         return self._read(self._output_path(node_location, output_name))
 
     def read_errors(self, node_location: Loc) -> str:
-        if not self._error_logs_path(node_location).exists():
-            if self._error_path(node_location).exists():
-                with open(self._error_path(node_location), "r") as fh:
-                    return fh.read()
+        if not self._exists(self._error_logs_path(node_location)):
+            if self._exists(self._error_path(node_location)):
+                return self._read(self._error_path(node_location)).decode()
             return ""
-        with open(self._error_logs_path(node_location), "r") as fh:
-            errors = fh.read()
+        errors = self._read(self._error_logs_path(node_location)).decode()
         if errors == "":
-            if self._error_path(node_location).exists():
-                with open(self._error_path(node_location), "r") as fh:
-                    return fh.read()
+            if self._exists(self._error_path(node_location)):
+                return self._read(self._error_path(node_location)).decode()
         return errors
 
     def write_node_errors(self, node_location: Loc, error_logs: str) -> None:
         self._write(self._error_logs_path(node_location), error_logs.encode())
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
-        dir_list = self._iterdir(self._outputs_dir(node_location))
+        dir_list = self._list_output_paths(self._outputs_dir(node_location))
         dir_list.sort()
-        return [x.name for x in dir_list if x.is_file()]
+        return [x.name for x in dir_list]
 
     def is_node_started(self, node_location: Loc) -> bool:
         return self._exists(Path(self._nodedef_path(node_location)))
