@@ -2,7 +2,7 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
-from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.base import TKRStorage
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
 )
@@ -14,7 +14,7 @@ __all__ = ["FileStorage", "InMemoryStorage"]
 
 
 def read_outputs(
-    g: GraphData | GraphBuilder, storage: ControllerStorage
+    g: GraphData | GraphBuilder, storage: TKRStorage
 ) -> dict[str, PType] | PType:
     if isinstance(g, GraphBuilder):
         g = g.get_data()

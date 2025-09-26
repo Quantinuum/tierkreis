@@ -66,7 +66,7 @@ class Worker:
 
     :param name: The name of the worker.
     :type name: str
-    :param storage: Storage layer for the worker to interact with the ControllerStorage.
+    :param storage: Storage layer for the worker to interact with the TKRStorage.
     :type storage: WorkerStorage
     """
 

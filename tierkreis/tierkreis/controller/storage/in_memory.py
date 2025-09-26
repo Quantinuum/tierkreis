@@ -1,15 +1,9 @@
 from pathlib import Path
 from uuid import UUID
-from typing import Any
 from time import time
 
-from pydantic import BaseModel, Field
 
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import NodeDef
-from tierkreis.controller.data.location import WorkerCallArgs
-
-from tierkreis.controller.storage.pathstorage import PathStorageBase, StatResult
+from tierkreis.controller.storage.base import StatResult, TKRStorage
 
 
 class InMemoryFileData:
@@ -21,7 +15,7 @@ class InMemoryFileData:
         self.stats = StatResult(time())
 
 
-class InMemoryBackend:
+class ControllerInMemoryStorage(TKRStorage):
     def __init__(
         self,
         workflow_id: UUID,
@@ -59,20 +53,3 @@ class InMemoryBackend:
 
     def write(self, path: Path, value: bytes) -> None:
         self.files[path] = InMemoryFileData(value)
-
-
-class ControllerInMemoryStorage(InMemoryBackend, PathStorageBase): ...
-
-
-class NodeData(BaseModel):
-    """Internal storage class to store all necessary node information."""
-
-    definition: NodeDef | None = None
-    call_args: WorkerCallArgs | None = None
-    is_done: bool = False
-    has_error: bool = False
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    error_logs: str = ""
-    outputs: dict[PortID, bytes | None] = Field(default_factory=dict)
-    started: str | None = None
-    finished: str | None = None

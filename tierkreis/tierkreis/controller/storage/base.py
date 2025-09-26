@@ -1,8 +1,9 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
@@ -15,22 +16,35 @@ class StatResult:
     st_mtime: float
 
 
-class PathStorageBackend(Protocol):
+class TKRStorage(ABC):
     tkr_dir: Path
     workflow_id: UUID
-    name: str
+    name: str | None
 
+    @abstractmethod
     def delete(self) -> None: ...
+
+    @abstractmethod
     def exists(self, path: Path) -> bool: ...
+
+    @abstractmethod
     def list_output_paths(self, output_dir: Path) -> list[Path]: ...
+
+    @abstractmethod
     def link(self, src: Path, dst: Path) -> None: ...
+
+    @abstractmethod
     def read(self, path: Path) -> bytes: ...
+
+    @abstractmethod
     def stat(self, path: Path) -> StatResult: ...
+
+    @abstractmethod
     def touch(self, path: Path, is_dir: bool = False) -> None: ...
+
+    @abstractmethod
     def write(self, path: Path, value: bytes) -> None: ...
 
-
-class PathStorageBase(PathStorageBackend):
     @property
     def workflow_dir(self) -> Path:
         return self.tkr_dir / str(self.workflow_id)

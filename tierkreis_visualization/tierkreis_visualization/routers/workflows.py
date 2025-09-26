@@ -8,11 +8,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis_visualization.app_config import Request
-from tierkreis_visualization.data.graph import get_node_data, parse_node_location
-from tierkreis_visualization.data.outputs import outputs_from_loc
+from tierkreis.controller.data.core import PortID
+from tierkreis.controller.data.location import Loc, WorkerCallArgs
+from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.exceptions import TierkreisError
 from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
@@ -39,7 +38,7 @@ async def websocket_endpoint(
 async def handle_websocket(
     websocket: WebSocket,
     node_location_str: str,
-    storage: ControllerStorage,
+    storage: TKRStorage,
 ) -> None:
     node_location = parse_node_location(node_location_str)
 
@@ -69,12 +68,95 @@ def list_workflows(request: Request) -> list[WorkflowDisplay]:
         )
 
 
-@router.get("/{workflow_id}/graphs", response_model=GraphsResponse)
-def list_nodes(
-    request: Request, workflow_id: UUID, locs: Annotated[list[Loc], Query()]
-) -> GraphsResponse:
-    storage = request.app.state.get_storage_fn(workflow_id)
-    return GraphsResponse(graphs={loc: get_node_data(storage, loc) for loc in locs})
+class NodeResponse(BaseModel):
+    definition: WorkerCallArgs
+
+
+def parse_node_location(node_location_str: str) -> Loc:
+    return Loc(node_location_str)
+
+
+def get_errored_nodes(storage: TKRStorage) -> list[Loc]:
+    errored_nodes = storage.read_errors(Loc("-"))
+    return [parse_node_location(node) for node in errored_nodes.split("\n")]
+
+
+def get_node_data(workflow_id: UUID, loc: Loc, storage: TKRStorage) -> dict[str, Any]:
+    errored_nodes = get_errored_nodes(storage)
+
+    try:
+        node = storage.read_node_def(loc)
+    except FileNotFoundError:
+        return {
+            "breadcrumbs": breadcrumbs(workflow_id, loc),
+            "url": f"/workflows/{workflow_id}/nodes/{loc}",
+            "node_location": str(loc),
+            "name": "unavailable.jinja",
+        }
+
+    ctx: dict[str, Any] = {}
+    match node.type:
+        case "eval":
+            data = get_eval_node(storage, loc, errored_nodes)
+            name = "eval.jinja"
+            ctx = PyGraph(nodes=data.nodes, edges=data.edges).model_dump()
+
+        case "loop":
+            data = get_loop_node(storage, loc, errored_nodes)
+            name = "loop.jinja"
+            ctx = PyGraph(nodes=data.nodes, edges=data.edges).model_dump(
+                by_alias=True, mode="json"
+            )
+        case "map":
+            data = get_map_node(storage, loc, node, errored_nodes)
+            name = "map.jinja"
+            ctx = PyGraph(nodes=data.nodes, edges=data.edges).model_dump(
+                by_alias=True, mode="json"
+            )
+
+        case "function":
+            try:
+                definition = storage.read_worker_call_args(loc)
+            except FileNotFoundError:
+                return {
+                    "breadcrumbs": breadcrumbs(workflow_id, loc),
+                    "url": f"/workflows/{workflow_id}/nodes/{loc}",
+                    "node_location": str(loc),
+                    "name": "unavailable.jinja",
+                }
+            data = get_function_node(storage, loc)
+            name = "function.jinja"
+            ctx = {
+                "definition": definition.model_dump(mode="json"),
+                "data": data.model_dump(mode="json"),
+            }
+        case "const" | "ifelse" | "eifelse" | "input" | "output":
+            name = "fallback.jinja"
+            parent = loc.parent()
+            if parent is None:
+                raise TierkreisError("Visualisable node should have parent.")
+
+            inputs = {k: (parent.N(i), p) for k, (i, p) in node.inputs.items()}
+            outputs = {k: (loc, k) for k in node.outputs}
+            ctx = {"node": node, "inputs": inputs, "outputs": outputs}
+
+        case _:
+            assert_never(node)
+
+    ctx["breadcrumbs"] = breadcrumbs(workflow_id, loc)
+    ctx["url"] = f"/workflows/{workflow_id}/nodes/{loc}"
+    ctx["node_location"] = str(loc)
+    ctx["name"] = name
+
+    return ctx
+
+
+async def node_stream(workflow_id: UUID, node_location: Loc, storage: TKRStorage):
+    node_path = CONFIG.tierkreis_path / str(workflow_id) / str(node_location)
+    async for _changes in awatch(node_path, recursive=False):
+        if (node_path / "definition").exists():
+            ctx = get_node_data(workflow_id, node_location, storage)
+            yield f"event: message\ndata: {json.dumps(ctx)}\n\n"
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}")

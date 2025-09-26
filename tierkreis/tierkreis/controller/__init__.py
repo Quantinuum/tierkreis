@@ -7,7 +7,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
-from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.base import TKRStorage
 from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID, ValueRef
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_graph(
-    storage: ControllerStorage,
+    storage: TKRStorage,
     executor: ControllerExecutor,
     g: GraphData | GraphBuilder,
     graph_inputs: dict[str, PType] | PType,
@@ -47,7 +47,7 @@ def run_graph(
 
 
 def resume_graph(
-    storage: ControllerStorage,
+    storage: TKRStorage,
     executor: ControllerExecutor,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
