@@ -8,8 +8,6 @@ from pydantic import BaseModel, Field
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef
 from tierkreis.controller.data.location import WorkerCallArgs
-from pathlib import Path
-from uuid import UUID
 
 from tierkreis.controller.storage.pathstorage import PathStorageBase, StatResult
 

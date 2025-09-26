@@ -3,7 +3,7 @@ import logging
 import importlib.util
 from pathlib import Path
 
-from tierkreis.controller.data.location import Loc, WorkerCallArgs
+from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 from tierkreis.exceptions import TierkreisError
