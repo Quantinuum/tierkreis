@@ -14,14 +14,11 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up deps
-        uses: ./.github/actions/setup_deps
-
       - name: Build docs
-        run: just docs
+        uses: ./.github/workflows/run-command.yml
+        with:
+          command_name: docs
+          command: just docs
 
       - name: Upload static files as artifact
         uses: actions/upload-pages-artifact@v3
