@@ -27,5 +27,8 @@ jobs:
         with:
           python_version: ${{ matrix.python-version }}
 
+      - name: Install with uv
+        run: uv sync --all-groups
+
       - name: ${{ inputs.command_name }}
         run: ${{ inputs.command }}
