@@ -37,7 +37,7 @@ class InMemoryWorkerStorage:
         return matching
 
     def mark_done(self, path: Path) -> None:
-        self.controller_storage._touch(path)
+        self.controller_storage.touch(path)
 
     def write_error(self, path: Path, error_logs: str) -> None:
         print(error_logs)

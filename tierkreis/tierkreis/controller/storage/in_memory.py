@@ -36,30 +36,30 @@ class InMemoryBackend:
 
         self.files: dict[Path, InMemoryFileData] = {}
 
-    def _delete(self) -> None:
+    def delete(self) -> None:
         self.files = {}
 
-    def _exists(self, path: Path) -> bool:
+    def exists(self, path: Path) -> bool:
         return path in list(self.files.keys())
 
-    def _list_output_paths(self, output_dir: Path) -> list[Path]:
+    def list_output_paths(self, output_dir: Path) -> list[Path]:
         return [
             x for x in self.files.keys() if str(x).startswith(str(output_dir) + "/")
         ]
 
-    def _link(self, src: Path, dst: Path) -> None:
+    def link(self, src: Path, dst: Path) -> None:
         self.files[dst] = self.files[src]
 
-    def _read(self, path: Path) -> bytes:
+    def read(self, path: Path) -> bytes:
         return self.files[path].value
 
-    def _touch(self, path: Path, is_dir: bool = False) -> None:
+    def touch(self, path: Path, is_dir: bool = False) -> None:
         self.files[path] = InMemoryFileData(b"")
 
-    def _stat(self, path: Path) -> StatResult:
+    def stat(self, path: Path) -> StatResult:
         return self.files[path].stats
 
-    def _write(self, path: Path, value: bytes) -> None:
+    def write(self, path: Path, value: bytes) -> None:
         self.files[path] = InMemoryFileData(value)
 
 

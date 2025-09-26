@@ -35,7 +35,7 @@ class InMemoryExecutor:
         )
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(
-            **json.loads(self.storage._read(worker_call_args_path))
+            **json.loads(self.storage.read(worker_call_args_path))
         )
 
         spec = importlib.util.spec_from_file_location(
@@ -50,4 +50,4 @@ class InMemoryExecutor:
         worker_storage = InMemoryWorkerStorage(self.storage)
         module.worker.storage = worker_storage
         module.worker.functions[call_args.function_name](call_args)
-        self.storage._touch(call_args.done_path)
+        self.storage.touch(call_args.done_path)
