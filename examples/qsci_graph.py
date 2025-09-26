@@ -170,7 +170,7 @@ def main() -> None:
                 }
             ).items()
         },
-        polling_interval_seconds=0.1,
+        polling_interval_seconds=0.01,
     )
     output = json.loads(storage.read_output(root_loc, "energy"))
     print(output)
