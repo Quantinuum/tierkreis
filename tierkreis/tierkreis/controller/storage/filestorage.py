@@ -4,7 +4,7 @@ from pathlib import Path
 from time import time_ns
 from uuid import UUID
 
-from tierkreis.controller.storage.base import StatResult, TKRStorage
+from tierkreis.controller.storage.base import StorageEntryMetadata, TKRStorage
 
 logger = logging.getLogger(__name__)
 
@@ -21,25 +21,27 @@ class ControllerFileStorage(TKRStorage):
         self.workflow_id = workflow_id
         self.name = name
         if do_cleanup:
-            self.delete()
+            self.delete(self.workflow_dir)
 
-    def delete(self) -> None:
+    def delete(self, path: Path) -> None:
         uid = os.getuid()
         tmp_dir = Path(f"/tmp/{uid}/tierkreis/archive/{self.workflow_id}/{time_ns()}")
-        tmp_dir.mkdir(parents=True)
-        workflow_dir = self.tkr_dir / str(self.workflow_id)
-        if self.exists(workflow_dir):
-            shutil.move(workflow_dir, tmp_dir)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        if self.exists(path):
+            shutil.move(path, tmp_dir)
 
     def exists(self, path: Path) -> bool:
         return path.exists()
 
-    def list_output_paths(self, output_dir: Path) -> list[Path]:
-        return [x for x in output_dir.iterdir() if x.is_file()]
+    def list_subpaths(self, path: Path) -> list[Path]:
+        return [x for x in path.iterdir() if x.is_file()]
 
     def link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         os.link(src, dst)
+
+    def mkdir(self, path: Path) -> None:
+        return path.mkdir(parents=True, exist_ok=True)
 
     def read(self, path: Path) -> bytes:
         with open(path, "rb") as fh:
@@ -53,8 +55,8 @@ class ControllerFileStorage(TKRStorage):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
-    def stat(self, path: Path) -> StatResult:
-        return StatResult(path.stat().st_mtime)
+    def stat(self, path: Path) -> StorageEntryMetadata:
+        return StorageEntryMetadata(path.stat().st_mtime)
 
     def write(self, path: Path, value: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -17,7 +17,7 @@ from tierkreis.controller.data.location import (
     WorkerCallArgs,
     get_last_index,
 )
-from tierkreis.controller.storage.base import StatResult, TKRStorage
+from tierkreis.controller.storage.base import StorageEntryMetadata, TKRStorage
 from tierkreis.exceptions import TierkreisError
 
 
@@ -48,22 +48,25 @@ class GraphDataStorage(TKRStorage):
         self.graph = graph
         self.tkr_dir = Path.home() / ".tierkreis"
 
-    def delete(self) -> None:
+    def delete(self, path: Path) -> None:
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
     def exists(self, path: Path) -> bool:
         raise NotImplementedError("GraphDataStorage is only for graph construction.")
 
-    def list_output_paths(self, output_dir: Path) -> list[Path]:
+    def list_subpaths(self, path: Path) -> list[Path]:
         raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
 
     def link(self, src: Path, dst: Path) -> None:
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
+    def mkdir(self, path: Path) -> None:
+        raise NotImplementedError("GraphDataStorage is read only storage.")
+
     def read(self, path: Path) -> bytes:
         raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
 
-    def stat(self, path: Path) -> StatResult:
+    def stat(self, path: Path) -> StorageEntryMetadata:
         raise NotImplementedError("GraphDataStorage is only for graph construction.")
 
     def touch(self, path: Path, is_dir: bool = False) -> None:

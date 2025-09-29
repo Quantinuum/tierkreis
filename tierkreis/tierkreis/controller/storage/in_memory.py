@@ -3,16 +3,16 @@ from uuid import UUID
 from time import time
 
 
-from tierkreis.controller.storage.base import StatResult, TKRStorage
+from tierkreis.controller.storage.base import StorageEntryMetadata, TKRStorage
 
 
 class InMemoryFileData:
     value: bytes
-    stats: StatResult
+    stats: StorageEntryMetadata
 
     def __init__(self, value: bytes) -> None:
         self.value = value
-        self.stats = StatResult(time())
+        self.stats = StorageEntryMetadata(time())
 
 
 class ControllerInMemoryStorage(TKRStorage):
@@ -28,19 +28,20 @@ class ControllerInMemoryStorage(TKRStorage):
 
         self.files: dict[Path, InMemoryFileData] = {}
 
-    def delete(self) -> None:
+    def delete(self, path: Path) -> None:
         self.files = {}
 
     def exists(self, path: Path) -> bool:
         return path in list(self.files.keys())
 
-    def list_output_paths(self, output_dir: Path) -> list[Path]:
-        return [
-            x for x in self.files.keys() if str(x).startswith(str(output_dir) + "/")
-        ]
+    def list_subpaths(self, path: Path) -> list[Path]:
+        return [x for x in self.files.keys() if str(x).startswith(str(path) + "/")]
 
     def link(self, src: Path, dst: Path) -> None:
         self.files[dst] = self.files[src]
+
+    def mkdir(self, path: Path) -> None:
+        return
 
     def read(self, path: Path) -> bytes:
         return self.files[path].value
@@ -48,7 +49,7 @@ class ControllerInMemoryStorage(TKRStorage):
     def touch(self, path: Path, is_dir: bool = False) -> None:
         self.files[path] = InMemoryFileData(b"")
 
-    def stat(self, path: Path) -> StatResult:
+    def stat(self, path: Path) -> StorageEntryMetadata:
         return self.files[path].stats
 
     def write(self, path: Path, value: bytes) -> None:

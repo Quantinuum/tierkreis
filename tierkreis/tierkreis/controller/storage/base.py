@@ -12,8 +12,12 @@ from tierkreis.exceptions import TierkreisError
 
 
 @dataclass
-class StatResult:
-    st_mtime: float
+class StorageEntryMetadata:
+    """Collection of commonly found metadata.
+
+    Storage implementations should decide which are applicable."""
+
+    st_mtime: float | None = None
 
 
 class TKRStorage(ABC):
@@ -22,28 +26,45 @@ class TKRStorage(ABC):
     name: str | None
 
     @abstractmethod
-    def delete(self) -> None: ...
+    def delete(self, path: Path) -> None:
+        """Delete the storage entry at the specified path."""
 
     @abstractmethod
-    def exists(self, path: Path) -> bool: ...
+    def exists(self, path: Path) -> bool:
+        """Is there an entry in the storage at the specified path?"""
 
     @abstractmethod
-    def list_output_paths(self, output_dir: Path) -> list[Path]: ...
+    def link(self, src: Path, dst: Path) -> None:
+        """The storage entry at `dst` should have the same value as the entry at `src`."""
 
     @abstractmethod
-    def link(self, src: Path, dst: Path) -> None: ...
+    def list_subpaths(self, path: Path) -> list[Path]:
+        """List all the paths starting with the specified path.
+
+        This is used when the number of entries can only be determined at runtime.
+        For example in a map node."""
 
     @abstractmethod
-    def read(self, path: Path) -> bytes: ...
+    def mkdir(self, path: Path) -> None:
+        """Create an empty directory (and parents) at this path.
+
+        Probably only required for file-based storage."""
 
     @abstractmethod
-    def stat(self, path: Path) -> StatResult: ...
+    def read(self, path: Path) -> bytes:
+        """Read the storage entry at the specified path."""
 
     @abstractmethod
-    def touch(self, path: Path, is_dir: bool = False) -> None: ...
+    def stat(self, path: Path) -> StorageEntryMetadata:
+        """Get applicable stats for storage entry."""
 
     @abstractmethod
-    def write(self, path: Path, value: bytes) -> None: ...
+    def touch(self, path: Path) -> None:
+        """Create empty storage entry at the specified path."""
+
+    @abstractmethod
+    def write(self, path: Path, value: bytes) -> None:
+        """Write the given bytes to the storage entry at the specified path."""
 
     @property
     def workflow_dir(self) -> Path:
@@ -78,7 +99,7 @@ class TKRStorage(ABC):
         return self.workflow_dir / str(node_location) / "errors"
 
     def clean_graph_files(self) -> None:
-        self.delete()
+        self.delete(self.workflow_dir)
 
     def write_node_def(self, node_location: Loc, node: NodeDef):
         bs = NodeDefModel(root=node).model_dump_json().encode()
@@ -112,7 +133,7 @@ class TKRStorage(ABC):
             logs_path=self.logs_path.relative_to(self.tkr_dir),
         )
         self.write(call_args_path, node_definition.model_dump_json().encode())
-        self.touch(self._outputs_dir(node_location), is_dir=True)
+        self.mkdir(self._outputs_dir(node_location))
 
         if (parent := node_location.parent()) is not None:
             self.touch(self._metadata_path(parent))
@@ -131,7 +152,7 @@ class TKRStorage(ABC):
         old_port: PortID,
     ) -> None:
         new_dir = self._output_path(new_location, new_port)
-        self.touch(self._outputs_dir(new_location), is_dir=True)
+        self.mkdir(self._outputs_dir(new_location))
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
         except FileNotFoundError as e:
@@ -169,7 +190,7 @@ class TKRStorage(ABC):
         self.write(self._error_logs_path(node_location), error_logs.encode())
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
-        dir_list = self.list_output_paths(self._outputs_dir(node_location))
+        dir_list = self.list_subpaths(self._outputs_dir(node_location))
         dir_list.sort()
         return [x.name for x in dir_list]
 
@@ -200,6 +221,8 @@ class TKRStorage(ABC):
         if not self.exists(node_def):
             return None
         since_epoch = self.stat(node_def).st_mtime
+        if since_epoch is None:
+            return None
         return datetime.fromtimestamp(since_epoch).isoformat()
 
     def read_finished_time(self, node_location: Loc) -> str | None:
@@ -207,4 +230,6 @@ class TKRStorage(ABC):
         if not self.exists(done):
             return None
         since_epoch = self.stat(done).st_mtime
+        if since_epoch is None:
+            return None
         return datetime.fromtimestamp(since_epoch).isoformat()
