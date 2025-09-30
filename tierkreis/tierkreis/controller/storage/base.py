@@ -152,7 +152,6 @@ class TKRStorage(ABC):
         old_port: PortID,
     ) -> None:
         new_dir = self._output_path(new_location, new_port)
-        self.mkdir(self._outputs_dir(new_location))
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
         except FileNotFoundError as e:
