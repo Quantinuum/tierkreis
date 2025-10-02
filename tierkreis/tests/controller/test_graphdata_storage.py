@@ -18,7 +18,7 @@ from tierkreis.exceptions import TierkreisError
 @pytest.mark.parametrize(
     ["node_location_str", "graph", "target"],
     [
-        ("-.N0", simple_eval(), Const(0, outputs=set(["value"]))),
+        ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
         ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
         ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
     ],
@@ -72,15 +72,15 @@ def test_read_output_ports(
 @pytest.mark.parametrize(
     ["node_location_str", "graph", "target"],
     [
-        ("-.N0", simple_eval(), Const(0, outputs=set(["value"]))),
-        ("-.N3.N1", simple_eval(), Input("intercept", outputs=set(["intercept"]))),
+        ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
+        ("-.N3.N1", simple_eval(), Input("intercept", outputs={"intercept": 4})),
         (
             "-.N3.N3",
             simple_eval(),
             Func(
                 "builtins.itimes",
                 inputs={"a": (0, "doubler_input"), "b": (2, "value")},
-                outputs=set(["value"]),
+                outputs={"value": 4},
             ),
         ),
         ("-.N-1", simple_eval(), Eval((-1, "body"), {})),
@@ -91,11 +91,11 @@ def test_read_output_ports(
             Eval(
                 (-1, "body"),
                 inputs={"doubler_input": (2, "*"), "intercept": (0, "value")},
-                outputs=set(["*"]),
+                outputs={"*": 5},
             ),
         ),
         ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
-        ("-.N4.M0.N1", simple_map(), Input("intercept", outputs=set(["intercept"]))),
+        ("-.N4.M0.N1", simple_map(), Input("intercept", outputs={"intercept": 4})),
     ],
 )
 def test_graph_node_from_loc(
