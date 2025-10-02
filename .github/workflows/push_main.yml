@@ -38,3 +38,8 @@ jobs:
 
       - name: Upload static files as artifact
         uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build/html
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
