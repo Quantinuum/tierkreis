@@ -16,22 +16,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: "0"
 
-      - name: Set up uv & venv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          python-version: ${{ matrix.python-version }}
-          cache-dependency-glob: uv.lock
-
-      - name: Setup just
-        uses: extractions/setup-just@v3
-
-      - name: Install with uv
-        run: uv sync --group docs
+      - name: Set up deps
+        uses: ./.github/actions/setup_deps
 
       - name: Build docs
         run: just docs
