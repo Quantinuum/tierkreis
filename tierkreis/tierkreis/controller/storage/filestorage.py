@@ -1,3 +1,4 @@
+from glob import glob
 import os
 import shutil
 from pathlib import Path
@@ -34,7 +35,7 @@ class ControllerFileStorage(TKRStorage):
         return path.exists()
 
     def list_subpaths(self, path: Path) -> list[Path]:
-        return [x for x in path.iterdir() if x.is_file()]
+        return [Path(x) for x in glob(f"{path}*/*")]
 
     def link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
