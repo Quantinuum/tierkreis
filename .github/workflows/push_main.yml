@@ -14,16 +14,27 @@ jobs:
       id-token: write
 
     steps:
-      - name: Build docs
-        uses: ./.github/workflows/run-command.yml
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          command_name: docs
-          command: just docs
+          fetch-depth: "0"
+
+      - name: Set up uv & venv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+          cache-dependency-glob: uv.lock
+
+      - name: Setup just
+        uses: extractions/setup-just@v3
+
+      - name: Install with uv
+        run: uv sync --group docs
+
+      - name: Build docs
+        run: just docs
 
       - name: Upload static files as artifact
         uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/build/html
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
