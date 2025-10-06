@@ -1,0 +1,34 @@
+from typing import assert_never
+from tierkreis.controller.data.location import Loc
+from tierkreis.controller.storage.base import TKRStorage
+
+
+def descendants(storage: TKRStorage, loc: Loc) -> set[Loc]:
+    descs: set[Loc] = set()
+
+    parent = loc.parent()
+    if parent is None:
+        return set()
+
+    step = loc.peek()
+    match step:
+        case "-":
+            pass
+        case ("N", _):
+            nodedef = storage.read_node_def(loc)
+            if nodedef.type == "output":
+                descs.update(descendants(storage, parent))
+            for output in nodedef.outputs.values():
+                descs.add(parent.N(output))
+                descs.update(descendants(storage, parent.N(output)))
+        case ("M", _):
+            descs.update(descendants(storage, parent))
+        case ("L", idx):
+            _, loop_node = loc.pop_last()
+            latest_idx = storage.latest_loop_iteration(loop_node).peek_index()
+            [descs.add(loop_node.L(i)) for i in range(idx + 1, latest_idx + 1)]
+            descs.update(descendants(storage, loop_node))
+        case _:
+            assert_never(step)
+
+    return descs

@@ -11,12 +11,7 @@ from tierkreis.controller.data.graph import (
     NodeDef,
     graph_node_from_loc,
 )
-from tierkreis.controller.data.location import (
-    Loc,
-    OutputLoc,
-    WorkerCallArgs,
-    get_last_index,
-)
+from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.protocol import (
     StorageEntryMetadata,
     ControllerStorage,
@@ -135,7 +130,7 @@ class GraphDataStorage(ControllerStorage):
 
     def read_output(self, node_location: Loc, output_name: PortID) -> bytes:
         node, graph = graph_node_from_loc(node_location, self.graph)
-        if -1 == get_last_index(node_location) and output_name == "body":
+        if -1 == node_location.peek_index() and output_name == "body":
             return graph.model_dump_json().encode()
 
         outputs = _build_node_outputs(node)

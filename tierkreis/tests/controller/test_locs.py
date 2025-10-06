@@ -1,6 +1,6 @@
 import pytest
 
-from tierkreis.controller.data.location import Loc, NodeStep, get_last_index
+from tierkreis.controller.data.location import Loc, NodeStep
 from tierkreis.exceptions import TierkreisError
 
 node_location_1 = Loc()
@@ -150,4 +150,4 @@ def test_pop_last_multiple() -> None:
     ],
 )
 def test_get_last_index(node_location: Loc, index: int) -> None:
-    assert get_last_index(node_location) == index
+    assert node_location.peek_index() == index

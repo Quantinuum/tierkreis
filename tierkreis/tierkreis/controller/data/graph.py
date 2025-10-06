@@ -96,7 +96,7 @@ NodeDefModel = RootModel[NodeDef]
 class GraphData(BaseModel):
     nodes: list[NodeDef] = []
     fixed_inputs: dict[PortID, OutputLoc] = {}
-    graph_inputs: set[PortID] = set()
+    graph_inputs: dict[PortID, NodeIndex] = {}
     graph_output_idx: NodeIndex | None = None
 
     def input(self, name: str) -> ValueRef:
@@ -153,7 +153,7 @@ class GraphData(BaseModel):
                 self.nodes[node.if_true[0]].outputs[node.if_true[1]] = idx
                 self.nodes[node.if_false[0]].outputs[node.if_false[1]] = idx
             case "input":
-                self.graph_inputs.add(node.name)
+                self.graph_inputs[node.name] = idx
             case "const" | "eval" | "function" | "loop" | "map":
                 pass
             case _:
@@ -184,7 +184,7 @@ class GraphData(BaseModel):
             )
 
         actual_inputs = fixed_inputs.union(provided_inputs)
-        return self.graph_inputs - actual_inputs
+        return set(self.graph_inputs.keys()) - actual_inputs
 
 
 def graph_node_from_loc(

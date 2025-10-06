@@ -116,12 +116,15 @@ class Loc(str):
             raise TierkreisError("Malformed Loc")
         return last, Loc.from_steps(steps)
 
+    def peek(self) -> NodeStep:
+        return self.steps()[-1]
 
-def get_last_index(loc: Loc) -> int:
-    step = loc.steps()[-1]
-    if isinstance(step, str):
-        return 0
-    return step[1]
+    def peek_index(self) -> int:
+        step = self.steps()[-1]
+
+        if isinstance(step, str):
+            return 0
+        return step[1]
 
 
 OutputLoc = tuple[Loc, PortID]

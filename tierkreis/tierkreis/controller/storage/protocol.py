@@ -202,6 +202,12 @@ class ControllerStorage(ABC):
     def is_node_finished(self, node_location: Loc) -> bool:
         return self.exists(self._done_path(node_location))
 
+    def latest_loop_iteration(self, loc: Loc) -> Loc:
+        i = 0
+        while self.is_node_started(loc.L(i + 1)):
+            i += 1
+        return loc.L(i)
+
     def node_has_error(self, node_location: Loc) -> bool:
         return self.exists(self._error_path(node_location))
 
