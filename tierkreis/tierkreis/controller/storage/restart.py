@@ -35,7 +35,7 @@ def dependents(storage: TKRStorage, loc: Loc) -> set[Loc]:
     return descs
 
 
-def restart(storage: TKRStorage, loc: Loc) -> None:
+def restart_task(storage: TKRStorage, loc: Loc) -> None:
     deps = dependents(storage, loc)
     partials = loc.partial_paths()
 

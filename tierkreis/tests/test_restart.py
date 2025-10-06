@@ -8,7 +8,7 @@ from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.storage import FileStorage
-from tierkreis.controller.storage.restart import dependents, restart
+from tierkreis.controller.storage.restart import dependents, restart_task
 from tests.controller.typed_graphdata import typed_loop, typed_map
 
 params = [
@@ -38,7 +38,22 @@ def test_descendants(graph: GraphData, input_loc: Loc, expected: set[Loc]):
         Path(f"{PACKAGE_PATH}/../tierkreis_workers"), storage.logs_path
     )
     run_graph(storage, executor, graph, {})
+
+    assert storage.exists(storage._nodedef_path(input_loc))
+    assert storage.exists(storage._done_path(input_loc))
+
+    for loc in expected:
+        assert storage.exists(storage._nodedef_path(loc))
+        assert storage.exists(storage._done_path(loc))
+
     assert expected == dependents(storage, input_loc)
 
-    restart(storage, input_loc)
+    restart_task(storage, input_loc)
+    assert not storage.exists(storage._nodedef_path(input_loc))
+    assert not storage.exists(storage._done_path(input_loc))
+
+    for loc in expected:
+        assert not storage.exists(storage._nodedef_path(loc))
+        assert not storage.exists(storage._done_path(loc))
+
     run_graph(storage, executor, graph, {})
