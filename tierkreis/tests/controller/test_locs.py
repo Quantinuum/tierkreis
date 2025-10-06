@@ -151,3 +151,38 @@ def test_pop_last_multiple() -> None:
 )
 def test_get_last_index(node_location: Loc, index: int) -> None:
     assert node_location.peek_index() == index
+
+
+@pytest.mark.parametrize(
+    ["node_location", "expected"],
+    [
+        (
+            node_location_1,
+            [
+                Loc(),
+                Loc().N(1),
+                Loc().N(1).L(0),
+                Loc().N(1).L(0).N(3),
+                Loc().N(1).L(0).N(3).L(2),
+                Loc().N(1).L(0).N(3).L(2).N(0),
+                Loc().N(1).L(0).N(3).L(2).N(0).M(7),
+                Loc().N(1).L(0).N(3).L(2).N(0).M(7).N(10),
+            ],
+        ),
+        (
+            node_location_2,
+            [
+                Loc(),
+                Loc().N(0),
+                Loc().N(0).L(0),
+                Loc().N(0).L(0).N(3),
+                Loc().N(0).L(0).N(3).N(8),
+                Loc().N(0).L(0).N(3).N(8).N(0),
+            ],
+        ),
+        (node_location_3, [Loc(), Loc().N(0)]),
+        (node_location_4, [Loc()]),
+    ],
+)
+def test_partial_paths(node_location: Loc, expected: list[Loc]):
+    assert expected == node_location.partial_paths()

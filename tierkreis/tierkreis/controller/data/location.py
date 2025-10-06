@@ -126,5 +126,9 @@ class Loc(str):
             return 0
         return step[1]
 
+    def partial_paths(self) -> list["Loc"]:
+        steps = self.steps()
+        return [Loc.from_steps(steps[: i + 1]) for i in range(len(steps))]
+
 
 OutputLoc = tuple[Loc, PortID]
