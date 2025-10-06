@@ -33,3 +33,19 @@ def dependents(storage: TKRStorage, loc: Loc) -> set[Loc]:
             assert_never(step)
 
     return descs
+
+
+def restart(storage: TKRStorage, loc: Loc) -> None:
+    deps = dependents(storage, loc)
+    partials = loc.partial_paths()
+
+    subpaths = [storage.list_subpaths(storage.workflow_dir / x) for x in deps]
+    [[storage.delete(a) for a in x] for x in subpaths]
+
+    subpaths = [
+        storage.list_subpaths(storage.workflow_dir / x / "outputs") for x in partials
+    ]
+    print(subpaths)
+    [[storage.delete(a) for a in x] for x in subpaths]
+    [storage.delete(storage._nodedef_path(x)) for x in partials]
+    [storage.delete(storage._done_path(x)) for x in partials]

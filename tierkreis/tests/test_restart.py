@@ -8,7 +8,7 @@ from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.storage import FileStorage
-from tierkreis.controller.storage.descendants import dependents
+from tierkreis.controller.storage.restart import dependents, restart
 from tests.controller.typed_graphdata import typed_loop, typed_map
 
 params = [
@@ -39,3 +39,6 @@ def test_descendants(graph: GraphData, input_loc: Loc, expected: set[Loc]):
     )
     run_graph(storage, executor, graph, {})
     assert expected == dependents(storage, input_loc)
+
+    restart(storage, input_loc)
+    run_graph(storage, executor, graph, {})

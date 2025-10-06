@@ -40,6 +40,7 @@ class ControllerFileStorage(ControllerStorage):
 
     def link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.unlink(True)
         os.link(src, dst)
 
     def mkdir(self, path: Path) -> None:
