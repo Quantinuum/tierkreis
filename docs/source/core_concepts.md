@@ -56,7 +56,7 @@ The controller also validates the workflow to ensure each node can be implemente
 The storage layer is an abstraction of the state of the computation.
 It stores the information of individual tasks such as their definition, their inputs (dependencies), and their status.
 The actual implementation can be a file system, a database or cloud storage.
-The storage base class is defined in [](#tierkreis.controller.storage.base).
+The storage base class is defined in [](#tierkreis.controller.storage.protocol).
 
 ### Worker
 
