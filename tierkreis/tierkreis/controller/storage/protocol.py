@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -9,6 +10,8 @@ from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.data.core import PortID
 from tierkreis.exceptions import TierkreisError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -155,7 +158,7 @@ class ControllerStorage(ABC):
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
         except FileNotFoundError as e:
-            raise TierkreisError(
+            logger.warning(
                 f"Could not link {e.filename} to {e.filename2}."
                 " Possibly a mislabelled variable?"
             )
