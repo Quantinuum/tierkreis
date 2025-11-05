@@ -10,7 +10,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import Loc, WorkerCallArgs
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 from watchfiles import awatch  # type: ignore
 

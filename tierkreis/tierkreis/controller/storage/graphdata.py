@@ -17,7 +17,10 @@ from tierkreis.controller.data.location import (
     WorkerCallArgs,
     get_last_index,
 )
-from tierkreis.controller.storage.base import StorageEntryMetadata, ControllerStorage
+from tierkreis.controller.storage.protocol import (
+    StorageEntryMetadata,
+    ControllerStorage,
+)
 from tierkreis.exceptions import TierkreisError
 
 

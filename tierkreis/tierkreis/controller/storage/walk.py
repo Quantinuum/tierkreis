@@ -16,7 +16,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.start import NodeRunData
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.labels import Labels
 
 logger = getLogger(__name__)

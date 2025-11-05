@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.storage.graphdata import GraphDataStorage
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.config import CONFIG, get_storage
 from tierkreis_visualization.routers.workflows import router as workflows_router
 

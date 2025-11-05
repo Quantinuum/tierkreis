@@ -6,7 +6,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.graph import GraphData, IfElse, NodeDef
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import in_edges
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge

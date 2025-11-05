@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
 

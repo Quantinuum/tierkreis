@@ -15,7 +15,7 @@ from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.labels import Labels
 from tierkreis.exceptions import TierkreisError

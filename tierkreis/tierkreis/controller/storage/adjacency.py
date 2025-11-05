@@ -6,7 +6,7 @@ from tierkreis.controller.data.graph import (
     NodeDef,
 )
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 
 logger = logging.getLogger(__name__)
 

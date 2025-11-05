@@ -3,7 +3,10 @@ from uuid import UUID
 from time import time
 
 
-from tierkreis.controller.storage.base import StorageEntryMetadata, ControllerStorage
+from tierkreis.controller.storage.protocol import (
+    StorageEntryMetadata,
+    ControllerStorage,
+)
 
 
 class InMemoryFileData:

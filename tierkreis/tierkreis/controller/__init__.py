@@ -7,7 +7,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID, ValueRef
 

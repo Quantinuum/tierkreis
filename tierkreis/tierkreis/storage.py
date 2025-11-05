@@ -2,7 +2,7 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
-from tierkreis.controller.storage.base import ControllerStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
 )

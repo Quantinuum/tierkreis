@@ -5,7 +5,10 @@ from pathlib import Path
 from time import time_ns
 from uuid import UUID
 
-from tierkreis.controller.storage.base import StorageEntryMetadata, ControllerStorage
+from tierkreis.controller.storage.protocol import (
+    StorageEntryMetadata,
+    ControllerStorage,
+)
 
 
 class ControllerFileStorage(ControllerStorage):
