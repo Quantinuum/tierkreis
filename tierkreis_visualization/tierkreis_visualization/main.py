@@ -55,7 +55,7 @@ def visualize_graph(
     :param graph: The computation graph to visualize.
     :type graph: GraphData
     :param storage: The storage backend to use for the visualization.
-    :type storage: TKRStorage | None. Defaults to GraphDataStorage.
+    :type storage: ControllerStorage | None. Defaults to GraphDataStorage.
     """
     if storage is None:
         storage = GraphDataStorage(UUID(int=0), graph=graph)
