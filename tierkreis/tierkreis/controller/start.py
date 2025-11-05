@@ -15,7 +15,7 @@ from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.base import ControllerStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.labels import Labels
 from tierkreis.exceptions import TierkreisError
@@ -31,7 +31,7 @@ class NodeRunData:
 
 
 def start_nodes(
-    storage: TKRStorage,
+    storage: ControllerStorage,
     executor: ControllerExecutor,
     node_run_data: list[NodeRunData],
 ) -> None:
@@ -68,7 +68,7 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
 
 
 def start(
-    storage: TKRStorage, executor: ControllerExecutor, node_run_data: NodeRunData
+    storage: ControllerStorage, executor: ControllerExecutor, node_run_data: NodeRunData
 ) -> None:
     node_location = node_run_data.node_location
     node = node_run_data.node
@@ -170,7 +170,7 @@ def start(
 
 
 def pipe_inputs_to_output_location(
-    storage: TKRStorage,
+    storage: ControllerStorage,
     output_loc: Loc,
     inputs: dict[PortID, OutputLoc],
 ) -> None:

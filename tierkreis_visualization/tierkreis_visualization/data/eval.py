@@ -6,7 +6,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.graph import GraphData, IfElse, NodeDef
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import in_edges
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.base import ControllerStorage
 
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge
@@ -33,7 +33,7 @@ def check_error(node_location: Loc, errored_nodes: list[Loc]) -> bool:
 
 
 def add_conditional_edges(
-    storage: TKRStorage,
+    storage: ControllerStorage,
     loc: Loc,
     i: NodeIndex,
     node: IfElse,
@@ -63,7 +63,7 @@ def add_conditional_edges(
 
 
 def get_eval_node(
-    storage: TKRStorage, node_location: Loc, errored_nodes: list[Loc]
+    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
 ) -> EvalNodeData:
     thunk = storage.read_output(node_location.N(-1), "body")
     graph = ptype_from_bytes(thunk, GraphData)

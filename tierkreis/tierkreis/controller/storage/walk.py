@@ -16,7 +16,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.start import NodeRunData
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.base import ControllerStorage
 from tierkreis.labels import Labels
 
 logger = getLogger(__name__)
@@ -36,7 +36,7 @@ class WalkResult:
 
 def unfinished_results(
     result: WalkResult,
-    storage: TKRStorage,
+    storage: ControllerStorage,
     parent: Loc,
     node: NodeDef,
     graph: GraphData,
@@ -47,7 +47,7 @@ def unfinished_results(
 
 
 def walk_node(
-    storage: TKRStorage, parent: Loc, idx: NodeIndex, graph: GraphData
+    storage: ControllerStorage, parent: Loc, idx: NodeIndex, graph: GraphData
 ) -> WalkResult:
     """Should only be called when a node has not finished."""
     loc = parent.N(idx)
@@ -108,7 +108,7 @@ def walk_node(
 
 
 def walk_loop(
-    storage: TKRStorage, parent: Loc, idx: NodeIndex, loop: Loop
+    storage: ControllerStorage, parent: Loc, idx: NodeIndex, loop: Loop
 ) -> WalkResult:
     loc = parent.N(idx)
     if storage.is_node_finished(loc):
@@ -146,7 +146,9 @@ def walk_loop(
     return WalkResult([node_run_data], [])
 
 
-def walk_map(storage: TKRStorage, parent: Loc, idx: NodeIndex, map: Map) -> WalkResult:
+def walk_map(
+    storage: ControllerStorage, parent: Loc, idx: NodeIndex, map: Map
+) -> WalkResult:
     loc = parent.N(idx)
     result = WalkResult([], [])
     if storage.is_node_finished(loc):
@@ -172,7 +174,7 @@ def walk_map(storage: TKRStorage, parent: Loc, idx: NodeIndex, map: Map) -> Walk
 
 
 def walk_eifelse(
-    storage: TKRStorage,
+    storage: ControllerStorage,
     parent: Loc,
     idx: NodeIndex,
     node: EagerIfElse,

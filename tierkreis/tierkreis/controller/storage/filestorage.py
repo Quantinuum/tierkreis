@@ -5,12 +5,10 @@ from pathlib import Path
 from time import time_ns
 from uuid import UUID
 
-from tierkreis.controller.storage.base import StorageEntryMetadata, TKRStorage
-
-logger = logging.getLogger(__name__)
+from tierkreis.controller.storage.base import StorageEntryMetadata, ControllerStorage
 
 
-class ControllerFileStorage(TKRStorage):
+class ControllerFileStorage(ControllerStorage):
     def __init__(
         self,
         workflow_id: UUID,

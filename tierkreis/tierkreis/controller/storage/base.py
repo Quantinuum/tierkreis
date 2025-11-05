@@ -20,7 +20,7 @@ class StorageEntryMetadata:
     st_mtime: float | None = None
 
 
-class TKRStorage(ABC):
+class ControllerStorage(ABC):
     tkr_dir: Path
     workflow_id: UUID
     name: str | None

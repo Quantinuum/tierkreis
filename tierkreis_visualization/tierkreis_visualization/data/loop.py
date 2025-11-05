@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.base import ControllerStorage
 
 
 from tierkreis_visualization.data.eval import check_error
@@ -14,7 +14,7 @@ class LoopNodeData(BaseModel):
 
 
 def get_loop_node(
-    storage: TKRStorage, node_location: Loc, errored_nodes: list[Loc]
+    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
 ) -> LoopNodeData:
     i = 0
     while storage.is_node_started(node_location.L(i + 1)):

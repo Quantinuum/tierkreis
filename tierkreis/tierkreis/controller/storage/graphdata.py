@@ -17,7 +17,7 @@ from tierkreis.controller.data.location import (
     WorkerCallArgs,
     get_last_index,
 )
-from tierkreis.controller.storage.base import StorageEntryMetadata, TKRStorage
+from tierkreis.controller.storage.base import StorageEntryMetadata, ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
 
@@ -35,7 +35,7 @@ class NodeData(BaseModel):
     finished: str | None = None
 
 
-class GraphDataStorage(TKRStorage):
+class GraphDataStorage(ControllerStorage):
     def __init__(
         self,
         workflow_id: UUID,

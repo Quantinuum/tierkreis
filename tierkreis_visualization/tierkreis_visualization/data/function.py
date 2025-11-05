@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.base import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
 
@@ -9,7 +9,7 @@ class FunctionDefinition(BaseModel):
     error_message: str | None = None
 
 
-def get_function_node(storage: TKRStorage, loc: Loc) -> FunctionDefinition:
+def get_function_node(storage: ControllerStorage, loc: Loc) -> FunctionDefinition:
     parent = loc.parent()
     if parent is None:
         raise TierkreisError("Func node must have parent.")

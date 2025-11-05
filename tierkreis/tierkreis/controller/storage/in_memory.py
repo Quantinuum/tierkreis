@@ -3,7 +3,7 @@ from uuid import UUID
 from time import time
 
 
-from tierkreis.controller.storage.base import StorageEntryMetadata, TKRStorage
+from tierkreis.controller.storage.base import StorageEntryMetadata, ControllerStorage
 
 
 class InMemoryFileData:
@@ -15,7 +15,7 @@ class InMemoryFileData:
         self.stats = StorageEntryMetadata(time())
 
 
-class ControllerInMemoryStorage(TKRStorage):
+class ControllerInMemoryStorage(ControllerStorage):
     def __init__(
         self,
         workflow_id: UUID,

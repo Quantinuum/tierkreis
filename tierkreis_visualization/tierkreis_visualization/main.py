@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.storage.graphdata import GraphDataStorage
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.base import ControllerStorage
 from tierkreis_visualization.config import CONFIG, get_storage
 from tierkreis_visualization.routers.workflows import router as workflows_router
 
@@ -48,7 +48,7 @@ def start() -> None:
 
 def visualize_graph(
     graph: GraphData,
-    storage: TKRStorage | None = None,
+    storage: ControllerStorage | None = None,
 ) -> None:
     """Visualize a computation graph in a web browser.
 
@@ -60,7 +60,7 @@ def visualize_graph(
     if storage is None:
         storage = GraphDataStorage(UUID(int=0), graph=graph)
 
-    def get_storage(workflow_id: UUID) -> TKRStorage:
+    def get_storage(workflow_id: UUID) -> ControllerStorage:
         return storage
 
     app.state.get_storage_fn = get_storage
