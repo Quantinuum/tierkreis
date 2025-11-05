@@ -2949,14 +2949,12 @@ version = "0.1.4"
 source = { editable = "tierkreis_workers/aer_worker" }
 dependencies = [
     { name = "pytket-qiskit" },
-    { name = "qiskit" },
     { name = "tierkreis" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pytket-qiskit" },
-    { name = "qiskit" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
 
