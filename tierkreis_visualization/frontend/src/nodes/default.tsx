@@ -81,7 +81,22 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
       onClick={handleClick}
     >
       <DialogTrigger asChild>
-        <div>
+        <div
+          onClick={(event) => {
+            //workaround to render errors
+            const target = event.target as HTMLElement;
+            if (target.closest("button") === null) {
+              if (data.title == "Function") {
+                data.setInfo?.({
+                  type: "Logs",
+                  content: logs ? logs : "",
+                  workflow_id: data.workflowId,
+                  node_location: data.node_location,
+                });
+              }
+            }
+          }}
+        >
           <CardHeader>
             <CardTitle className="whitespace-nowrap overflow-hidden text-ellipsis">
               {name}
@@ -101,7 +116,14 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
                   size="sm"
                   variant="destructive"
                   style={{ zIndex: 5 }}
-                  onClick={handleErrorClick}
+                  onClick={() =>
+                    data.setInfo?.({
+                      type: "Errors",
+                      content: errors ? errors : "",
+                      workflow_id: data.workflowId,
+                      node_location: data.node_location,
+                    })
+                  }
                 >
                   <OctagonAlert />
                 </Button>

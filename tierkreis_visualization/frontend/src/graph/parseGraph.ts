@@ -1,7 +1,8 @@
 import { AppNode } from "@/nodes/types";
 import { Edge } from "@xyflow/react";
-import { loc_parent } from "@/data/loc";
-import { PyEdge, PyNode } from "@/data/api_types";
+import { nodeHeight, nodeWidth } from "@/data/constants";
+import { CSSProperties } from "react";
+import { InfoProps } from "@/components/types";
 
 function nodeType(function_name: string) {
   if (function_name.match(/^L?\d+$/)) {
@@ -82,43 +83,38 @@ function parseNodeValue(value: unknown): string | null {
 function parseNodes(
   nodes: PyNode[],
   edges: PyEdge[],
-  workflowId: string
+  workflowId: string,
+  setInfo: ((info: InfoProps) => void) | undefined,
+  parentId?: string
 ): AppNode[] {
   // child nodes prepend their parents id eg. [0,1,2] => [0:0,0:1,0:2]
-  const parsedNodes = nodes.map((node) => {
-    let parent: string | undefined = loc_parent(node.node_location);
-    if (parent === "-") parent = undefined;
-
-    return {
-      id: node.node_location,
-      type: nodeType(node.function_name),
-      position: { x: 0, y: 0 },
-      data: {
-        name: node.function_name,
-        status: node.status,
-        handles: getHandlesFromEdges(node.id, edges),
-        hidden_handles: undefined,
-        hidden_edges: undefined,
-        workflowId: workflowId,
-        node_location: node.node_location,
-        title: getTitle(node.function_name),
-        id: node.node_location,
-        label: node.function_name,
-        pinned: false,
-        value: parseNodeValue(node.value),
-        setInfo: undefined,
-        is_expanded: false,
-        isTooltipOpen: false,
-        hoveredId: "",
-        setHoveredId: () => {},
-        started_time: node.started_time,
-        finished_time: node.finished_time,
-        node_type: node.node_type,
-      },
-      parentId: parent,
-      // extent: "parent",
-    };
-  });
+  const parsedNodes = nodes.map((node) => ({
+    id: (parentId ? `${parentId}:` : "") + node.id.toString(),
+    type: nodeType(node.function_name),
+    position: { x: 0, y: 0 },
+    data: {
+      name: node.function_name,
+      status: node.status,
+      handles: getHandlesFromEdges(Number(node.id), edges),
+      hidden_handles: undefined,
+      hidden_edges: undefined,
+      workflowId: workflowId,
+      node_location: node.node_location,
+      title: getTitle(node.function_name),
+      id: (parentId ? `${parentId}:` : "") + node.id.toString(),
+      label: node.function_name,
+      pinned: false,
+      value: parseNodeValue(node.value),
+      setInfo,
+      is_expanded: false,
+      isTooltipOpen: false,
+      hoveredId: "",
+      setHoveredId: () => {},
+      started_time: node.started_time,
+      finished_time: node.finished_time,
+    },
+    parentId: parentId ? `${parentId}` : undefined,
+  }));
   return parsedNodes;
 }
 
