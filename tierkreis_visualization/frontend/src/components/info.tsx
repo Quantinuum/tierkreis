@@ -5,7 +5,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoProps } from "./types";
-import { useMutation } from "@tanstack/react-query";
 
 export function NodeInfo(props: { info: InfoProps }) {
   const restartHandler = async () => {
