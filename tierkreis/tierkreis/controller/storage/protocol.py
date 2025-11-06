@@ -241,3 +241,53 @@ class ControllerStorage(ABC):
         if since_epoch is None:
             return None
         return datetime.fromtimestamp(since_epoch).isoformat()
+
+    def dependents(self, loc: Loc) -> set[Loc]:
+        """Nodes that are fully invalidated if the node at the given loc is invalidated.
+
+        This does not include the direct parent Loc, which is only partially invalidated.
+        """
+        descs: set[Loc] = set()
+
+        parent = loc.parent()
+        if not parent:
+            return set()
+
+        step = loc.peek()
+        match step:
+            case "-":
+                pass
+            case ("N", _):
+                nodedef = self.read_node_def(loc)
+                if nodedef.type == "output":
+                    descs.update(self.dependents(parent))
+                for output in nodedef.outputs.values():
+                    descs.add(parent.N(output))
+                    descs.update(self.dependents(parent.N(output)))
+            case ("M", _):
+                descs.update(self.dependents(parent))
+            case ("L", idx):
+                _, loop_node = loc.pop_last()
+                latest_idx = self.latest_loop_iteration(loop_node).peek_index()
+                [descs.add(loop_node.L(i)) for i in range(idx + 1, latest_idx + 1)]
+                descs.update(self.dependents(loop_node))
+            case _:
+                assert_never(step)
+
+        return descs
+
+    def restart_task(self, loc: Loc) -> None:
+        """Restart the node at the given loc.
+
+        Fully dependent nodes will be removed from the storage.
+        The parent locs will be partially invalidated."""
+
+        # Remove fully invalidated nodes.
+        deps = self.dependents(loc)
+        [self.delete(self.workflow_dir / a) for a in deps]
+
+        # Mark partially invalidated nodes as not started and remove their outputs.
+        partials = loc.partial_paths()
+        [self.delete(self._nodedef_path(x)) for x in partials]
+        [self.delete(self._done_path(x)) for x in partials]
+        [self.delete(self.workflow_dir / a / "outputs") for a in partials]
