@@ -40,5 +40,5 @@ class InMemoryWorkerStorage:
         self.controller_storage.touch(path)
 
     def write_error(self, path: Path, error_logs: str) -> None:
-        print(error_logs)
+        logger.error(error_logs)
         raise TierkreisError("Error occured when running graph in-memory.")
