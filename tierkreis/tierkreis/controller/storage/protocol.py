@@ -30,7 +30,7 @@ class ControllerStorage(ABC):
 
     @abstractmethod
     def delete(self, path: Path) -> None:
-        """Delete the storage entry at the specified path."""
+        """Delete the storage entry at the specified path and all subpaths."""
 
     @abstractmethod
     def exists(self, path: Path) -> bool:
