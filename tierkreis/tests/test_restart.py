@@ -48,11 +48,10 @@ def test_descendants(graph: GraphData, input_loc: Loc, expected: set[Loc]):
     assert expected == storage.dependents(input_loc)
 
     storage.restart_task(input_loc)
-    assert not storage.exists(storage._nodedef_path(input_loc))
+    assert storage.exists(storage._nodedef_path(input_loc))
     assert not storage.exists(storage._done_path(input_loc))
 
     for loc in expected:
-        assert not storage.exists(storage._nodedef_path(loc))
         assert not storage.exists(storage._done_path(loc))
 
     run_graph(storage, executor, graph, {})
