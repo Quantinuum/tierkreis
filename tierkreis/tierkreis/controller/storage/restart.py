@@ -4,7 +4,9 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 
 
 def dependents(storage: ControllerStorage, loc: Loc) -> set[Loc]:
-    """Nodes that are fully invalidated if the node at the given loc is invalidated."""
+    """Nodes that are fully invalidated if the node at the given loc is invalidated.
+
+    This does not include the direct parent Loc, which is only partially invalidated."""
     descs: set[Loc] = set()
 
     parent = loc.parent()
@@ -36,16 +38,22 @@ def dependents(storage: ControllerStorage, loc: Loc) -> set[Loc]:
 
 
 def restart_task(storage: ControllerStorage, loc: Loc) -> None:
-    deps = dependents(storage, loc)
-    partials = loc.partial_paths()
+    """Restart the node at the given loc.
 
+    Fully dependent nodes will be removed from the storage.
+    The parent locs will be partially invalidated."""
+
+    # Remove fully invalidated nodes.
+    deps = dependents(storage, loc)
     subpaths = [storage.list_subpaths(storage.workflow_dir / x) for x in deps]
     [[storage.delete(a) for a in x] for x in subpaths]
+
+    # Mark partially invalidated nodes as not started and remove their outputs.
+    partials = loc.partial_paths()
+    [storage.delete(storage._nodedef_path(x)) for x in partials]
+    [storage.delete(storage._done_path(x)) for x in partials]
 
     subpaths = [
         storage.list_subpaths(storage.workflow_dir / x / "outputs") for x in partials
     ]
-    print(subpaths)
     [[storage.delete(a) for a in x] for x in subpaths]
-    [storage.delete(storage._nodedef_path(x)) for x in partials]
-    [storage.delete(storage._done_path(x)) for x in partials]
