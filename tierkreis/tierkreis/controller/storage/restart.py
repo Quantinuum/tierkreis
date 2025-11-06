@@ -45,15 +45,10 @@ def restart_task(storage: ControllerStorage, loc: Loc) -> None:
 
     # Remove fully invalidated nodes.
     deps = dependents(storage, loc)
-    subpaths = [storage.list_subpaths(storage.workflow_dir / x) for x in deps]
-    [[storage.delete(a) for a in x] for x in subpaths]
+    [storage.delete(storage.workflow_dir / a) for a in deps]
 
     # Mark partially invalidated nodes as not started and remove their outputs.
     partials = loc.partial_paths()
     [storage.delete(storage._nodedef_path(x)) for x in partials]
     [storage.delete(storage._done_path(x)) for x in partials]
-
-    subpaths = [
-        storage.list_subpaths(storage.workflow_dir / x / "outputs") for x in partials
-    ]
-    [[storage.delete(a) for a in x] for x in subpaths]
+    [storage.delete(storage.workflow_dir / a / "outputs") for a in partials]
