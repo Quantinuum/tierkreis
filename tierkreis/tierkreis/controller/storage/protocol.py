@@ -290,3 +290,6 @@ class ControllerStorage(ABC):
         partials = loc.partial_paths()
         [self.delete(self._done_path(x)) for x in partials]
         [self.delete(self.workflow_dir / a / "outputs") for a in partials]
+
+        partials = partials[1:]  # Whole graph should still show as started.
+        [self.delete(self._nodedef_path(x)) for x in partials]
