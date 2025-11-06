@@ -1,9 +1,9 @@
 from typing import assert_never
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.base import TKRStorage
+from tierkreis.controller.storage.protocol import ControllerStorage
 
 
-def dependents(storage: TKRStorage, loc: Loc) -> set[Loc]:
+def dependents(storage: ControllerStorage, loc: Loc) -> set[Loc]:
     """Nodes that are fully invalidated if the node at the given loc is invalidated."""
     descs: set[Loc] = set()
 
@@ -35,7 +35,7 @@ def dependents(storage: TKRStorage, loc: Loc) -> set[Loc]:
     return descs
 
 
-def restart_task(storage: TKRStorage, loc: Loc) -> None:
+def restart_task(storage: ControllerStorage, loc: Loc) -> None:
     deps = dependents(storage, loc)
     partials = loc.partial_paths()
 

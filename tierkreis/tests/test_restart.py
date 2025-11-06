@@ -37,7 +37,7 @@ def test_descendants(graph: GraphData, input_loc: Loc, expected: set[Loc]):
     executor = UvExecutor(
         Path(f"{PACKAGE_PATH}/../tierkreis_workers"), storage.logs_path
     )
-    run_graph(storage, executor, graph, {})
+    run_graph(storage, executor, graph, {"value": list(range(21))})
 
     assert storage.exists(storage._nodedef_path(input_loc))
     assert storage.exists(storage._done_path(input_loc))
