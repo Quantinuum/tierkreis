@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, assert_never
 from uuid import UUID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
