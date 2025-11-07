@@ -35,11 +35,38 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
       </NodeStatusIndicator>
     );
   }
-
-  const inButton = node_data.status != "Not started" && (
-    <ZoomInButton wid={wid} loc={loc} node_loc={node_loc} node_type="map" />
-  );
-
+  const loadChildren = async (
+    workflowId: string,
+    node_location: string,
+    parentId: string
+  ) => {
+    const url = `${URL}/${workflowId}/nodes/${node_location}`;
+    fetch(url, { method: "GET", headers: { Accept: "application/json" } })
+      .then((response) => response.json())
+      .then((data) => {
+        const nodes = parseNodes(
+          data.nodes,
+          data.edges,
+          workflowId,
+          node_data.setInfo,
+          parentId
+        );
+        const oldEdges = reactFlowInstance.getEdges();
+        const oldNodes = reactFlowInstance.getNodes();
+        const { nodes: newNodes, edges: newEdges } = replaceMap(
+          parentId,
+          nodes,
+          oldNodes,
+          oldEdges
+        );
+        const positionedNodes = bottomUpLayout(newNodes, [
+          ...newEdges,
+          ...oldEdges,
+        ]);
+        reactFlowInstance.setNodes(positionedNodes);
+        reactFlowInstance.setEdges(newEdges);
+      });
+  };
   return (
     <NodeStatusIndicator status={node_data.status}>
       {}

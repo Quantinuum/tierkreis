@@ -5,7 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { type NodeProps } from "@xyflow/react";
+import { Edge, type NodeProps, useReactFlow } from "@xyflow/react";
 
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
