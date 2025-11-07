@@ -1,11 +1,13 @@
 import {
   DialogContent,
+  DialogClose,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoProps } from "./types";
 import { URL } from "@/data/constants";
+import { Button } from "./ui/button";
 
 export function NodeInfo(props: { info: InfoProps }) {
   const restartHandler = async () => {
@@ -23,7 +25,13 @@ export function NodeInfo(props: { info: InfoProps }) {
       <div className="overflow-auto">
         <pre style={{ maxHeight: "65vh" }}>{props.info.content}</pre>
       </div>
-      <button onClick={restartHandler}>Restart node</button>
+      <div>
+        <DialogClose asChild>
+          <Button onClick={restartHandler} size="sm">
+            Restart node
+          </Button>
+        </DialogClose>
+      </div>
     </DialogContent>
   );
 }

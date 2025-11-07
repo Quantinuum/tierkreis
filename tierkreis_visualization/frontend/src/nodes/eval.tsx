@@ -139,7 +139,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           handles={node_data.handles.inputs}
           id={node_data.id}
           isOpen={node_data.isTooltipOpen}
-          hoveredId={node_data.hoveredId}
+          hoveredId={node_data.id}
           setHoveredId={node_data.setHoveredId}
         />
         <div className="grid justify-items-end">
