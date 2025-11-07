@@ -248,12 +248,7 @@ class ControllerStorage(ABC):
         This does not include the direct parent Loc, which is only partially invalidated.
         """
         descs: set[Loc] = set()
-
-        parent = loc.parent()
-        if not parent:
-            return set()
-
-        step = loc.peek()
+        step, parent = loc.pop_last()
         match step:
             case "-":
                 pass
@@ -267,10 +262,9 @@ class ControllerStorage(ABC):
             case ("M", _):
                 descs.update(self.dependents(parent))
             case ("L", idx):
-                _, loop_node = loc.pop_last()
-                latest_idx = self.latest_loop_iteration(loop_node).peek_index()
-                [descs.add(loop_node.L(i)) for i in range(idx + 1, latest_idx + 1)]
-                descs.update(self.dependents(loop_node))
+                latest_idx = self.latest_loop_iteration(parent).peek_index()
+                [descs.add(parent.L(i)) for i in range(idx + 1, latest_idx + 1)]
+                descs.update(self.dependents(parent))
             case _:
                 assert_never(step)
 
