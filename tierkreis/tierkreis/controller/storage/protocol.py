@@ -287,7 +287,7 @@ class ControllerStorage(ABC):
         [self.delete(self.workflow_dir / a) for a in deps]
 
         # Mark partially invalidated nodes as not finished and remove their outputs.
-        partials = loc.partial_paths()
+        partials = loc.partial_locs()
         [self.delete(self._done_path(x)) for x in partials]
         [self.delete(self.workflow_dir / a / "outputs") for a in partials]
 

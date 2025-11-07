@@ -185,4 +185,4 @@ def test_get_last_index(node_location: Loc, index: int) -> None:
     ],
 )
 def test_partial_paths(node_location: Loc, expected: list[Loc]):
-    assert expected == node_location.partial_paths()
+    assert expected == node_location.partial_locs()
