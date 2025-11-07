@@ -40,14 +40,13 @@ export const InputHandleArray = ({
           >
             <>
               <Tooltip
-                open={isOpen || hoveredId === key}
+                open={isOpen || hoveredId == id + "_" + key.toString()}
                 //onOpenChange={onOpenChange} for some reason this fixes hover
               >
                 <TooltipTrigger
                   style={{ zIndex: 10 }}
                   onMouseEnter={() => {
-                    console.log(key);
-                    setHoveredId(key);
+                    setHoveredId(id + "_" + key.toString());
                   }}
                   onMouseLeave={() => setHoveredId("")}
                 >
@@ -111,14 +110,13 @@ export const OutputHandleArray = ({
           >
             <>
               <Tooltip
-                open={isOpen || hoveredId === key}
+                open={isOpen || hoveredId == id + "_" + key.toString()}
                 //onOpenChange={onOpenChange} for some reason this fixes hover
               >
                 <TooltipTrigger
                   style={{ zIndex: 10 }}
                   onMouseEnter={() => {
-                    console.log(key);
-                    setHoveredId(key);
+                    setHoveredId(id + "_" + key.toString());
                   }}
                   onMouseLeave={() => setHoveredId("")}
                 >

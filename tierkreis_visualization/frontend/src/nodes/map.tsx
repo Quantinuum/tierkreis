@@ -81,14 +81,14 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
             handles={node_data.handles.inputs}
             id={node_data.id}
             isOpen={node_data.isTooltipOpen}
-            hoveredId={node_data.id}
+            hoveredId={node_data.hoveredId}
             setHoveredId={node_data.setHoveredId}
           />
           <OutputHandleArray
             handles={node_data.handles.outputs}
             id={node_data.id}
             isOpen={node_data.isTooltipOpen}
-            hoveredId={node_data.id}
+            hoveredId={node_data.hoveredId}
             setHoveredId={node_data.setHoveredId}
           />
         </CardContent>
