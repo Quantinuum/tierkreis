@@ -285,4 +285,5 @@ class ControllerStorage(ABC):
         [self.delete(self._done_path(x)) for x in partials]
         [self.delete(self.workflow_dir / a / "outputs") for a in partials]
 
+        # Mark given Loc as not started, so that the controller picks it up on the next tick.
         self.delete(self._nodedef_path(loc))
