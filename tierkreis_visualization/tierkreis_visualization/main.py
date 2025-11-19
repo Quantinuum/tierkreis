@@ -13,12 +13,12 @@ def dev() -> None:
     uvicorn.run("tierkreis_visualization.app:get_dev_app", reload=True)
 
 
-def graph() -> None:
+def graph(argv_index: int = 1) -> None:
     """Visualize a computation graph in a web browser.
 
     Entrypoint for the project script tkr-vis-graph.
     """
-    reload_path = argv[1].split(":", 1)[0]
+    reload_path = argv[argv_index].split(":", 1)[0]
     uvicorn.run(
         "tierkreis_visualization.app:get_graph_data_app",
         reload=True,
