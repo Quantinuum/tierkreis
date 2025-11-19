@@ -135,10 +135,3 @@ class TierkreisInitCli:
     @staticmethod
     def execute(args: argparse.Namespace) -> None:
         run_args(args)
-
-
-if __name__ == "__main__":
-    args = argparse.ArgumentParser()
-    parser = parse_args(args)
-    ar = parser.parse_args(args=["project"])
-    run_args(ar)
