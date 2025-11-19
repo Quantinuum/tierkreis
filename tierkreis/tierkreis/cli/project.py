@@ -116,7 +116,7 @@ def run_args(args: argparse.Namespace) -> None:
         args.worker_directory.mkdir(exist_ok=True, parents=True)
         _gen_worker(args.name, args.external)
     elif args.init_type == "stubs":
-        print("Stubs")
+        _gen_stubs(args.worker_directory)
 
 
 class TierkreisInitCli:
