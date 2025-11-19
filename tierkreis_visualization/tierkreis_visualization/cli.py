@@ -15,7 +15,7 @@ def parse_args(
     )
     group.add_argument(
         "--graph",
-        help="Visualizes a graph data object of the form module_path:graph",
+        help="Visualizes a graph data object of the form <PATH_TO_PYTHON_FILE>:<VARIABLE_CONTAINING_GRAPH>",
         type=str,
     )
     return parser
@@ -25,15 +25,15 @@ def run_args(args: argparse.Namespace) -> None:
     if args.dev:
         dev()
     elif args.graph:
-        graph()
+        graph(3)
     else:
-        start()  # check if sysarg works as expected
+        start()
 
 
 class TierkreisVizCli:
     @staticmethod
     def add_subcommand(
-        main_parser: argparse._SubParsersAction[argparse.ArgumentParser],
+        main_parser: argparse._SubParsersAction,
     ) -> None:
         parser: argparse.ArgumentParser = main_parser.add_parser(
             "vis",
