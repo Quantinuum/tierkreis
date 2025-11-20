@@ -80,6 +80,12 @@ def parse_args(
         type=str,
         default=Path("./tkr") / "workers",
     )
+    stubs.add_argument(
+        "--stubs-name",
+        help="File location where to generate stubs to. Relative to the worker directory",
+        type=str,
+        default=Path("./stubs.py"),
+    )
     return parser
 
 
@@ -98,7 +104,7 @@ def _gen_worker(worker_name: str, worker_dir: Path, external: bool = False) -> N
         fh.write(python_worker_pyproject(worker_name))
 
 
-def _gen_stubs(worker_directory: Path) -> None:
+def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
         raise TierkreisError("uv is required to use the uv_executor")
@@ -107,10 +113,10 @@ def _gen_stubs(worker_directory: Path) -> None:
             continue
         if (idl := next(worker.glob("*.tsp"), None)) is not None:
             namespace = Namespace.from_spec_file(idl)
-            namespace.write_stubs(idl.parent / "stubs.py")
+            namespace.write_stubs(idl.parent / stubs_name)
         else:
             subprocess.run(
-                [uv_path, "run", "main.py", "--stubs-path", "./stubs.py"], cwd=worker
+                [uv_path, "run", "main.py", "--stubs-path", stubs_name], cwd=worker
             )
 
 
@@ -131,7 +137,7 @@ def run_args(args: argparse.Namespace) -> None:
         with open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_stubs(worker_dir)
+        _gen_stubs(worker_dir, "./stubs.py")
         print(f"""Successfully generated project in {args.project_directory}.
               
 To run the sample graph use "python -m tkr.graphs.main".
@@ -146,7 +152,7 @@ It is highly recommended to add this to your project definition e.g. pyproject.t
         args.worker_directory.mkdir(exist_ok=True, parents=True)
         _gen_worker(args.name, args.external)
     elif args.init_type == "stubs":
-        _gen_stubs(args.worker_directory)
+        _gen_stubs(args.worker_directory, args.stubs_name)
 
 
 class TierkreisInitCli:
