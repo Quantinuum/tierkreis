@@ -62,13 +62,15 @@ from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.executor import UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
-from workers.{worker_name}.stubs import your_worker_task
+from tkr.workers.{worker_name}.stubs import your_worker_task
 
 class GraphInputs(NamedTuple):
     value: TKR[int]
 
+
 class GraphOutputs(NamedTuple):
     value: TKR[int]
+
     
 def your_graph() -> GraphBuilder[GraphInputs, GraphOutputs]:
     g = GraphBuilder(GraphInputs, GraphOutputs)
@@ -80,7 +82,7 @@ def main() -> None:
     graph = your_graph()
     storage = FileStorage(workflow_id=UUID(int=12345), name="your_graph")
     executor = UvExecutor(
-        Path(__file__).parent / "workers", storage.logs_path
+        Path(__file__).parent.parent / "workers", storage.logs_path
     )
     storage.clean_graph_files()
     run_graph(storage, executor, graph.get_data(), {{"value": 1}})
