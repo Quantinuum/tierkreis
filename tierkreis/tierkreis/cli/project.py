@@ -31,33 +31,39 @@ def parse_args(
     )
 
     project.add_argument(
-        "--default_checkpoint_directory",
+        "--default-checkpoint-directory",
         help="Overwrites the default checkpoint directory and sets the environment variable TKR_DIR for the current shell."
         "If you want to persist this behavior add it to your systems environment. e.g. export TKR_DIR=... ",
         type=Path,
         default=Path.home() / ".tierkreis/checkpoints",
     )
     project.add_argument(
-        "--worker_directory",
-        help="Overwrites the default worker directory.",
+        "--project-directory",
+        help="Sets the default project directory. ",
         type=Path,
-        default=Path(".") / "workers",
+        default=Path("."),
     )
     project.add_argument(
-        "--graphs_directory",
+        "--worker-directory",
+        help="Overwrites the default worker directory. Defaults to <project_directory>/workers.",
+        type=Path,
+        default=Path("./tkr") / "workers",
+    )
+    project.add_argument(
+        "--graphs-directory",
         help="Overwrites the default graph directory.",
         type=Path,
-        default=Path(".") / "graphs",
+        default=Path("./tkr") / "graphs",
     )
     worker = init_subparsers.add_parser(
         "worker",
         help="Generates a new worker.",
     )
     worker.add_argument(
-        "--worker_directory",
-        help="Overwrites the default worker directory.",
+        "--worker-directory",
+        help="Overwrites the default worker directory. Defaults to <project_directory>/workers.",
         type=str,
-        default=Path(".") / "workers",
+        default=Path("./tkr") / "workers",
     )
     worker.add_argument(
         "--external",
@@ -67,7 +73,13 @@ def parse_args(
     worker.add_argument(
         "-n", "--name", required=True, help="The name of the new worker", type=str
     )
-    init_subparsers.add_parser("stubs", help="Generates worker stubs with UV.")
+    stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with UV.")
+    stubs.add_argument(
+        "--worker-directory",
+        help="Directory where to search for workers.",
+        type=str,
+        default=Path("./tkr") / "workers",
+    )
     return parser
 
 
@@ -105,13 +117,31 @@ def _gen_stubs(worker_directory: Path) -> None:
 def run_args(args: argparse.Namespace) -> None:
     if args.init_type == "project":
         worker_name = "example_worker"
-        args.worker_directory.mkdir(exist_ok=True, parents=True)
-        _gen_worker(worker_name, args.worker_directory)
-        args.graphs_directory.mkdir(exist_ok=True, parents=True)
-        with open(args.graphs_directory / "main.py", "w+", encoding="utf-8") as fh:
+        worker_dir: Path = args.worker_directory
+        if not worker_dir.is_absolute():
+            worker_dir = args.project_directory / worker_dir
+        graphs_dir: Path = args.graphs_directory
+        if not graphs_dir.is_absolute():
+            graphs_dir = args.project_directory / graphs_dir
+        worker_dir.mkdir(exist_ok=True, parents=True)
+        (worker_dir / "__init__.py").touch()
+        _gen_worker(worker_name, worker_dir)
+        graphs_dir.mkdir(exist_ok=True, parents=True)
+        (graphs_dir / "__init__.py").touch()
+        with open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_stubs(args.worker_directory)
+        _gen_stubs(worker_dir)
+        print(f"""Successfully generated project in {args.project_directory}.
+              
+To run the sample graph use "python -m tkr.graphs.main".
+Or import the function into a top level script with:
+              
+from tkr.graphs.main import main
+main()
+              
+It is highly recommended to add this to your project definition e.g. pyproject.toml.
+""")
     elif args.init_type == "worker":
         args.worker_directory.mkdir(exist_ok=True, parents=True)
         _gen_worker(args.name, args.external)
