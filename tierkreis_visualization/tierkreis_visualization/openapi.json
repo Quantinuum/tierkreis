@@ -1,0 +1,327 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "FastAPI", "version": "0.1.0" },
+  "paths": {
+    "/workflows/": {
+      "get": {
+        "summary": "List Workflows",
+        "operationId": "list_workflows_workflows__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/workflows/all": {
+      "get": {
+        "summary": "List All Workflows",
+        "operationId": "list_all_workflows_workflows_all_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/WorkflowDisplay" },
+                  "type": "array",
+                  "title": "Response List All Workflows Workflows All Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/nodes/{node_location_str}": {
+      "get": {
+        "summary": "Get Node",
+        "operationId": "get_node_workflows__workflow_id__nodes__node_location_str__get",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Node Location Str" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}": {
+      "get": {
+        "summary": "Get Input",
+        "operationId": "get_input_workflows__workflow_id__nodes__node_location_str__inputs__port_name__get",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Node Location Str" }
+          },
+          {
+            "name": "port_name",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Port Name" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}": {
+      "get": {
+        "summary": "Get Output",
+        "operationId": "get_output_workflows__workflow_id__nodes__node_location_str__outputs__port_name__get",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Node Location Str" }
+          },
+          {
+            "name": "port_name",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Port Name" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
+      "get": {
+        "summary": "Get Function Logs",
+        "operationId": "get_function_logs_workflows__workflow_id__nodes__node_location_str__logs_get",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Node Location Str" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/logs": {
+      "get": {
+        "summary": "Get Logs",
+        "operationId": "get_logs_workflows__workflow_id__logs_get",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
+      "get": {
+        "summary": "Get Errors",
+        "operationId": "get_errors_workflows__workflow_id__nodes__node_location_str__errors_get",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Node Location Str" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{path}": {
+      "get": {
+        "summary": "Read Root",
+        "operationId": "read_root__path__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": { "$ref": "#/components/schemas/ValidationError" },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": { "type": "string", "title": "Message" },
+          "type": { "type": "string", "title": "Error Type" }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      },
+      "WorkflowDisplay": {
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "title": "Id" },
+          "id_int": { "type": "integer", "title": "Id Int" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "start_time": { "type": "string", "title": "Start Time" }
+        },
+        "type": "object",
+        "required": ["id", "id_int", "name", "start_time"],
+        "title": "WorkflowDisplay"
+      }
+    }
+  }
+}

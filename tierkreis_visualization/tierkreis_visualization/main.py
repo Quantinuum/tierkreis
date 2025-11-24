@@ -1,3 +1,4 @@
+import json
 from sys import argv
 
 import uvicorn
@@ -22,6 +23,23 @@ def graph() -> None:
         reload=True,
         reload_includes=reload_path,
     )
+
+
+def openapi() -> None:
+    from fastapi.openapi.utils import get_openapi
+    from tierkreis_visualization.app import get_filestorage_app
+
+    app = get_filestorage_app()
+    spec = get_openapi(
+        title=app.title,
+        version=app.version,
+        openapi_version=app.openapi_version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    with open("openapi.json", "w+") as fh:
+        json.dump(spec, fh)
 
 
 if __name__ == "__main__":

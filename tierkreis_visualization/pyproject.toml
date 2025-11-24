@@ -23,3 +23,4 @@ tierkreis = { workspace = true }
 tkr-vis = "tierkreis_visualization.main:start"
 tkr-vis-dev = "tierkreis_visualization.main:dev"
 tkr-vis-graph = "tierkreis_visualization.main:graph"
+tkr-vis-openapi = "tierkreis_visualization.main:openapi"

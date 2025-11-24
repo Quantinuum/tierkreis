@@ -14,7 +14,7 @@ from tierkreis_visualization.routers.frontend import router as frontend_router
 
 def get_app():
     app = App(lifespan=lifespan)
-    app.include_router(workflows_router, prefix="/workflows")
+    app.include_router(workflows_router, prefix="/api/workflows")
     app.mount("/assets/", assets, name="frontend_assets")
     app.include_router(frontend_router)
 

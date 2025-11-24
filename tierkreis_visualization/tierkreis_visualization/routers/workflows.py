@@ -20,7 +20,7 @@ from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.function import get_function_node
 from tierkreis_visualization.data.loop import get_loop_node
 from tierkreis_visualization.data.map import get_map_node
-from tierkreis_visualization.data.workflows import get_workflows
+from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
 from tierkreis_visualization.routers.models import PyGraph
 from tierkreis_visualization.routers.navigation import breadcrumbs
 
@@ -69,14 +69,12 @@ def list_workflows(request: Request):
     )
 
 
-@router.get("/all")
-def list_all_workflows(request: Request):
+@router.get("/all", response_model=list[WorkflowDisplay])
+def list_all_workflows(request: Request) -> list[WorkflowDisplay]:
     storage_type = request.app.state.storage_type
     try:
         workflows = get_workflows(storage_type)
-        return JSONResponse(
-            [workflow.model_dump(mode="json") for workflow in workflows]
-        )
+        return workflows
     except FileNotFoundError:
         return JSONResponse(
             "Workflow not found, make sure the workflow exists in the workflow directory.",
