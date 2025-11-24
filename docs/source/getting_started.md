@@ -1,5 +1,52 @@
 # Getting Started
 
+## Project Setup
+
+We recommend using [uv](https://docs.astral.sh/uv/).
+You can set up a project using `uv` and the tierkreis cli called `tkr`.
+
+```bash
+uv init
+uv add tierkreis
+tkr init project
+```
+
+This will set up the following project structure for you:
+
+```
+project_root/
+├── tkr/
+│   ├── graphs/
+│   │   ├── __init__.py
+│   │   └── main.py
+│   └── workers/
+│       ├── __init__.py
+│       └── example_worker/
+│           ├── __init__.py
+│           ├── main.py
+│           ├── pyproject.toml
+│           ├── README.md
+│           ├── stubs.py
+│           └── uv.lock
+├── .gitignore
+├── .python-version
+├── main.py
+├── pyproject.toml
+├── README.md
+└── uv.lock
+```
+
+The repository is structure is intended to separate _graphs_, _workers_ and library code.
+
+From here you can run your first graph by running
+
+```
+uv run python -m tkr.graphs.main
+> Value is: 1
+```
+
+From here you can continue with the other tutorials.
+
 ## Step by step tutorials
 
 A sequence of tutorials that cover the fundamentals of writing and operating Tierkreis workflows.
