@@ -106,19 +106,19 @@ function RouteComponent() {
       <table>
         <thead>
           <th className="text-left py-2">
-            <div className="flex">
+            <div className="flex select-none">
               {sortingButton("id")}
               <div>id</div>
             </div>
           </th>
           <th className="text-left py-2">
-            <div className="flex">
+            <div className="flex select-none">
               {sortingButton("name")}
               <div>Name</div>
             </div>
           </th>
           <th className="text-left py-2">
-            <div className="flex">
+            <div className="flex select-none">
               {sortingButton("start_time")}
               <div>Start time</div>
             </div>
