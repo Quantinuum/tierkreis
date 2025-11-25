@@ -22,7 +22,9 @@ export function WorkflowSidebar({
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Workflows </SidebarGroupLabel>
+          <SidebarGroupLabel>
+            <Link to="/"> Workflows</Link>
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {workflows.map((workflow) => (

@@ -35,6 +35,7 @@ function RouteComponent() {
         </Link>
       ),
       footer: (props) => props.column.id,
+      sortingFn: (x, y) => x.original.id_int - y.original.id_int,
     }),
     columnHelper.accessor("name", {
       header: () => "Name",
