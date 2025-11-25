@@ -16,6 +16,7 @@ import { type BackendNode } from "./types";
 import { hideChildren } from "./hide_children";
 import { Minus, Plus } from "lucide-react";
 import { fetchClient } from "@/lib/api";
+import { useNavigate } from "@tanstack/react-router";
 
 function replaceEval(
   nodeId: string,
@@ -123,6 +124,7 @@ function replaceEval(
 }
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
+  const navigate = useNavigate();
   const reactFlowInstance = useReactFlow<BackendNode, Edge>();
   if (node_data.is_expanded) {
     const collapseSelf = (nodeId: string) => {
@@ -190,9 +192,16 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
     reactFlowInstance.setEdges(newEdges);
   };
 
+  const handleDoubleClick = () => {
+    navigate({
+      to: "/workflows/$wid/nodes/$loc",
+      params: { wid: node_data.workflowId, loc: node_data.node_location },
+    });
+  };
+
   return (
     <NodeStatusIndicator status={node_data.status}>
-      <Card className="w-[180px] gap-2">
+      <Card onDoubleClick={handleDoubleClick} className="w-[180px] gap-2">
         <CardHeader>
           <CardTitle className="overflow-wrap flex-grow">
             {node_data.title}
