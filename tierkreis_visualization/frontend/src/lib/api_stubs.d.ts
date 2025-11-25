@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/workflows/": {
+    "/api/workflows/": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,7 +12,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Workflows */
-        get: operations["list_workflows_workflows__get"];
+        get: operations["list_workflows_api_workflows__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -21,7 +21,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/all": {
+    "/api/workflows/all": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,7 +29,7 @@ export interface paths {
             cookie?: never;
         };
         /** List All Workflows */
-        get: operations["list_all_workflows_workflows_all_get"];
+        get: operations["list_all_workflows_api_workflows_all_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -38,7 +38,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/{workflow_id}/nodes/{node_location_str}": {
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}": {
         parameters: {
             query?: never;
             header?: never;
@@ -46,7 +46,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Node */
-        get: operations["get_node_workflows__workflow_id__nodes__node_location_str__get"];
+        get: operations["get_node_api_workflows__workflow_id__nodes__node_location_str__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -55,7 +55,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}": {
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -63,7 +63,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Input */
-        get: operations["get_input_workflows__workflow_id__nodes__node_location_str__inputs__port_name__get"];
+        get: operations["get_input_api_workflows__workflow_id__nodes__node_location_str__inputs__port_name__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -72,7 +72,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}": {
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,7 +80,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Output */
-        get: operations["get_output_workflows__workflow_id__nodes__node_location_str__outputs__port_name__get"];
+        get: operations["get_output_api_workflows__workflow_id__nodes__node_location_str__outputs__port_name__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -89,7 +89,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
         parameters: {
             query?: never;
             header?: never;
@@ -97,7 +97,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Function Logs */
-        get: operations["get_function_logs_workflows__workflow_id__nodes__node_location_str__logs_get"];
+        get: operations["get_function_logs_api_workflows__workflow_id__nodes__node_location_str__logs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -106,7 +106,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/{workflow_id}/logs": {
+    "/api/workflows/{workflow_id}/logs": {
         parameters: {
             query?: never;
             header?: never;
@@ -114,7 +114,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Logs */
-        get: operations["get_logs_workflows__workflow_id__logs_get"];
+        get: operations["get_logs_api_workflows__workflow_id__logs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -123,7 +123,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
         parameters: {
             query?: never;
             header?: never;
@@ -131,7 +131,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Errors */
-        get: operations["get_errors_workflows__workflow_id__nodes__node_location_str__errors_get"];
+        get: operations["get_errors_api_workflows__workflow_id__nodes__node_location_str__errors_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -198,7 +198,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_workflows_workflows__get: {
+    list_workflows_api_workflows__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -218,7 +218,7 @@ export interface operations {
             };
         };
     };
-    list_all_workflows_workflows_all_get: {
+    list_all_workflows_api_workflows_all_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -238,7 +238,7 @@ export interface operations {
             };
         };
     };
-    get_node_workflows__workflow_id__nodes__node_location_str__get: {
+    get_node_api_workflows__workflow_id__nodes__node_location_str__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -270,40 +270,7 @@ export interface operations {
             };
         };
     };
-    get_input_workflows__workflow_id__nodes__node_location_str__inputs__port_name__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workflow_id: string;
-                node_location_str: string;
-                port_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_output_workflows__workflow_id__nodes__node_location_str__outputs__port_name__get: {
+    get_input_api_workflows__workflow_id__nodes__node_location_str__inputs__port_name__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -336,7 +303,40 @@ export interface operations {
             };
         };
     };
-    get_function_logs_workflows__workflow_id__nodes__node_location_str__logs_get: {
+    get_output_api_workflows__workflow_id__nodes__node_location_str__outputs__port_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                node_location_str: string;
+                port_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_function_logs_api_workflows__workflow_id__nodes__node_location_str__logs_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -368,7 +368,7 @@ export interface operations {
             };
         };
     };
-    get_logs_workflows__workflow_id__logs_get: {
+    get_logs_api_workflows__workflow_id__logs_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -399,7 +399,7 @@ export interface operations {
             };
         };
     };
-    get_errors_workflows__workflow_id__nodes__node_location_str__errors_get: {
+    get_errors_api_workflows__workflow_id__nodes__node_location_str__errors_get: {
         parameters: {
             query?: never;
             header?: never;
