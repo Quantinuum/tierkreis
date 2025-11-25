@@ -4,7 +4,7 @@ export interface InfoProps {
 }
 export interface Workflow {
   id: string;
-  name: string;
+  name: string | null;
   start_time: string;
 }
 

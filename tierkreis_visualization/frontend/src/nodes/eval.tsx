@@ -5,17 +5,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Edge, getOutgoers, type NodeProps, useReactFlow } from "@xyflow/react";
+import { Edge, type NodeProps, useReactFlow } from "@xyflow/react";
 
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { Button } from "@/components/ui/button";
-import { URL } from "@/data/constants";
 import { parseEdges, parseNodes } from "@/graph/parseGraph";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { type BackendNode } from "./types";
 import { hideChildren } from "./hide_children";
 import { Minus, Plus } from "lucide-react";
+import { fetchClient } from "@/lib/api";
 
 function replaceEval(
   nodeId: string,
@@ -143,7 +143,8 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           handles={node_data.handles.inputs}
           id={node_data.id}
           isOpen={node_data.isTooltipOpen}
-          onOpenChange={node_data.onTooltipOpenChange}
+          hoveredId={node_data.hoveredId}
+          setHoveredId={node_data.setHoveredId}
         />
         <div className="grid justify-items-end">
           <Button
@@ -161,32 +162,32 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
     );
   }
   const loadChildren = async (
-    workflowId: string,
-    node_location: string,
+    workflow_id: string,
+    node_location_str: string,
     parentId: string
   ) => {
-    const url = `${URL}/${workflowId}/nodes/${node_location}`;
-    fetch(url, { method: "GET", headers: { Accept: "application/json" } })
-      .then((response) => response.json())
-      .then((data) => {
-        const nodes = parseNodes(data.nodes, data.edges, workflowId, parentId);
-        const edges = parseEdges(data.edges, parentId);
-        const oldEdges = reactFlowInstance.getEdges();
-        const oldNodes = reactFlowInstance.getNodes();
-        const { nodes: newNodes, edges: newEdges } = replaceEval(
-          parentId,
-          nodes,
-          edges,
-          oldNodes,
-          oldEdges
-        );
-        const positionedNodes = bottomUpLayout(newNodes, [
-          ...newEdges,
-          ...oldEdges,
-        ]);
-        reactFlowInstance.setNodes(positionedNodes);
-        reactFlowInstance.setEdges(newEdges);
-      });
+    const res = await fetchClient.GET(
+      "/api/workflows/{workflow_id}/nodes/{node_location_str}",
+      { params: { path: { workflow_id, node_location_str } } }
+    );
+    let data = res.data ?? { nodes: [], edges: [] };
+    const nodes = parseNodes(data.nodes, data.edges, workflow_id, parentId);
+    const edges = parseEdges(data.edges, parentId);
+    const oldEdges = reactFlowInstance.getEdges();
+    const oldNodes = reactFlowInstance.getNodes();
+    const { nodes: newNodes, edges: newEdges } = replaceEval(
+      parentId,
+      nodes,
+      edges,
+      oldNodes,
+      oldEdges
+    );
+    const positionedNodes = bottomUpLayout(newNodes, [
+      ...newEdges,
+      ...oldEdges,
+    ]);
+    reactFlowInstance.setNodes(positionedNodes);
+    reactFlowInstance.setEdges(newEdges);
   };
 
   return (
@@ -220,7 +221,6 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
             handles={node_data.handles.inputs}
             id={node_data.id}
             isOpen={node_data.isTooltipOpen}
-            onOpenChange={node_data.onTooltipOpenChange}
             hoveredId={node_data.hoveredId}
             setHoveredId={node_data.setHoveredId}
           />
@@ -228,7 +228,6 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
             handles={node_data.handles.outputs}
             id={node_data.id}
             isOpen={node_data.isTooltipOpen}
-            onOpenChange={node_data.onTooltipOpenChange}
             hoveredId={node_data.hoveredId}
             setHoveredId={node_data.setHoveredId}
           />

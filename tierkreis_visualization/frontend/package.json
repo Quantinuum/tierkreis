@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
+    "dev": "vite build --watch --mode dev",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
@@ -29,7 +29,6 @@
     "openapi-react-query": "^0.5.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router": "^7.6.2",
     "tailwind-merge": "^3.3.0",
     "tw-animate-css": "^1.3.5"
   },

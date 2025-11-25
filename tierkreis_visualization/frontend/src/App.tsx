@@ -1,4 +1,3 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -9,11 +8,9 @@ import {
   useReactFlow,
   OnNodeDrag,
 } from "@xyflow/react";
-import { useParams } from "react-router";
 
 import Layout from "@/components/layout";
 import { InfoProps, Workflow } from "@/components/types";
-import { URL } from "@/data/constants";
 import { parseGraph } from "@/graph/parseGraph";
 import { Background, ControlButton, Controls } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -25,6 +22,7 @@ import { edgeTypes } from "@/edges";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { nodeTypes } from "@/nodes";
 import { BackendNode } from "./nodes/types";
+import { $api } from "./lib/api";
 
 const saveGraph = ({
   key,
@@ -77,7 +75,6 @@ const Main = (props: {
   setInfo: (arg: InfoProps) => void;
 }) => {
   // Client node state (not definition)
-
   const reactFlowInstance = useReactFlow<BackendNode, Edge>();
   const [tooltipsOpen, setAreTooltipsOpen] = useState(false);
   const [hoveredId, setHoveredId] = useState<string>("");
@@ -127,7 +124,7 @@ const Main = (props: {
     node.data.pinned = true;
   }, []);
   React.useEffect(() => {
-    const url = `${URL}/${props.workflow_id}/nodes/-`;
+    const url = `/api/workflows/${props.workflow_id}/nodes/-`;
     const ws = new WebSocket(url);
     ws.onmessage = (event) => {
       console.log("Received WebSocket message:");
@@ -235,67 +232,37 @@ const Main = (props: {
   );
 };
 
-export default function App() {
-  const { workflowId: workflow_id_url } = useParams();
-  const workflowsQuery = useSuspenseQuery<Workflow[]>({
-    queryKey: ["workflows", URL],
-    queryFn: async () => {
-      const response = await fetch(`${URL}/all`);
-      if (!response.ok) {
-        const text = await response.json();
-        throw new Error(`${text}`);
-      }
-      return response.json();
-    },
-    select: (data) =>
-      data.map(
-        (workflow): Workflow => ({
-          id: workflow.id,
-          name: workflow.name,
-          start_time: workflow.start_time,
-        })
-      ),
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-  });
-  const workflow_id = workflow_id_url || workflowsQuery.data[0].id;
+export default function App(props: {
+  workflow_id: string;
+  node_location_str: string;
+}) {
+  const workflow_id = props.workflow_id;
+  const node_location_str = props.node_location_str;
 
-  const logs = useSuspenseQuery({
-    queryKey: ["workflowLogs", workflow_id],
-    queryFn: async () => {
-      const url = `${URL}/${workflow_id}/logs`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { Accept: "application/text" },
-      });
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
-      }
-      return response.text();
-    },
-    staleTime: 1000 * 60 * 5,
+  const workflowsQuery = $api.useQuery("get", "/api/workflows/");
+
+  const logs = $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
+    params: { path: { workflow_id } },
   });
+
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
-    content: logs.data,
-  });
-  const graphQuery = useSuspenseQuery({
-    queryKey: ["workflowGraph", workflow_id],
-    queryFn: async () => {
-      const response = await fetch(`${URL}/${workflow_id}/nodes/-`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
-      }
-      return response.json();
-    },
-    select: (data) => parseGraph(data, workflow_id),
+    content: logs.data as string,
   });
 
-  const remoteGraph = graphQuery.data;
+  const g = $api.useQuery(
+    "get",
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}",
+    { params: { path: { workflow_id, node_location_str } } }
+  ).data ?? { nodes: [], edges: [] };
+
+  const remoteGraph = parseGraph(
+    { nodes: g.nodes, edges: g.edges },
+    workflow_id
+  );
+
   const workflow_start =
-    workflowsQuery.data.find((workflow) => workflow.id == workflow_id)
+    workflowsQuery.data?.find((workflow) => workflow.id == workflow_id)
       ?.start_time || "";
   const localGraph = loadGraph({ key: workflow_id });
   if (workflow_start && workflow_start != localGraph?.start_time) {
@@ -333,12 +300,13 @@ export default function App() {
       edges: mergedEdges,
     };
   })();
+
   return (
     <Main
-      key={workflow_id}
+      key={mergedGraph.nodes.length}
       initialNodes={mergedGraph.nodes}
       initialEdges={mergedGraph.edges}
-      workflows={workflowsQuery.data}
+      workflows={workflowsQuery.data ?? []}
       workflow_id={workflow_id}
       workflow_start={workflow_start}
       infoProps={info}

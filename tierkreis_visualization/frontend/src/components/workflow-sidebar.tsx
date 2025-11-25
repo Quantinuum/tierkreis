@@ -8,7 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Link } from "react-router";
+import { Link } from "@tanstack/react-router";
 import { Workflow } from "@/components/types";
 
 export function WorkflowSidebar({
@@ -31,7 +31,10 @@ export function WorkflowSidebar({
                     asChild
                     isActive={workflowId === workflow.id}
                   >
-                    <Link to={`/${workflow.id}`}>
+                    <Link
+                      to={"/workflows/$wid/nodes/$loc"}
+                      params={{ wid: workflow.id, loc: "-" }}
+                    >
                       <span>{workflow.name}</span>
                     </Link>
                   </SidebarMenuButton>

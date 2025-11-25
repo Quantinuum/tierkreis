@@ -3,19 +3,17 @@ import logging
 from typing import Any, assert_never
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request, status
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.location import Loc, WorkerCallArgs
+from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 from watchfiles import awatch  # type: ignore
 
-from tierkreis_visualization.config import CONFIG, templates
+from tierkreis_visualization.config import CONFIG
 from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.function import get_function_node
 from tierkreis_visualization.data.loop import get_loop_node
@@ -61,29 +59,15 @@ async def handle_websocket(
 
 
 @router.get("/")
-def list_workflows(request: Request):
-    storage_type = request.app.state.storage_type
-    workflows = get_workflows(storage_type)
-    return templates.TemplateResponse(
-        request=request, name="workflows.html", context={"workflows": workflows}
-    )
-
-
-@router.get("/all", response_model=list[WorkflowDisplay])
-def list_all_workflows(request: Request) -> list[WorkflowDisplay]:
-    storage_type = request.app.state.storage_type
+def list_workflows(request: Request) -> list[WorkflowDisplay]:
     try:
-        workflows = get_workflows(storage_type)
-        return workflows
+        storage_type = request.app.state.storage_type
+        return get_workflows(storage_type)
     except FileNotFoundError:
-        return JSONResponse(
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
             "Workflow not found, make sure the workflow exists in the workflow directory.",
-            status_code=status.HTTP_404_NOT_FOUND,
         )
-
-
-class NodeResponse(BaseModel):
-    definition: WorkerCallArgs
 
 
 def parse_node_location(node_location_str: str) -> Loc:
@@ -182,20 +166,11 @@ def get_node(
     request: Request,
     workflow_id: UUID,
     node_location_str: str,
-):
+) -> PyGraph:
     node_location = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
     ctx = get_node_data(workflow_id, node_location, storage)
-    if request.headers["Accept"] == "application/json":
-        return JSONResponse(ctx)
-
-    if request.headers["Accept"] == "text/event-stream":
-        return StreamingResponse(
-            node_stream(workflow_id, node_location, storage),
-            media_type="text/event-stream",
-        )
-
-    return templates.TemplateResponse(request=request, name=ctx["name"], context=ctx)
+    return ctx
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}")

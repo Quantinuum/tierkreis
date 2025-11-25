@@ -13,7 +13,7 @@ export const Route = createFileRoute("/workflows/")({
 });
 
 function RouteComponent() {
-  const { data, error, isLoading } = $api.useQuery("get", "/workflows/all");
+  const { data, error, isLoading } = $api.useQuery("get", "/api/workflows/");
   const defaultData = useMemo(() => [], []);
 
   type WorkflowData = NonNullable<typeof data>[number];
@@ -22,7 +22,10 @@ function RouteComponent() {
     columnHelper.accessor("id", {
       header: "id",
       cell: (info) => (
-        <Link to={"/workflows/$wid"} params={{ wid: info.getValue() }}>
+        <Link
+          to={"/workflows/$wid/nodes/$loc"}
+          params={{ wid: info.getValue(), loc: "-" }}
+        >
           {info.getValue()}
         </Link>
       ),

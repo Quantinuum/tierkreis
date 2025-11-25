@@ -21,23 +21,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/workflows/all": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List All Workflows */
-        get: operations["list_all_workflows_api_workflows_all_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/workflows/{workflow_id}/nodes/{node_location_str}": {
         parameters: {
             query?: never;
@@ -166,6 +149,54 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** PyEdge */
+        PyEdge: {
+            /** From Node */
+            from_node: number;
+            /** From Port */
+            from_port: string;
+            /** To Node */
+            to_node: number;
+            /** To Port */
+            to_port: string;
+            /** Value */
+            value?: unknown | null;
+            /**
+             * Conditional
+             * @default false
+             */
+            conditional: boolean;
+        };
+        /** PyGraph */
+        PyGraph: {
+            /** Nodes */
+            nodes: components["schemas"]["PyNode"][];
+            /** Edges */
+            edges: components["schemas"]["PyEdge"][];
+        };
+        /** PyNode */
+        PyNode: {
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "Not started" | "Started" | "Error" | "Finished";
+            /** Function Name */
+            function_name: string;
+            /**
+             * Node Location
+             * @default
+             */
+            node_location: string;
+            /** Value */
+            value?: unknown | null;
+            /** Started Time */
+            started_time: string;
+            /** Finished Time */
+            finished_time: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -213,26 +244,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    list_all_workflows_api_workflows_all_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
                     "application/json": components["schemas"]["WorkflowDisplay"][];
                 };
             };
@@ -256,7 +267,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PyGraph"];
                 };
             };
             /** @description Validation Error */
