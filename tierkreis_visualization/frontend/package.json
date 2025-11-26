@@ -17,9 +17,7 @@
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tailwindcss/vite": "^4.1.7",
     "@tanstack/react-query": "^5.81.5",
-    "@tanstack/react-query-devtools": "^5.82.0",
     "@tanstack/react-router": "^1.139.3",
-    "@tanstack/react-router-devtools": "^1.139.3",
     "@tanstack/react-table": "^8.21.3",
     "@xyflow/react": "^12.7.0",
     "class-variance-authority": "^0.7.1",
@@ -34,6 +32,8 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@tanstack/react-query-devtools": "^5.91.1",
+    "@tanstack/react-router-devtools": "^1.139.6",
     "@tanstack/router-plugin": "^1.139.3",
     "@types/node": "^22.15.23",
     "@types/react": "^18.2.53",
