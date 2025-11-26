@@ -1,13 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { URL } from "./constants";
-
 const fetchText = async (
   workflowId: string,
   node_location: string,
   type: "errors" | "logs"
 ) => {
-  const url = `${URL}/${workflowId}/nodes/${node_location}/${type}`;
+  const url = `/api/workflows/${workflowId}/nodes/${node_location}/${type}`;
   const response = await fetch(url, {
     method: "GET",
     headers: { Accept: "application/text" },

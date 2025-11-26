@@ -10,7 +10,6 @@ import { Edge, useReactFlow, type NodeProps } from "@xyflow/react";
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { Button } from "@/components/ui/button";
-import { URL } from "@/data/constants";
 import { parseNodes } from "@/graph/parseGraph";
 import { type BackendNode } from "@/nodes/types";
 import { Plus, Minus } from "lucide-react";
@@ -126,7 +125,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
     node_location: string,
     parentId: string
   ) => {
-    const url = `${URL}/${workflowId}/nodes/${node_location}`;
+    const url = `/api/workflows/${workflowId}/nodes/${node_location}`;
     fetch(url, { method: "GET", headers: { Accept: "application/json" } })
       .then((response) => response.json())
       .then((data) => {

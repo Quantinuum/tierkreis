@@ -228,14 +228,15 @@ def get_function_logs(
         return PlainTextResponse("Only function nodes should have a log file.")
     try:
         call_args = storage.read_worker_call_args(node_location)
+        logs_path = storage.workflow_dir / call_args.logs_path
     except (FileNotFoundError, TierkreisError):
         logger.warning("Function node has no valid call args.")
         return PlainTextResponse("No logfile found")
-    if call_args.logs_path is None or not call_args.logs_path.exists():
+    if logs_path is None or not logs_path.exists():
         return PlainTextResponse("No logfile found")
 
     messages = ""
-    with open(call_args.logs_path, "rb") as fh:
+    with open(logs_path, "rb") as fh:
         for line in fh:
             messages += line.decode()
 

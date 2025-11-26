@@ -8,17 +8,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
-import { useErrors, useLogs } from "@/data/logs";
+import { useErrors } from "@/data/logs";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
-  const { data: logs } = useLogs(
-    data.workflowId,
-    data.node_location,
-    data.title
-  );
   const { data: errors } = useErrors(
     data.workflowId,
     data.node_location,
@@ -47,14 +42,14 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     <Card className={"w-[180px] " + bg_color(data.status)}>
       <DialogTrigger asChild>
         <div
-          onClick={(event) => {
+          onClick={async (event) => {
             //workaround to render errors
             const target = event.target as HTMLElement;
-            if (target.closest("button") === null) {
-              if (data.title == "Function") {
-                data.setInfo?.({ type: "Logs", content: logs ? logs : "" });
-              }
-            }
+
+            if (target.closest("button") !== null) return;
+            if (data.title !== "Function") return;
+            const logs = await fetch(`/api/workflows/${data.workflowId}/logs`);
+            data.setInfo?.({ type: "Logs", content: await logs.text() });
           }}
         >
           <CardHeader>
