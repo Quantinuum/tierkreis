@@ -55,7 +55,7 @@ dependencies = [
     template += f"""tkr-{worker_name}-api = {{ workspace = true }}
 
 [tool.uv.workspace]
-members = [{'\n"src",\n' if not external else ""}
+members = [{'\n    "src",' if not external else ""}
     "api",
 ]
 """
@@ -80,6 +80,9 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["./{"api" if kind == "api" else "main"}.py"]
 
 """
     if kind == "src":
