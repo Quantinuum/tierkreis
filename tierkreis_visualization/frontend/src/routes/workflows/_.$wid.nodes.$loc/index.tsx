@@ -1,7 +1,7 @@
-import App from "@/App";
+import App from "@/routes/workflows/_.$wid.nodes.$loc/-components/App";
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/workflows/_/$wid/nodes/$loc")({
+export const Route = createFileRoute("/workflows/_/$wid/nodes/$loc/")({
   component: RouteComponent,
 });
 
