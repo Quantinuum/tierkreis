@@ -22,7 +22,7 @@ import { edgeTypes } from "@/edges";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { nodeTypes } from "@/nodes";
 import { BackendNode } from "./nodes/types";
-import { $api } from "./lib/api";
+import { listWorkflowsQuery, logsQuery, nodeQuery } from "./lib/api";
 
 const saveGraph = ({
   key,
@@ -239,25 +239,17 @@ export default function App(props: {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
 
-  const workflowsQuery = $api.useQuery("get", "/api/workflows/");
-
-  const logs = $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
-    params: { path: { workflow_id } },
-  });
+  const workflowsQuery = listWorkflowsQuery();
+  const logs = logsQuery(workflow_id);
+  const g = nodeQuery(workflow_id, node_location_str);
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
     content: logs.data as string,
   });
 
-  const g = $api.useQuery(
-    "get",
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}",
-    { params: { path: { workflow_id, node_location_str } } }
-  ).data ?? { nodes: [], edges: [] };
-
   const remoteGraph = parseGraph(
-    { nodes: g.nodes, edges: g.edges },
+    { nodes: g?.nodes ?? [], edges: g?.edges ?? [] },
     workflow_id
   );
 
