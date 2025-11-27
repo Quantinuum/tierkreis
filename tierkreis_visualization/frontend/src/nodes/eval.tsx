@@ -15,7 +15,7 @@ import { bottomUpLayout } from "@/graph/layoutGraph";
 import { type BackendNode } from "./types";
 import { hideChildren } from "./hide_children";
 import { Minus, Plus } from "lucide-react";
-import { fetchNode } from "@/lib/api";
+import { fetchNode } from "@/data/api";
 import { useNavigate } from "@tanstack/react-router";
 
 function replaceEval(

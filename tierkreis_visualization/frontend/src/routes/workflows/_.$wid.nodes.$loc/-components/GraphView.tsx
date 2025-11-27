@@ -22,7 +22,7 @@ import { edgeTypes } from "@/edges";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { nodeTypes } from "@/nodes";
 import { BackendNode } from "../../../../nodes/types";
-import { listWorkflowsQuery, logsQuery, nodeQuery } from "../../../../lib/api";
+import { listWorkflowsQuery, logsQuery, nodeQuery } from "../../../../data/api";
 
 const saveGraph = ({
   key,

@@ -15,7 +15,7 @@ import { type BackendNode } from "@/nodes/types";
 import { Plus, Minus } from "lucide-react";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { hideChildren } from "./hide_children";
-import { fetchNode } from "@/lib/api";
+import { fetchNode } from "@/data/api";
 
 function replaceMap(
   nodeId: string,

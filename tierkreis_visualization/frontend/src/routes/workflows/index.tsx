@@ -1,4 +1,4 @@
-import { listWorkflowsQuery } from "@/lib/api";
+import { listWorkflowsQuery } from "@/data/api";
 import { createFileRoute } from "@tanstack/react-router";
 import { WorkflowsTable } from "./-components/table";
 

@@ -11,7 +11,7 @@ import { DialogTrigger } from "@/components/ui/dialog";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
-import { fetchErrors, fetchLogs } from "@/lib/api";
+import { fetchErrors, fetchLogs } from "@/data/api";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
   let name = data.title;

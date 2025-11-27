@@ -36,11 +36,6 @@ prod:
   bun install
   bunx vite build .
 
-[working-directory:'tierkreis_visualization']
-openapi:
-  cd tierkreis_visualization && uv run tkr-vis-openapi
-  cd frontend && npx openapi-typescript ../tierkreis_visualization/openapi.json -o ./src/lib/api_stubs.d.ts
-
 examples:
   {{uvrun}} examples/hello_world_graph.py
   {{uvrun}} examples/defaults.py
