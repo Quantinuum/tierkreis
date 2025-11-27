@@ -25,9 +25,9 @@ if __name__ == "__main__":
 """
 
 
-def python_worker_workspace_pyproject(worker_name: str) -> str:
+def python_worker_workspace_pyproject(worker_name: str, external: bool = False) -> str:
     worker_name = worker_name.replace("_", "-")
-    return f"""[project]
+    template = f"""[project]
 name = "tkr-{worker_name}"
 version = "0.1.0"
 description = "A tierkreis worker."
@@ -38,24 +38,28 @@ dependencies = [
     "tierkreis",
 ]
 [project.optional-dependencies]
-src = [
+"""
+    if not external:
+        template += f"""src = [
     "tkr-{worker_name}-src",
 ]
-api = [
+"""
+    template += f"""api = [
     "tkr-{worker_name}-api",
 ]
 
 [tool.uv.sources]
-tkr-{worker_name}-src = {{ workspace = true }}
-tkr-{worker_name}-api = {{ workspace = true }}
+"""
+    if not external:
+        template += f"tkr-{worker_name}-src = {{ workspace = true }}\n"
+    template += f"""tkr-{worker_name}-api = {{ workspace = true }}
 
 [tool.uv.workspace]
-members = [
-    "src",
+members = [{'\n"src",\n' if not external else ""}
     "api",
 ]
-
 """
+    return template
 
 
 def python_worker_pyproject(
