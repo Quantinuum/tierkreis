@@ -8,17 +8,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
-import { useErrors } from "@/data/logs";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
+import { fetchErrors, fetchLogs } from "@/data/logs";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
-  const { data: errors } = useErrors(
-    data.workflowId,
-    data.node_location,
-    data.status
-  );
   let name = data.title;
   if (name == "Function") {
     name = data.name;
@@ -38,20 +33,19 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     }
   };
 
+  const handleClick = async () => {
+    const logs = await fetchLogs(data.workflowId);
+    data.setInfo?.({ type: "Logs", content: logs });
+  };
+  const handleErrorClick = async () => {
+    const errors = await fetchErrors(data.workflowId, data.node_location);
+    data.setInfo?.({ type: "Errors", content: errors });
+  };
+
   return (
     <Card className={"w-[180px] " + bg_color(data.status)}>
       <DialogTrigger asChild>
-        <div
-          onClick={async (event) => {
-            //workaround to render errors
-            const target = event.target as HTMLElement;
-
-            if (target.closest("button") !== null) return;
-            if (data.title !== "Function") return;
-            const logs = await fetch(`/api/workflows/${data.workflowId}/logs`);
-            data.setInfo?.({ type: "Logs", content: await logs.text() });
-          }}
-        >
+        <div onClick={handleClick}>
           <CardHeader>
             <CardTitle
               style={{ whiteSpace: "normal", wordBreak: "break-word" }}
@@ -73,12 +67,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
                   size="sm"
                   variant="destructive"
                   style={{ zIndex: 5 }}
-                  onClick={() =>
-                    data.setInfo?.({
-                      type: "Errors",
-                      content: errors ? errors : "",
-                    })
-                  }
+                  onClick={handleErrorClick}
                 >
                   <OctagonAlert />
                 </Button>

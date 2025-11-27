@@ -130,7 +130,7 @@ const Main = (props: {
       console.log("Received WebSocket message:");
       const nodes = reactFlowInstance.getNodes();
       const edges = reactFlowInstance.getEdges();
-      console.log({ edges, nodes });
+
       const graph = parseGraph(JSON.parse(event.data), props.workflow_id);
       let nodesMap = new Map();
       if (nodes) {
