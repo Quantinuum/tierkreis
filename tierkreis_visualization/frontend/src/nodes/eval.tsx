@@ -15,7 +15,7 @@ import { bottomUpLayout } from "@/graph/layoutGraph";
 import { type BackendNode } from "./types";
 import { hideChildren } from "./hide_children";
 import { Minus, Plus } from "lucide-react";
-import { fetchClient } from "@/lib/api";
+import { fetchNode } from "@/lib/api";
 import { useNavigate } from "@tanstack/react-router";
 
 function replaceEval(
@@ -168,11 +168,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
     node_location_str: string,
     parentId: string
   ) => {
-    const res = await fetchClient.GET(
-      "/api/workflows/{workflow_id}/nodes/{node_location_str}",
-      { params: { path: { workflow_id, node_location_str } } }
-    );
-    let data = res.data ?? { nodes: [], edges: [] };
+    const data = await fetchNode(workflow_id, node_location_str);
     const nodes = parseNodes(data.nodes, data.edges, workflow_id, parentId);
     const edges = parseEdges(data.edges, parentId);
     const oldEdges = reactFlowInstance.getEdges();

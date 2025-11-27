@@ -15,6 +15,7 @@ import { type BackendNode } from "@/nodes/types";
 import { Plus, Minus } from "lucide-react";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { hideChildren } from "./hide_children";
+import { fetchNode } from "@/lib/api";
 
 function replaceMap(
   nodeId: string,
@@ -125,26 +126,22 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
     node_location: string,
     parentId: string
   ) => {
-    const url = `/api/workflows/${workflowId}/nodes/${node_location}`;
-    fetch(url, { method: "GET", headers: { Accept: "application/json" } })
-      .then((response) => response.json())
-      .then((data) => {
-        const nodes = parseNodes(data.nodes, data.edges, workflowId, parentId);
-        const oldEdges = reactFlowInstance.getEdges();
-        const oldNodes = reactFlowInstance.getNodes();
-        const { nodes: newNodes, edges: newEdges } = replaceMap(
-          parentId,
-          nodes,
-          oldNodes,
-          oldEdges
-        );
-        const positionedNodes = bottomUpLayout(newNodes, [
-          ...newEdges,
-          ...oldEdges,
-        ]);
-        reactFlowInstance.setNodes(positionedNodes);
-        reactFlowInstance.setEdges(newEdges);
-      });
+    const data = await fetchNode(workflowId, node_location);
+    const nodes = parseNodes(data.nodes, data.edges, workflowId, parentId);
+    const oldEdges = reactFlowInstance.getEdges();
+    const oldNodes = reactFlowInstance.getNodes();
+    const { nodes: newNodes, edges: newEdges } = replaceMap(
+      parentId,
+      nodes,
+      oldNodes,
+      oldEdges
+    );
+    const positionedNodes = bottomUpLayout(newNodes, [
+      ...newEdges,
+      ...oldEdges,
+    ]);
+    reactFlowInstance.setNodes(positionedNodes);
+    reactFlowInstance.setEdges(newEdges);
   };
   return (
     <NodeStatusIndicator status={node_data.status}>

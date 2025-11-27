@@ -20,12 +20,12 @@ export const ColumnHeader = (props: {
   if (sort.id === props.id && !sort.desc) Tag = ArrowUpNarrowWide;
 
   return (
-    <th className="text-left p-4">
+    <th
+      className="text-left cursor-pointer p-4"
+      onClick={(_) => toggleSorting(props.id)}
+    >
       <div className="flex select-none">
-        <Tag
-          className="cursor-pointer mr-2"
-          onClick={(_) => toggleSorting(props.id)}
-        />
+        <Tag className="mr-2" />
         <div>{props.title}</div>
       </div>
     </th>

@@ -28,6 +28,18 @@ export const fetchErrors = async (
   return res.data ?? "No errors.";
 };
 
+export const fetchNode = async (
+  workflow_id: string,
+  node_location_str: string
+) => {
+  const params = { path: { workflow_id, node_location_str } };
+  const res = await fetchClient.GET(
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}",
+    { params }
+  );
+  return res.data ?? { nodes: [], edges: [] };
+};
+
 export const listWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
 export const logsQuery = (workflow_id: string) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
