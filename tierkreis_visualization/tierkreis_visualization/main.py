@@ -5,7 +5,9 @@ import uvicorn
 
 
 def start() -> None:
-    uvicorn.run("tierkreis_visualization.app:get_filestorage_app")
+    uvicorn.run(
+        "tierkreis_visualization.app:get_filestorage_app", timeout_graceful_shutdown=10
+    )
 
 
 def dev() -> None:

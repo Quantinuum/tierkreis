@@ -149,7 +149,7 @@ def test_resume(
     if isinstance(storage, ControllerInMemoryStorage):
         executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
     storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs)
+    run_graph(storage, executor, g, inputs, n_iterations=100)
 
     actual_output = read_outputs(g, storage)
     assert actual_output == output

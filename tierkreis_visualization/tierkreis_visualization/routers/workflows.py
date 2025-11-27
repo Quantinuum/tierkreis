@@ -1,5 +1,8 @@
+from asyncio import Event
+from datetime import datetime
 import json
 import logging
+import signal
 from typing import Any, assert_never
 from uuid import UUID
 
@@ -48,11 +51,13 @@ async def handle_websocket(
     node_location_str: str,
     storage: ControllerStorage,
 ) -> None:
+    socket_connected_time = datetime.now()
     node_location = parse_node_location(node_location_str)
     # currently we are watching the entire workflow in the frontend
     node_path = CONFIG.tierkreis_path / str(workflow_id)
     if not node_path.exists():
         return
+
     async for _changes in awatch(node_path, recursive=True):
         ctx = get_node_data(workflow_id, node_location, storage)
         await websocket.send_json(ctx)
@@ -149,16 +154,6 @@ def get_node_data(
     ctx["name"] = name
 
     return ctx
-
-
-async def node_stream(
-    workflow_id: UUID, node_location: Loc, storage: ControllerStorage
-):
-    node_path = CONFIG.tierkreis_path / str(workflow_id) / str(node_location)
-    async for _changes in awatch(node_path, recursive=False):
-        if (node_path / "definition").exists():
-            ctx = get_node_data(workflow_id, node_location, storage)
-            yield f"event: message\ndata: {json.dumps(ctx)}\n\n"
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}")

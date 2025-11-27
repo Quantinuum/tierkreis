@@ -6,7 +6,7 @@ const fetchClient = createFetchClient<paths>({
   baseUrl: import.meta.env.BASE_URL,
   headers: { Accept: "application/json" },
 });
-const $api = createClient(fetchClient);
+export const $api = createClient(fetchClient);
 
 export const fetchLogs = async (workflow_id: string) => {
   const res = await fetchClient.GET("/api/workflows/{workflow_id}/logs", {
@@ -50,4 +50,4 @@ export const nodeQuery = (workflow_id: string, node_location_str: string) =>
     "get",
     "/api/workflows/{workflow_id}/nodes/{node_location_str}",
     { params: { path: { workflow_id, node_location_str } } }
-  ).data;
+  );

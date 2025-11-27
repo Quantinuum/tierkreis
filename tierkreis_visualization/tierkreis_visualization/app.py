@@ -1,3 +1,6 @@
+from datetime import datetime
+import os
+import signal
 from sys import argv
 from tierkreis.controller.data.graph import GraphData
 from tierkreis_visualization.app_config import (
@@ -17,6 +20,10 @@ from tierkreis_visualization.routers.workflows import router as workflows_router
 from tierkreis_visualization.routers.frontend import router as frontend_router
 
 
+def transform_to_sigkill(signum, frame):
+    signal.raise_signal(signal.SIGKILL)
+
+
 def get_app(app_lifespan=None):
     app = App(lifespan=app_lifespan) if app_lifespan else App()
     app.include_router(workflows_router, prefix="/api/workflows")
@@ -34,6 +41,9 @@ def get_filestorage_app(app_lifespan=None):
 
 
 def get_dev_app():
+    # Terminate websocket connection on uvicorn dev reload
+    signal.signal(signal.SIGTERM, transform_to_sigkill)
+
     return get_filestorage_app(dev_lifespan)
 
 
