@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
+from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 from tierkreis.exceptions import TierkreisError
@@ -37,13 +38,11 @@ class InMemoryExecutor:
         call_args = WorkerCallArgs(
             **json.loads(self.storage.read(worker_call_args_path))
         )
-
-        spec = importlib.util.spec_from_file_location(
-            "in_memory", self.registry_path / launcher_name / "main.py"
-        )
+        launcher_path = check_and_set_launcher(self.registry_path, launcher_name, ".py")
+        spec = importlib.util.spec_from_file_location("in_memory", launcher_path)
         if spec is None or spec.loader is None:
             raise TierkreisError(
-                f"Couldn't load main.py in {self.registry_path / launcher_name}"
+                f"Couldn't load module main.py in {self.registry_path / launcher_name}"
             )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

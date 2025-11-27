@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.data.location import WorkerCallArgs
-from tierkreis.exceptions import TierkreisError
+from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 
 
 class ShellExecutor:
@@ -34,20 +34,11 @@ class ShellExecutor:
         worker_call_args_path: Path,
         export_values: bool = False,
     ) -> None:
-        launcher_path = self.launchers_path / launcher_name
         self.errors_path = worker_call_args_path.parent / "errors"
 
-        if not launcher_path.exists():
-            raise TierkreisError(f"Launcher not found: {launcher_name}.")
-
-        if launcher_path.is_dir() and not (launcher_path / "main.sh").exists():
-            raise TierkreisError(f"Expected launcher file. Got {launcher_path}.")
-
-        if launcher_path.is_dir() and not (launcher_path / "main.sh").is_file():
-            raise TierkreisError(f"Expected launcher file. Got {launcher_path}/main.sh")
-
-        if launcher_path.is_dir() and (launcher_path / "main.sh").is_file():
-            launcher_path = launcher_path / "main.sh"
+        launcher_path = check_and_set_launcher(
+            self.launchers_path, launcher_name, ".sh"
+        )
 
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
