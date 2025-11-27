@@ -1,4 +1,8 @@
+from typing import Literal
+
+
 def python_worker_main(worker_name: str) -> str:
+    worker_name = worker_name.replace("-", "_")
     return f"""from sys import argv
 
 from tierkreis import Worker
@@ -21,22 +25,65 @@ if __name__ == "__main__":
 """
 
 
-def python_worker_pyproject(worker_name: str) -> str:
+def python_worker_workspace_pyproject(worker_name: str) -> str:
+    worker_name = worker_name.replace("_", "-")
     return f"""[project]
-name = "tkr_{worker_name}"
+name = "tkr-{worker_name}"
 version = "0.1.0"
 description = "A tierkreis worker."
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [ {{name = "Your Name", email = "you@example.com"}} ]
+dependencies = [
+    "tierkreis",
+]
+[project.optional-dependencies]
+src = [
+    "tkr-{worker_name}-src",
+]
+api = [
+    "tkr-{worker_name}-api",
+]
 
+[tool.uv.sources]
+tkr-{worker_name}-src = {{ workspace = true }}
+tkr-{worker_name}-api = {{ workspace = true }}
+
+[tool.uv.workspace]
+members = [
+    "src",
+    "api",
+]
+
+"""
+
+
+def python_worker_pyproject(
+    worker_name: str, kind: Literal["api", "src"] = "api"
+) -> str:
+    worker_name = worker_name.replace("_", "-")
+    template = f"""[project]
+name = "tkr-{worker_name}-{kind}"
+version = "0.1.0"
+description = "A tierkreis worker implementation."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [ {{name = "Your Name", email = "you@example.com"}} ]
 dependencies = [
     "tierkreis",
 ]
 
-[project.scripts]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+"""
+    if kind == "src":
+        template += f"""[project.scripts]
 tkr_{worker_name} = "main:main"
 
 """
+    return template
 
 
 def external_worker_idl(worker_name: str) -> str:
@@ -52,6 +99,7 @@ interface {worker_name} {{
 
 
 def default_graph(worker_name: str) -> str:
+    worker_name = worker_name.replace("-", "_")
     return f"""from typing import NamedTuple
 from pathlib import Path
 from uuid import UUID
@@ -62,7 +110,7 @@ from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.executor import UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
-from tkr.workers.{worker_name}.stubs import your_worker_task
+from tkr.workers.{worker_name}.api.api import your_worker_task
 
 class GraphInputs(NamedTuple):
     value: TKR[int]

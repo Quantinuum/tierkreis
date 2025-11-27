@@ -10,6 +10,7 @@ from tierkreis.cli.templates import (
     default_graph,
     python_worker_main,
     python_worker_pyproject,
+    python_worker_workspace_pyproject,
 )
 from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace
@@ -81,10 +82,10 @@ def parse_args(
         default=Path("./tkr") / "workers",
     )
     stubs.add_argument(
-        "--stubs-name",
-        help="File location where to generate stubs to. Relative to the worker directory",
+        "--api-file-name",
+        help="File location where to generate api to. Relative to the worker directory",
         type=str,
-        default=Path("./stubs.py"),
+        default=Path("./api/api.py"),
     )
     return parser
 
@@ -94,14 +95,26 @@ def _gen_worker(worker_name: str, worker_dir: Path, external: bool = False) -> N
     base_dir.mkdir(exist_ok=True)
     with open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(f"# {worker_name} \n")
+    with open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_workspace_pyproject(worker_name))
+    api_dir = base_dir / "api"
+    src_dir = base_dir / "src"
+    api_dir.mkdir(exist_ok=True)
+    with open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_pyproject(worker_name, kind="api"))
+    with open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
+        fh.write(f"# {worker_name}-api \n")
+    src_dir.mkdir(exist_ok=True)
     if external:
-        with open(base_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
+        with open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
             fh.write(external_worker_idl(worker_name))
         return
-    with open(base_dir / "main.py", "w+", encoding="utf-8") as fh:
+    with open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_main(worker_name))
-    with open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_pyproject(worker_name))
+    with open(src_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_pyproject(worker_name, kind="src"))
+    with open(src_dir / "README.md", "w+", encoding="utf-8") as fh:
+        fh.write(f"# {worker_name}-src \n")
 
 
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
@@ -116,7 +129,7 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             namespace.write_stubs(idl.parent / stubs_name)
         else:
             subprocess.run(
-                [uv_path, "run", "main.py", "--stubs-path", stubs_name], cwd=worker
+                [uv_path, "run", "src/main.py", "--stubs-path", stubs_name], cwd=worker
             )
 
 
@@ -130,15 +143,15 @@ def run_args(args: argparse.Namespace) -> None:
         if not graphs_dir.is_absolute():
             graphs_dir = args.project_directory / graphs_dir
         worker_dir.mkdir(exist_ok=True, parents=True)
-        (worker_dir / "__init__.py").touch()
+        # (worker_dir / "__init__.py").touch()
         _gen_worker(worker_name, worker_dir)
         graphs_dir.mkdir(exist_ok=True, parents=True)
-        (graphs_dir / "__init__.py").touch()
+        # (graphs_dir / "__init__.py").touch()
         with open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_stubs(worker_dir, "./stubs.py")
-        print(f"""Successfully generated project in {args.project_directory}.
+        _gen_stubs(worker_dir, "./api/api.py")
+        print(f"""Successfully generated project in '{args.project_directory}'.
               
 To run the sample graph use "python -m tkr.graphs.main".
 Or import the function into a top level script with:
