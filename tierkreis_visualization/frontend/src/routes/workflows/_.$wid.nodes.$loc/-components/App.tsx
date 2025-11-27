@@ -232,7 +232,7 @@ const Main = (props: {
   );
 };
 
-export default function App(props: {
+export default function GraphView(props: {
   workflow_id: string;
   node_location_str: string;
 }) {
