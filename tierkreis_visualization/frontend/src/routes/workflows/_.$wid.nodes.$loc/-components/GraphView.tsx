@@ -7,6 +7,7 @@ import {
   ReactFlow,
   useReactFlow,
   OnNodeDrag,
+  addEdge,
 } from "@xyflow/react";
 
 import Layout from "@/components/layout";
@@ -15,7 +16,7 @@ import { parseGraph } from "@/graph/parseGraph";
 import { Background, ControlButton, Controls } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Eye, EyeClosed, FolderSync, Network } from "lucide-react";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { edgeTypes } from "@/edges";
@@ -74,6 +75,8 @@ const loadGraph = (props: {
 const Main = (props: {
   nodes: BackendNode[];
   edges: Edge[];
+  onNodesChange: OnNodesChange<BackendNode>;
+  onEdgesChange: OnEdgesChange;
   workflow_id: string;
   workflow_start: string;
   workflows: Workflow[];
@@ -112,20 +115,7 @@ const Main = (props: {
       start_time: props.workflow_start,
     });
   }, [reactFlowInstance, props.workflow_id, props.workflow_start]);
-  const onNodesChange: OnNodesChange<BackendNode> = useCallback(
-    (changes) =>
-      reactFlowInstance.setNodes((nodesSnapshot) =>
-        applyNodeChanges(changes, nodesSnapshot)
-      ),
-    [reactFlowInstance]
-  );
-  const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) =>
-      reactFlowInstance.setEdges((edgesSnapshot) =>
-        applyEdgeChanges(changes, edgesSnapshot)
-      ),
-    [reactFlowInstance]
-  );
+
   const onNodeDrag: OnNodeDrag = useCallback((_, node) => {
     node.data.pinned = true;
   }, []);
@@ -137,12 +127,12 @@ const Main = (props: {
       info={props.infoProps}
     >
       <ReactFlow<BackendNode, Edge>
-        defaultNodes={props.nodes}
-        defaultEdges={props.edges}
+        nodes={props.nodes}
+        edges={props.edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onEdgesChange={onEdgesChange}
-        onNodesChange={onNodesChange}
+        onEdgesChange={props.onEdgesChange}
+        onNodesChange={props.onNodesChange}
         onNodeDrag={onNodeDrag}
         fitView
       >
@@ -171,11 +161,11 @@ const Main = (props: {
             <FolderSync style={{ fill: "none" }} />
           </ControlButton>
           <ControlButton
-            onClick={() => {
-              handleToggleTooltips();
-            }}
+          // onClick={() => {
+          //   handleToggleTooltips();
+          // }}
           >
-            {tooltipsOpen ? (
+            {true ? (
               <Eye style={{ fill: "none" }} />
             ) : (
               <EyeClosed style={{ fill: "none" }} />
@@ -187,38 +177,53 @@ const Main = (props: {
   );
 };
 
+type G = {
+  nodes: BackendNode[];
+  edges: Edge[];
+};
+
 export default function GraphView(props: {
   workflow_id: string;
   node_location_str: string;
 }) {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
+  const [nodes, setNodes] = useState<BackendNode[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+
+  const onNodesChange = useCallback(
+    (changes) =>
+      setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
+    []
+  );
+  const onEdgesChange = useCallback(
+    (changes) =>
+      setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
+    []
+  );
 
   const workflowsQuery = listWorkflowsQuery();
   const logs = logsQuery(workflow_id);
-  const gQuery = nodeQuery(workflow_id, node_location_str);
-  const g = gQuery.data;
-  console.log(g);
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
     content: logs.data as string,
   });
 
-  const remoteGraph = parseGraph(
-    { nodes: g?.nodes ?? [], edges: g?.edges ?? [] },
-    workflow_id
-  );
-
-  let nodes = remoteGraph.nodes;
-  let edges = remoteGraph.edges;
-
-  nodes = bottomUpLayout(remoteGraph.nodes, remoteGraph.edges);
-
-  React.useEffect(() => {
-    const url = `/api/workflows/${props.workflow_id}/nodes/-`;
+  useEffect(() => {
+    const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
-    ws.onmessage = (_) => gQuery.refetch();
+    ws.onmessage = (event) => {
+      const newG = parseGraph(JSON.parse(event.data), props.workflow_id);
+      setNodes((ns) => {
+        const nextGraph = updateGraph({ nodes: ns, edges }, newG);
+        return nextGraph.nodes;
+      });
+      setEdges((es) => {
+        const nextGraph = updateGraph({ nodes, edges: es }, newG);
+        return nextGraph.edges;
+      });
+    };
     return () => {
       if (ws.readyState == WebSocket.OPEN) ws.close();
     };
@@ -234,14 +239,11 @@ export default function GraphView(props: {
   }
 
   const mergedGraph = (() => {
-    const default_node_positions = bottomUpLayout(
-      remoteGraph.nodes,
-      remoteGraph.edges
-    );
+    const default_node_positions = bottomUpLayout(nodes, edges);
     if (localGraph === null)
       return {
         nodes: default_node_positions,
-        edges: remoteGraph.edges,
+        edges: edges,
       };
 
     const mergedNodes = default_node_positions.map((node) => {
@@ -255,7 +257,7 @@ export default function GraphView(props: {
     });
     const edgesMap = new Map();
     localGraph.edges.forEach((edge) => edgesMap.set(edge.id, edge));
-    remoteGraph.edges.forEach((edge) => edgesMap.set(edge.id, edge));
+    edges.forEach((edge) => edgesMap.set(edge.id, edge));
     const mergedEdges = [...edgesMap.values()];
 
     return {
@@ -264,14 +266,12 @@ export default function GraphView(props: {
     };
   })();
 
-  nodes = mergedGraph.nodes;
-  edges = mergedGraph.edges;
-
   return (
     <Main
-      key={JSON.stringify(nodes)}
       nodes={nodes}
       edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       workflows={workflowsQuery.data ?? []}
       workflow_id={workflow_id}
       workflow_start=""

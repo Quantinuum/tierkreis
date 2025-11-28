@@ -58,6 +58,9 @@ async def handle_websocket(
     if not node_path.exists():
         return
 
+    ctx = get_node_data(workflow_id, node_location, storage)
+    await websocket.send_json(ctx)
+
     async for _changes in awatch(node_path, recursive=True):
         ctx = get_node_data(workflow_id, node_location, storage)
         await websocket.send_json(ctx)
