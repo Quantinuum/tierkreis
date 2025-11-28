@@ -8,6 +8,8 @@ import {
   useReactFlow,
   OnNodeDrag,
   addEdge,
+  NodeChange,
+  EdgeChange,
 } from "@xyflow/react";
 
 import Layout from "@/components/layout";
@@ -192,12 +194,12 @@ export default function GraphView(props: {
   const [edges, setEdges] = useState<Edge[]>([]);
 
   const onNodesChange = useCallback(
-    (changes) =>
+    (changes: NodeChange<BackendNode>[]) =>
       setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
     []
   );
   const onEdgesChange = useCallback(
-    (changes) =>
+    (changes: EdgeChange<Edge>[]) =>
       setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
     []
   );
