@@ -28,7 +28,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.3.0",
-    "tw-animate-css": "^1.3.5"
+    "tw-animate-css": "^1.3.5",
+    "use-local-storage-state": "^19.5.0"
   },
   "license": "MIT",
   "devDependencies": {

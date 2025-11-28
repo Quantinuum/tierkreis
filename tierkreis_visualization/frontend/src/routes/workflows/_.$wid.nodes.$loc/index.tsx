@@ -7,5 +7,11 @@ export const Route = createFileRoute("/workflows/_/$wid/nodes/$loc/")({
 
 function RouteComponent() {
   const { wid, loc } = Route.useParams();
-  return <GraphView workflow_id={wid} node_location_str={loc}></GraphView>;
+  return (
+    <GraphView
+      key={wid + loc}
+      workflow_id={wid}
+      node_location_str={loc}
+    ></GraphView>
+  );
 }
