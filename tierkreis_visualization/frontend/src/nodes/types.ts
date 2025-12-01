@@ -2,7 +2,7 @@ import { InfoProps } from "@/components/types";
 import { Edge, type Node } from "@xyflow/react";
 
 export type PyNode = {
-  id: string | number;
+  id: string;
   status: "Not started" | "Started" | "Error" | "Finished";
   function_name: string;
   node_location: string;

@@ -171,11 +171,11 @@ export interface components {
         /** PyEdge */
         PyEdge: {
             /** From Node */
-            from_node: number;
+            from_node: string;
             /** From Port */
             from_port: string;
             /** To Node */
-            to_node: number;
+            to_node: string;
             /** To Port */
             to_port: string;
             /** Value */
@@ -196,7 +196,7 @@ export interface components {
         /** PyNode */
         PyNode: {
             /** Id */
-            id: number;
+            id: string;
             /**
              * Status
              * @enum {string}

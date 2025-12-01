@@ -47,14 +47,26 @@ export default function NodePage(props: {
 
   useEffect(() => {
     if (Object.keys(nodeData).length == 0) return;
-    const newG = parseGraph(nodeData[node_location_str], props.workflow_id);
+    let ns: BackendNode[] = [];
+    let es: Edge[] = [];
+    Object.keys(nodeData).sort();
+    console.log(nodeData);
+
+    for (let loc in nodeData) {
+      const graphPart = parseGraph(nodeData[loc], props.workflow_id);
+      ns.push(...graphPart.nodes);
+      es.push(...graphPart.edges);
+    }
+
+    const newG = { nodes: ns, edges: es };
+
     setG((oldG: Graph) => updateGraph(oldG, newG));
   }, [props, workflow_id, node_location_str, nodeData]);
 
   useEffect(() => {
     const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
-    ws.onmessage = (event) => nodeQuery.refetch();
+    ws.onmessage = () => nodeQuery.refetch();
     return () => {
       if (ws.readyState == WebSocket.OPEN) ws.close();
     };

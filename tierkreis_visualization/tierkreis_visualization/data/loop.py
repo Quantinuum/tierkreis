@@ -23,7 +23,7 @@ def get_loop_node(
 
     nodes = [
         PyNode(
-            id=n,
+            id=node_location.N(n),
             status="Finished",
             function_name=f"L{n}",
             node_location=node_location.L(n),
@@ -41,7 +41,7 @@ def get_loop_node(
         last_status = "Started"
     nodes.append(
         PyNode(
-            id=i,
+            id=node_location.N(i),
             status=last_status,
             function_name=f"L{i}",
             node_location=new_location,
@@ -54,9 +54,9 @@ def get_loop_node(
         edges.extend(
             [
                 PyEdge(
-                    from_node=n,
+                    from_node=node_location.N(n),
                     from_port=port_name,
-                    to_node=n + 1,
+                    to_node=node_location.N(n + 1),
                     to_port=port_name,
                     value=json.loads(
                         storage.read_output(node_location.L(n), port_name)

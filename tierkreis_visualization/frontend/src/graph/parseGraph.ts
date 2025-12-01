@@ -51,7 +51,7 @@ function getTitle(function_name: string) {
   }
 }
 
-function getHandlesFromEdges(id: number, edges: PyEdge[]) {
+function getHandlesFromEdges(id: string, edges: PyEdge[]) {
   const inputs: string[] = [];
   const outputs: string[] = [];
   edges.map((edge) => {
@@ -84,24 +84,23 @@ function parseNodeValue(value: unknown): string | null {
 export function parseNodes(
   nodes: PyNode[],
   edges: PyEdge[],
-  workflowId: string,
-  parentId?: string
+  workflowId: string
 ): AppNode[] {
   // child nodes prepend their parents id eg. [0,1,2] => [0:0,0:1,0:2]
   const parsedNodes = nodes.map((node) => ({
-    id: (parentId ? `${parentId}:` : "") + node.id.toString(),
+    id: node.node_location,
     type: nodeType(node.function_name),
     position: { x: 0, y: 0 },
     data: {
       name: node.function_name,
       status: node.status,
-      handles: getHandlesFromEdges(Number(node.id), edges),
+      handles: getHandlesFromEdges(node.id, edges),
       hidden_handles: undefined,
       hidden_edges: undefined,
       workflowId: workflowId,
       node_location: node.node_location,
       title: getTitle(node.function_name),
-      id: (parentId ? `${parentId}:` : "") + node.id.toString(),
+      id: node.node_location,
       label: node.function_name,
       pinned: false,
       value: parseNodeValue(node.value),
@@ -113,7 +112,8 @@ export function parseNodes(
       started_time: node.started_time,
       finished_time: node.finished_time,
     },
-    parentId: parentId ? `${parentId}` : undefined,
+    parentId: node.node_location.split(".").slice(0, -1).join("."),
+    extent: "parent",
   }));
   return parsedNodes;
 }
@@ -153,8 +153,8 @@ export function parseEdges(edges: PyEdge[], parentId?: string): Edge[] {
         "-" +
         prefix +
         edge.to_node,
-      source: prefix + edge.from_node.toString(),
-      target: prefix + edge.to_node.toString(),
+      source: edge.from_node.toString(),
+      target: edge.to_node.toString(),
       sourceHandle: prefix + edge.from_node + "_" + edge.from_port,
       targetHandle: prefix + edge.to_node + "_" + edge.to_port,
       label:
@@ -170,8 +170,12 @@ export function parseGraph(
   workflowId: string,
   parentId?: string
 ) {
-  const nodes = parseNodes(data.nodes, data.edges, workflowId, parentId);
+  console.log(parentId);
+
+  const nodes = parseNodes(data.nodes, data.edges, workflowId);
   const edges = parseEdges(data.edges, parentId);
+  console.log(nodes);
+
   return { nodes, edges };
 }
 

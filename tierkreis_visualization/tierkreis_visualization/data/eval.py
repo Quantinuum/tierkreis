@@ -52,9 +52,9 @@ def add_conditional_edges(
         except FileNotFoundError:
             value = None
         edge = PyEdge(
-            from_node=idx,
+            from_node=loc.N(idx),
             from_port=p,
-            to_node=i,
+            to_node=loc.N(i),
             to_port=f"If{branch}",
             conditional=pred is None or pred != branch,
             value=value,
@@ -110,7 +110,7 @@ def get_eval_node(
                 assert_never(node)
 
         pynode = PyNode(
-            id=i,
+            id=node_location.N(i),
             status=status,
             function_name=name,
             node_location=new_location,
@@ -129,7 +129,11 @@ def get_eval_node(
                 value = None
 
             py_edge = PyEdge(
-                from_node=idx, from_port=p1, to_node=i, to_port=p0, value=value
+                from_node=node_location.N(idx),
+                from_port=p1,
+                to_node=node_location.N(i),
+                to_port=p0,
+                value=value,
             )
             py_edges.append(py_edge)
 
