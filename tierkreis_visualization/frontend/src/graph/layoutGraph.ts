@@ -69,6 +69,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
     newNodes.push(...tmpNodes);
     previousNodes = tmpNodes;
   }
+
   return newNodes.reverse();
 }
 

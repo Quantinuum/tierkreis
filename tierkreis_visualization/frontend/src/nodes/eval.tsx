@@ -16,7 +16,7 @@ import { type BackendNode } from "./types";
 import { hideChildren } from "./hide_children";
 import { Minus, Plus } from "lucide-react";
 import { fetchNode } from "@/data/api";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 function replaceEval(
   nodeId: string,
@@ -206,20 +206,30 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
         <CardContent>
           <div className="flex items-center justify-center">
             {node_data.status != "Not started" && (
-              <Button
-                className="flex-none"
-                variant="secondary"
-                size="icon"
-                onClick={() =>
-                  loadChildren(
-                    node_data.workflowId,
-                    node_data.node_location,
-                    node_data.id
-                  )
-                }
+              <Link
+                to="/workflows/$wid/nodes/$loc"
+                params={{
+                  wid: node_data.workflowId,
+                  loc: "-",
+                }}
+                search={{ openEvals: [node_data.node_location] }}
               >
                 <Plus />
-              </Button>
+              </Link>
+              // <Button
+              //   className="flex-none"
+              //   variant="secondary"
+              //   size="icon"
+              //   onClick={() =>
+              //     loadChildren(
+              //       node_data.workflowId,
+              //       node_data.node_location,
+              //       node_data.id
+              //     )
+              //   }
+              // >
+              //   <Plus />
+              // </Button>
             )}
           </div>
           <InputHandleArray

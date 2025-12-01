@@ -1,12 +1,12 @@
-from asyncio import Event
 from datetime import datetime
 import json
 import logging
 import signal
-from typing import Any, assert_never
+from typing import Annotated, Any, assert_never
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -14,6 +14,7 @@ from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+from tierkreis_visualization.app_config import Request
 from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.config import CONFIG
@@ -159,12 +160,20 @@ def get_node_data(
     return ctx
 
 
+class GraphsResponse(BaseModel):
+    graphs: dict[Loc, PyGraph]
+
+
+@router.get("/{workflow_id}/graphs", response_model=GraphsResponse)
+def list_nodes(
+    request: Request, workflow_id: UUID, locs: Annotated[list[Loc], Query()]
+) -> GraphsResponse:
+    storage = request.app.state.get_storage_fn(workflow_id)
+    return GraphsResponse(graphs={loc: get_eval_node(storage, loc, []) for loc in locs})
+
+
 @router.get("/{workflow_id}/nodes/{node_location_str}")
-def get_node(
-    request: Request,
-    workflow_id: UUID,
-    node_location_str: str,
-) -> PyGraph:
+def get_node(request: Request, workflow_id: UUID, node_location_str: str) -> PyGraph:
     node_location = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
     ctx = get_node_data(workflow_id, node_location, storage)

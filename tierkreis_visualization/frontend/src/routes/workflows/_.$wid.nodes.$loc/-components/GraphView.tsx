@@ -23,7 +23,6 @@ export const GraphView = (props: {
   nodes: BackendNode[];
   edges: Edge[];
   onNodesChange: OnNodesChange<BackendNode>;
-  onEdgesChange: OnEdgesChange;
   workflow_id: string;
   workflows: Workflow[];
   infoProps: InfoProps;
@@ -68,7 +67,6 @@ export const GraphView = (props: {
         edges={props.edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onEdgesChange={props.onEdgesChange}
         onNodesChange={props.onNodesChange}
         onNodeDrag={onNodeDrag}
         fitView

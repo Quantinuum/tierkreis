@@ -11,11 +11,7 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge
-
-
-class EvalNodeData(BaseModel):
-    nodes: list[PyNode]
-    edges: list[PyEdge]
+from tierkreis_visualization.routers.models import PyGraph
 
 
 def node_status(
@@ -68,7 +64,7 @@ def add_conditional_edges(
 
 def get_eval_node(
     storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
-) -> EvalNodeData:
+) -> PyGraph:
     thunk = storage.read_output(node_location.N(-1), "body")
     graph = ptype_from_bytes(thunk, GraphData)
 
@@ -137,4 +133,4 @@ def get_eval_node(
             )
             py_edges.append(py_edge)
 
-    return EvalNodeData(nodes=pynodes, edges=py_edges)
+    return PyGraph(nodes=pynodes, edges=py_edges)

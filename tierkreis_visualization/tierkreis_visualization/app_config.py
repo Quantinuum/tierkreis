@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
 from enum import Enum
-from typing import Callable
+from typing import Callable, cast
 from uuid import UUID
 import webbrowser
 from fastapi import FastAPI
+import fastapi
 import starlette.datastructures
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.graphdata import GraphDataStorage
@@ -28,6 +29,14 @@ class App(FastAPI):
     """FastAPI App with custom state."""
 
     state: State  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class Request(fastapi.Request):
+    """FastAPI Request with custom App."""
+
+    @property
+    def app(self) -> App:
+        return cast(App, super().app)
 
 
 @asynccontextmanager

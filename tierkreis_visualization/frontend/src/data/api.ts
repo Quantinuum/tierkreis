@@ -45,9 +45,7 @@ export const logsQuery = (workflow_id: string) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
     params: { path: { workflow_id } },
   });
-export const nodeQuery = (workflow_id: string, node_location_str: string) =>
-  $api.useQuery(
-    "get",
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}",
-    { params: { path: { workflow_id, node_location_str } } }
-  );
+export const evalQuery = (workflow_id: string, openEvals: string[]) =>
+  $api.useQuery("get", "/api/workflows/{workflow_id}/graphs", {
+    params: { path: { workflow_id }, query: { locs: openEvals } },
+  });

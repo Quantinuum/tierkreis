@@ -1,20 +1,14 @@
-import {
-  applyEdgeChanges,
-  applyNodeChanges,
-  Edge,
-  NodeChange,
-  EdgeChange,
-} from "@xyflow/react";
-
+import { applyNodeChanges, Edge, NodeChange } from "@xyflow/react";
 import { InfoProps } from "@/components/types";
 import { parseGraph } from "@/graph/parseGraph";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useState } from "react";
 import { BackendNode } from "../../../../nodes/types";
-import { listWorkflowsQuery, logsQuery } from "../../../../data/api";
+import { evalQuery, listWorkflowsQuery, logsQuery } from "../../../../data/api";
 import { updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
 import { GraphView } from "./GraphView";
+import { Graph } from "./models";
 
 export default function NodePage(props: {
   workflow_id: string;
@@ -23,25 +17,28 @@ export default function NodePage(props: {
 }) {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
-  const [nodes, setNodes] = useLocalStorageState<BackendNode[]>(
-    workflow_id + node_location_str,
-    { defaultValue: [] }
-  );
-  const [edges, setEdges] = useState<Edge[]>([]);
-
-  const onNodesChange = useCallback(
-    (changes: NodeChange<BackendNode>[]) =>
-      setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
-    []
-  );
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange<Edge>[]) =>
-      setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
-    []
-  );
 
   const workflowsQuery = listWorkflowsQuery();
   const logs = logsQuery(workflow_id);
+  const nodeQuery = evalQuery(workflow_id, [
+    node_location_str,
+    ...props.openEvals,
+  ]);
+  const nodeData = nodeQuery.data?.graphs ?? {};
+
+  const [g, setG] = useLocalStorageState<Graph>(
+    workflow_id + node_location_str,
+    { defaultValue: { nodes: [], edges: [] } }
+  );
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange<BackendNode>[]) =>
+      setG((gSnapshot: Graph) => {
+        const ns = applyNodeChanges(changes, gSnapshot.nodes);
+        return { nodes: ns, edges: gSnapshot.edges };
+      }),
+    []
+  );
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
@@ -49,19 +46,15 @@ export default function NodePage(props: {
   });
 
   useEffect(() => {
+    if (Object.keys(nodeData).length == 0) return;
+    const newG = parseGraph(nodeData[node_location_str], props.workflow_id);
+    setG((oldG: Graph) => updateGraph(oldG, newG));
+  }, [props, workflow_id, node_location_str, nodeData]);
+
+  useEffect(() => {
     const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
-    ws.onmessage = (event) => {
-      const newG = parseGraph(JSON.parse(event.data), props.workflow_id);
-      setNodes((ns) => {
-        const nextGraph = updateGraph({ nodes: ns ?? [], edges }, newG);
-        return nextGraph.nodes;
-      });
-      setEdges((es) => {
-        const nextGraph = updateGraph({ nodes, edges: es }, newG);
-        return nextGraph.edges;
-      });
-    };
+    ws.onmessage = (event) => nodeQuery.refetch();
     return () => {
       if (ws.readyState == WebSocket.OPEN) ws.close();
     };
@@ -70,10 +63,9 @@ export default function NodePage(props: {
   return (
     <GraphView
       key={workflow_id + node_location_str}
-      nodes={nodes}
-      edges={edges}
+      nodes={g.nodes ?? []}
+      edges={g.edges ?? []}
       onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
       workflows={workflowsQuery.data ?? []}
       workflow_id={workflow_id}
       infoProps={info}

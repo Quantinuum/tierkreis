@@ -3,7 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 const pathSchema = z.object({ wid: z.string(), loc: z.string() });
-const validateSearch = z.object({ openEvals: z.array(z.string()) });
+const validateSearch = z.object({ openEvals: z.array(z.string()).default([]) });
+
 export const Route = createFileRoute("/workflows/_/$wid/nodes/$loc/")({
   component: RouteComponent,
   validateSearch,
@@ -18,7 +19,7 @@ function RouteComponent() {
       key={wid + loc}
       workflow_id={wid}
       node_location_str={loc}
-      openEvals={openEvals}
+      openEvals={openEvals ?? []}
     ></NodePage>
   );
 }
