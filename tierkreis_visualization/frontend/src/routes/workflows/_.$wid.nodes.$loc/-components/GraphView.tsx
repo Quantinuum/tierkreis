@@ -1,64 +1,25 @@
+import Layout from "@/components/layout";
+import { InfoProps, Workflow } from "@/components/types";
+import { BackendNode } from "@/nodes/types";
 import {
-  applyEdgeChanges,
-  applyNodeChanges,
+  Background,
+  ControlButton,
+  Controls,
   Edge,
   OnEdgesChange,
+  OnNodeDrag,
   OnNodesChange,
   ReactFlow,
   useReactFlow,
-  OnNodeDrag,
-  NodeChange,
-  EdgeChange,
 } from "@xyflow/react";
-
-import Layout from "@/components/layout";
-import { InfoProps, Workflow } from "@/components/types";
-import { parseGraph } from "@/graph/parseGraph";
-import { Background, ControlButton, Controls } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import { Eye, EyeClosed, FolderSync, Network } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { edgeTypes } from "@/edges";
-import { bottomUpLayout } from "@/graph/layoutGraph";
+import { useCallback, useState } from "react";
 import { nodeTypes } from "@/nodes";
-import { BackendNode } from "../../../../nodes/types";
-import { listWorkflowsQuery, logsQuery } from "../../../../data/api";
-import { updateGraph } from "@/graph/updateGraph";
-import useLocalStorageState from "use-local-storage-state";
-const saveGraph = (
-  key: string,
-  graph: { nodes: BackendNode[]; edges: Edge[] }
-) => {
-  localStorage.setItem(key, JSON.stringify(graph));
-};
+import { edgeTypes } from "@/edges";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { bottomUpLayout } from "@/graph/layoutGraph";
+import { Eye, EyeClosed, FolderSync, Network } from "lucide-react";
 
-const deleteGraph = ({ key }: { key: string }) => {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    return null;
-  }
-};
-
-const loadGraph = (props: {
-  key: string;
-}): { nodes: BackendNode[]; edges: Edge[]; start_time: string } | null => {
-  try {
-    const item = localStorage.getItem(props.key);
-    if (item !== null)
-      return JSON.parse(item) as {
-        nodes: BackendNode[];
-        edges: Edge[];
-        start_time: string;
-      };
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-const Main = (props: {
+export const GraphView = (props: {
   nodes: BackendNode[];
   edges: Edge[];
   onNodesChange: OnNodesChange<BackendNode>;
@@ -68,9 +29,6 @@ const Main = (props: {
   infoProps: InfoProps;
   setInfo: (arg: InfoProps) => void;
 }) => {
-  // Client node state (not definition)
-  console.log(props.nodes);
-
   const reactFlowInstance = useReactFlow<BackendNode, Edge>();
   const [tooltipsOpen, setAreTooltipsOpen] = useState(false);
   const [hoveredId, setHoveredId] = useState<string>("");
@@ -155,69 +113,3 @@ const Main = (props: {
     </Layout>
   );
 };
-
-export default function GraphView(props: {
-  workflow_id: string;
-  node_location_str: string;
-}) {
-  const workflow_id = props.workflow_id;
-  const node_location_str = props.node_location_str;
-  const [nodes, setNodes] = useLocalStorageState<BackendNode[]>(
-    workflow_id + node_location_str,
-    { defaultValue: [] }
-  );
-  const [edges, setEdges] = useState<Edge[]>([]);
-
-  const onNodesChange = useCallback(
-    (changes: NodeChange<BackendNode>[]) =>
-      setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
-    []
-  );
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange<Edge>[]) =>
-      setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
-    []
-  );
-
-  const workflowsQuery = listWorkflowsQuery();
-  const logs = logsQuery(workflow_id);
-
-  const [info, setInfo] = useState<InfoProps>({
-    type: "Logs",
-    content: logs.data as string,
-  });
-
-  useEffect(() => {
-    const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
-    const ws = new WebSocket(url);
-    ws.onmessage = (event) => {
-      const newG = parseGraph(JSON.parse(event.data), props.workflow_id);
-      setNodes((ns) => {
-        const nextGraph = updateGraph({ nodes: ns ?? [], edges }, newG);
-        // saveGraph(props.workflow_id + props.node_location_str, nextGraph);
-        return nextGraph.nodes;
-      });
-      setEdges((es) => {
-        const nextGraph = updateGraph({ nodes, edges: es }, newG);
-        return nextGraph.edges;
-      });
-    };
-    return () => {
-      if (ws.readyState == WebSocket.OPEN) ws.close();
-    };
-  }, [props, workflow_id, node_location_str]);
-
-  return (
-    <Main
-      key={workflow_id + node_location_str}
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      workflows={workflowsQuery.data ?? []}
-      workflow_id={workflow_id}
-      infoProps={info}
-      setInfo={setInfo}
-    />
-  );
-}
