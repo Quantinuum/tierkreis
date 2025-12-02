@@ -1,9 +1,4 @@
-import {
-  applyNodeChanges,
-  Edge,
-  NodeChange,
-  useReactFlow,
-} from "@xyflow/react";
+import { applyNodeChanges, NodeChange } from "@xyflow/react";
 import { InfoProps } from "@/components/types";
 import { parseGraph } from "@/graph/parseGraph";
 import "@xyflow/react/dist/style.css";
@@ -56,19 +51,14 @@ export default function NodePage(props: {
     if (Object.keys(evalData).length == 0) return;
     const { nodes, edges } = amalgamateGraphData(evalData);
     const newG = parseGraph({ nodes, edges }, workflow_id, props.openEvals);
-
-    setG((oldG: Graph) => {
-      return updateGraph(oldG, newG);
-    });
+    setG((oldG: Graph) => updateGraph(oldG, newG));
   }, [props, workflow_id, node_location_str, evalData]);
 
   useEffect(() => {
     const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
     ws.onmessage = () => evalQuery.refetch();
-    return () => {
-      if (ws.readyState == WebSocket.OPEN) ws.close();
-    };
+    return () => ws.close();
   }, [props, workflow_id, node_location_str]);
 
   return (

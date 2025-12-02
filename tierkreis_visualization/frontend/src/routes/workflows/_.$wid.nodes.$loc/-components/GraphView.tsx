@@ -43,11 +43,10 @@ export const GraphView = (props: {
     };
   });
   const handleToggleTooltips = () => {
+    const prev = tooltipsOpen;
     setAreTooltipsOpen((prev) => !prev);
     reactFlowInstance.getNodes().forEach((node) => {
-      reactFlowInstance.updateNodeData(node.id, {
-        isTooltipOpen: tooltipsOpen,
-      });
+      reactFlowInstance.updateNodeData(node.id, { isTooltipOpen: !prev });
     });
   };
 
@@ -58,6 +57,14 @@ export const GraphView = (props: {
   const ns = props.nodes.sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   );
+
+  const revertPositionChanges = () => {
+    reactFlowInstance.setEdges(reactFlowInstance.getEdges());
+    reactFlowInstance.setNodes(
+      bottomUpLayout(reactFlowInstance.getNodes(), reactFlowInstance.getEdges())
+    );
+    reactFlowInstance.fitView({ padding: 0.1 });
+  };
 
   return (
     <Layout
@@ -77,32 +84,13 @@ export const GraphView = (props: {
         <Background />
         <Controls showZoom={false} showInteractive={false}>
           <SidebarTrigger style={{ fill: "none" }} />
-          <ControlButton
-            onClick={() => {
-              reactFlowInstance.setEdges(reactFlowInstance.getEdges());
-              reactFlowInstance.setNodes(
-                bottomUpLayout(
-                  reactFlowInstance.getNodes(),
-                  reactFlowInstance.getEdges()
-                )
-              );
-              reactFlowInstance.fitView({ padding: 0.1 });
-            }}
-          >
+          <ControlButton onClick={revertPositionChanges}>
             <Network style={{ fill: "none" }} />
           </ControlButton>
-          <ControlButton
-            onClick={() => {
-              localStorage.clear();
-            }}
-          >
+          <ControlButton onClick={() => localStorage.clear()}>
             <FolderSync style={{ fill: "none" }} />
           </ControlButton>
-          <ControlButton
-            onClick={() => {
-              handleToggleTooltips();
-            }}
-          >
+          <ControlButton onClick={() => handleToggleTooltips()}>
             {true ? (
               <Eye style={{ fill: "none" }} />
             ) : (
