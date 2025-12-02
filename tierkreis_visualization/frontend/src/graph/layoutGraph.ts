@@ -100,23 +100,23 @@ function resizeGroupNodesToFitChildren(
 function restoreEdges(level: number, edges: Edge[]) {
   const levelEdges = edges.filter(
     (edge) =>
-      edge.source.split(":").length <= level + 1 ||
-      edge.target.split(":").length <= level + 1
+      edge.source.split(".").length <= level + 1 ||
+      edge.target.split(".").length <= level + 1
   );
   const newEdges = new Set<Edge>();
   for (const edge of levelEdges) {
-    const source = edge.source.split(":");
-    const target = edge.target.split(":");
+    const source = edge.source.split(".");
+    const target = edge.target.split(".");
     if (source.length === target.length) continue; // don't need to update
     if (source.length <= level + 1) {
       newEdges.add({
         ...edge,
-        target: target.slice(0, level + 1).join(":"),
+        target: target.slice(0, level + 1).join("."),
       });
     } else {
       newEdges.add({
         ...edge,
-        source: source.slice(0, level + 1).join(":"),
+        source: source.slice(0, level + 1).join("."),
       });
     }
   }

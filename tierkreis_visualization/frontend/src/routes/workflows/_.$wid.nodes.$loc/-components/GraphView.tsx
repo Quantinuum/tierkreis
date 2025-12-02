@@ -6,7 +6,6 @@ import {
   ControlButton,
   Controls,
   Edge,
-  OnEdgesChange,
   OnNodeDrag,
   OnNodesChange,
   ReactFlow,

@@ -1,34 +1,48 @@
 import { BackendNode } from "@/nodes/types";
 import { bottomUpLayout } from "./layoutGraph";
-import { Edge } from "@xyflow/react";
 import { Graph } from "@/routes/workflows/_.$wid.nodes.$loc/-components/models";
+import { Rect, XYPosition } from "@xyflow/react";
 
-const nodesIntersect = (n1: BackendNode, n2: BackendNode): boolean => {
+const positionInRect = (p: XYPosition, rect: Rect): boolean => {
+  const x_in = rect.x <= p.x && p.x <= rect.x + rect.width;
+  const y_in = rect.y <= p.y && p.y <= rect.y + rect.height;
+  return x_in && y_in;
+};
+
+const containedIn = (n1: BackendNode, n2: BackendNode): boolean => {
   if (n1.id.split(".").length != n2.id.split(".").length) return false; // rely on same level collision only
   if (!n2.type?.includes("eval")) return false; // only evals will obstruct
 
-  const x_intersects =
-    n2.position.x <= n1.position.x &&
-    n1.position.x <= n2.position.x + (n2.style?.width ?? 0);
+  const w1 = Number(n1.measured?.width?.valueOf() ?? 0);
+  const h1 = Number(n1.measured?.height?.valueOf() ?? 0);
+  const w2 = Number(n2.style?.width?.valueOf() ?? 0);
+  const h2 = Number(n2.style?.height?.valueOf() ?? 0);
 
-  const y_intersects =
-    n2.position.y <= n1.position.y &&
-    n1.position.y <= n2.position.y + (n2.style?.height ?? 0);
-  console.log(y_intersects);
+  const rect: Rect = {
+    x: n2.position.x,
+    y: n2.position.y,
+    width: w2,
+    height: h2,
+  };
 
-  return x_intersects && y_intersects;
+  const t_l: XYPosition = { x: n1.position.x, y: n1.position.y };
+  const b_l: XYPosition = { x: n1.position.x, y: n1.position.y + h1 };
+  const t_r: XYPosition = { x: n1.position.x + w1, y: n1.position.y };
+  const b_r: XYPosition = { x: n1.position.x + w1, y: n1.position.y + h1 };
+
+  const t_l_in = positionInRect(t_l, rect);
+  const b_l_in = positionInRect(b_l, rect);
+  const t_r_in = positionInRect(t_r, rect);
+  const b_r_in = positionInRect(b_r, rect);
+
+  return t_l_in || b_l_in || t_r_in || b_r_in;
 };
 
 const getContainingNodes = (
   node: BackendNode,
   nodes: BackendNode[]
 ): BackendNode[] => {
-  let intersection = [];
-  for (let n of nodes) {
-    if (n.id === node.id) continue;
-    if (nodesIntersect(node, n)) intersection.push(n);
-  }
-  return intersection;
+  return nodes.filter((n) => containedIn(node, n));
 };
 
 export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {

@@ -125,20 +125,14 @@ function replaceEval(
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
-  const reactFlowInstance = useReactFlow<BackendNode, Edge>();
+  const handleDoubleClick = () => {
+    navigate({
+      to: "/workflows/$wid/nodes/$loc",
+      params: { wid: node_data.workflowId, loc: node_data.node_location },
+    });
+  };
+
   if (node_data.is_expanded) {
-    const collapseSelf = (nodeId: string) => {
-      const oldEdges = reactFlowInstance.getEdges();
-      const oldNodes = reactFlowInstance.getNodes();
-      const { nodes: newNodes, edges: newEdges } = hideChildren(
-        nodeId,
-        oldNodes,
-        oldEdges
-      );
-      const positionedNodes = bottomUpLayout(newNodes, newEdges);
-      reactFlowInstance.setNodes(positionedNodes);
-      reactFlowInstance.setEdges(newEdges);
-    };
     return (
       <NodeStatusIndicator status={node_data.status}>
         <InputHandleArray
@@ -157,43 +151,19 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
             }}
             search={{ openEvals: [] }}
           >
-            <Minus />
+            <Minus style={{ width: 48, height: 48 }} />
           </Link>
         </div>
+        <OutputHandleArray
+          handles={node_data.handles.outputs}
+          id={node_data.id}
+          isOpen={node_data.isTooltipOpen}
+          hoveredId={node_data.hoveredId}
+          setHoveredId={node_data.setHoveredId}
+        />
       </NodeStatusIndicator>
     );
   }
-  const loadChildren = async (
-    workflow_id: string,
-    node_location_str: string,
-    parentId: string
-  ) => {
-    const data = await fetchNode(workflow_id, node_location_str);
-    const nodes = parseNodes(data.nodes, data.edges, workflow_id);
-    const edges = parseEdges(data.edges, parentId);
-    const oldEdges = reactFlowInstance.getEdges();
-    const oldNodes = reactFlowInstance.getNodes();
-    const { nodes: newNodes, edges: newEdges } = replaceEval(
-      parentId,
-      nodes,
-      edges,
-      oldNodes,
-      oldEdges
-    );
-    const positionedNodes = bottomUpLayout(newNodes, [
-      ...newEdges,
-      ...oldEdges,
-    ]);
-    reactFlowInstance.setNodes(positionedNodes);
-    reactFlowInstance.setEdges(newEdges);
-  };
-
-  const handleDoubleClick = () => {
-    navigate({
-      to: "/workflows/$wid/nodes/$loc",
-      params: { wid: node_data.workflowId, loc: node_data.node_location },
-    });
-  };
 
   return (
     <NodeStatusIndicator status={node_data.status}>
