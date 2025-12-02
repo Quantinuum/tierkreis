@@ -84,23 +84,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Function Logs */
-        get: operations["get_function_logs_api_workflows__workflow_id__nodes__node_location_str__logs_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/workflows/{workflow_id}/logs": {
         parameters: {
             query?: never;
@@ -589,38 +572,6 @@ export interface operations {
                 workflow_id: string;
                 node_location_str: string;
                 port_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_function_logs_api_workflows__workflow_id__nodes__node_location_str__logs_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workflow_id: string;
-                node_location_str: string;
             };
             cookie?: never;
         };

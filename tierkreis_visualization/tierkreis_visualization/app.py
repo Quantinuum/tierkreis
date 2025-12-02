@@ -1,5 +1,3 @@
-from datetime import datetime
-import os
 import signal
 from sys import argv
 from tierkreis.controller.data.graph import GraphData

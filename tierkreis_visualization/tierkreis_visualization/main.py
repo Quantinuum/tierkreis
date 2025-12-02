@@ -1,4 +1,3 @@
-import json
 from sys import argv
 
 import uvicorn

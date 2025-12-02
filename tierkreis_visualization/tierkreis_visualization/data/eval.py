@@ -1,7 +1,6 @@
 import json
 from typing import Optional, assert_never
 
-from pydantic import BaseModel
 from tierkreis.controller.data.core import NodeIndex
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.graph import GraphData, IfElse, NodeDef

@@ -5,7 +5,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -18,7 +17,7 @@ from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
-from tierkreis_visualization.routers.models import GraphsResponse, PyGraph
+from tierkreis_visualization.routers.models import GraphsResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
