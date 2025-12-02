@@ -14,7 +14,7 @@ import {
   listWorkflowsQuery,
   logsQuery,
 } from "../../../../data/api";
-import { updateGraph } from "@/graph/updateGraph";
+import { amalgamateGraphData, updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
 import { GraphView } from "./GraphView";
 import { Graph } from "./models";
@@ -26,7 +26,6 @@ export default function NodePage(props: {
 }) {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
-  const { getIntersectingNodes } = useReactFlow();
 
   const workflowsQuery = listWorkflowsQuery();
   const logs = logsQuery(workflow_id);
@@ -55,41 +54,8 @@ export default function NodePage(props: {
 
   useEffect(() => {
     if (Object.keys(evalData).length == 0) return;
-    let ns = [];
-    let es = [];
-
-    for (let loc in evalData) {
-      ns.push(...evalData[loc].nodes);
-      es.push(...evalData[loc].edges);
-    }
-
-    // Rewire inputs of open EVALs
-    for (let e of es) {
-      if (!Object.keys(evalData).includes(e.to_node)) continue;
-      if (e.to_port === "body") continue;
-
-      const newTarget = evalData[e.to_node].nodes.find(
-        (x) => x.function_name === "input" && x.value === e.to_port
-      );
-      if (newTarget !== undefined) e.to_node = newTarget.id;
-    }
-
-    // TODO: rewire outputs of open EVALs
-    for (let e of es) {
-      if (!Object.keys(evalData).includes(e.from_node)) continue;
-
-      const newSource = evalData[e.from_node].nodes.find(
-        (x) => x.function_name === "output"
-      );
-      if (newSource !== undefined) e.from_node = newSource.id;
-    }
-
-    const newG = parseGraph({ nodes: ns, edges: es }, workflow_id);
-    for (let n of newG.nodes) {
-      if (Object.keys(evalData).includes(n.id)) {
-        n.data.is_expanded = true;
-      }
-    }
+    const { nodes, edges } = amalgamateGraphData(evalData);
+    const newG = parseGraph({ nodes, edges }, workflow_id, props.openEvals);
 
     setG((oldG: Graph) => {
       return updateGraph(oldG, newG);

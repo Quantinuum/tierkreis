@@ -1,7 +1,8 @@
-import { BackendNode } from "@/nodes/types";
+import { BackendNode, PyNode } from "@/nodes/types";
 import { bottomUpLayout } from "./layoutGraph";
 import { Graph } from "@/routes/workflows/_.$wid.nodes.$loc/-components/models";
 import { Rect, XYPosition } from "@xyflow/react";
+import { PyEdge } from "@/edges/types";
 
 const positionInRect = (p: XYPosition, rect: Rect): boolean => {
   const x_in = rect.x <= p.x && p.x <= rect.x + rect.width;
@@ -43,6 +44,44 @@ const getContainingNodes = (
   nodes: BackendNode[]
 ): BackendNode[] => {
   return nodes.filter((n) => containedIn(node, n));
+};
+
+export const amalgamateGraphData = (
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>
+): {
+  nodes: PyNode[];
+  edges: PyEdge[];
+} => {
+  let ns = [];
+  let es = [];
+
+  for (let loc in evalData) {
+    ns.push(...evalData[loc].nodes);
+    es.push(...evalData[loc].edges);
+  }
+
+  // Rewire inputs of open EVALs
+  for (let e of es) {
+    if (!Object.keys(evalData).includes(e.to_node)) continue;
+    if (e.to_port === "body") continue;
+
+    const newTarget = evalData[e.to_node].nodes.find(
+      (x) => x.function_name === "input" && x.value === e.to_port
+    );
+    if (newTarget !== undefined) e.to_node = newTarget.id;
+  }
+
+  // TODO: rewire outputs of open EVALs
+  for (let e of es) {
+    if (!Object.keys(evalData).includes(e.from_node)) continue;
+
+    const newSource = evalData[e.from_node].nodes.find(
+      (x) => x.function_name === "output"
+    );
+    if (newSource !== undefined) e.from_node = newSource.id;
+  }
+
+  return { nodes: ns, edges: es };
 };
 
 export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
