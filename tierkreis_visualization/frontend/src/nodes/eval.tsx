@@ -10,44 +10,20 @@ import { type NodeProps } from "@xyflow/react";
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "./types";
-import { Minus, Plus } from "lucide-react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
+import { closeLink, openLink } from "./links";
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
+  const wid = node_data.workflowId;
+  const node_loc = node_data.node_location;
+  let { loc } = useParams({ strict: false });
+  loc = loc ?? "-";
   const handleDoubleClick = () => {
     navigate({
       to: "/workflows/$wid/nodes/$loc",
-      params: { wid: node_data.workflowId, loc: node_data.node_location },
+      params: { wid, loc: node_loc },
     });
-  };
-
-  const openLink = () => {
-    const params = { wid: node_data.workflowId, loc: "-" };
-    const search = (prev: { openEvals?: string[] | undefined }) => {
-      const openEvals = [node_data.node_location, ...(prev.openEvals ?? [])];
-      return { openEvals };
-    };
-    return (
-      <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
-        <Plus />
-      </Link>
-    );
-  };
-
-  const closeLink = () => {
-    const params = { wid: node_data.workflowId, loc: "-" };
-    const search = (prev: { openEvals?: string[] | undefined }) => {
-      const openEvals = prev.openEvals?.filter(
-        (x) => !x.startsWith(node_data.node_location)
-      );
-      return { openEvals };
-    };
-    return (
-      <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
-        <Minus style={{ width: 48, height: 48 }} />
-      </Link>
-    );
   };
 
   if (node_data.is_expanded) {
@@ -60,7 +36,9 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           hoveredId={node_data.hoveredId}
           setHoveredId={node_data.setHoveredId}
         />
-        <div className="grid justify-items-end">{closeLink()}</div>
+        <div className="grid justify-items-end">
+          {closeLink(wid, loc, node_loc)}
+        </div>
         <OutputHandleArray
           handles={node_data.handles.outputs}
           id={node_data.id}
@@ -82,7 +60,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center">
-            {node_data.status != "Not started" && openLink()}
+            {node_data.status != "Not started" && openLink(wid, loc, node_loc)}
           </div>
           <InputHandleArray
             handles={node_data.handles.inputs}

@@ -13,11 +13,12 @@ from tierkreis.controller.data.graph import NodeDef
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.app_config import Request
+from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
-from tierkreis_visualization.routers.models import GraphsResponse
+from tierkreis_visualization.routers.models import GraphsResponse, PyGraph
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -70,23 +71,20 @@ def list_workflows(request: Request) -> list[WorkflowDisplay]:
         )
 
 
-def parse_node_location(node_location_str: str) -> Loc:
-    return Loc(node_location_str)
-
-
 @router.get("/{workflow_id}/graphs", response_model=GraphsResponse)
 def list_nodes(
     request: Request, workflow_id: UUID, locs: Annotated[list[Loc], Query()]
 ) -> GraphsResponse:
     storage = request.app.state.get_storage_fn(workflow_id)
-    return GraphsResponse(graphs={loc: get_eval_node(storage, loc, []) for loc in locs})
+    print(locs)
+    return GraphsResponse(graphs={loc: get_node_data(storage, loc) for loc in locs})
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}")
-def get_node(request: Request, workflow_id: UUID, node_location_str: str) -> NodeDef:
+def get_node(request: Request, workflow_id: UUID, node_location_str: str) -> PyGraph:
     node_location = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
-    return storage.read_node_def(node_location)
+    return get_node_data(storage, node_location)
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}")

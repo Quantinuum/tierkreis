@@ -16,6 +16,8 @@ import { Plus, Minus } from "lucide-react";
 import { bottomUpLayout } from "@/graph/layoutGraph";
 import { hideChildren } from "./hide_children";
 import { fetchNode } from "@/data/api";
+import { closeLink, openLink } from "./links";
+import { useNavigate, useParams } from "@tanstack/react-router";
 
 function replaceMap(
   nodeId: string,
@@ -90,82 +92,38 @@ function replaceMap(
 }
 
 export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
-  const reactFlowInstance = useReactFlow<BackendNode, Edge>();
+  const navigate = useNavigate();
+  const wid = node_data.workflowId;
+  const node_loc = node_data.node_location;
+  let { loc } = useParams({ strict: false });
+  loc = loc ?? "-";
+  const handleDoubleClick = () => {
+    navigate({
+      to: "/workflows/$wid/nodes/$loc",
+      params: { wid, loc: node_loc },
+    });
+  };
+
   if (node_data.is_expanded) {
-    const collapseSelf = (nodeId: string) => {
-      const oldEdges = reactFlowInstance.getEdges();
-      const oldNodes = reactFlowInstance.getNodes();
-      const { nodes: newNodes, edges: newEdges } = hideChildren(
-        nodeId,
-        oldNodes,
-        oldEdges
-      );
-      const positionedNodes = bottomUpLayout(newNodes, newEdges);
-      reactFlowInstance.setNodes(positionedNodes);
-      reactFlowInstance.setEdges(newEdges);
-    };
     return (
       <NodeStatusIndicator status={node_data.status}>
         <div className="grid justify-items-end">
-          <Button
-            className="z-index-5"
-            variant="secondary"
-            size="icon"
-            onClick={() => {
-              collapseSelf(node_data.id);
-            }}
-          >
-            <Minus />
-          </Button>
+          {closeLink(wid, loc, node_loc)}
         </div>
       </NodeStatusIndicator>
     );
   }
-  const loadChildren = async (
-    workflowId: string,
-    node_location: string,
-    parentId: string
-  ) => {
-    const data = await fetchNode(workflowId, node_location);
-    const nodes = parseNodes(data.nodes, data.edges, workflowId, parentId);
-    const oldEdges = reactFlowInstance.getEdges();
-    const oldNodes = reactFlowInstance.getNodes();
-    const { nodes: newNodes, edges: newEdges } = replaceMap(
-      parentId,
-      nodes,
-      oldNodes,
-      oldEdges
-    );
-    const positionedNodes = bottomUpLayout(newNodes, [
-      ...newEdges,
-      ...oldEdges,
-    ]);
-    reactFlowInstance.setNodes(positionedNodes);
-    reactFlowInstance.setEdges(newEdges);
-  };
   return (
     <NodeStatusIndicator status={node_data.status}>
       {}
-      <Card className="w-[180px] gap-2">
+      <Card onDoubleClick={handleDoubleClick} className="w-[180px] gap-2">
         <CardHeader>
           <CardTitle>{node_data.title}</CardTitle>
         </CardHeader>
 
         <CardContent>
           <div className="flex items-center justify-center">
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() =>
-                loadChildren(
-                  node_data.workflowId,
-                  node_data.node_location,
-                  node_data.id
-                )
-              }
-            >
-              <Plus />
-            </Button>
+            {openLink(wid, loc, node_loc)}
           </div>
           <InputHandleArray
             handles={node_data.handles.inputs}
