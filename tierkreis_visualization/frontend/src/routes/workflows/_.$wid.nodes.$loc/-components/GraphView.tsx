@@ -56,6 +56,10 @@ export const GraphView = (props: {
     node.data.pinned = true;
   }, []);
 
+  const ns = props.nodes.sort((a, b) =>
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  );
+
   return (
     <Layout
       workflows={props.workflows}
@@ -63,7 +67,7 @@ export const GraphView = (props: {
       info={props.infoProps}
     >
       <ReactFlow<BackendNode, Edge>
-        nodes={props.nodes}
+        nodes={ns}
         edges={props.edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

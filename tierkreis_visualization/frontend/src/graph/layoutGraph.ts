@@ -16,7 +16,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
   // calculate each level individually
   const nodeLevels = new Map<number, ShallowNode[]>();
   nodes.forEach((node) => {
-    const level = node.id.split(":").length - 1;
+    const level = node.id.split(".").length - 1;
     if (!nodeLevels.has(level)) {
       nodeLevels.set(level, []);
     }

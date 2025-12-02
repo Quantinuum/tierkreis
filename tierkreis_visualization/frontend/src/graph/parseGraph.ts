@@ -87,34 +87,42 @@ export function parseNodes(
   workflowId: string
 ): AppNode[] {
   // child nodes prepend their parents id eg. [0,1,2] => [0:0,0:1,0:2]
-  const parsedNodes = nodes.map((node) => ({
-    id: node.node_location,
-    type: nodeType(node.function_name),
-    position: { x: 0, y: 0 },
-    data: {
-      name: node.function_name,
-      status: node.status,
-      handles: getHandlesFromEdges(node.id, edges),
-      hidden_handles: undefined,
-      hidden_edges: undefined,
-      workflowId: workflowId,
-      node_location: node.node_location,
-      title: getTitle(node.function_name),
+  const parsedNodes = nodes.map((node) => {
+    let parent: string | undefined = node.node_location
+      .split(".")
+      .slice(0, -1)
+      .join(".");
+    if (parent === "-") parent = undefined;
+
+    return {
       id: node.node_location,
-      label: node.function_name,
-      pinned: false,
-      value: parseNodeValue(node.value),
-      setInfo: undefined,
-      is_expanded: false,
-      isTooltipOpen: false,
-      hoveredId: "",
-      setHoveredId: () => {},
-      started_time: node.started_time,
-      finished_time: node.finished_time,
-    },
-    parentId: node.node_location.split(".").slice(0, -1).join("."),
-    extent: "parent",
-  }));
+      type: nodeType(node.function_name),
+      position: { x: 0, y: 0 },
+      data: {
+        name: node.function_name,
+        status: node.status,
+        handles: getHandlesFromEdges(node.id, edges),
+        hidden_handles: undefined,
+        hidden_edges: undefined,
+        workflowId: workflowId,
+        node_location: node.node_location,
+        title: getTitle(node.function_name),
+        id: node.node_location,
+        label: node.function_name,
+        pinned: false,
+        value: parseNodeValue(node.value),
+        setInfo: undefined,
+        is_expanded: false,
+        isTooltipOpen: false,
+        hoveredId: "",
+        setHoveredId: () => {},
+        started_time: node.started_time,
+        finished_time: node.finished_time,
+      },
+      parentId: parent,
+      // extent: "parent",
+    };
+  });
   return parsedNodes;
 }
 
@@ -170,11 +178,8 @@ export function parseGraph(
   workflowId: string,
   parentId?: string
 ) {
-  console.log(parentId);
-
   const nodes = parseNodes(data.nodes, data.edges, workflowId);
   const edges = parseEdges(data.edges, parentId);
-  console.log(nodes);
 
   return { nodes, edges };
 }

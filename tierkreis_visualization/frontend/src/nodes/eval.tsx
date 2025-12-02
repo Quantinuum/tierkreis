@@ -149,16 +149,16 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           setHoveredId={node_data.setHoveredId}
         />
         <div className="grid justify-items-end">
-          <Button
-            className="z-index-5"
-            variant="secondary"
-            size="icon"
-            onClick={() => {
-              collapseSelf(node_data.id);
+          <Link
+            to="/workflows/$wid/nodes/$loc"
+            params={{
+              wid: node_data.workflowId,
+              loc: "-",
             }}
+            search={{ openEvals: [] }}
           >
             <Minus />
-          </Button>
+          </Link>
         </div>
       </NodeStatusIndicator>
     );
@@ -169,7 +169,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
     parentId: string
   ) => {
     const data = await fetchNode(workflow_id, node_location_str);
-    const nodes = parseNodes(data.nodes, data.edges, workflow_id, parentId);
+    const nodes = parseNodes(data.nodes, data.edges, workflow_id);
     const edges = parseEdges(data.edges, parentId);
     const oldEdges = reactFlowInstance.getEdges();
     const oldNodes = reactFlowInstance.getNodes();
@@ -216,20 +216,6 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
               >
                 <Plus />
               </Link>
-              // <Button
-              //   className="flex-none"
-              //   variant="secondary"
-              //   size="icon"
-              //   onClick={() =>
-              //     loadChildren(
-              //       node_data.workflowId,
-              //       node_data.node_location,
-              //       node_data.id
-              //     )
-              //   }
-              // >
-              //   <Plus />
-              // </Button>
             )}
           </div>
           <InputHandleArray
