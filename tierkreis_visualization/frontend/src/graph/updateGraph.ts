@@ -90,7 +90,12 @@ export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
   new_graph.nodes = bottomUpLayout(new_graph.nodes, new_graph.edges);
   for (let node of new_graph.nodes) {
     const existing = nodesMap.get(node.id);
+
     if (!existing) continue;
+    // Loop or map nodes need to be put back in the right place.
+    if (node.id.split(".").at(-1)?.includes("L")) continue;
+    if (node.id.split(".").at(-1)?.includes("M")) continue;
+
     const containingNodes = getContainingNodes(existing, new_graph.nodes);
     if (containingNodes.length === 0) node.position = existing.position;
   }

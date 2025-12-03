@@ -76,7 +76,6 @@ def list_nodes(
     request: Request, workflow_id: UUID, locs: Annotated[list[Loc], Query()]
 ) -> GraphsResponse:
     storage = request.app.state.get_storage_fn(workflow_id)
-    print(locs)
     return GraphsResponse(graphs={loc: get_node_data(storage, loc) for loc in locs})
 
 
