@@ -11,9 +11,13 @@ import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "./types";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { zoomOutButton, zoomInButton } from "./node_navigation";
+import { zoomOutButton, ZoomInButton } from "./node_navigation";
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
+  console.log("EvalNode");
+
+  console.log(node_data);
+
   const navigate = useNavigate();
   const wid = node_data.workflowId;
   const node_loc = node_data.node_location;
@@ -49,6 +53,16 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
       </NodeStatusIndicator>
     );
   }
+  console.log(node_data);
+
+  const inButton = node_data.status != "Not started" && (
+    <ZoomInButton
+      wid={wid}
+      loc={loc}
+      node_loc={node_loc}
+      node_type={node_data.node_type}
+    />
+  );
 
   return (
     <NodeStatusIndicator status={node_data.status}>
@@ -59,10 +73,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center">
-            {node_data.status != "Not started" &&
-              zoomInButton(wid, loc, node_loc, "eval")}
-          </div>
+          <div className="flex items-center justify-center">{inButton}</div>
           <InputHandleArray
             handles={node_data.handles.inputs}
             id={node_data.id}

@@ -7,14 +7,20 @@ type SearchData = {
   openMaps?: string[] | undefined;
 };
 
-export const zoomInButton = (
-  wid: string,
-  loc: string,
-  node_loc: string,
-  node_type: "eval" | "loop" | "map"
-) => {
+export const ZoomInButton = (props: {
+  wid: string;
+  loc: string;
+  node_loc: string;
+  node_type: "eval" | "loop" | "map";
+}) => {
+  const { wid, loc, node_loc, node_type } = props;
+
   const params = { wid: wid, loc };
   const search = (prev: SearchData): SearchData => {
+    console.log("zoomIn");
+    console.log(prev);
+    console.log(node_type);
+
     const openEvals = [...(prev.openEvals ?? [])];
     const openLoops = [...(prev.openLoops ?? [])];
     const openMaps = [...(prev.openMaps ?? [])];
@@ -27,7 +33,11 @@ export const zoomInButton = (
     return { openEvals, openLoops, openMaps };
   };
   return (
-    <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
+    <Link
+      to="/workflows/$wid/nodes/$loc"
+      params={params}
+      search={(p) => search(p)}
+    >
       <Plus />
     </Link>
   );

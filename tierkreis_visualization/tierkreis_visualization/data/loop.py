@@ -27,6 +27,7 @@ def get_loop_node(
             status="Finished",
             function_name=f"L{n}",
             node_location=node_location.L(n),
+            node_type="eval",
             started_time=storage.read_started_time(node_location.L(n)) or "",
             finished_time=storage.read_finished_time(node_location.L(n)) or "",
         )
@@ -45,6 +46,7 @@ def get_loop_node(
             status=last_status,
             function_name=f"L{i}",
             node_location=new_location,
+            node_type="eval",
             started_time=storage.read_started_time(new_location) or "",
             finished_time=storage.read_finished_time(new_location) or "",
         )

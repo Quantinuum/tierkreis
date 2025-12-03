@@ -6,6 +6,7 @@ export type PyNode = {
   status: "Not started" | "Started" | "Error" | "Finished";
   function_name: string;
   node_location: string;
+  node_type: string;
   value?: unknown;
   started_time: string;
   finished_time: string;
@@ -36,5 +37,6 @@ export type BackendNode = Node<{
   setHoveredId: (id: string) => void;
   started_time: string;
   finished_time: string;
+  node_type: string;
 }>;
 export type AppNode = BackendNode;

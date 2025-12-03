@@ -187,6 +187,8 @@ export interface components {
             status: "Not started" | "Started" | "Error" | "Finished";
             /** Function Name */
             function_name: string;
+            /** Node Type */
+            node_type: string;
             /**
              * Node Location
              * @default

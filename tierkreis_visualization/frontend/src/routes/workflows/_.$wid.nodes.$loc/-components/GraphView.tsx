@@ -57,7 +57,6 @@ export const GraphView = (props: {
   const ns = props.nodes.sort((a, b) =>
     a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   );
-
   const revertPositionChanges = () => {
     reactFlowInstance.setEdges(reactFlowInstance.getEdges());
     reactFlowInstance.setNodes(

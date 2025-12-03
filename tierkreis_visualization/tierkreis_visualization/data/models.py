@@ -9,6 +9,7 @@ class PyNode(BaseModel):
     id: Loc
     status: NodeStatus
     function_name: str
+    node_type: str
     node_location: str = ""
     value: Any | None = None
     started_time: str

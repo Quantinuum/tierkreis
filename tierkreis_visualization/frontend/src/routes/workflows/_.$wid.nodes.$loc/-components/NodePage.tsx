@@ -59,6 +59,7 @@ export default function NodePage(props: {
       props.openLoops,
       props.openMaps
     );
+
     const newG = parseGraph(
       { nodes, edges },
       workflow_id,

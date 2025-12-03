@@ -113,6 +113,7 @@ def get_eval_node(
             status=status,
             function_name=name,
             node_location=new_location,
+            node_type=node.type,
             value=value,
             started_time=started_time,
             finished_time=finished_time,

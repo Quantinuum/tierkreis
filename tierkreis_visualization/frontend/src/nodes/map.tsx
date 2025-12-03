@@ -10,7 +10,7 @@ import { type NodeProps } from "@xyflow/react";
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "@/nodes/types";
-import { zoomOutButton, zoomInButton } from "./node_navigation";
+import { zoomOutButton, ZoomInButton } from "./node_navigation";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
@@ -35,6 +35,11 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
       </NodeStatusIndicator>
     );
   }
+
+  const inButton = node_data.status != "Not started" && (
+    <ZoomInButton wid={wid} loc={loc} node_loc={node_loc} node_type="map" />
+  );
+
   return (
     <NodeStatusIndicator status={node_data.status}>
       {}
@@ -44,9 +49,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
         </CardHeader>
 
         <CardContent>
-          <div className="flex items-center justify-center">
-            {zoomInButton(wid, loc, node_loc, "map")}
-          </div>
+          <div className="flex items-center justify-center">{inButton}</div>
           <InputHandleArray
             handles={node_data.handles.inputs}
             id={node_data.id}

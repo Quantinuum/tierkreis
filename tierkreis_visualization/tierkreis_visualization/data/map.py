@@ -29,6 +29,7 @@ def get_map_node(
             status="Started",
             function_name=ele,
             node_location=loc.M(i),
+            node_type="eval",
             started_time=storage.read_started_time(loc.M(i)) or "",
             finished_time=storage.read_finished_time(loc.M(i)) or "",
         )
