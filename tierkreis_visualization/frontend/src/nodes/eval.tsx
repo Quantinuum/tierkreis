@@ -11,7 +11,7 @@ import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "./types";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { zoomOutButton, zoomInButton } from "./expanders";
+import { zoomOutButton, zoomInButton } from "./node_navigation";
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();

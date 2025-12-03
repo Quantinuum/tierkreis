@@ -10,7 +10,7 @@ import { type NodeProps } from "@xyflow/react";
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "@/nodes/types";
-import { zoomOutButton, zoomInButton } from "./expanders";
+import { zoomOutButton, zoomInButton } from "./node_navigation";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
