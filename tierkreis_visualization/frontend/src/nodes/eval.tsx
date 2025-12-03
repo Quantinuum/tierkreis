@@ -11,7 +11,7 @@ import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "./types";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { closeLink, openLink } from "./links";
+import { zoomOutButton, zoomInButton } from "./expanders";
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
@@ -37,7 +37,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           setHoveredId={node_data.setHoveredId}
         />
         <div className="grid justify-items-end">
-          {closeLink(wid, loc, node_loc)}
+          {zoomOutButton(wid, loc, node_loc)}
         </div>
         <OutputHandleArray
           handles={node_data.handles.outputs}
@@ -60,7 +60,8 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center">
-            {node_data.status != "Not started" && openLink(wid, loc, node_loc)}
+            {node_data.status != "Not started" &&
+              zoomInButton(wid, loc, node_loc, "eval")}
           </div>
           <InputHandleArray
             handles={node_data.handles.inputs}

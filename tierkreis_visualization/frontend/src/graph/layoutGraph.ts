@@ -3,6 +3,7 @@ import { calculateNodePositions } from "@/graph/parseGraph";
 import { AppNode, BackendNode } from "@/nodes/types";
 import { nodeHeight, nodeWidth } from "@/data/constants";
 import { Edge } from "@xyflow/react";
+import { loc_depth, loc_steps } from "@/data/loc";
 
 interface ShallowNode {
   id: string;
@@ -16,7 +17,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
   // calculate each level individually
   const nodeLevels = new Map<number, ShallowNode[]>();
   nodes.forEach((node) => {
-    const level = node.id.split(".").length - 1;
+    const level = loc_depth(node.id) - 1;
     if (!nodeLevels.has(level)) {
       nodeLevels.set(level, []);
     }
@@ -100,13 +101,12 @@ function resizeGroupNodesToFitChildren(
 function restoreEdges(level: number, edges: Edge[]) {
   const levelEdges = edges.filter(
     (edge) =>
-      edge.source.split(".").length <= level + 1 ||
-      edge.target.split(".").length <= level + 1
+      loc_depth(edge.source) <= level + 1 || loc_depth(edge.target) <= level + 1
   );
   const newEdges = new Set<Edge>();
   for (const edge of levelEdges) {
-    const source = edge.source.split(".");
-    const target = edge.target.split(".");
+    const source = loc_steps(edge.source);
+    const target = loc_steps(edge.target);
     if (source.length === target.length) continue; // don't need to update
     if (source.length <= level + 1) {
       newEdges.add({

@@ -18,6 +18,8 @@ export default function NodePage(props: {
   workflow_id: string;
   node_location_str: string;
   openEvals: string[];
+  openLoops: string[];
+  openMaps: string[];
 }) {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;

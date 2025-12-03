@@ -4,6 +4,7 @@ import dagre from "@dagrejs/dagre";
 import { Edge } from "@xyflow/react";
 import { nodeHeight, nodeWidth } from "@/data/constants";
 import { CSSProperties } from "react";
+import { loc_parent } from "@/data/loc";
 
 function nodeType(function_name: string) {
   if (function_name.match(/^L?\d+$/)) {
@@ -88,10 +89,7 @@ export function parseNodes(
 ): AppNode[] {
   // child nodes prepend their parents id eg. [0,1,2] => [0:0,0:1,0:2]
   const parsedNodes = nodes.map((node) => {
-    let parent: string | undefined = node.node_location
-      .split(".")
-      .slice(0, -1)
-      .join(".");
+    let parent: string | undefined = loc_parent(node.node_location);
     if (parent === "-") parent = undefined;
 
     return {

@@ -3,6 +3,7 @@ import { bottomUpLayout } from "./layoutGraph";
 import { Graph } from "@/routes/workflows/_.$wid.nodes.$loc/-components/models";
 import { Rect, XYPosition } from "@xyflow/react";
 import { PyEdge } from "@/edges/types";
+import { loc_depth, loc_peek } from "@/data/loc";
 
 const positionInRect = (p: XYPosition, rect: Rect): boolean => {
   const x_in = rect.x <= p.x && p.x <= rect.x + rect.width;
@@ -11,7 +12,7 @@ const positionInRect = (p: XYPosition, rect: Rect): boolean => {
 };
 
 const containedIn = (n1: BackendNode, n2: BackendNode): boolean => {
-  if (n1.id.split(".").length != n2.id.split(".").length) return false; // rely on same level collision only
+  if (loc_depth(n1.id) != loc_depth(n2.id)) return false; // rely on same level collision only
   if (!n2.type?.includes("eval")) return false; // only evals will obstruct
 
   const w1 = Number(n1.measured?.width?.valueOf() ?? 0);
@@ -93,8 +94,8 @@ export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
 
     if (!existing) continue;
     // Loop or map nodes need to be put back in the right place.
-    if (node.id.split(".").at(-1)?.includes("L")) continue;
-    if (node.id.split(".").at(-1)?.includes("M")) continue;
+    if (loc_peek(node.id)?.includes("L")) continue;
+    if (loc_peek(node.id)?.includes("M")) continue;
 
     const containingNodes = getContainingNodes(existing, new_graph.nodes);
     if (containingNodes.length === 0) node.position = existing.position;
