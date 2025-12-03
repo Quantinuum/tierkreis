@@ -37,6 +37,6 @@ export type BackendNode = Node<{
   setHoveredId: (id: string) => void;
   started_time: string;
   finished_time: string;
-  node_type: string;
+  node_type: "eval" | "loop" | "map";
 }>;
 export type AppNode = BackendNode;

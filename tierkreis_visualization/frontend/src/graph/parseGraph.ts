@@ -116,7 +116,7 @@ export function parseNodes(
         setHoveredId: () => {},
         started_time: node.started_time,
         finished_time: node.finished_time,
-        node_type: node.node_type,
+        node_type: node.node_type as "eval" | "loop" | "map",
       },
       parentId: parent,
       // extent: "parent",
