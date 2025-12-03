@@ -29,6 +29,8 @@ export default function NodePage(props: {
   const evalQuery = createEvalQuery(workflow_id, [
     node_location_str,
     ...props.openEvals,
+    ...props.openLoops,
+    ...props.openMaps,
   ]);
   const evalData = evalQuery.data?.graphs ?? {};
 
@@ -51,8 +53,19 @@ export default function NodePage(props: {
 
   useEffect(() => {
     if (Object.keys(evalData).length == 0) return;
-    const { nodes, edges } = amalgamateGraphData(evalData);
-    const newG = parseGraph({ nodes, edges }, workflow_id, props.openEvals);
+    const { nodes, edges } = amalgamateGraphData(
+      evalData,
+      props.openEvals,
+      props.openLoops,
+      props.openMaps
+    );
+    const newG = parseGraph(
+      { nodes, edges },
+      workflow_id,
+      props.openEvals,
+      props.openLoops,
+      props.openMaps
+    );
     setG((oldG: Graph) => updateGraph(oldG, newG));
   }, [props, workflow_id, node_location_str, evalData]);
 

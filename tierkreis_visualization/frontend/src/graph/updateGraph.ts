@@ -13,7 +13,14 @@ const positionInRect = (p: XYPosition, rect: Rect): boolean => {
 
 const containedIn = (n1: BackendNode, n2: BackendNode): boolean => {
   if (loc_depth(n1.id) != loc_depth(n2.id)) return false; // rely on same level collision only
-  if (!n2.type?.includes("eval")) return false; // only evals will obstruct
+  if (
+    !(
+      n2.type?.includes("eval") ||
+      n2.type?.includes("loop") ||
+      n2.type?.includes("map")
+    )
+  )
+    return false; // only nested nodes will obstruct
 
   const w1 = Number(n1.measured?.width?.valueOf() ?? 0);
   const h1 = Number(n1.measured?.height?.valueOf() ?? 0);
@@ -48,7 +55,10 @@ const getContainingNodes = (
 };
 
 export const amalgamateGraphData = (
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
+  openEvals: string[],
+  openLoops: string[],
+  openMaps: string[]
 ): {
   nodes: PyNode[];
   edges: PyEdge[];
@@ -61,9 +71,39 @@ export const amalgamateGraphData = (
     es.push(...evalData[loc].edges);
   }
 
+  // Rewire inputs of open MAPs
+  for (let e of es) {
+    if (!openMaps.includes(e.to_node)) continue;
+
+    const prefix = e.to_node + ".M";
+    const current_depth = loc_depth(e.to_node);
+    const newTargets = ns.filter(
+      (x) => x.id.startsWith(prefix) && loc_depth(x.id) == current_depth + 1
+    );
+    const newEdges = newTargets.map((x) => {
+      return { ...e, to_node: x.id };
+    });
+    es = [...es, ...newEdges];
+  }
+
+  // Rewire outputs of open MAPs
+  for (let e of es) {
+    if (!openMaps.includes(e.from_node)) continue;
+
+    const prefix = e.from_node + ".M";
+    const current_depth = loc_depth(e.from_node);
+    const newSources = ns.filter(
+      (x) => x.id.startsWith(prefix) && loc_depth(x.id) == current_depth + 1
+    );
+    const newEdges = newSources.map((x) => {
+      return { ...e, from_node: x.id };
+    });
+    es = [...es, ...newEdges];
+  }
+
   // Rewire inputs of open EVALs
   for (let e of es) {
-    if (!Object.keys(evalData).includes(e.to_node)) continue;
+    if (!openEvals.includes(e.to_node)) continue;
     if (e.to_port === "body") continue;
 
     const newTarget = evalData[e.to_node].nodes.find(
@@ -74,7 +114,7 @@ export const amalgamateGraphData = (
 
   // TODO: rewire outputs of open EVALs
   for (let e of es) {
-    if (!Object.keys(evalData).includes(e.from_node)) continue;
+    if (!openEvals.includes(e.from_node)) continue;
 
     const newSource = evalData[e.from_node].nodes.find(
       (x) => x.function_name === "output"

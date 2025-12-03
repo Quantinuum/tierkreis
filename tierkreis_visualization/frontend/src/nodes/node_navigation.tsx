@@ -16,8 +16,8 @@ export const zoomInButton = (
   const params = { wid: wid, loc };
   const search = (prev: SearchData): SearchData => {
     const openEvals = [...(prev.openEvals ?? [])];
-    const openLoops = [...(prev.openEvals ?? [])];
-    const openMaps = [...(prev.openEvals ?? [])];
+    const openLoops = [...(prev.openLoops ?? [])];
+    const openMaps = [...(prev.openMaps ?? [])];
 
     if (node_type == "eval") openEvals.push(node_loc);
     else if (node_type == "loop") openLoops.push(node_loc);

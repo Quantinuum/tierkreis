@@ -109,7 +109,7 @@ def get_eval_node(
                 assert_never(node)
 
         pynode = PyNode(
-            id=node_location.N(i),
+            id=new_location,
             status=status,
             function_name=name,
             node_location=new_location,

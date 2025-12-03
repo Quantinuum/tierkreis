@@ -23,7 +23,7 @@ def get_loop_node(
 
     nodes = [
         PyNode(
-            id=node_location.N(n),
+            id=node_location.L(n),
             status="Finished",
             function_name=f"L{n}",
             node_location=node_location.L(n),
@@ -41,7 +41,7 @@ def get_loop_node(
         last_status = "Started"
     nodes.append(
         PyNode(
-            id=node_location.N(i),
+            id=new_location,
             status=last_status,
             function_name=f"L{i}",
             node_location=new_location,

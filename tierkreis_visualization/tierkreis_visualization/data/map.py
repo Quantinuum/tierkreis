@@ -25,7 +25,7 @@ def get_map_node(
     nodes: list[PyNode] = []
     for i, ele in map_eles:
         node = PyNode(
-            id=loc.N(i),
+            id=loc.M(i),
             status="Started",
             function_name=ele,
             node_location=loc.M(i),

@@ -175,12 +175,18 @@ export function parseGraph(
   data: { nodes: PyNode[]; edges: PyEdge[] },
   workflowId: string,
   openEvals: string[],
+  openLoops: string[],
+  openMaps: string[],
   parentId?: string
 ) {
   const nodes = parseNodes(data.nodes, data.edges, workflowId);
   const edges = parseEdges(data.edges, parentId);
 
-  for (let n of nodes) if (openEvals.includes(n.id)) n.data.is_expanded = true;
+  for (let n of nodes) {
+    if (openEvals.includes(n.id)) n.data.is_expanded = true;
+    if (openLoops.includes(n.id)) n.data.is_expanded = true;
+    if (openMaps.includes(n.id)) n.data.is_expanded = true;
+  }
 
   return { nodes, edges };
 }
