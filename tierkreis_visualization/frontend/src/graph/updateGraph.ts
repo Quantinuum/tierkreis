@@ -69,7 +69,7 @@ export const amalgamateGraphData = (
     es = [...es, ...newEdges];
   }
 
-  // Rewire outputs of open MAPs
+  // Rewire outputs of open LOOPs
   for (let e of es) {
     if (!openLoops.includes(e.from_node)) continue;
 
@@ -96,7 +96,7 @@ export const amalgamateGraphData = (
     if (newTarget !== undefined) e.to_node = newTarget.id;
   }
 
-  // TODO: rewire outputs of open EVALs
+  // Rewire outputs of open EVALs
   for (let e of es) {
     if (!openEvals.includes(e.from_node)) continue;
 
