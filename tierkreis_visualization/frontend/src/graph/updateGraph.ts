@@ -4,6 +4,8 @@ import { loc_children, loc_peek } from "@/data/loc";
 import { PyEdge, PyNode } from "@/data/api_types";
 import { getContainingNodes } from "@/nodes/layout";
 
+const DELETE_TAG = "fordeletion";
+
 export const amalgamateGraphData = (
   evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
   openEvals: string[],
@@ -32,7 +34,7 @@ export const amalgamateGraphData = (
     const newEdges = newTargets.map((x) => {
       return { ...e, to_node: x };
     });
-    e.to_node = "dummy";
+    e.to_node = DELETE_TAG;
     es = [...es, ...newEdges];
   }
 
@@ -47,7 +49,7 @@ export const amalgamateGraphData = (
     const newEdges = newSources.map((x) => {
       return { ...e, from_node: x };
     });
-    e.from_node = "dummy";
+    e.from_node = DELETE_TAG;
     es = [...es, ...newEdges];
   }
 
@@ -62,7 +64,7 @@ export const amalgamateGraphData = (
     const newEdges = newTargets.map((x) => {
       return { ...e, to_node: x };
     });
-    e.to_node = "dummy";
+    e.to_node = DELETE_TAG;
     es = [...es, ...newEdges];
   }
 
@@ -77,7 +79,7 @@ export const amalgamateGraphData = (
     const newEdges = newSources.map((x) => {
       return { ...e, from_node: x };
     });
-    e.from_node = "dummy";
+    e.from_node = DELETE_TAG;
     es = [...es, ...newEdges];
   }
 
@@ -101,6 +103,8 @@ export const amalgamateGraphData = (
     );
     if (newSource !== undefined) e.from_node = newSource.id;
   }
+
+  es = es.filter((x) => x.to_node !== DELETE_TAG && x.from_node !== DELETE_TAG);
 
   return { nodes: ns, edges: es };
 };
