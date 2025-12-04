@@ -82,7 +82,7 @@ function parseNodeValue(value: unknown): string | null {
   return null;
 }
 
-export function parseNodes(
+function parseNodes(
   nodes: PyNode[],
   edges: PyEdge[],
   workflowId: string
@@ -143,7 +143,7 @@ function replacer(_: string, value: unknown): unknown {
   return value;
 }
 
-export function parseEdges(edges: PyEdge[], parentId?: string): Edge[] {
+function parseEdges(edges: PyEdge[], parentId?: string): Edge[] {
   const uniqueCount: Map<string, number> = new Map();
   const prefix = parentId ? `${parentId}:` : "";
   return edges.map((edge) => {
