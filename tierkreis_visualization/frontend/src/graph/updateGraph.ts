@@ -1,6 +1,6 @@
 import { bottomUpLayout } from "./layoutGraph";
 import { Graph } from "./models";
-import { loc_children, loc_depth, loc_peek } from "@/data/loc";
+import { loc_children, loc_peek } from "@/data/loc";
 import { PyEdge, PyNode } from "@/data/api_types";
 import { getContainingNodes } from "@/nodes/layout";
 
