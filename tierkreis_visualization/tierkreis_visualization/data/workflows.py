@@ -44,6 +44,7 @@ def get_workflows_from_disk() -> list[WorkflowDisplay]:
             name = metadata["name"] or "workflow"
             start = metadata.get("start_time", datetime.now().isoformat())
             errors = [x for x in storage.read_errors(Loc()).split("\n") if x]
+            errors = list(set(errors))
             workflows.append(
                 WorkflowDisplay(
                     id=id, id_int=int(id), name=name, start_time=start, errors=errors
