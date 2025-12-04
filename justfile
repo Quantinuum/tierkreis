@@ -36,6 +36,7 @@ prod:
   bun install
   bunx vite build .
 
+
 examples:
   {{uvrun}} examples/hello_world_graph.py
   {{uvrun}} examples/defaults.py
@@ -86,3 +87,4 @@ check-stubs:
   just generate
   git update-index --refresh
   git diff-index --quiet HEAD --
+  
