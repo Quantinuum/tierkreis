@@ -1,10 +1,10 @@
-import { PyEdge } from "@/edges/types";
-import { AppNode, PyNode } from "@/nodes/types";
+import { AppNode } from "@/nodes/types";
 import dagre from "@dagrejs/dagre";
 import { Edge } from "@xyflow/react";
 import { nodeHeight, nodeWidth } from "@/data/constants";
 import { CSSProperties } from "react";
 import { loc_parent } from "@/data/loc";
+import { PyEdge, PyNode } from "@/data/api_types";
 
 function nodeType(function_name: string) {
   if (function_name.match(/^L?\d+$/)) {

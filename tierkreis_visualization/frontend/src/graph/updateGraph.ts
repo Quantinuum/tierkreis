@@ -1,9 +1,9 @@
-import { BackendNode, PyNode } from "@/nodes/types";
+import { BackendNode } from "@/nodes/types";
 import { bottomUpLayout } from "./layoutGraph";
 import { Graph } from "@/routes/workflows/_.$wid.nodes.$loc/-components/models";
 import { Rect, XYPosition } from "@xyflow/react";
-import { PyEdge } from "@/edges/types";
 import { loc_depth, loc_peek } from "@/data/loc";
+import { PyEdge, PyNode } from "@/data/api_types";
 
 const positionInRect = (p: XYPosition, rect: Rect): boolean => {
   const x_in = rect.x <= p.x && p.x <= rect.x + rect.width;
