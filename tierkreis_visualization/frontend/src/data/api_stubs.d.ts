@@ -223,6 +223,8 @@ export interface components {
             name: string | null;
             /** Start Time */
             start_time: string;
+            /** Errors */
+            errors: string[];
         };
     };
     responses: never;

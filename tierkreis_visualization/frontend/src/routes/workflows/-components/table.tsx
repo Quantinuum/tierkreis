@@ -17,11 +17,18 @@ export function WorkflowsTable(props: { data: WorkflowRowData[] }) {
       header: "id",
       sortingFn: (x, y) => x.original.id_int - y.original.id_int,
     }),
-    columnHelper.accessor("start_time", { header: "Start time" }),
+    columnHelper.accessor("start_time", {
+      header: "Start time",
+      invertSorting: true,
+    }),
+    columnHelper.accessor("errors", {
+      header: "Errors",
+      sortingFn: (x, y) => y.original.errors.length - x.original.errors.length,
+    }),
   ];
 
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "start_time", desc: true },
+    { id: "start_time", desc: false },
   ]);
   const defaultData = useMemo(() => [], []);
   const table = useReactTable({

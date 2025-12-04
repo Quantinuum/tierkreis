@@ -16,6 +16,7 @@ export const WorkflowsTableRow = (props: { row: WorkflowRowData }) => {
       <td className="p-4 border-t-1">{r.name}</td>
       <td className="p-4 border-t-1">{r.id}</td>
       <td className="p-4 border-t-1">{d_display}</td>
+      <td className="p-4 border-t-1">{r.errors.join(",")}</td>
     </tr>
   );
 };

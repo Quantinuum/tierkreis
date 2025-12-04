@@ -3,4 +3,5 @@ type WorkflowRowData = {
   id_int: number;
   name: string | null;
   start_time: string;
+  errors: string[];
 };
