@@ -8,10 +8,10 @@ import {
 import { useMemo, useState } from "react";
 import { WorkflowsTableRow } from "./row";
 import { ColumnHeader } from "./header";
-import { Workflow } from "@/data/api_types";
+import { WorkflowDisplay } from "@/data/api_types";
 
-export function WorkflowsTable(props: { data: Workflow[] }) {
-  const columnHelper = createColumnHelper<Workflow>();
+export function WorkflowsTable(props: { data: WorkflowDisplay[] }) {
+  const columnHelper = createColumnHelper<WorkflowDisplay>();
   const columns = [
     columnHelper.accessor("name", { header: "Name" }),
     columnHelper.accessor("id", {

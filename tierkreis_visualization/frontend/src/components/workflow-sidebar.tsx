@@ -9,13 +9,13 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
-import { Workflow } from "@/data/api_types";
+import { WorkflowDisplay } from "@/data/api_types";
 
 export function WorkflowSidebar({
   workflows,
   workflowId,
 }: {
-  workflows: Workflow[];
+  workflows: WorkflowDisplay[];
   workflowId: string;
 }) {
   return (

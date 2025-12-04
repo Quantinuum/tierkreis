@@ -3,7 +3,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { InfoProps } from "@/components/types";
-import { Workflow } from "@/data/api_types";
+import { WorkflowDisplay } from "@/data/api_types";
 import { Breadcrumbs } from "./breadcrumbs";
 
 export default function Layout({
@@ -14,7 +14,7 @@ export default function Layout({
   loc,
 }: {
   children: React.ReactNode;
-  workflows: Workflow[];
+  workflows: WorkflowDisplay[];
   workflowId: string;
   info: InfoProps;
   loc: string;

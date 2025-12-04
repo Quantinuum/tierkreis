@@ -1,6 +1,6 @@
 import Layout from "@/components/layout";
 import { InfoProps } from "@/components/types";
-import { Workflow } from "@/data/api_types";
+import { WorkflowDisplay } from "@/data/api_types";
 import { BackendNode } from "@/nodes/types";
 import {
   Background,
@@ -25,7 +25,7 @@ export const GraphView = (props: {
   onNodesChange: OnNodesChange<BackendNode>;
   workflow_id: string;
   loc: string;
-  workflows: Workflow[];
+  workflows: WorkflowDisplay[];
   infoProps: InfoProps;
   setInfo: (arg: InfoProps) => void;
 }) => {

@@ -1,4 +1,4 @@
-import { Workflow } from "@/data/api_types";
+import { WorkflowDisplay } from "@/data/api_types";
 import { loc_parent } from "@/data/loc";
 import { Link, useNavigate } from "@tanstack/react-router";
 
@@ -18,7 +18,7 @@ const errorLinks = (wid: string, errors: string[]) => {
   return errors.map((x) => <NodeLink wid={wid} loc={x} />);
 };
 
-export const WorkflowsTableRow = (props: { row: Workflow }) => {
+export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
   const navigate = useNavigate();
   const r = props.row;
   const handleRowClick = () => {
