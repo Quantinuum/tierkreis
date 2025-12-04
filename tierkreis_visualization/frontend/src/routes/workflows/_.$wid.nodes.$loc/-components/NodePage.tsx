@@ -85,6 +85,7 @@ export default function NodePage(props: {
       onNodesChange={onNodesChange}
       workflows={workflowsQuery.data ?? []}
       workflow_id={workflow_id}
+      loc={node_location_str}
       infoProps={info}
       setInfo={setInfo}
     />

@@ -23,6 +23,7 @@ export const GraphView = (props: {
   edges: Edge[];
   onNodesChange: OnNodesChange<BackendNode>;
   workflow_id: string;
+  loc: string;
   workflows: Workflow[];
   infoProps: InfoProps;
   setInfo: (arg: InfoProps) => void;
@@ -70,6 +71,7 @@ export const GraphView = (props: {
       workflows={props.workflows}
       workflowId={props.workflow_id}
       info={props.infoProps}
+      loc={props.loc}
     >
       <ReactFlow<BackendNode, Edge>
         nodes={ns}

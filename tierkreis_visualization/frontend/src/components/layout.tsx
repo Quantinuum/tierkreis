@@ -3,24 +3,30 @@ import { Dialog } from "@/components/ui/dialog";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { InfoProps, Workflow } from "@/components/types";
+import { Breadcrumbs } from "./breadcrumbs";
 
 export default function Layout({
   children,
   workflows,
   workflowId,
   info,
+  loc,
 }: {
   children: React.ReactNode;
   workflows: Workflow[];
   workflowId: string;
   info: InfoProps;
+  loc: string;
 }) {
   return (
     <SidebarProvider>
       <Dialog>
         <WorkflowSidebar workflows={workflows} workflowId={workflowId} />
         <NodeInfo info={info} />
-        <main>{children}</main>
+        <main className="flex flex-col">
+          <Breadcrumbs wid={workflowId} loc={loc} />
+          {children}
+        </main>
       </Dialog>
     </SidebarProvider>
   );
