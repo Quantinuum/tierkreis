@@ -1,5 +1,4 @@
 from typing import assert_never
-from uuid import UUID
 from fastapi import HTTPException
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage

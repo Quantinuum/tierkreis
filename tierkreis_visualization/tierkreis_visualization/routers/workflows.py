@@ -9,14 +9,12 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import NodeDef
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from watchfiles import awatch  # type: ignore
 
-from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
 from tierkreis_visualization.routers.models import GraphsResponse, PyGraph
 
