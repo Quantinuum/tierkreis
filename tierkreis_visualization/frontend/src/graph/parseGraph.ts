@@ -1,8 +1,5 @@
 import { AppNode } from "@/nodes/types";
-import dagre from "@dagrejs/dagre";
 import { Edge } from "@xyflow/react";
-import { nodeHeight, nodeWidth } from "@/data/constants";
-import { CSSProperties } from "react";
 import { loc_parent } from "@/data/loc";
 import { PyEdge, PyNode } from "@/data/api_types";
 
@@ -191,33 +188,3 @@ export function parseGraph(
 
   return { nodes, edges };
 }
-
-export const calculateNodePositions = (
-  nodes: { id: string; style?: CSSProperties }[],
-  edges: Edge[],
-  padding: number = 0
-) => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: "TB", ranker: "longest-path" });
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, {
-      width: node.style?.width ? Number(node.style.width) : nodeWidth,
-      height: node.style?.height ? Number(node.style.height) : nodeHeight,
-    });
-  });
-  edges.forEach((edge) => {
-    if (nodeIds.has(edge.source) && nodeIds.has(edge.target))
-      dagreGraph.setEdge(edge.source, edge.target);
-  });
-  dagre.layout(dagreGraph);
-  return nodes.map((node) => {
-    const { x, y, width, height } = dagreGraph.node(node.id);
-    return {
-      id: node.id,
-      x: x - width / 2 + padding,
-      y: y - height / 2 + padding,
-    };
-  });
-};

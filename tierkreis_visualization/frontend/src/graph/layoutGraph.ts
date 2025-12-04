@@ -1,9 +1,9 @@
 import { CSSProperties } from "react";
-import { calculateNodePositions } from "@/graph/parseGraph";
 import { AppNode, BackendNode } from "@/nodes/types";
 import { nodeHeight, nodeWidth } from "@/data/constants";
 import { Edge } from "@xyflow/react";
 import { loc_depth, loc_steps } from "@/data/loc";
+import dagre from "@dagrejs/dagre";
 
 interface ShallowNode {
   id: string;
@@ -122,3 +122,33 @@ function restoreEdges(level: number, edges: Edge[]) {
   }
   return newEdges;
 }
+
+const calculateNodePositions = (
+  nodes: { id: string; style?: CSSProperties }[],
+  edges: Edge[],
+  padding: number = 0
+) => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ rankdir: "TB", ranker: "longest-path" });
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, {
+      width: node.style?.width ? Number(node.style.width) : nodeWidth,
+      height: node.style?.height ? Number(node.style.height) : nodeHeight,
+    });
+  });
+  edges.forEach((edge) => {
+    if (nodeIds.has(edge.source) && nodeIds.has(edge.target))
+      dagreGraph.setEdge(edge.source, edge.target);
+  });
+  dagre.layout(dagreGraph);
+  return nodes.map((node) => {
+    const { x, y, width, height } = dagreGraph.node(node.id);
+    return {
+      id: node.id,
+      x: x - width / 2 + padding,
+      y: y - height / 2 + padding,
+    };
+  });
+};
