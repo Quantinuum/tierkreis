@@ -9,7 +9,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
-import { Workflow } from "@/components/types";
+import { Workflow } from "@/data/api_types";
 
 export function WorkflowSidebar({
   workflows,

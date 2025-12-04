@@ -1,5 +1,6 @@
 import Layout from "@/components/layout";
-import { InfoProps, Workflow } from "@/components/types";
+import { InfoProps } from "@/components/types";
+import { Workflow } from "@/data/api_types";
 import { BackendNode } from "@/nodes/types";
 import {
   Background,
