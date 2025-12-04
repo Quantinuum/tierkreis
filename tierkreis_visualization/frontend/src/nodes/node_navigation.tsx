@@ -17,10 +17,6 @@ export const ZoomInButton = (props: {
 
   const params = { wid: wid, loc };
   const search = (prev: SearchData): SearchData => {
-    console.log("zoomIn");
-    console.log(prev);
-    console.log(node_type);
-
     const openEvals = [...(prev.openEvals ?? [])];
     const openLoops = [...(prev.openLoops ?? [])];
     const openMaps = [...(prev.openMaps ?? [])];

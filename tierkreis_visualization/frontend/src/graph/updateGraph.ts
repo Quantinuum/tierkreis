@@ -175,7 +175,5 @@ export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
     if (containingNodes.length === 0) node.position = existing.position;
   }
 
-  console.log(new_graph.nodes);
-
   return { nodes: [...new_graph.nodes], edges: [...new_graph.edges] };
 };

@@ -14,10 +14,6 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { zoomOutButton, ZoomInButton } from "./node_navigation";
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
-  console.log("EvalNode");
-
-  console.log(node_data);
-
   const navigate = useNavigate();
   const wid = node_data.workflowId;
   const node_loc = node_data.node_location;
@@ -53,7 +49,6 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
       </NodeStatusIndicator>
     );
   }
-  console.log(node_data);
 
   const inButton = node_data.status != "Not started" && (
     <ZoomInButton
