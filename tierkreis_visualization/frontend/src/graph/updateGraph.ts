@@ -3,6 +3,7 @@ import { Graph } from "./models";
 import { loc_depth, loc_peek } from "@/data/loc";
 import { PyEdge, PyNode } from "@/data/api_types";
 import { getContainingNodes } from "@/nodes/layout";
+import { BackendNode } from "@/nodes/types";
 
 export const amalgamateGraphData = (
   evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
@@ -22,7 +23,7 @@ export const amalgamateGraphData = (
   }
 
   // Rewire inputs of open MAPs
-  for (let e of es) {
+  for (let [i, e] of es.entries()) {
     if (!openMaps.includes(e.to_node)) continue;
 
     const prefix = e.to_node + ".M";
@@ -33,12 +34,12 @@ export const amalgamateGraphData = (
     const newEdges = newTargets.map((x) => {
       return { ...e, to_node: x.id };
     });
-    e.to_node = "dummy";
+    es.splice(i, 1);
     es = [...es, ...newEdges];
   }
 
   // Rewire outputs of open MAPs
-  for (let e of es) {
+  for (let [i, e] of es.entries()) {
     if (!openMaps.includes(e.from_node)) continue;
 
     const prefix = e.from_node + ".M";
@@ -49,12 +50,12 @@ export const amalgamateGraphData = (
     const newEdges = newSources.map((x) => {
       return { ...e, from_node: x.id };
     });
-    e.from_node = "dummy";
+    es.splice(i, 1);
     es = [...es, ...newEdges];
   }
 
   // Rewire inputs of open LOOPs
-  for (let e of es) {
+  for (let [i, e] of es.entries()) {
     if (!openLoops.includes(e.to_node)) continue;
 
     const prefix = e.to_node + ".L";
@@ -65,12 +66,12 @@ export const amalgamateGraphData = (
     const newEdges = newTargets.map((x) => {
       return { ...e, to_node: x.id };
     });
-    e.to_node = "dummy";
+    es.splice(i, 1);
     es = [...es, ...newEdges];
   }
 
   // Rewire outputs of open LOOPs
-  for (let e of es) {
+  for (let [i, e] of es.entries()) {
     if (!openLoops.includes(e.from_node)) continue;
 
     const prefix = e.from_node + ".L";
@@ -81,7 +82,7 @@ export const amalgamateGraphData = (
     const newEdges = newSources.map((x) => {
       return { ...e, from_node: x.id };
     });
-    e.from_node = "dummy";
+    es.splice(i, 1);
     es = [...es, ...newEdges];
   }
 
