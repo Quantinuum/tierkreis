@@ -1,6 +1,6 @@
 import { bottomUpLayout } from "./layoutGraph";
 import { Graph } from "./models";
-import { loc_depth, loc_peek } from "@/data/loc";
+import { loc_children, loc_depth, loc_peek } from "@/data/loc";
 import { PyEdge, PyNode } from "@/data/api_types";
 import { getContainingNodes } from "@/nodes/layout";
 
@@ -25,13 +25,12 @@ export const amalgamateGraphData = (
   for (let e of es) {
     if (!openMaps.includes(e.to_node)) continue;
 
-    const prefix = e.to_node + ".M";
-    const current_depth = loc_depth(e.to_node);
-    const newTargets = ns.filter(
-      (x) => x.id.startsWith(prefix) && loc_depth(x.id) == current_depth + 1
+    const newTargets = loc_children(
+      e.to_node,
+      ns.map((x) => x.id)
     );
     const newEdges = newTargets.map((x) => {
-      return { ...e, to_node: x.id };
+      return { ...e, to_node: x };
     });
     e.to_node = "dummy";
     es = [...es, ...newEdges];
@@ -41,13 +40,12 @@ export const amalgamateGraphData = (
   for (let e of es) {
     if (!openMaps.includes(e.from_node)) continue;
 
-    const prefix = e.from_node + ".M";
-    const current_depth = loc_depth(e.from_node);
-    const newSources = ns.filter(
-      (x) => x.id.startsWith(prefix) && loc_depth(x.id) == current_depth + 1
+    const newSources = loc_children(
+      e.from_node,
+      ns.map((x) => x.id)
     );
     const newEdges = newSources.map((x) => {
-      return { ...e, from_node: x.id };
+      return { ...e, from_node: x };
     });
     e.from_node = "dummy";
     es = [...es, ...newEdges];
@@ -57,13 +55,12 @@ export const amalgamateGraphData = (
   for (let e of es) {
     if (!openLoops.includes(e.to_node)) continue;
 
-    const prefix = e.to_node + ".L";
-    const current_depth = loc_depth(e.to_node);
-    const newTargets = ns.filter(
-      (x) => x.id.startsWith(prefix) && loc_depth(x.id) == current_depth + 1
+    const newTargets = loc_children(
+      e.to_node,
+      ns.map((x) => x.id)
     );
     const newEdges = newTargets.map((x) => {
-      return { ...e, to_node: x.id };
+      return { ...e, to_node: x };
     });
     e.to_node = "dummy";
     es = [...es, ...newEdges];
@@ -73,13 +70,12 @@ export const amalgamateGraphData = (
   for (let e of es) {
     if (!openLoops.includes(e.from_node)) continue;
 
-    const prefix = e.from_node + ".L";
-    const current_depth = loc_depth(e.from_node);
-    const newSources = ns.filter(
-      (x) => x.id.startsWith(prefix) && loc_depth(x.id) == current_depth + 1
+    const newSources = loc_children(
+      e.from_node,
+      ns.map((x) => x.id)
     );
     const newEdges = newSources.map((x) => {
-      return { ...e, from_node: x.id };
+      return { ...e, from_node: x };
     });
     e.from_node = "dummy";
     es = [...es, ...newEdges];
