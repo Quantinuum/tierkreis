@@ -121,6 +121,8 @@ export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
     if (loc_peek(node.id)?.includes("L")) continue;
     if (loc_peek(node.id)?.includes("M")) continue;
 
+    // If a node has been moved and then obscured by a node expansion
+    // then we used the calculated position (unobscured) rather than the moved one.
     const containingNodes = getContainingNodes(existing, new_graph.nodes);
     if (containingNodes.length === 0) node.position = existing.position;
   }
