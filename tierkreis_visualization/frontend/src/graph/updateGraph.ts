@@ -117,7 +117,7 @@ export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
     const existing = nodesMap.get(node.id);
 
     if (!existing) continue;
-    // Loop or map nodes need to be put back in the right place.
+    // Loop or map nodes always use calculated position.
     if (loc_peek(node.id)?.includes("L")) continue;
     if (loc_peek(node.id)?.includes("M")) continue;
 
