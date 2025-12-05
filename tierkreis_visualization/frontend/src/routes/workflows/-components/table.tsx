@@ -28,9 +28,8 @@ export function WorkflowsTable(props: { data: WorkflowDisplay[] }) {
     }),
   ];
 
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "start_time", desc: false },
-  ]);
+  const defaultSort = { id: "start_time", desc: false };
+  const [sorting, setSorting] = useState<SortingState>([defaultSort]);
   const defaultData = useMemo(() => [], []);
   const table = useReactTable({
     columns,
@@ -47,7 +46,7 @@ export function WorkflowsTable(props: { data: WorkflowDisplay[] }) {
     .map((x) => (
       <ColumnHeader
         id={x.id}
-        current_sort={sorting[0]}
+        current_sort={sorting[0] ?? defaultSort}
         title={x.columnDef.header?.toString()}
         setSorting={setSorting}
       />

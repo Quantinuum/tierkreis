@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    // "noUncheckedIndexedAccess": true,
+    "noUncheckedIndexedAccess": true,
 
     /* Tailwind */
     "baseUrl": ".",

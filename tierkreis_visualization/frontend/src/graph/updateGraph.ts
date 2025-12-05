@@ -19,8 +19,8 @@ export const amalgamateGraphData = (
   let es = [];
 
   for (let loc in evalData) {
-    ns.push(...evalData[loc].nodes);
-    es.push(...evalData[loc].edges);
+    ns.push(...(evalData[loc]?.nodes ?? []));
+    es.push(...(evalData[loc]?.edges ?? []));
   }
 
   // Rewire inputs of open MAPs
@@ -88,7 +88,7 @@ export const amalgamateGraphData = (
     if (!openEvals.includes(e.to_node)) continue;
     if (e.to_port === "body") continue;
 
-    const newTarget = evalData[e.to_node].nodes.find(
+    const newTarget = evalData[e.to_node]?.nodes.find(
       (x) => x.function_name === "input" && x.value === e.to_port
     );
     if (newTarget !== undefined) e.to_node = newTarget.id;
@@ -98,7 +98,7 @@ export const amalgamateGraphData = (
   for (let e of es) {
     if (!openEvals.includes(e.from_node)) continue;
 
-    const newSource = evalData[e.from_node].nodes.find(
+    const newSource = evalData[e.from_node]?.nodes.find(
       (x) => x.function_name === "output"
     );
     if (newSource !== undefined) e.from_node = newSource.id;
