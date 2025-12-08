@@ -1,3 +1,4 @@
+import { LoadingIndicator } from "@/components/StatusIndicator";
 import { WorkflowDisplay } from "@/data/api_types";
 import { loc_parent } from "@/data/loc";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -44,3 +45,19 @@ export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
     </tr>
   );
 };
+
+export function LoadingRow() {
+  return (
+    <tr style={{ color: "rgba(0,0,0,0)" }}>
+      <td className="p-4 border-t-1">
+        <LoadingIndicator>
+          <span></span>
+        </LoadingIndicator>
+      </td>
+
+      <td className="p-4 border-t-1 ">00000000-0000-0000-0000-000000000000</td>
+      <td className="p-4 border-t-1 ">Mon Dec 08 2025, 14:53:10</td>
+      <td className="p-4 border-t-1"></td>
+    </tr>
+  );
+}
