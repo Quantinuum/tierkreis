@@ -187,8 +187,11 @@ export interface components {
             status: "Not started" | "Started" | "Error" | "Finished";
             /** Function Name */
             function_name: string;
-            /** Node Type */
-            node_type: string;
+            /**
+             * Node Type
+             * @enum {string}
+             */
+            node_type: "function" | "ifelse" | "map" | "eval" | "loop" | "eifelse" | "const" | "output" | "input";
             /**
              * Node Location
              * @default

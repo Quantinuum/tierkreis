@@ -30,7 +30,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
     return (
       <NodeStatusIndicator status={node_data.status}>
         <div className="grid justify-items-end">
-          {ZoomOutButton(wid, loc, node_loc)}
+          <ZoomOutButton wid={wid} loc={loc} node_loc={node_loc} />
         </div>
       </NodeStatusIndicator>
     );

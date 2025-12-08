@@ -37,7 +37,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           setHoveredId={node_data.setHoveredId}
         />
         <div className="grid justify-items-end">
-          {ZoomOutButton(wid, loc, node_loc)}
+          <ZoomOutButton wid={wid} loc={loc} node_loc={node_loc} />
         </div>
         <OutputHandleArray
           handles={node_data.handles.outputs}
