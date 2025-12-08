@@ -76,11 +76,11 @@ export default function NodePage(props: {
   }, [props, workflow_id, node_location_str, evalData, setG]);
 
   useEffect(() => {
-    const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
+    const url = `/api/workflows/${workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
     ws.onmessage = () => evalQuery.refetch();
     return () => ws.close();
-  }, [props, workflow_id, node_location_str, evalQuery]);
+  }, [workflow_id, node_location_str]);
 
   return (
     <GraphView
