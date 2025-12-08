@@ -9,32 +9,22 @@ export type NodeStatusIndicatorProps = {
 export const LoadingIndicator = ({ children }: { children: ReactNode }) => {
   return (
     <>
-      <div
-        className="absolute -left-[1px] -top-[1px] h-[calc(100%+2px)] w-[calc(100%+2px)]"
-        style={{ zIndex: "-1" }}
-      >
+      <div style={{ zIndex: "-1" }}>
         <style>
           {`
         @keyframes spin {
-          from { transform: translate(-50%, -50%) rotate(0deg); }
-          to { transform: translate(-50%, -50%) rotate(360deg); }
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
         .spinner {
           animation: spin 2s linear infinite;
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          width: 140%;
+          width: 36px;
           aspect-ratio: 1;
-          transform-origin: center;
           z-index: -1; // manual fix for the card
           }
       `}
         </style>
-        <div
-          className="absolute inset-0 overflow-hidden rounded-xl"
-          style={{ zIndex: "-1" }}
-        >
+        <div className="overflow-hidden rounded-xl" style={{ zIndex: "-1" }}>
           <div className="spinner rounded-full bg-[conic-gradient(from_0deg_at_50%_50%,_rgb(42,67,233)_0deg,_rgba(42,138,246,0)_360deg)]" />
         </div>
       </div>

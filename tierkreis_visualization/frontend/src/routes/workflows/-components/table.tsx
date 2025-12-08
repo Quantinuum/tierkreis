@@ -6,11 +6,14 @@ import {
   getSortedRowModel,
 } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
-import { WorkflowsTableRow } from "./row";
+import { LoadingRow, WorkflowsTableRow } from "./row";
 import { ColumnHeader } from "./header";
 import { WorkflowDisplay } from "@/data/api_types";
 
-export function WorkflowsTable(props: { data: WorkflowDisplay[] }) {
+export function WorkflowsTable(props: {
+  data: WorkflowDisplay[];
+  isLoading: boolean;
+}) {
   const columnHelper = createColumnHelper<WorkflowDisplay>();
   const columns = [
     columnHelper.accessor("name", { header: "Name" }),
@@ -56,16 +59,12 @@ export function WorkflowsTable(props: { data: WorkflowDisplay[] }) {
     .getRowModel()
     .rows.map((row) => <WorkflowsTableRow row={row.original} />);
 
+  const body = props.isLoading ? [<LoadingRow />] : rows;
+
   return (
-    <div className="p-8">
-      <div className="text-4xl pb-8">Tierkreis workflows</div>
-      <table
-        cellSpacing="0"
-        className="border-separate border-1 rounded-sm mb-4"
-      >
-        <thead>{heads}</thead>
-        <tbody>{rows}</tbody>
-      </table>
-    </div>
+    <table cellSpacing="0" className="border-separate border-1 rounded-sm mb-4">
+      <thead>{heads}</thead>
+      <tbody>{body}</tbody>
+    </table>
   );
 }
