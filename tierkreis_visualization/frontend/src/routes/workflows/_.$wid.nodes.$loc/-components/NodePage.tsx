@@ -51,7 +51,9 @@ export default function NodePage(props: {
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
-    content: logsQuery.data as string,
+    content: logsQuery.error
+      ? "Failed to fetch logs."
+      : logsQuery.data || "No logs.",
   });
 
   useEffect(() => {

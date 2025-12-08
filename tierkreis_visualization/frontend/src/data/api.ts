@@ -13,7 +13,7 @@ export const fetchLogs = async (workflow_id: string) => {
     params: { path: { workflow_id } },
     parseAs: "text",
   });
-  return res.data ?? "No logs.";
+  return res.error ? "Failed to fetch logs." : res.data || "No logs.";
 };
 
 export const fetchErrors = async (
@@ -32,6 +32,7 @@ export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
 export const useLogsQuery = (workflow_id: string) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
     params: { path: { workflow_id } },
+    parseAs: "text",
   });
 export const useEvalQuery = (workflow_id: string, openEvals: string[]) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/graphs", {
