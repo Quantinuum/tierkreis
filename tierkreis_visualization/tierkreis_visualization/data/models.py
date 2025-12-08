@@ -3,13 +3,16 @@ from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
 
 NodeStatus = Literal["Not started", "Started", "Error", "Finished"]
+NodeType = Literal[
+    "function", "ifelse", "map", "eval", "loop", "eifelse", "const", "output", "input"
+]
 
 
 class PyNode(BaseModel):
     id: Loc
     status: NodeStatus
     function_name: str
-    node_type: str
+    node_type: NodeType
     node_location: str = ""
     value: Any | None = None
     started_time: str

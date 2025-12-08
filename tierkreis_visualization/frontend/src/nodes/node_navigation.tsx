@@ -1,3 +1,4 @@
+import { NodeType } from "@/data/api_types";
 import { Link } from "@tanstack/react-router";
 import { Minus, Plus } from "lucide-react";
 
@@ -11,7 +12,7 @@ export const ZoomInButton = (props: {
   wid: string;
   loc: string;
   node_loc: string;
-  node_type: "eval" | "loop" | "map";
+  node_type: NodeType;
 }) => {
   const { wid, loc, node_loc, node_type } = props;
 
@@ -24,7 +25,6 @@ export const ZoomInButton = (props: {
     if (node_type == "eval") openEvals.push(node_loc);
     else if (node_type == "loop") openLoops.push(node_loc);
     else if (node_type == "map") openMaps.push(node_loc);
-    else node_type satisfies never;
 
     return { openEvals, openLoops, openMaps };
   };

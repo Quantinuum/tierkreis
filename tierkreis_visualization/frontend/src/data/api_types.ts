@@ -6,3 +6,4 @@ export type PyGraph =
   paths["/api/workflows/{workflow_id}/graphs"]["get"]["responses"]["200"]["content"]["application/json"]["graphs"][0];
 export type PyEdge = PyGraph["edges"][0];
 export type PyNode = PyGraph["nodes"][0];
+export type NodeType = PyNode["node_type"];
