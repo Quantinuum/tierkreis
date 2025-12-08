@@ -2,19 +2,17 @@ import { applyNodeChanges, NodeChange } from "@xyflow/react";
 import { InfoProps } from "@/components/types";
 import { parseGraph } from "@/graph/parseGraph";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackendNode } from "../../../../nodes/types";
 import {
-  useEvalQuery,
-  useWorkflowsQuery,
-  useLogsQuery,
+  evalQuery as createEvalQuery,
+  listWorkflowsQuery,
+  logsQuery,
 } from "../../../../data/api";
-import { updateGraph } from "@/graph/updateGraph";
+import { amalgamateGraphData, updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
 import { GraphView } from "./GraphView";
 import { Graph } from "@/graph/models";
-import {amalgamateGraphData} from "@/graph/amalgamateGraph";
-
 
 export default function NodePage(props: {
   workflow_id: string;
@@ -26,14 +24,15 @@ export default function NodePage(props: {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
 
-  const workflowsQuery = useWorkflowsQuery();
-  const logsQuery = useLogsQuery(workflow_id);
-  const { data, refetch } = useEvalQuery(workflow_id, [
+  const workflowsQuery = listWorkflowsQuery();
+  const logs = logsQuery(workflow_id);
+  const evalQuery = createEvalQuery(workflow_id, [
     node_location_str,
     ...props.openEvals,
     ...props.openLoops,
     ...props.openMaps,
   ]);
+  const evalData = useMemo(() => evalQuery.data?.graphs ?? {}, [evalQuery]);
 
   const [g, setG] = useLocalStorageState<Graph>(
     workflow_id + node_location_str,
@@ -52,13 +51,10 @@ export default function NodePage(props: {
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
-    content: logsQuery.error
-      ? "Failed to fetch logs."
-      : logsQuery.data || "No logs.",
+    content: logs.data as string,
   });
 
   useEffect(() => {
-    const evalData = data?.graphs ?? {};
     if (Object.keys(evalData).length == 0) return;
     const { nodes, edges } = amalgamateGraphData(
       evalData,
@@ -75,14 +71,14 @@ export default function NodePage(props: {
       props.openMaps
     );
     setG((oldG: Graph) => updateGraph(oldG, newG));
-  }, [props, workflow_id, node_location_str, setG, data]);
+  }, [props, workflow_id, node_location_str, evalData, setG]);
 
   useEffect(() => {
-    const url = `/api/workflows/${workflow_id}/nodes/${node_location_str}`;
+    const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
-    ws.onmessage = () => refetch();
+    ws.onmessage = () => evalQuery.refetch();
     return () => ws.close();
-  }, [workflow_id, node_location_str, refetch]);
+  }, [props, workflow_id, node_location_str, evalQuery]);
 
   return (
     <GraphView
