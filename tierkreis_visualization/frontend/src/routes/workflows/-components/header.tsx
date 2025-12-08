@@ -22,7 +22,7 @@ export const ColumnHeader = (props: {
   return (
     <th
       className="text-left cursor-pointer p-4"
-      onClick={(_) => toggleSorting(props.id)}
+      onClick={() => toggleSorting(props.id)}
     >
       <div className="flex select-none">
         <Tag className="mr-2" />

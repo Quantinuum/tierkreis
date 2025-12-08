@@ -10,7 +10,7 @@ import { type NodeProps } from "@xyflow/react";
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "@/nodes/types";
-import { zoomOutButton, ZoomInButton } from "./node_navigation";
+import { ZoomOutButton, ZoomInButton } from "./node_navigation";
 import { useNavigate, useParams } from "@tanstack/react-router";
 
 export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
@@ -30,7 +30,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
     return (
       <NodeStatusIndicator status={node_data.status}>
         <div className="grid justify-items-end">
-          {zoomOutButton(wid, loc, node_loc)}
+          {ZoomOutButton(wid, loc, node_loc)}
         </div>
       </NodeStatusIndicator>
     );
