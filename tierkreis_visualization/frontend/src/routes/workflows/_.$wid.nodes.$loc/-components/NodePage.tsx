@@ -5,9 +5,9 @@ import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackendNode } from "../../../../nodes/types";
 import {
-  evalQuery as createEvalQuery,
-  listWorkflowsQuery,
-  logsQuery,
+  useEvalQuery,
+  useWorkflowsQuery,
+  useLogsQuery,
 } from "../../../../data/api";
 import { amalgamateGraphData, updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
@@ -24,9 +24,9 @@ export default function NodePage(props: {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
 
-  const workflowsQuery = listWorkflowsQuery();
-  const logs = logsQuery(workflow_id);
-  const evalQuery = createEvalQuery(workflow_id, [
+  const workflowsQuery = useWorkflowsQuery();
+  const logsQuery = useLogsQuery(workflow_id);
+  const evalQuery = useEvalQuery(workflow_id, [
     node_location_str,
     ...props.openEvals,
     ...props.openLoops,
@@ -51,7 +51,7 @@ export default function NodePage(props: {
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
-    content: logs.data as string,
+    content: logsQuery.data as string,
   });
 
   useEffect(() => {

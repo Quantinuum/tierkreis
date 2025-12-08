@@ -6,7 +6,7 @@ const fetchClient = createFetchClient<paths>({
   baseUrl: import.meta.env.BASE_URL,
   headers: { Accept: "application/json" },
 });
-export const $api = createClient(fetchClient);
+const $api = createClient(fetchClient);
 
 export const fetchLogs = async (workflow_id: string) => {
   const res = await fetchClient.GET("/api/workflows/{workflow_id}/logs", {
@@ -28,24 +28,12 @@ export const fetchErrors = async (
   return res.data ?? "No errors.";
 };
 
-export const fetchNode = async (
-  workflow_id: string,
-  node_location_str: string
-) => {
-  const params = { path: { workflow_id, node_location_str } };
-  const res = await fetchClient.GET(
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}",
-    { params }
-  );
-  return res.data ?? { nodes: [], edges: [] };
-};
-
-export const listWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
-export const logsQuery = (workflow_id: string) =>
+export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
+export const useLogsQuery = (workflow_id: string) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
     params: { path: { workflow_id } },
   });
-export const evalQuery = (workflow_id: string, openEvals: string[]) =>
+export const useEvalQuery = (workflow_id: string, openEvals: string[]) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/graphs", {
     params: { path: { workflow_id }, query: { locs: openEvals } },
   });
