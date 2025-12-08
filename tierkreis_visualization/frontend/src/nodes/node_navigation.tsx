@@ -39,12 +39,22 @@ export const ZoomInButton = (props: {
   );
 };
 
-export const zoomOutButton = (wid: string, loc: string, node_loc: string) => {
-  const params = { wid, loc };
+export const ZoomOutButton = (props: {
+  wid: string;
+  loc: string;
+  node_loc: string;
+}) => {
+  const params = { wid: props.wid, loc: props.loc };
   const search = (prev: SearchData): SearchData => {
-    const openEvals = prev.openEvals?.filter((x) => !x.startsWith(node_loc));
-    const openLoops = prev.openLoops?.filter((x) => !x.startsWith(node_loc));
-    const openMaps = prev.openMaps?.filter((x) => !x.startsWith(node_loc));
+    const openEvals = prev.openEvals?.filter(
+      (x) => !x.startsWith(props.node_loc)
+    );
+    const openLoops = prev.openLoops?.filter(
+      (x) => !x.startsWith(props.node_loc)
+    );
+    const openMaps = prev.openMaps?.filter(
+      (x) => !x.startsWith(props.node_loc)
+    );
     return { openEvals, openLoops, openMaps };
   };
   return (

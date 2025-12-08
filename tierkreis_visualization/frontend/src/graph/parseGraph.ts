@@ -180,7 +180,7 @@ export function parseGraph(
   const nodes = parseNodes(data.nodes, data.edges, workflowId);
   const edges = parseEdges(data.edges, parentId);
 
-  for (let n of nodes) {
+  for (const n of nodes) {
     if (openEvals.includes(n.id)) n.data.is_expanded = true;
     if (openLoops.includes(n.id)) n.data.is_expanded = true;
     if (openMaps.includes(n.id)) n.data.is_expanded = true;

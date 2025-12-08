@@ -11,7 +11,7 @@ import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "./types";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { zoomOutButton, ZoomInButton } from "./node_navigation";
+import { ZoomOutButton, ZoomInButton } from "./node_navigation";
 
 export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
@@ -37,7 +37,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
           setHoveredId={node_data.setHoveredId}
         />
         <div className="grid justify-items-end">
-          {zoomOutButton(wid, loc, node_loc)}
+          {ZoomOutButton(wid, loc, node_loc)}
         </div>
         <OutputHandleArray
           handles={node_data.handles.outputs}

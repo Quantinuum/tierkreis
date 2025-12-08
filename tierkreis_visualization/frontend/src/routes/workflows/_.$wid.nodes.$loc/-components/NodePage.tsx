@@ -2,7 +2,7 @@ import { applyNodeChanges, NodeChange } from "@xyflow/react";
 import { InfoProps } from "@/components/types";
 import { parseGraph } from "@/graph/parseGraph";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackendNode } from "../../../../nodes/types";
 import {
   evalQuery as createEvalQuery,
@@ -32,19 +32,22 @@ export default function NodePage(props: {
     ...props.openLoops,
     ...props.openMaps,
   ]);
-  const evalData = evalQuery.data?.graphs ?? {};
+  const evalData = useMemo(() => evalQuery.data?.graphs ?? {}, [evalQuery]);
 
   const [g, setG] = useLocalStorageState<Graph>(
     workflow_id + node_location_str,
     { defaultValue: { nodes: [], edges: [] } }
   );
 
-  const onNodesChange = useCallback((changes: NodeChange<BackendNode>[]) => {
-    setG((gSnapshot: Graph) => {
-      const ns = applyNodeChanges(changes, gSnapshot.nodes);
-      return { nodes: ns, edges: gSnapshot.edges };
-    });
-  }, []);
+  const onNodesChange = useCallback(
+    (changes: NodeChange<BackendNode>[]) => {
+      setG((gSnapshot: Graph) => {
+        const ns = applyNodeChanges(changes, gSnapshot.nodes);
+        return { nodes: ns, edges: gSnapshot.edges };
+      });
+    },
+    [setG]
+  );
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
@@ -68,14 +71,14 @@ export default function NodePage(props: {
       props.openMaps
     );
     setG((oldG: Graph) => updateGraph(oldG, newG));
-  }, [props, workflow_id, node_location_str, evalData]);
+  }, [props, workflow_id, node_location_str, evalData, setG]);
 
   useEffect(() => {
     const url = `/api/workflows/${props.workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
     ws.onmessage = () => evalQuery.refetch();
     return () => ws.close();
-  }, [props, workflow_id, node_location_str]);
+  }, [props, workflow_id, node_location_str, evalQuery]);
 
   return (
     <GraphView

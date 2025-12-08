@@ -17,7 +17,7 @@ import { nodeTypes } from "@/nodes";
 import { edgeTypes } from "@/edges";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { bottomUpLayout } from "@/graph/layoutGraph";
-import { Eye, EyeClosed, FolderSync, Network } from "lucide-react";
+import { Eye, FolderSync, Network } from "lucide-react";
 
 export const GraphView = (props: {
   nodes: BackendNode[];
@@ -93,11 +93,7 @@ export const GraphView = (props: {
             <FolderSync style={{ fill: "none" }} />
           </ControlButton>
           <ControlButton onClick={() => handleToggleTooltips()}>
-            {true ? (
-              <Eye style={{ fill: "none" }} />
-            ) : (
-              <EyeClosed style={{ fill: "none" }} />
-            )}
+            <Eye style={{ fill: "none" }} />
           </ControlButton>
         </Controls>
       </ReactFlow>

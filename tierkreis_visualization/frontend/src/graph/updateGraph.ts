@@ -15,16 +15,16 @@ export const amalgamateGraphData = (
   nodes: PyNode[];
   edges: PyEdge[];
 } => {
-  let ns = [];
+  const ns = [];
   let es = [];
 
-  for (let loc in evalData) {
+  for (const loc in evalData) {
     ns.push(...(evalData[loc]?.nodes ?? []));
     es.push(...(evalData[loc]?.edges ?? []));
   }
 
   // Rewire inputs of open MAPs
-  for (let e of es) {
+  for (const e of es) {
     if (!openMaps.includes(e.to_node)) continue;
 
     const newTargets = loc_children(
@@ -39,7 +39,7 @@ export const amalgamateGraphData = (
   }
 
   // Rewire outputs of open MAPs
-  for (let e of es) {
+  for (const e of es) {
     if (!openMaps.includes(e.from_node)) continue;
 
     const newSources = loc_children(
@@ -54,7 +54,7 @@ export const amalgamateGraphData = (
   }
 
   // Rewire inputs of open LOOPs
-  for (let e of es) {
+  for (const e of es) {
     if (!openLoops.includes(e.to_node)) continue;
 
     const newTargets = loc_children(
@@ -69,7 +69,7 @@ export const amalgamateGraphData = (
   }
 
   // Rewire outputs of open LOOPs
-  for (let e of es) {
+  for (const e of es) {
     if (!openLoops.includes(e.from_node)) continue;
 
     const newSources = loc_children(
@@ -84,7 +84,7 @@ export const amalgamateGraphData = (
   }
 
   // Rewire inputs of open EVALs
-  for (let e of es) {
+  for (const e of es) {
     if (!openEvals.includes(e.to_node)) continue;
     if (e.to_port === "body") continue;
 
@@ -95,7 +95,7 @@ export const amalgamateGraphData = (
   }
 
   // Rewire outputs of open EVALs
-  for (let e of es) {
+  for (const e of es) {
     if (!openEvals.includes(e.from_node)) continue;
 
     const newSource = evalData[e.from_node]?.nodes.find(
@@ -110,10 +110,10 @@ export const amalgamateGraphData = (
 };
 
 export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
-  let nodesMap = new Map(graph.nodes.map((node) => [node.id, node]));
+  const nodesMap = new Map(graph.nodes.map((node) => [node.id, node]));
 
   new_graph.nodes = bottomUpLayout(new_graph.nodes, new_graph.edges);
-  for (let node of new_graph.nodes) {
+  for (const node of new_graph.nodes) {
     const existing = nodesMap.get(node.id);
 
     if (!existing) continue;
