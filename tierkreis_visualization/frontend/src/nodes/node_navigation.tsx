@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { NodeType } from "@/data/api_types";
 import { Link } from "@tanstack/react-router";
 import { Minus, Plus } from "lucide-react";
@@ -29,13 +30,15 @@ export const ZoomInButton = (props: {
     return { openEvals, openLoops, openMaps };
   };
   return (
-    <Link
-      to="/workflows/$wid/nodes/$loc"
-      params={params}
-      search={(p) => search(p)}
-    >
-      <Plus />
-    </Link>
+    <Button className="flex-none m-1" variant="secondary" size="icon">
+      <Link
+        to="/workflows/$wid/nodes/$loc"
+        params={params}
+        search={(p) => search(p)}
+      >
+        <Plus />
+      </Link>
+    </Button>
   );
 };
 
@@ -58,8 +61,10 @@ export const ZoomOutButton = (props: {
     return { openEvals, openLoops, openMaps };
   };
   return (
-    <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
-      <Minus style={{ width: 48, height: 48 }} />
-    </Link>
+    <Button className="flex-none m-1" variant="secondary" size="icon">
+      <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
+        <Minus style={{ width: 48, height: 48 }} />
+      </Link>
+    </Button>
   );
 };
