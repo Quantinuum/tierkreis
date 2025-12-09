@@ -26,13 +26,12 @@ export default function NodePage(props: {
 
   const workflowsQuery = useWorkflowsQuery();
   const logsQuery = useLogsQuery(workflow_id);
-  const evalQuery = useEvalQuery(workflow_id, [
+  const { data, refetch } = useEvalQuery(workflow_id, [
     node_location_str,
     ...props.openEvals,
     ...props.openLoops,
     ...props.openMaps,
   ]);
-  const evalData = useMemo(() => evalQuery.data?.graphs ?? {}, [evalQuery]);
 
   const [g, setG] = useLocalStorageState<Graph>(
     workflow_id + node_location_str,
@@ -57,6 +56,7 @@ export default function NodePage(props: {
   });
 
   useEffect(() => {
+    const evalData = data?.graphs ?? {};
     if (Object.keys(evalData).length == 0) return;
     const { nodes, edges } = amalgamateGraphData(
       evalData,
@@ -73,14 +73,14 @@ export default function NodePage(props: {
       props.openMaps
     );
     setG((oldG: Graph) => updateGraph(oldG, newG));
-  }, [props, workflow_id, node_location_str, evalData, setG]);
+  }, [props, workflow_id, node_location_str, setG, data]);
 
   useEffect(() => {
     const url = `/api/workflows/${workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
-    ws.onmessage = () => evalQuery.refetch();
+    ws.onmessage = () => refetch();
     return () => ws.close();
-  }, [workflow_id, node_location_str]);
+  }, [workflow_id, node_location_str, refetch]);
 
   return (
     <GraphView
