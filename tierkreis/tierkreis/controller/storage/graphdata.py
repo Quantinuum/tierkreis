@@ -60,9 +60,6 @@ class GraphDataStorage(ControllerStorage):
     def list_subpaths(self, path: Path) -> list[Path]:
         raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
 
-    def list_loop_iters(self, path: Path) -> list[Path]:
-        raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
-
     def link(self, src: Path, dst: Path) -> None:
         raise NotImplementedError("GraphDataStorage is read only storage.")
 

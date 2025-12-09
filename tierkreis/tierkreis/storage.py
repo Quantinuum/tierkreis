@@ -29,14 +29,19 @@ def read_outputs(
 def read_loop_trace(
     g: GraphData | GraphBuilder,
     storage: ControllerStorage,
-    node_key: str,
-    output_name: str,
-) -> list[PType]:
+    node_name: str,
+    output_name: str | None = None,
+) -> list[PType] | dict[str, list[PType]]:
     """Reads the trace of a loop from storage."""
     if isinstance(g, GraphBuilder):
         g = g.get_data()
-    loc = storage.loc_from_node_name(node_key)
+    loc = storage.loc_from_node_name(node_name)
     output_names = storage.read_output_ports(loc)
+    if output_name is None:
+        return {
+            name: [ptype_from_bytes(r) for r in storage.read_loop_trace(loc, name)]
+            for name in output_names
+        }
     if output_name not in output_names:
         raise TierkreisError(f"Output name {output_name} not found in loop node output")
     results = storage.read_loop_trace(loc, output_name)

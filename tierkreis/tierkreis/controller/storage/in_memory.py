@@ -40,13 +40,6 @@ class ControllerInMemoryStorage(ControllerStorage):
     def list_subpaths(self, path: Path) -> list[Path]:
         return [x for x in self.files.keys() if str(x).startswith(str(path) + "/")]
 
-    def list_loop_iters(self, path: Path) -> list[Path]:
-        return [
-            x
-            for x in self.files.keys()
-            if str(x).startswith(str(path) + "/") and x.suffix.startswith(".L")
-        ]
-
     def link(self, src: Path, dst: Path) -> None:
         self.files[dst] = self.files[src]
 
