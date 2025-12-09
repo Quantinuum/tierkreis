@@ -46,7 +46,10 @@ def loop_multiple_acc_untyped() -> GraphData:
     body_const = g.const(_loop_body_multiple_acc_untyped())
 
     loop = g.loop(
-        body_const, {"acc1": acc1, "acc2": acc2, "acc3": acc3}, "should_continue"
+        body_const,
+        {"acc1": acc1, "acc2": acc2, "acc3": acc3},
+        "should_continue",
+        "my_loop",
     )
 
     g.output({"acc1": loop("acc1"), "acc2": loop("acc2"), "acc3": loop("acc3")})
@@ -111,7 +114,7 @@ def loop_multiple_acc() -> GraphBuilder[EmptyModel, LoopMultipleAccOut]:
     acc3 = g.const(0)
 
     body = _loop_body_multiple_acc()
-    loop = g.loop(body, MultipleAcc(acc1, acc2, acc3))
+    loop = g.loop(body, MultipleAcc(acc1, acc2, acc3), "my_loop")
 
     g.outputs(LoopMultipleAccOut(acc1=loop.acc1, acc2=loop.acc2, acc3=loop.acc3))
 

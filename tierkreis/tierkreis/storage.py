@@ -41,6 +41,7 @@ def read_loop_trace(
         return {
             name: [ptype_from_bytes(r) for r in storage.read_loop_trace(loc, name)]
             for name in output_names
+            if name != "should_continue"
         }
     if output_name not in output_names:
         raise TierkreisError(f"Output name {output_name} not found in loop node output")
