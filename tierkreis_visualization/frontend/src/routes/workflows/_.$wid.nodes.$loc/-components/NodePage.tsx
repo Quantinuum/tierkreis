@@ -2,7 +2,7 @@ import { applyNodeChanges, NodeChange } from "@xyflow/react";
 import { InfoProps } from "@/components/types";
 import { parseGraph } from "@/graph/parseGraph";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BackendNode } from "../../../../nodes/types";
 import {
   useEvalQuery,
