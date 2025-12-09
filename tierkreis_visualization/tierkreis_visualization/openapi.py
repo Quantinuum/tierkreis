@@ -4,6 +4,9 @@ from fastapi import FastAPI
 
 
 def generate_openapi(app: FastAPI):
+    """Write the openapi spec of `app` to a file.
+
+    This will run automatically in development mode."""
     from fastapi.openapi.utils import get_openapi
 
     spec = get_openapi(

@@ -1,4 +1,5 @@
 import { InfoProps } from "@/components/types";
+import { NodeType } from "@/data/api_types";
 import { Edge, type Node } from "@xyflow/react";
 
 export type BackendNode = Node<{
@@ -27,6 +28,6 @@ export type BackendNode = Node<{
   setHoveredId: (id: string) => void;
   started_time: string;
   finished_time: string;
-  node_type: "eval" | "loop" | "map";
+  node_type: NodeType;
 }>;
 export type AppNode = BackendNode;
