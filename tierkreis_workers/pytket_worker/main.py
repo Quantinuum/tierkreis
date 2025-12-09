@@ -385,6 +385,7 @@ def backend_result_from_dict(data: dict[str, list[str]]) -> BackendResult:
 
     The expected format is a dict mapping register names to lists of bitstrings.
     For example:
+
     {
         "c": ["00", "01", "10", "11"],
         "d": ["0", "1", "0", "1"]

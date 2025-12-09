@@ -66,6 +66,24 @@ loop_output = f.loop(loop_body, init)
 f.outputs(loop_output.value)
 ```
 
+### Tracking Outputs
+
+We can also track intermediate values in a loop.
+This is useful for tracking the intermediate values for validation or visualization.
+For example, we could track the loss of a training loop.
+We simple provide an additional name to the loop.
+
+```{code-cell} ipython3
+from tierkreis.models import EmptyModel
+
+f = GraphBuilder(EmptyModel, TKR[int])
+init = LoopBodyInput(f.const(0), f.const(0), f.const(2), f.const(10))
+loop_output = f.loop(loop_body, init, "my_loop")
+f.outputs(loop_output.value)
+```
+
+We can refer to this name after execution.
+
 ### Repeat until success
 
 In addition to bounded iteration, the `GraphBuilder.loop` method can also define a 'repeat until success' loop.
@@ -115,7 +133,7 @@ from uuid import UUID
 from pathlib import Path
 
 from tierkreis import run_graph
-from tierkreis.storage import FileStorage, read_outputs
+from tierkreis.storage import FileStorage, read_outputs, read_loop_trace
 from tierkreis.executor import ShellExecutor
 
 storage = FileStorage(UUID(int=99), name="Nested graphs using Eval")
@@ -124,6 +142,7 @@ executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
 storage.clean_graph_files()
 run_graph(storage, executor, f.get_data(), {})
 print(read_outputs(f, storage))
+print(read_loop_trace(f, storage, "my_loop"))
 
 storage.clean_graph_files()
 run_graph(storage, executor, g.get_data(), {})
