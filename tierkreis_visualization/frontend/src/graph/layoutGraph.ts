@@ -139,11 +139,7 @@ const calculateNodePositions = (
     });
   });
   edges.forEach((edge) => {
-    if (
-      nodeIds.has(edge.source) &&
-      nodeIds.has(edge.target) &&
-      !loc_peek(edge.source)?.includes("L")
-    ) {
+    if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
       dagreGraph.setEdge(edge.source, edge.target);
     }
   });
