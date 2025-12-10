@@ -1,4 +1,4 @@
-from typing import Literal, Any
+from typing import Literal
 from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
 
