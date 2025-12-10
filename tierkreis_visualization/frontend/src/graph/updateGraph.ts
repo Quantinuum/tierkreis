@@ -22,17 +22,30 @@ export const amalgamateGraphData = (
     ns.push(...(evalData[loc]?.nodes ?? []));
     es.push(...(evalData[loc]?.edges ?? []));
   }
+  console.log(ns);
+  console.log(es);
+
+  const inEdges = new Map<string, PyEdge[]>();
+  const outEdges = new Map<string, PyEdge[]>();
+
+  for (const e of es) {
+    if (Object.keys(evalData).includes(e.from_node)) {
+      outEdges.set(e.from_node, [...(outEdges.get(e.from_node) ?? []), e]);
+    }
+    if (Object.keys(evalData).includes(e.to_node)) {
+      inEdges.set(e.to_node, [...(inEdges.get(e.to_node) ?? []), e]);
+    }
+  }
+  console.log(inEdges);
+  console.log(outEdges);
 
   // Rewire inputs of open MAPs
   for (const e of es) {
     if (!openMaps.includes(e.to_node)) continue;
 
-    const newTargets = loc_children(
-      e.to_node,
-      ns.map((x) => x.id)
-    );
+    const newTargets = loc_children(e.to_node, ns);
     const newEdges = newTargets.map((x) => {
-      return { ...e, to_node: x };
+      return { ...e, to_node: x.id };
     });
     e.to_node = DELETE_TAG;
     es = [...es, ...newEdges];
@@ -42,45 +55,42 @@ export const amalgamateGraphData = (
   for (const e of es) {
     if (!openMaps.includes(e.from_node)) continue;
 
-    const newSources = loc_children(
-      e.from_node,
-      ns.map((x) => x.id)
-    );
+    const newSources = loc_children(e.from_node, ns);
     const newEdges = newSources.map((x) => {
-      return { ...e, from_node: x };
+      return { ...e, from_node: x.id };
     });
     e.from_node = DELETE_TAG;
     es = [...es, ...newEdges];
   }
 
-  // Rewire inputs of open LOOPs
-  for (const e of es) {
-    if (!openLoops.includes(e.to_node)) continue;
+  // Rewire open LOOPs
+  for (const loop of openLoops) {
+    const loopNode = ns.find((x) => x.id === loop);
+    const outputs = loopNode?.outputs;
+    for (const e of inEdges.get(loop) ?? []) {
+      if (outputs?.includes(e.to_port)) e.to_node = e.to_node + ".L0";
+      else {
+        const newTargets = loc_children(e.to_node, ns);
+        const newEdges = newTargets.map((x) => {
+          return { ...e, to_node: x.id };
+        });
+        e.from_node = DELETE_TAG;
+        es = [...es, ...newEdges];
+      }
+    }
 
-    const newTargets = loc_children(
-      e.to_node,
-      ns.map((x) => x.id)
-    );
-    const newEdges = newTargets.map((x) => {
-      return { ...e, to_node: x };
-    });
-    e.to_node = DELETE_TAG;
-    es = [...es, ...newEdges];
-  }
-
-  // Rewire outputs of open LOOPs
-  for (const e of es) {
-    if (!openLoops.includes(e.from_node)) continue;
-
-    const newSources = loc_children(
-      e.from_node,
-      ns.map((x) => x.id)
-    );
-    const newEdges = newSources.map((x) => {
-      return { ...e, from_node: x };
-    });
-    e.from_node = DELETE_TAG;
-    es = [...es, ...newEdges];
+    for (const e of outEdges.get(loop) ?? []) {
+      const newSources = loc_children(e.from_node, ns);
+      const newEdges = newSources.map((x, i) => {
+        return {
+          ...e,
+          from_node: x.id,
+          to_node: newSources[i + 1]?.id ?? e.to_node,
+        };
+      });
+      e.from_node = DELETE_TAG;
+      es = [...es, ...newEdges];
+    }
   }
 
   // Rewire inputs of open EVALs

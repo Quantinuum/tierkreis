@@ -20,6 +20,7 @@ def get_loop_node(
     while storage.is_node_started(node_location.L(i + 1)):
         i += 1
     new_location = node_location.L(i)
+    nodedef = storage.read_node_def(new_location)
 
     nodes = [
         PyNode(
@@ -30,6 +31,7 @@ def get_loop_node(
             node_type="eval",
             started_time=storage.read_started_time(node_location.L(n)) or "",
             finished_time=storage.read_finished_time(node_location.L(n)) or "",
+            outputs=list(nodedef.outputs),
         )
         for n in range(i)
     ]
@@ -49,6 +51,7 @@ def get_loop_node(
             node_type="eval",
             started_time=storage.read_started_time(new_location) or "",
             finished_time=storage.read_finished_time(new_location) or "",
+            outputs=list(nodedef.outputs),
         )
     )
     edges = []

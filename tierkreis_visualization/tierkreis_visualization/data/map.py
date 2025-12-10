@@ -22,6 +22,7 @@ def get_map_node(
 
     first_ref = next(x for x in map.inputs.values() if x[1] == "*")
     map_eles = outputs_iter(storage, parent.N(first_ref[0]))
+    nodedef = storage.read_node_def(loc.M(0))
     nodes: list[PyNode] = []
     for i, ele in map_eles:
         node = PyNode(
@@ -32,6 +33,7 @@ def get_map_node(
             node_type="eval",
             started_time=storage.read_started_time(loc.M(i)) or "",
             finished_time=storage.read_finished_time(loc.M(i)) or "",
+            outputs=list(nodedef.outputs),
         )
         if check_error(loc.M(i), errored_nodes):
             node.status = "Error"
