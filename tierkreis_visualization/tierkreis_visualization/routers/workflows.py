@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -13,6 +13,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
+from tierkreis_visualization.data.outputs import outputs_from_loc
 from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
@@ -109,13 +110,9 @@ def get_output(
     node_location_str: str,
     port_name: str,
 ):
-    node_location = parse_node_location(node_location_str)
+    loc = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
-    bs = storage.read_output(node_location, PortID(port_name))
-    try:
-        return JSONResponse(json.loads(bs))
-    except FileNotFoundError as e:
-        return PlainTextResponse(str(e))
+    return PlainTextResponse(outputs_from_loc(storage, loc, port_name))
 
 
 @router.get("/{workflow_id}/logs")

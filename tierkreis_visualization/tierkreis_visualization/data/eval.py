@@ -10,6 +10,7 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge
+from tierkreis_visualization.data.outputs import outputs_from_loc
 from tierkreis_visualization.routers.models import PyGraph
 
 
@@ -47,7 +48,7 @@ def add_conditional_edges(
 
     for branch, (idx, p) in refs.items():
         try:
-            value = json.loads(storage.read_output(loc.N(idx), p))
+            value = outputs_from_loc(storage, loc.N(idx), p)
         except FileNotFoundError:
             value = None
         edge = PyEdge(
@@ -93,13 +94,13 @@ def get_eval_node(
                 name = node.type
             case "const":
                 name = node.type
-                value = node.value
+                value = outputs_from_loc(storage, node_location.N(i), "value")
             case "output":
                 name = node.type
                 if len(node.inputs) == 1:
                     (idx, p) = next(iter(node.inputs.values()))
                     try:
-                        value = json.loads(storage.read_output(node_location.N(idx), p))
+                        value = outputs_from_loc(storage, node_location.N(idx), p)
                     except (FileNotFoundError, TierkreisError):
                         value = None
             case "input":
@@ -122,10 +123,10 @@ def get_eval_node(
         pynodes.append(pynode)
 
         for p0, (idx, p1) in in_edges(node).items():
-            value = None
+            value: str | None = None
 
             try:
-                value = storage.read_output(node_location.N(idx), p1).decode()
+                value = outputs_from_loc(storage, node_location.N(idx), p1)
             except (FileNotFoundError, TierkreisError, UnicodeDecodeError):
                 value = None
 

@@ -17,14 +17,11 @@ export const amalgamateGraphData = (
 } => {
   const ns = [];
   let es = [];
-  console.log(evalData);
 
   for (const loc in evalData) {
     ns.push(...(evalData[loc]?.nodes ?? []));
     es.push(...(evalData[loc]?.edges ?? []));
   }
-  console.log([...ns]);
-  console.log([...es]);
 
   const inEdges = new Map<string, PyEdge[]>();
   const outEdges = new Map<string, PyEdge[]>();
@@ -37,8 +34,6 @@ export const amalgamateGraphData = (
       inEdges.set(e.to_node, [...(inEdges.get(e.to_node) ?? []), e]);
     }
   }
-  console.log(inEdges);
-  console.log(outEdges);
 
   // Rewire inputs of open MAPs
   for (const e of es) {
@@ -80,8 +75,6 @@ export const amalgamateGraphData = (
     }
 
     for (const e of outEdges.get(loop) ?? []) {
-      console.log(evalData[loop]);
-
       const newSources = loc_children(e.from_node, ns);
       const latest = newSources.at(-1);
 

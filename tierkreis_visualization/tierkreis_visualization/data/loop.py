@@ -6,6 +6,7 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyNode, PyEdge
+from tierkreis_visualization.data.outputs import outputs_from_loc
 
 
 class LoopNodeData(BaseModel):
@@ -63,9 +64,7 @@ def get_loop_node(
                     from_port=port_name,
                     to_node=node_location.L(n + 1),
                     to_port=port_name,
-                    value=json.loads(
-                        storage.read_output(node_location.L(n), port_name)
-                    ),
+                    value=outputs_from_loc(storage, node_location.L(n), port_name),
                 )
                 for n in range(i)
             ]
