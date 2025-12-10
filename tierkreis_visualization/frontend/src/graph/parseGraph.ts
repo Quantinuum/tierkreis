@@ -122,7 +122,10 @@ function parseNodes(
   return parsedNodes;
 }
 
-function replacer(_: string, value: unknown): unknown {
+function replacer(
+  _: string,
+  value: number | string | null | undefined
+): number | string | null | undefined {
   if (value === null || value === undefined) {
     return;
   }
@@ -161,10 +164,7 @@ function parseEdges(edges: PyEdge[], parentId?: string): Edge[] {
       target: edge.to_node.toString(),
       sourceHandle: prefix + edge.from_node + "_" + edge.from_port,
       targetHandle: prefix + edge.to_node + "_" + edge.to_port,
-      label:
-        edge.to_port == "body"
-          ? "Graph Body"
-          : JSON.stringify(edge.value, replacer, 2),
+      label: edge.to_port == "body" ? "Graph Body" : replacer("", edge.value),
     };
   });
 }
