@@ -2,7 +2,7 @@ import { CSSProperties } from "react";
 import { AppNode, BackendNode } from "@/nodes/types";
 import { nodeHeight, nodeWidth } from "@/data/constants";
 import { Edge } from "@xyflow/react";
-import { loc_depth, loc_steps } from "@/data/loc";
+import { loc_depth, loc_peek, loc_steps } from "@/data/loc";
 import dagre from "@dagrejs/dagre";
 
 interface ShallowNode {
@@ -139,7 +139,11 @@ const calculateNodePositions = (
     });
   });
   edges.forEach((edge) => {
-    if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
+    if (
+      nodeIds.has(edge.source) &&
+      nodeIds.has(edge.target) &&
+      !loc_peek(edge.source)?.includes("L")
+    ) {
       dagreGraph.setEdge(edge.source, edge.target);
     }
   });
