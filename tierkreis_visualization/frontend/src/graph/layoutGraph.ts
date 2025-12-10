@@ -40,7 +40,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
     const idsInLevel = new Set(currentNodes.map((nodeInfo) => nodeInfo.id));
     const levelNodes = nodes.filter((node) => idsInLevel.has(node.id));
     const oldEdges = restoreEdges(level, edges);
-    resizeGroupNodesToFitChildren(levelNodes, previousNodes, 20);
+    resizeGroupNodesToFitChildren(levelNodes, previousNodes, 60);
     // if we don't do this groups wise dagre puts them all on the same plane
     const groups = levelNodes.reduce<{ [key: string]: BackendNode[] }>(
       (acc, currentNode) => {
