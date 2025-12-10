@@ -162,7 +162,7 @@ export interface components {
             /** To Port */
             to_port: string;
             /** Value */
-            value?: unknown | null;
+            value?: string | null;
             /**
              * Conditional
              * @default false
@@ -200,7 +200,7 @@ export interface components {
             /** Outputs */
             outputs: string[];
             /** Value */
-            value?: unknown | null;
+            value?: string | null;
             /** Started Time */
             started_time: string;
             /** Finished Time */
