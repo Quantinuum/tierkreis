@@ -15,7 +15,7 @@ class PyNode(BaseModel):
     node_type: NodeType
     node_location: str = ""
     outputs: list[str]
-    value: Any | None = None
+    value: str | None = None
     started_time: str
     finished_time: str
 
@@ -25,5 +25,5 @@ class PyEdge(BaseModel):
     from_port: str
     to_node: Loc
     to_port: str
-    value: Any | None = None
+    value: str | None = None
     conditional: bool = False
