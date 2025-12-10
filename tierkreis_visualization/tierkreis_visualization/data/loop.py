@@ -59,9 +59,9 @@ def get_loop_node(
         edges.extend(
             [
                 PyEdge(
-                    from_node=node_location.N(n),
+                    from_node=node_location.L(n),
                     from_port=port_name,
-                    to_node=node_location.N(n + 1),
+                    to_node=node_location.L(n + 1),
                     to_port=port_name,
                     value=json.loads(
                         storage.read_output(node_location.L(n), port_name)
