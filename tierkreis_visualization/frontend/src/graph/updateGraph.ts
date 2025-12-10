@@ -6,6 +6,31 @@ import { getContainingNodes } from "@/nodes/layout";
 
 const DELETE_TAG = "fordeletion";
 
+const rewire = (
+  e: PyEdge,
+  n: PyNode,
+  rewire_at: "source" | "target"
+): PyEdge => {
+  return rewire_at === "source"
+    ? { ...e, from_node: n.id }
+    : { ...e, to_node: n.id };
+};
+
+const rewireAll = (
+  ns: PyNode[],
+  es: PyEdge[],
+  e: PyEdge,
+  expanded_loc: string,
+  rewire_at: "source" | "target"
+) => {
+  const newTargets = loc_children(expanded_loc, ns);
+  const newEdges = newTargets.map((x) => {
+    return rewire(e, x, rewire_at);
+  });
+  e.from_node = DELETE_TAG;
+  es.push(...newEdges);
+};
+
 export const amalgamateGraphData = (
   evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
   openEvals: string[],
@@ -23,6 +48,7 @@ export const amalgamateGraphData = (
     es.push(...(evalData[loc]?.edges ?? []));
   }
 
+  // Collect edges into and out of expanded nodes.
   const inEdges = new Map<string, PyEdge[]>();
   const outEdges = new Map<string, PyEdge[]>();
 
@@ -35,49 +61,23 @@ export const amalgamateGraphData = (
     }
   }
 
-  // Rewire inputs of open MAPs
-  for (const e of es) {
-    if (!openMaps.includes(e.to_node)) continue;
-
-    const newTargets = loc_children(e.to_node, ns);
-    const newEdges = newTargets.map((x) => {
-      return { ...e, to_node: x.id };
-    });
-    e.to_node = DELETE_TAG;
-    es = [...es, ...newEdges];
+  // Rewire edges overlapping MAP boundary
+  for (const map of openMaps) {
+    for (const e of inEdges.get(map) ?? []) rewireAll(ns, es, e, map, "target");
+    for (const e of outEdges.get(map) ?? [])
+      rewireAll(ns, es, e, map, "source");
   }
 
-  // Rewire outputs of open MAPs
-  for (const e of es) {
-    if (!openMaps.includes(e.from_node)) continue;
-
-    const newSources = loc_children(e.from_node, ns);
-    const newEdges = newSources.map((x) => {
-      return { ...e, from_node: x.id };
-    });
-    e.from_node = DELETE_TAG;
-    es = [...es, ...newEdges];
-  }
-
+  // Rewire edges overlapping LOOP boundary
   for (const loop of openLoops) {
-    const loopNode = ns.find((x) => x.id === loop);
-    const outputs = loopNode?.outputs;
+    const outputs = ns.find((x) => x.id === loop)?.outputs;
     for (const e of inEdges.get(loop) ?? []) {
       if (outputs?.includes(e.to_port)) e.to_node = e.to_node + ".L0";
-      else {
-        const newTargets = loc_children(e.to_node, ns);
-        const newEdges = newTargets.map((x) => {
-          return { ...e, to_node: x.id };
-        });
-        e.from_node = DELETE_TAG;
-        es = [...es, ...newEdges];
-      }
+      else rewireAll(ns, es, e, loop, "target");
     }
 
     for (const e of outEdges.get(loop) ?? []) {
-      const newSources = loc_children(e.from_node, ns);
-      const latest = newSources.at(-1);
-
+      const latest = loc_children(e.from_node, ns).at(-1);
       if (latest) e.from_node = latest.id;
     }
   }
