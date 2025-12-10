@@ -117,6 +117,7 @@ def get_eval_node(
             value=value,
             started_time=started_time,
             finished_time=finished_time,
+            outputs=list(node.outputs),
         )
         pynodes.append(pynode)
 

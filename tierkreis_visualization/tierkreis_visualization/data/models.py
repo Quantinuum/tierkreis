@@ -14,6 +14,7 @@ class PyNode(BaseModel):
     function_name: str
     node_type: NodeType
     node_location: str = ""
+    outputs: list[str]
     value: Any | None = None
     started_time: str
     finished_time: str

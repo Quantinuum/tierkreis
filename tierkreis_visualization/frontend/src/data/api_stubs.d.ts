@@ -197,6 +197,8 @@ export interface components {
              * @default
              */
             node_location: string;
+            /** Outputs */
+            outputs: string[];
             /** Value */
             value?: unknown | null;
             /** Started Time */
