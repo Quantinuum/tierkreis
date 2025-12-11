@@ -32,6 +32,7 @@ from tierkreis.controller.data.core import (
     get_serializer,
 )
 from tierkreis.exceptions import TierkreisError
+from tierkreis.logger_setup import LOGGER_NAME
 from typing_extensions import TypeIs
 
 
@@ -83,7 +84,7 @@ type ElementaryType = (
     | BaseModel
 )
 type JsonType = Container[ElementaryType]
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 @runtime_checkable

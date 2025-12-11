@@ -18,8 +18,9 @@ from tierkreis.controller.start import NodeRunData
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.labels import Labels
+from tierkreis.logger_setup import LOGGER_NAME
 
-logger = getLogger(__name__)
+logger = getLogger(LOGGER_NAME)
 
 
 @dataclass
