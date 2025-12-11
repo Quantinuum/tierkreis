@@ -63,19 +63,17 @@ class ShellExecutor:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
 
         with open(self.workflow_dir.parent / self.logs_path, "a") as lfh:
-            with open(self.workflow_dir.parent / self.errors_path, "a") as efh:
-                proc = subprocess.Popen(
-                    ["bash"],
-                    start_new_session=True,
-                    stdin=subprocess.PIPE,
-                    stderr=efh,
-                    stdout=lfh,
-                    env=env,
-                )
-                proc.communicate(
-                    f"({launcher_path} {worker_call_args_path} && touch {done_path}|| touch {_error_path})&".encode(),
-                    timeout=self.timeout,
-                )
+            proc = subprocess.Popen(
+                ["bash"],
+                start_new_session=True,
+                stdin=subprocess.PIPE,
+                stdout=lfh,
+                env=env,
+            )
+            proc.communicate(
+                f"({launcher_path} {worker_call_args_path} 2> >(tee -a {str(self.errors_path)} {str(self.logs_path)}) && touch {done_path}|| touch {_error_path})&".encode(),
+                timeout=self.timeout,
+            )
 
     def _create_env(
         self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool
