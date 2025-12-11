@@ -51,17 +51,15 @@ class UvExecutor:
         _error_path = self.errors_path.parent / "_error"
 
         with open(self.logs_path, "a") as lfh:
-            with open(self.errors_path, "a") as efh:
-                proc = subprocess.Popen(
-                    ["bash"],
-                    start_new_session=True,
-                    stdin=subprocess.PIPE,
-                    stderr=efh,
-                    stdout=lfh,
-                    cwd=worker_path,
-                    env=env,
-                )
-                proc.communicate(
-                    f"({uv_path} run main.py {worker_call_args_path} || touch {_error_path}) &".encode(),
-                    timeout=10,
-                )
+            proc = subprocess.Popen(
+                ["bash"],
+                start_new_session=True,
+                stdin=subprocess.PIPE,
+                stdout=lfh,
+                cwd=worker_path,
+                env=env,
+            )
+            proc.communicate(
+                f"({uv_path} run main.py {worker_call_args_path} 2> >(tee -a {str(self.errors_path)} {str(self.logs_path)}) || touch {_error_path}) &".encode(),
+                timeout=10,
+            )
