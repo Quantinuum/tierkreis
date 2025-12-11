@@ -13,13 +13,14 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from tierkreis_visualization.data.outputs import outputs_from_loc
+from tierkreis.logger_setup import LOGGER_NAME
 from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
 from tierkreis_visualization.routers.models import GraphsResponse, PyGraph
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 @router.websocket("/{workflow_id}/nodes/{node_location_str}")

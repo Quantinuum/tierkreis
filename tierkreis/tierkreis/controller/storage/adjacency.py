@@ -7,8 +7,9 @@ from tierkreis.controller.data.graph import (
 )
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.logger_setup import LOGGER_NAME
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:

@@ -1,6 +1,5 @@
 from inspect import Signature, signature
 import logging
-from logging import getLogger
 from pathlib import Path
 import sys
 from types import TracebackType
@@ -24,7 +23,14 @@ from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
 PrimitiveTask = Callable[[WorkerCallArgs, WorkerStorage], None]
 type MethodName = str
 
@@ -84,6 +90,20 @@ class Worker:
         else:
             self.storage = storage
         sys.excepthook = handle_unhandled_exception
+
+        self.logger = logger
+
+    def set_logger(self, new_logger: logging.Logger) -> None:
+        """Overwrite the internal logger.
+
+        This is useful if you want to change the debug level.
+        We recommend the following format to stay consistent with tierkreis:
+        logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
+
+        :param new_logger: The new logger.
+        :type new_logger: logging.Logger
+        """
+        self.logger = new_logger
 
     def _load_args(
         self, f: WorkerFunction, inputs: dict[str, Path]
@@ -153,16 +173,7 @@ class Worker:
         :raises TierkreisError: When the function execution results in an error.
         """
         node_definition = self.storage.read_call_args(worker_definition_path)
-
-        logs_path = node_definition.logs_path
-        logging.basicConfig(
-            format="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-            filename=self.storage.resolve(logs_path) if logs_path else None,
-            filemode="a",
-            level=logging.INFO,
-        )
-        logger.info(node_definition.model_dump())
+        self.logger.debug(node_definition.model_dump())
 
         try:
             function = self.functions.get(node_definition.function_name, None)
@@ -170,13 +181,14 @@ class Worker:
                 raise TierkreisError(
                     f"{self.name}: function name {node_definition.function_name} not found"
                 )
-            logger.info(f"running: {node_definition.function_name} in {self.name}")
+            self.logger.info(f"running: {node_definition.function_name} in {self.name}")
 
             function(node_definition)
 
             self.storage.mark_done(node_definition.done_path)
+
         except Exception as err:
-            logger.error("encountered error", exc_info=err)
+            self.logger.error("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
 
     def app(self, argv: list[str]) -> None:

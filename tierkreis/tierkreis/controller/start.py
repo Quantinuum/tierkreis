@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from logging import getLogger
 import logging
 from pathlib import Path
 import subprocess
@@ -9,6 +8,7 @@ from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
+from tierkreis.logger_setup import LOGGER_NAME
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
@@ -20,7 +20,7 @@ from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.labels import Labels
 from tierkreis.exceptions import TierkreisError
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 @dataclass
@@ -44,17 +44,17 @@ def start_nodes(
 
 
 def run_builtin(def_path: Path, logs_path: Path) -> None:
-    logger = getLogger("builtins")
-    if not logger.hasHandlers():
-        formatter = logging.Formatter(
-            fmt="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-        )
-        handler = logging.FileHandler(logs_path, mode="a")
-        handler.setFormatter(formatter)
-        logger.setLevel(logging.INFO)
+    # logger = getLogger("builtins")
+    # if not logger.hasHandlers():
+    #     formatter = logging.Formatter(
+    #         fmt="%(asctime)s: %(message)s",
+    #         datefmt="%Y-%m-%dT%H:%M:%S%z",
+    #     )
+    #     handler = logging.FileHandler(logs_path, mode="a")
+    #     handler.setFormatter(formatter)
+    #     logger.setLevel(logging.INFO)
 
-        logger.addHandler(handler)
+    #     logger.addHandler(handler)
 
     logger.info("START builtin %s", def_path)
     with open(logs_path, "a") as fh:

@@ -10,8 +10,9 @@ from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.data.core import PortID
 from tierkreis.exceptions import TierkreisError
+from tierkreis.logger_setup import LOGGER_NAME
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 @dataclass

@@ -7,12 +7,14 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
+from tierkreis.logger_setup import LOGGER_NAME, set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID, ValueRef
+from tierkreis.exceptions import TierkreisError
 
 root_loc = Loc("")
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def run_graph(
@@ -33,6 +35,8 @@ def run_graph(
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
     storage.write_metadata(Loc(""))
+    set_tkr_logger(storage.logs_path)
+
     for name, value in graph_inputs.items():
         storage.write_output(root_loc.N(-1), name, bytes_from_ptype(value))
 
@@ -71,7 +75,7 @@ def resume_graph(
                 print("\n\n")
 
             print("--- Tierkreis graph errors above this line. ---\n\n")
-            break
+            raise TierkreisError("Graph encountered errors")
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):

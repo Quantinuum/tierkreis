@@ -6,8 +6,9 @@ from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.exceptions import TierkreisError
+from tierkreis.logger_setup import LOGGER_NAME
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class UvExecutor:
@@ -30,13 +31,6 @@ class UvExecutor:
         worker_call_args_path: Path,
         uv_path: str | None = None,
     ) -> None:
-        logging.basicConfig(
-            format="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-            filename=self.logs_path,
-            filemode="a",
-            level=logging.INFO,
-        )
         self.errors_path = (
             self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
         )
@@ -55,7 +49,7 @@ class UvExecutor:
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         _error_path = self.errors_path.parent / "_error"
-
+        logger.info("Error path: %s, Logs path, %s", self.errors_path, self.logs_path)
         with open(self.logs_path, "a") as lfh:
             with open(self.errors_path, "a") as efh:
                 proc = subprocess.Popen(
