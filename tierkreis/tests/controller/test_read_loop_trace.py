@@ -12,24 +12,22 @@ from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.storage import read_loop_trace
 
+
+return_value = [
+    {"acc1": x, "acc2": y, "acc3": z}
+    for x, y, z in zip(range(1, 7), range(2, 13, 2), range(3, 19, 3))
+]
+
 params: list[tuple[GraphData, Any, str, int]] = [
     (
         loop_multiple_acc_untyped(),
-        {
-            "acc1": list(range(1, 7)),
-            "acc2": list(range(2, 13, 2)),
-            "acc3": list(range(3, 19, 3)),
-        },
+        return_value,
         "multi_acc",
         9,
     ),
     (
         loop_multiple_acc().get_data(),
-        {
-            "acc1": list(range(1, 7)),
-            "acc2": list(range(2, 13, 2)),
-            "acc3": list(range(3, 19, 3)),
-        },
+        return_value,
         "multi_acc",
         9,
     ),

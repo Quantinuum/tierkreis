@@ -71,7 +71,7 @@ f.outputs(loop_output.value)
 We can also track intermediate values in a loop.
 This is useful for tracking the intermediate values for validation or visualization.
 For example, we could track the loss of a training loop.
-We simple provide an additional name to the loop.
+We simply provide an additional name to the loop.
 
 ```{code-cell} ipython3
 from tierkreis.models import EmptyModel
