@@ -49,7 +49,7 @@ class UvExecutor:
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         _error_path = self.errors_path.parent / "_error"
-        logger.info("Error path: %s, Logs path, %s", self.errors_path, self.logs_path)
+
         with open(self.logs_path, "a") as lfh:
             with open(self.errors_path, "a") as efh:
                 proc = subprocess.Popen(
