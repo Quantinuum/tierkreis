@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tests.errors.failing_worker.stubs import fail, wont_fail, exit_code_1
+from tierkreis.exceptions import TierkreisError
 
 
 def will_fail_graph():
@@ -40,8 +42,9 @@ def test_raise_error() -> None:
     storage = ControllerFileStorage(UUID(int=42), name="will_fail")
     executor = UvExecutor(Path(__file__).parent, logs_path=storage.logs_path)
     storage.clean_graph_files()
-    run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-    assert storage.node_has_error(Loc("-.N0"))
+    with pytest.raises(TierkreisError):
+        run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
+        assert storage.node_has_error(Loc("-.N0"))
 
 
 def test_raises_no_error() -> None:
@@ -58,8 +61,9 @@ def test_nested_error() -> None:
     storage = ControllerFileStorage(UUID(int=44), name="eval_will_fail")
     executor = UvExecutor(Path(__file__).parent, logs_path=storage.logs_path)
     storage.clean_graph_files()
-    run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/errors").exists()
+    with pytest.raises(TierkreisError):
+        run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
+        assert (storage.logs_path.parent / "-/errors").exists()
 
 
 def test_non_zero_exit_code() -> None:
@@ -67,5 +71,6 @@ def test_non_zero_exit_code() -> None:
     storage = ControllerFileStorage(UUID(int=46), name="non_zero_exit_code")
     executor = UvExecutor(Path(__file__).parent, logs_path=storage.logs_path)
     storage.clean_graph_files()
-    run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/_error").exists()
+    with pytest.raises(TierkreisError):
+        run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
+        assert (storage.logs_path.parent / "-/_error").exists()
