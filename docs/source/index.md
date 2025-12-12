@@ -17,6 +17,7 @@ installation.md
 core_concepts.md
 getting_started.md
 visualization.md
+logging_and_errors.md
 worker/index
 apidocs/index
 ```
