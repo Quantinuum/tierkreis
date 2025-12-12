@@ -15,6 +15,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.executor.uv_executor import UvExecutor
+from tierkreis.exceptions import TierkreisError
 
 from example_workers.error_worker.stubs import fail
 
@@ -40,15 +41,17 @@ def main() -> None:
     registry_path = Path(__file__).parent / "example_workers"
     executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
     print("Starting workflow at location:", storage.logs_path)
-    run_graph(
-        storage,
-        executor,
-        error_graph().data,
-        {"value": "world!"},
-        polling_interval_seconds=0.1,
-    )
-    output = storage.read_errors(root_loc)
-    print(output)
+    try:
+        run_graph(
+            storage,
+            executor,
+            error_graph().data,
+            {"value": "world!"},
+            polling_interval_seconds=0.1,
+        )
+    except TierkreisError:
+        output = storage.read_errors(root_loc)
+        print(output)
 
 
 if __name__ == "__main__":
