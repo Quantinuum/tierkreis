@@ -77,6 +77,7 @@ class Worker:
     def __init__(self, name: str, storage: WorkerStorage | None = None) -> None:
         self.name = name
         self.functions = {}
+        self.debug_functions = {}
         self.types = {}
         self.namespace = Namespace(name=self.name, methods=[])
         if storage is None:
@@ -131,7 +132,7 @@ class Worker:
     def task(self) -> Callable[[F], F]:
         """Registers a python function as a task with the worker."""
 
-        def function_decorator(func: F) -> F:
+        def function_decorator(func: F, debug_value: PModel | None = None) -> F:
             self.namespace.add_function(func)
             self.add_types(func)
 
@@ -141,6 +142,17 @@ class Worker:
                 self._save_results(func, node_definition.outputs, results)
 
             self.functions[func.__name__] = wrapper
+
+            def wrapper_with_debug_value(
+                node_definition: WorkerCallArgs, dbg: PModel | None = None
+            ):
+                _ = self._load_args(func, node_definition.inputs)
+                if dbg is not None:
+                    self._save_results(func, node_definition.outputs, dbg)
+                else:
+                    self._save_results(func, node_definition.outputs, debug_value)
+
+            self.debug_functions[func.__name__] = wrapper_with_debug_value
             return func
 
         return function_decorator
@@ -173,6 +185,25 @@ class Worker:
             logger.info(f"running: {node_definition.function_name} in {self.name}")
 
             function(node_definition)
+
+            self.storage.mark_done(node_definition.done_path)
+        except Exception as err:
+            logger.error("encountered error", exc_info=err)
+            self.storage.write_error(node_definition.error_path, str(err))
+
+    def run_debug(
+        self, worker_definition_path: Path, debug_value: PModel | None = None
+    ) -> None:
+        node_definition = self.storage.read_call_args(worker_definition_path)
+        try:
+            function = self.debug_functions.get(node_definition.function_name, None)
+            if function is None:
+                raise TierkreisError(
+                    f"{self.name}: function name {node_definition.function_name} not found"
+                )
+            logger.info(f"running: {node_definition.function_name} in {self.name}")
+
+            function(node_definition, debug_value)
 
             self.storage.mark_done(node_definition.done_path)
         except Exception as err:

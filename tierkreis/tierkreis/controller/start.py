@@ -34,12 +34,13 @@ def start_nodes(
     storage: ControllerStorage,
     executor: ControllerExecutor,
     node_run_data: list[NodeRunData],
+    debug: bool = False,
 ) -> None:
     started_locs: set[Loc] = set()
     for node_run_datum in node_run_data:
         if node_run_datum.node_location in started_locs:
             continue
-        start(storage, executor, node_run_datum)
+        start(storage, executor, node_run_datum, debug)
         started_locs.add(node_run_datum.node_location)
 
 
@@ -68,7 +69,10 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
 
 
 def start(
-    storage: ControllerStorage, executor: ControllerExecutor, node_run_data: NodeRunData
+    storage: ControllerStorage,
+    executor: ControllerExecutor,
+    node_run_data: NodeRunData,
+    debug: bool = False,
 ) -> None:
     node_location = node_run_data.node_location
     node = node_run_data.node
@@ -92,13 +96,12 @@ def start(
         )
         logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
 
-        if isinstance(storage, ControllerInMemoryStorage) and isinstance(
+        if launcher_name == "builtins":
+            run_builtin(call_args_path, storage.logs_path)
+        elif isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
-            executor.run(launcher_name, call_args_path)
-
-        elif launcher_name == "builtins":
-            run_builtin(call_args_path, storage.logs_path)
+            executor.run(launcher_name, call_args_path, debug)
         else:
             executor.run(launcher_name, call_args_path)
 

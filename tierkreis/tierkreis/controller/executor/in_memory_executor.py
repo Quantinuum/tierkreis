@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
+from tierkreis.controller.data.models import PModel
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 from tierkreis.exceptions import TierkreisError
@@ -18,14 +19,21 @@ class InMemoryExecutor:
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(self, registry_path: Path, storage: ControllerInMemoryStorage) -> None:
+    def __init__(
+        self,
+        registry_path: Path,
+        storage: ControllerInMemoryStorage,
+        debug_values: dict[str, PModel] | None = None,
+    ) -> None:
         self.registry_path = registry_path
         self.storage = storage
+        self.debug_values = debug_values or {}
 
     def run(
         self,
         launcher_name: str,
         worker_call_args_path: Path,
+        debug: bool = False,
     ) -> None:
         logging.basicConfig(
             format="%(asctime)s: %(message)s",
@@ -49,5 +57,14 @@ class InMemoryExecutor:
         spec.loader.exec_module(module)
         worker_storage = InMemoryWorkerStorage(self.storage)
         module.worker.storage = worker_storage
-        module.worker.functions[call_args.function_name](call_args)
+        if debug:
+            module.worker.run_debug(
+                worker_call_args_path,
+                self.debug_values.get(
+                    f"{launcher_name}:{call_args.function_name}", None
+                ),
+            )
+        else:
+            module.worker.functions[call_args.function_name](call_args)
+
         self.storage.touch(call_args.done_path)
