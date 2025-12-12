@@ -41,7 +41,7 @@ export const amalgamateGraphData = (
   edges: PyEdge[];
 } => {
   const ns = [];
-  let es = [];
+  let es: PyEdge[] = [];
 
   for (const loc in evalData) {
     ns.push(...(evalData[loc]?.nodes ?? []));
