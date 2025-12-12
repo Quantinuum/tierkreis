@@ -68,9 +68,9 @@ function parseNodeValue(value: unknown): string | null {
     return null;
   }
   if (typeof value === "string") {
-    if (value.length > 10) {
-      return value.slice(0, 10) + "...";
-    }
+    // if (value.length > 10) {
+    //   return value.slice(0, 10) + "...";
+    // }
     return value;
   }
   if (typeof value === "number" || typeof value === "boolean") {

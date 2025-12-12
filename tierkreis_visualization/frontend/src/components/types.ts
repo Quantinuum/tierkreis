@@ -1,5 +1,5 @@
 export interface InfoProps {
-  type: "Logs" | "Errors";
+  type: "Logs" | "Errors" | "Constant value" | "Input" | "Output";
   content: string;
 }
 export interface HandleProps {

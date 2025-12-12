@@ -8,11 +8,14 @@ from fastapi import APIRouter, HTTPException, Query, status
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from tierkreis_visualization.data.outputs import outputs_from_loc
+from tierkreis.storage import read_outputs
 from watchfiles import awatch  # type: ignore
 
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
@@ -82,6 +85,19 @@ def get_node(request: Request, workflow_id: UUID, node_location_str: str) -> PyG
     node_location = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
     return get_node_data(storage, node_location)
+
+
+@router.get("/{workflow_id}/nodes/{node_location_str}/outputs")
+def get_eval_outputs(
+    request: Request,
+    workflow_id: UUID,
+    node_location_str: str,
+):
+    loc = parse_node_location(node_location_str)
+    storage = request.app.state.get_storage_fn(workflow_id)
+    outputs = storage.read_output_ports(loc)
+    out = {k: str(storage.read_output(loc, k)) for k in outputs}
+    return JSONResponse(out)
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}")

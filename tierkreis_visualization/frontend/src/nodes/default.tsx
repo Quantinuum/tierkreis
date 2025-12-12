@@ -11,7 +11,8 @@ import { DialogTrigger } from "@/components/ui/dialog";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
-import { fetchErrors, fetchLogs } from "@/data/api";
+import { fetchErrors, fetchLogs, fetchOutput, fetchOutputs } from "@/data/api";
+import { loc_parent } from "@/data/loc";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
   let name = data.title;
@@ -34,8 +35,40 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
   };
 
   const handleClick = async () => {
-    const logs = await fetchLogs(data.workflowId);
-    data.setInfo?.({ type: "Logs", content: logs });
+    if (data.node_type === "function") {
+      const content = await fetchLogs(data.workflowId);
+      data.setInfo?.({ type: "Logs", content });
+    } else if (data.node_type === "const") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        "value"
+      );
+      data.setInfo?.({ type: "Constant value", content });
+    } else if (data.node_type === "input") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        name
+      );
+      data.setInfo?.({ type: "Input", content });
+    } else if (data.node_type === "eifelse") {
+      return;
+    } else if (data.node_type === "ifelse") {
+      return;
+    } else if (data.node_type === "eval") {
+      return;
+    } else if (data.node_type === "map") {
+      return;
+    } else if (data.node_type === "loop") {
+      return;
+    } else if (data.node_type === "output") {
+      const parent = loc_parent(data.node_location);
+      const content = await fetchOutputs(data.workflowId, parent);
+      data.setInfo?.({ type: "Output", content });
+    } else {
+      data.node_type satisfies never;
+    }
   };
   const handleErrorClick = async () => {
     const errors = await fetchErrors(data.workflowId, data.node_location);
@@ -43,13 +76,14 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
   };
 
   return (
-    <Card className={"w-[180px] " + bg_color(data.status)}>
+    <Card
+      className={"w-[180px] " + bg_color(data.status)}
+      onClick={handleClick}
+    >
       <DialogTrigger asChild>
-        <div onClick={handleClick}>
+        <div>
           <CardHeader>
-            <CardTitle
-              style={{ whiteSpace: "normal", wordBreak: "break-word" }}
-            >
+            <CardTitle className="whitespace-nowrap overflow-hidden text-ellipsis">
               {name}
             </CardTitle>
           </CardHeader>
