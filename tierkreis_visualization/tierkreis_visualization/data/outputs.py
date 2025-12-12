@@ -9,5 +9,5 @@ def outputs_from_loc(
     try:
         bs = storage.read_output(loc, port_name)
         return bs.decode()
-    except (FileNotFoundError, TierkreisError):
+    except (FileNotFoundError, TierkreisError) as e:
         return None
