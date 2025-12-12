@@ -31,24 +31,23 @@ const rewireAll = (
   es.push(...newEdges);
 };
 
-export const amalgamateGraphData = (
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
-  openEvals: string[],
-  openLoops: string[],
-  openMaps: string[]
-): {
-  nodes: PyNode[];
-  edges: PyEdge[];
-} => {
-  const ns = [];
-  let es: PyEdge[] = [];
+const concatData = (
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>
+): [PyNode[], PyEdge[]] => {
+  const ns: PyNode[] = [];
+  const es: PyEdge[] = [];
 
   for (const loc in evalData) {
     ns.push(...(evalData[loc]?.nodes ?? []));
     es.push(...(evalData[loc]?.edges ?? []));
   }
+  return [ns, es];
+};
 
-  // Collect edges into and out of expanded nodes.
+const indexEdges = (
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
+  es: PyEdge[]
+): [Map<string, PyEdge[]>, Map<string, PyEdge[]>] => {
   const inEdges = new Map<string, PyEdge[]>();
   const outEdges = new Map<string, PyEdge[]>();
 
@@ -60,31 +59,46 @@ export const amalgamateGraphData = (
       inEdges.set(e.to_node, [...(inEdges.get(e.to_node) ?? []), e]);
     }
   }
+  return [inEdges, outEdges];
+};
 
-  // Rewire edges overlapping MAP boundary
-  for (const map of openMaps) {
-    for (const e of inEdges.get(map) ?? []) rewireAll(ns, es, e, map, "target");
-    for (const e of outEdges.get(map) ?? [])
-      rewireAll(ns, es, e, map, "source");
+const rewireMap = (
+  map: string,
+  inEdges: Map<string, PyEdge[]>,
+  outEdges: Map<string, PyEdge[]>,
+  ns: PyNode[],
+  es: PyEdge[]
+) => {
+  for (const e of inEdges.get(map) ?? []) rewireAll(ns, es, e, map, "target");
+  for (const e of outEdges.get(map) ?? []) rewireAll(ns, es, e, map, "source");
+};
+
+const rewireLoop = (
+  loop: string,
+  inEdges: Map<string, PyEdge[]>,
+  outEdges: Map<string, PyEdge[]>,
+  ns: PyNode[],
+  es: PyEdge[]
+) => {
+  const outputs = ns.find((x) => x.id === loop)?.outputs;
+  for (const e of inEdges.get(loop) ?? []) {
+    if (outputs?.includes(e.to_port)) e.to_node = e.to_node + ".L0";
+    else rewireAll(ns, es, e, loop, "target");
   }
 
-  // Rewire edges overlapping LOOP boundary
-  for (const loop of openLoops) {
-    const outputs = ns.find((x) => x.id === loop)?.outputs;
-    for (const e of inEdges.get(loop) ?? []) {
-      if (outputs?.includes(e.to_port)) e.to_node = e.to_node + ".L0";
-      else rewireAll(ns, es, e, loop, "target");
-    }
-
-    for (const e of outEdges.get(loop) ?? []) {
-      const latest = loc_children(e.from_node, ns).at(-1);
-      if (latest) e.from_node = latest.id;
-    }
+  for (const e of outEdges.get(loop) ?? []) {
+    const latest = loc_children(e.from_node, ns).at(-1);
+    if (latest) e.from_node = latest.id;
   }
+};
 
-  // Rewire inputs of open EVALs
-  for (const e of es) {
-    if (!openEvals.includes(e.to_node)) continue;
+const rewireEvals = (
+  ev: string,
+  inEdges: Map<string, PyEdge[]>,
+  outEdges: Map<string, PyEdge[]>,
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>
+) => {
+  for (const e of inEdges.get(ev) ?? []) {
     if (e.to_port === "body") continue;
 
     const newTarget = evalData[e.to_node]?.nodes.find(
@@ -93,19 +107,35 @@ export const amalgamateGraphData = (
     if (newTarget !== undefined) e.to_node = newTarget.id;
   }
 
-  // Rewire outputs of open EVALs
-  for (const e of es) {
-    if (!openEvals.includes(e.from_node)) continue;
-
+  for (const e of outEdges.get(ev) ?? []) {
     const newSource = evalData[e.from_node]?.nodes.find(
       (x) => x.function_name === "output"
     );
     if (newSource !== undefined) e.from_node = newSource.id;
   }
+};
 
-  es = es.filter((x) => x.to_node !== DELETE_TAG && x.from_node !== DELETE_TAG);
+const cleanOrphans = (es: PyEdge[]): PyEdge[] => {
+  return es.filter((x) => x.from_node !== DELETE_TAG);
+};
 
-  return { nodes: ns, edges: es };
+export const amalgamateGraphData = (
+  openNodes: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
+  openEvals: string[],
+  openLoops: string[],
+  openMaps: string[]
+): {
+  nodes: PyNode[];
+  edges: PyEdge[];
+} => {
+  const [ns, es] = concatData(openNodes);
+  const [inEdges, outEdges] = indexEdges(openNodes, es);
+
+  for (const map of openMaps) rewireMap(map, inEdges, outEdges, ns, es);
+  for (const loop of openLoops) rewireLoop(loop, inEdges, outEdges, ns, es);
+  for (const ev of openEvals) rewireEvals(ev, inEdges, outEdges, openNodes);
+
+  return { nodes: ns, edges: cleanOrphans(es) };
 };
 
 export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
