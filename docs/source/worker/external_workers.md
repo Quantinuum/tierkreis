@@ -70,9 +70,18 @@ There are two possible scenarios to parse input and outputs for workers.
 You can either define a custom executor in python; this has the advantage of interacting with the storage from Tierkreis, making it simpler to read inputs.
 But you also have to make sure the outputs are written to the correct places.
 Alternatively you can use an existing executor, which means you have to do the parsing inside the worker.
-Tierkreis typically hands over a single argument to the invoked script: the `NodeCallArgs`
+Tierkreis typically hands over a single argument to the invoked script: the [`WorkerCallArgs`][#tierkreis.controller.data.location.WorkerCallArgs]
 This contains all the information specified in the the contract of a worker.
 Parsing this file will provide the locations of inputs and expected outputs.
+
+### Errors and Logging
+
+Part of the specification for `WorkerCallArgs` are path descriptions for `logs_path` and `errors_path`.
+These point to files that the Tierkreis controller will collect logs and errors in.
+To make worker errors visible, you can use those paths to write the information.
+Alternatively, the controller will redirect any output to `stdout` to `logs_path` and `stderr` to `errors_path` automatically.
+If the invoked script returns a non-zero exit code, the controller assumes an error and stop execution.
+This is indicated with an `_error` file in the node location.
 
 ### C++ Example
 
