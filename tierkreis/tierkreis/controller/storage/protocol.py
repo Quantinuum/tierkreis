@@ -193,15 +193,12 @@ class ControllerStorage(ABC):
         return self.read(self._output_path(node_location, output_name))
 
     def read_errors(self, node_location: Loc) -> str:
+        # TODO: should we keep tis logic
+        if self.exists(self._error_path(node_location)):
+            return self.read(self._error_path(node_location)).decode()
         if not self.exists(self._error_logs_path(node_location)):
-            if self.exists(self._error_path(node_location)):
-                return self.read(self._error_path(node_location)).decode()
             return ""
-        errors = self.read(self._error_logs_path(node_location)).decode()
-        if errors == "":
-            if self.exists(self._error_path(node_location)):
-                return self.read(self._error_path(node_location)).decode()
-        return errors
+        return self.read(self._error_logs_path(node_location)).decode()
 
     def write_node_errors(self, node_location: Loc, error_logs: str) -> None:
         self.write(self._error_logs_path(node_location), error_logs.encode())
