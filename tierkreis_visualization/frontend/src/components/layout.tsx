@@ -5,6 +5,7 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { InfoProps } from "@/components/types";
 import { WorkflowDisplay } from "@/data/api_types";
 import { Breadcrumbs } from "./breadcrumbs";
+import { useState } from "react";
 
 export default function Layout({
   children,
@@ -19,11 +20,15 @@ export default function Layout({
   info: InfoProps;
   loc: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const dialogCloser = () => {
+    setOpen(false);
+  };
   return (
     <SidebarProvider>
-      <Dialog>
+      <Dialog open={open} onOpenChange={setOpen}>
         <WorkflowSidebar workflows={workflows} workflowId={workflowId} />
-        <NodeInfo info={info} />
+        <NodeInfo info={info} closer={dialogCloser} />
         <main className="flex flex-col">
           <Breadcrumbs wid={workflowId} loc={loc} />
           {children}
