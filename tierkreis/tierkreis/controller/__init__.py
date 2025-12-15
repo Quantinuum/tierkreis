@@ -22,6 +22,7 @@ def run_graph(
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
+    use_debug_values: bool = False,
 ) -> None:
     if isinstance(g, GraphBuilder):
         g = g.get_data()
@@ -42,8 +43,10 @@ def run_graph(
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
     }
     node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
-    start(storage, executor, node_run_data)
-    resume_graph(storage, executor, n_iterations, polling_interval_seconds)
+    start(storage, executor, node_run_data, use_debug_values)
+    resume_graph(
+        storage, executor, n_iterations, polling_interval_seconds, use_debug_values
+    )
 
 
 def resume_graph(
