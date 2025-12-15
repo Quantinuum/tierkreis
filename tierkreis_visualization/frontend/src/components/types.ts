@@ -1,5 +1,12 @@
 export interface InfoProps {
-  type: "Logs" | "Errors" | "Constant value" | "Input" | "Output";
+  type:
+    | "Logs"
+    | "Errors"
+    | "Constant value"
+    | "Input"
+    | "Output"
+    | "Lazy if/else"
+    | "Eager if/else";
   content: string;
 }
 export interface HandleProps {
