@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, assert_never
 from uuid import UUID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
@@ -40,7 +40,7 @@ class ControllerStorage(ABC):
 
     @abstractmethod
     def delete(self, path: Path) -> None:
-        """Delete the storage entry at the specified path."""
+        """Delete the storage entry at the specified path and all subpaths."""
 
     @abstractmethod
     def exists(self, path: Path) -> bool:
@@ -216,6 +216,12 @@ class ControllerStorage(ABC):
     def is_node_finished(self, node_location: Loc) -> bool:
         return self.exists(self._done_path(node_location))
 
+    def latest_loop_iteration(self, loc: Loc) -> Loc:
+        i = 0
+        while self.is_node_started(loc.L(i + 1)):
+            i += 1
+        return loc.L(i)
+
     def node_has_error(self, node_location: Loc) -> bool:
         return self.exists(self._error_path(node_location))
 
@@ -274,3 +280,53 @@ class ControllerStorage(ABC):
 
     def read_debug_data(self, name: str) -> dict[str, Any]:
         return json.loads(self.read(self.debug_path / name))
+
+    def dependents(self, loc: Loc) -> set[Loc]:
+        """Nodes that are fully invalidated if the node at the given loc is invalidated.
+
+        This does not include the direct parent Loc, which is only partially invalidated.
+        """
+        descs: set[Loc] = set()
+        step, parent = loc.pop_last()
+        match step:
+            case "-":
+                pass
+            case ("N", _):
+                nodedef = self.read_node_def(loc)
+                if nodedef.type == "output":
+                    descs.update(self.dependents(parent))
+                for output in nodedef.outputs.values():
+                    descs.add(parent.N(output))
+                    descs.update(self.dependents(parent.N(output)))
+            case ("M", _):
+                descs.update(self.dependents(parent))
+            case ("L", idx):
+                latest_idx = self.latest_loop_iteration(parent).peek_index()
+                [descs.add(parent.L(i)) for i in range(idx + 1, latest_idx + 1)]
+                descs.update(self.dependents(parent))
+            case _:
+                assert_never(step)
+
+        return descs
+
+    def restart_task(self, loc: Loc) -> list[Loc]:
+        """Restart the node at the given loc.
+
+        Fully dependent nodes will be removed from the storage.
+        The parent locs will be partially invalidated.
+
+        Returns the invalidated nodes."""
+
+        # Remove fully invalidated nodes.
+        deps = self.dependents(loc)
+        [self.delete(self.workflow_dir / a) for a in deps]
+
+        # Mark partially invalidated nodes as not finished and remove their outputs.
+        partials = loc.partial_locs()
+        [self.delete(self._done_path(x)) for x in partials]
+        [self.delete(self.workflow_dir / a / "outputs") for a in partials]
+
+        # Mark given Loc as not started, so that the controller picks it up on the next tick.
+        self.delete(self._nodedef_path(loc))
+
+        return list(deps)

@@ -8,6 +8,8 @@ export interface InfoProps {
     | "Lazy if/else"
     | "Eager if/else";
   content: string;
+  workflow_id: string;
+  node_location: string;
 }
 export interface HandleProps {
   handles: string[];

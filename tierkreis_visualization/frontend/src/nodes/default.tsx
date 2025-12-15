@@ -35,44 +35,66 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
   };
 
   const handleClick = async () => {
+    const workflow_id = data.workflowId;
+    const node_location = data.node_location;
     if (data.node_type === "function") {
       const content = await fetchLogs(data.workflowId);
-      data.setInfo?.({ type: "Logs", content });
+      data.setInfo?.({ type: "Logs", content, workflow_id, node_location });
     } else if (data.node_type === "const") {
       const content = await fetchOutput(
         data.workflowId,
         data.node_location,
         "value"
       );
-      data.setInfo?.({ type: "Constant value", content });
+      data.setInfo?.({
+        type: "Constant value",
+        content,
+        workflow_id,
+        node_location,
+      });
     } else if (data.node_type === "input") {
       const content = await fetchOutput(
         data.workflowId,
         data.node_location,
         name
       );
-      data.setInfo?.({ type: "Input", content });
+      data.setInfo?.({ type: "Input", content, workflow_id, node_location });
     } else if (data.node_type === "eifelse") {
-      data.setInfo?.({ type: "Eager if/else", content: "" });
+      data.setInfo?.({
+        type: "Eager if/else",
+        content: "",
+        workflow_id,
+        node_location,
+      });
     } else if (data.node_type === "ifelse") {
-      data.setInfo?.({ type: "Lazy if/else", content: "" });
-    } else if (
-      data.node_type === "eval" ||
-      data.node_type === "map" ||
-      data.node_type === "loop"
-    ) {
+      data.setInfo?.({
+        type: "Lazy if/else",
+        content: "",
+        workflow_id,
+        node_location,
+      });
+    } else if (data.node_type === "eval") {
+      return;
+    } else if (data.node_type === "map") {
+      return;
+    } else if (data.node_type === "loop") {
       return;
     } else if (data.node_type === "output") {
       const parent = loc_parent(data.node_location);
       const content = await fetchOutputs(data.workflowId, parent);
-      data.setInfo?.({ type: "Output", content });
+      data.setInfo?.({ type: "Output", content, workflow_id, node_location });
     } else {
       data.node_type satisfies never;
     }
   };
   const handleErrorClick = async () => {
     const errors = await fetchErrors(data.workflowId, data.node_location);
-    data.setInfo?.({ type: "Errors", content: errors });
+    data.setInfo?.({
+      type: "Errors",
+      content: errors,
+      workflow_id: data.workflowId,
+      node_location: data.node_location,
+    });
   };
 
   return (
