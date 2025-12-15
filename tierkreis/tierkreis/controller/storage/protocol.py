@@ -77,6 +77,10 @@ class ControllerStorage(ABC):
     def logs_path(self) -> Path:
         return self.workflow_dir / "logs"
 
+    @property
+    def debug_path(self) -> Path:
+        return self.workflow_dir / "debug"
+
     def _nodedef_path(self, node_location: Loc) -> Path:
         return self.workflow_dir / str(node_location) / "nodedef"
 
@@ -252,6 +256,10 @@ class ControllerStorage(ABC):
         return result
 
     def loc_from_node_name(self, node_name: str) -> Loc:
+        debug_data = self.read_debug_data(node_name)
+        if debug_data is not None:
+            pass
+            # return debug_data
         loop_nodes = set(node.stem for node in self._list_loop_iters())
         for candidate in loop_nodes:
             loc = Loc(candidate)
@@ -271,3 +279,12 @@ class ControllerStorage(ABC):
             if sub_path.suffix.startswith(".L"):
                 results.append(sub_path)
         return results
+
+    def write_debug_data(self, name: str, loc: Loc) -> None:
+        self.mkdir(self.debug_path)
+        self.write(self.debug_path / name, loc.encode())
+
+    def read_debug_data(self, name: str) -> Loc | None:
+        if self.exists(self.debug_path / name):
+            return Loc(self.read(self.debug_path / name).decode())
+        return None
