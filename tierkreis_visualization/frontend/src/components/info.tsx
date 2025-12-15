@@ -13,7 +13,7 @@ export function NodeInfo(props: { info: InfoProps }) {
         <DialogTitle>{props.info.type}</DialogTitle>
         <DialogDescription></DialogDescription>
       </DialogHeader>
-      <div className="text-wrap">{props.info.content}</div>
+      <div className="text-wrap overflow-auto h-9/10">{props.info.content}</div>
     </DialogContent>
   );
 }

@@ -53,9 +53,9 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
       );
       data.setInfo?.({ type: "Input", content });
     } else if (data.node_type === "eifelse") {
-      return;
+      data.setInfo?.({ type: "Eager if/else", content: "" });
     } else if (data.node_type === "ifelse") {
-      return;
+      data.setInfo?.({ type: "Lazy if/else", content: "" });
     } else if (data.node_type === "eval") {
       return;
     } else if (data.node_type === "map") {
