@@ -64,22 +64,22 @@ const indexEdges = (
 
 const rewireMap = (
   map: string,
-  inEdges: Map<string, PyEdge[]>,
-  outEdges: Map<string, PyEdge[]>,
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
   ns: PyNode[],
   es: PyEdge[]
 ) => {
+  const [inEdges, outEdges] = indexEdges(evalData, es);
   for (const e of inEdges.get(map) ?? []) rewireAll(ns, es, e, map, "target");
   for (const e of outEdges.get(map) ?? []) rewireAll(ns, es, e, map, "source");
 };
 
 const rewireLoop = (
   loop: string,
-  inEdges: Map<string, PyEdge[]>,
-  outEdges: Map<string, PyEdge[]>,
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
   ns: PyNode[],
   es: PyEdge[]
 ) => {
+  const [inEdges, outEdges] = indexEdges(evalData, es);
   const outputs = ns.find((x) => x.id === loop)?.outputs;
   for (const e of inEdges.get(loop) ?? []) {
     if (outputs?.includes(e.to_port)) e.to_node = e.to_node + ".L0";
@@ -94,10 +94,10 @@ const rewireLoop = (
 
 const rewireEvals = (
   ev: string,
-  inEdges: Map<string, PyEdge[]>,
-  outEdges: Map<string, PyEdge[]>,
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>
+  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
+  es: PyEdge[]
 ) => {
+  const [inEdges, outEdges] = indexEdges(evalData, es);
   for (const e of inEdges.get(ev) ?? []) {
     if (e.to_port === "body") continue;
 
@@ -129,11 +129,10 @@ export const amalgamateGraphData = (
   edges: PyEdge[];
 } => {
   const [ns, es] = concatData(openNodes);
-  const [inEdges, outEdges] = indexEdges(openNodes, es);
 
-  for (const map of openMaps) rewireMap(map, inEdges, outEdges, ns, es);
-  for (const loop of openLoops) rewireLoop(loop, inEdges, outEdges, ns, es);
-  for (const ev of openEvals) rewireEvals(ev, inEdges, outEdges, openNodes);
+  for (const map of openMaps) rewireMap(map, openNodes, ns, es);
+  for (const loop of openLoops) rewireLoop(loop, openNodes, ns, es);
+  for (const ev of openEvals) rewireEvals(ev, openNodes, es);
 
   return { nodes: ns, edges: cleanOrphans(es) };
 };
