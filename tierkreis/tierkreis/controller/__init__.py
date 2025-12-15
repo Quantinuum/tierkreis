@@ -66,7 +66,8 @@ def debug_graph(
     storage = ControllerInMemoryStorage(UUID(int=0), "debug_graph")
     if debug_values is not None:
         dbg_values = {
-            f"{k().namespace}:{k.__name__}": v for k, v in debug_values.items()
+            f"{k(*(None for _ in k._fields)).namespace}:{k.__name__}": v
+            for k, v in debug_values.items()
         }
     else:
         dbg_values = None

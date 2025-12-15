@@ -44,7 +44,7 @@ def subtract(a: int | float, b: int | float) -> int | float:
     return a - b
 
 
-@worker.task()
+@worker.task(debug_value=1)
 def itimes(a: int, b: int) -> int:
     logger.debug(f"itimes {a} {b}")
     return a * b
@@ -76,7 +76,7 @@ def gt(a: int | float, b: int | float) -> bool:
     return a > b
 
 
-@worker.task()
+@worker.task(debug_value=1 + 1j)
 def conjugate(z: complex) -> complex:
     return z.conjugate()
 

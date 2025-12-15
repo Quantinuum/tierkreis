@@ -23,6 +23,7 @@ from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
+from tierkreis.worker.validate import validate_func_args
 
 logger = getLogger(__name__)
 PrimitiveTask = Callable[[WorkerCallArgs, WorkerStorage], None]
@@ -73,6 +74,7 @@ class Worker:
     functions: dict[str, Callable[[WorkerCallArgs], None]]
     types: dict[MethodName, Signature]
     namespace: Namespace
+    debug_functions: dict[str, Callable[[WorkerCallArgs, PModel | None], None]]
 
     def __init__(self, name: str, storage: WorkerStorage | None = None) -> None:
         self.name = name
@@ -129,10 +131,10 @@ class Worker:
 
         return function_decorator
 
-    def task(self) -> Callable[[F], F]:
+    def task(self, debug_value: PModel | None = None) -> Callable[[F], F]:
         """Registers a python function as a task with the worker."""
 
-        def function_decorator(func: F, debug_value: PModel | None = None) -> F:
+        def function_decorator(func: F) -> F:
             self.namespace.add_function(func)
             self.add_types(func)
 
@@ -144,9 +146,11 @@ class Worker:
             self.functions[func.__name__] = wrapper
 
             def wrapper_with_debug_value(
-                node_definition: WorkerCallArgs, dbg: PModel | None = None
+                node_definition: WorkerCallArgs,
+                dbg: PModel | None = None,
             ):
-                _ = self._load_args(func, node_definition.inputs)
+                kwargs = self._load_args(func, node_definition.inputs)
+                validate_func_args(func, kwargs)
                 if dbg is not None:
                     self._save_results(func, node_definition.outputs, dbg)
                 else:
@@ -192,7 +196,9 @@ class Worker:
             self.storage.write_error(node_definition.error_path, str(err))
 
     def run_debug(
-        self, worker_definition_path: Path, debug_value: PModel | None = None
+        self,
+        worker_definition_path: Path,
+        debug_value: PModel | None = None,
     ) -> None:
         node_definition = self.storage.read_call_args(worker_definition_path)
         try:
