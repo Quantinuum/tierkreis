@@ -190,6 +190,9 @@ class Worker:
         except Exception as err:
             self.logger.error("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
+            raise TierkreisError(
+                f"Worker {self.name} encountered error when executing {node_definition.function_name}."
+            )
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""

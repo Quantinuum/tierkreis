@@ -147,7 +147,7 @@ class ControllerStorage(ABC):
             },
             output_dir=self._outputs_dir(node_location).relative_to(self.tkr_dir),
             done_path=self._done_path(node_location).relative_to(self.tkr_dir),
-            error_path=self._error_path(node_location).relative_to(self.tkr_dir),
+            error_path=self._error_logs_path(node_location).relative_to(self.tkr_dir),
             logs_path=self.logs_path.relative_to(self.tkr_dir),
         )
         self.write(call_args_path, node_definition.model_dump_json().encode())
@@ -193,12 +193,11 @@ class ControllerStorage(ABC):
         return self.read(self._output_path(node_location, output_name))
 
     def read_errors(self, node_location: Loc) -> str:
-        # TODO: should we keep tis logic
+        if self.exists(self._error_logs_path(node_location)):
+            return self.read(self._error_logs_path(node_location)).decode()
         if self.exists(self._error_path(node_location)):
             return self.read(self._error_path(node_location)).decode()
-        if not self.exists(self._error_logs_path(node_location)):
-            return ""
-        return self.read(self._error_logs_path(node_location)).decode()
+        return ""
 
     def write_node_errors(self, node_location: Loc, error_logs: str) -> None:
         self.write(self._error_logs_path(node_location), error_logs.encode())
