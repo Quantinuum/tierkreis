@@ -2169,7 +2169,7 @@ wheels = [
 
 [[package]]
 name = "qnexus"
-version = "0.18.2"
+version = "0.37.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2185,23 +2185,23 @@ dependencies = [
     { name = "rich" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/44/27/073abbcbfe28c3a8a0f001309a3965394074c56250fd32f3774af9ce3920/qnexus-0.18.2.tar.gz", hash = "sha256:35ff2cc2c9f82487a84ed9ca33a57b96753b0b66133edc3c8b7cc5cabc27e631", size = 392140, upload-time = "2025-05-15T17:05:08.047Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/2a/cf70afe05fc3fcc3b8b877a4434075a562e9618a7355955a57a4f4d1809f/qnexus-0.37.1.tar.gz", hash = "sha256:6b71988b971e637e444ffb6dda1c053c0ac120e3ad935db11f06b6ccf9c2ae3e", size = 431149, upload-time = "2025-11-19T11:38:13.322Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/80/845c4c098ac2127ea7ba83f6ef5b56089656585473831b2dd4cd00ff1260/qnexus-0.18.2-py3-none-any.whl", hash = "sha256:a465488b772b95dc43ee95c1453ce91978a027966c1bf14237fe120fa931f45d", size = 59848, upload-time = "2025-05-15T17:05:06.523Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/84/becca04c2c60e08c3b4bdea92a4342bc76ac211e2f985b6eb18c32a78045/qnexus-0.37.1-py3-none-any.whl", hash = "sha256:c9575acef6221c610beeeaf9aa69d61cfeefa46b3554e0b2cf1ad2afc935eecc", size = 70756, upload-time = "2025-11-19T11:38:12.128Z" },
 ]
 
 [[package]]
 name = "quantinuum-schemas"
-version = "3.2.6"
+version = "7.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "orjson" },
     { name = "pydantic" },
     { name = "pydantic-extra-types" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/8c/b065a13d0c062228d7eba7d3400a5256bae780fe9ed23d2b3f30cbb59f65/quantinuum_schemas-3.2.6.tar.gz", hash = "sha256:3c1000cb301de8bd2234a8f600e553940c057c0a08761b0b46379991ab896c77", size = 12813, upload-time = "2025-06-25T09:35:12.744Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/50/93c5ef901d5d2d0930aff47c0dd0fc22217b7b79bab9158b495a59e61618/quantinuum_schemas-7.4.0.tar.gz", hash = "sha256:ed8c92aa991116c0a40eef41380f9c25ed96c75ac19aba0abd1d452afcee50dc", size = 92936, upload-time = "2025-12-15T17:20:01.151Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/c8/96070c0f086d00a6f5cb9e244562f59468e43592f21206f92c94931e41f8/quantinuum_schemas-3.2.6-py3-none-any.whl", hash = "sha256:56b9c5318f5768e2a35aa983ef6b2a851a8a92a831d1016b9ac56e54a851668d", size = 15102, upload-time = "2025-06-25T09:35:11.861Z" },
+    { url = "https://files.pythonhosted.org/packages/03/73/c7ce0bc212585a8660a75b9ccded83c620373b02f68eea25a757132546e0/quantinuum_schemas-7.4.0-py3-none-any.whl", hash = "sha256:38b78f30272330095f0d1ea87797282084a3fc0ece2416ded28896f96c5341a3", size = 26899, upload-time = "2025-12-15T17:20:00.209Z" },
 ]
 
 [[package]]
@@ -2986,7 +2986,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "qnexus", specifier = "==0.18.2" },
+    { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
 
@@ -3025,15 +3025,15 @@ name = "tkr-quantinuum-worker"
 version = "0.1.0"
 source = { editable = "tierkreis_workers/quantinuum_worker" }
 dependencies = [
-    { name = "pytket" },
     { name = "pytket-quantinuum" },
+    { name = "qnexus" },
     { name = "tierkreis" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "pytket" },
-    { name = "pytket-quantinuum", git = "https://github.com/CQCL/pytket-quantinuum" },
+    { name = "pytket-quantinuum", specifier = ">=0.54.0" },
+    { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
 

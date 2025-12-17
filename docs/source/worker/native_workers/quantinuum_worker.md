@@ -12,25 +12,13 @@ will install an executable Python script `tkr_quantinuum_worker` into your virtu
 
 ## Authentication
 
-````{important}
-Accessing backends through require authentication.
-The worker uses the default mechanisms provided by the [`pytket-quantinuum`](https://docs.quantinuum.com/tket/extensions/pytket-quantinuum/#persistent-authentication-token-storage) Python package.
-Run the following code before using the Quantinuum worker
-```python
-from pytket.extensions.quantinuum.backends.api_wrappers import QuantinuumAPI
-from pytket.extensions.quantinuum.backends.credential_storage import (
-    QuantinuumConfigCredentialStorage,
-)
-from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
+The worker uses the default mechanism provided by the `qnexus` Python package.
 
-backend = QuantinuumBackend(
-    device_name=<device_name>, #e.g. H2-1E
-    api_handler=QuantinuumAPI(token_store=QuantinuumConfigCredentialStorage()),
-)
-backend.login()
+```bash
+uv run python -c "from qnexus.client.auth import login; login()"
 ```
 
-````
+will put the a token in the appropriate filesystem location for subsequent operations to use.
 
 Tasks that require authentication are marked as such in the task list below.
 
@@ -39,9 +27,8 @@ Tasks that require authentication are marked as such in the task list below.
 The Quantinuum worker exposes the following elementary tasks to the user:
 
 - `get_backend_info` retrieves the backend info given a configuration dict. **Requires authentication**.
+- `compile_using_info` compiles a circuit using an existing backend info object.
 - `backend_pass_from_info` constructs a compilation pass using a backend info object.
-- `backend_default_compilation_pass` fetches the default pass given the device name. **Requires authentication**.
-- `compile` fetches and applies the default compilation pass. **Requires authentication**.
 - `compile_circuit_quantinuum` and `compile_circuits_quantinuum` applies a predefined compilation pass to a (list of) circuits.
 - `run_circuit` Runs the circuit on the backend. **Requires authentication**.
 

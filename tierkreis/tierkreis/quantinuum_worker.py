@@ -16,6 +16,20 @@ class get_backend_info(NamedTuple):
         return "quantinuum_worker"
 
 
+class compile_using_info(NamedTuple):
+    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]  # noqa: F821 # fmt: skip
+    optimisation_level: TKR[int] | None = None  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"]]]:  # noqa: F821 # fmt: skip
+        return TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "quantinuum_worker"
+
+
 class backend_pass_from_info(NamedTuple):
     backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]  # noqa: F821 # fmt: skip
     optimisation_level: TKR[int] | None = None  # noqa: F821 # fmt: skip

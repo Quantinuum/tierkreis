@@ -1,21 +1,21 @@
 from sys import argv
+import time
 
+import qnexus as qnx
+from qnexus.models import IssuerEnum
+from qnexus.models.references import ExecutionResultRef
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
 from pytket.passes import BasePass
-from pytket.extensions.quantinuum.backends.api_wrappers import QuantinuumAPI
-from pytket.extensions.quantinuum.backends.credential_storage import (
-    QuantinuumConfigCredentialStorage,
-)
+
 from tierkreis import Worker
 from tierkreis.exceptions import TierkreisError
 
 from default_pass_quantinuum import default_compilation_pass
 
 worker = Worker("quantinuum_worker")
-api_handler = QuantinuumAPI(token_store=QuantinuumConfigCredentialStorage())
 
 
 @worker.task()
@@ -28,18 +28,24 @@ def get_backend_info(device_name: str) -> BackendInfo:
     :return: The BackendInfo object for the device.
     :rtype: BackendInfo
     """
-    info = next(
-        filter(
-            lambda x: x.device_name == device_name,
-            QuantinuumBackend.available_devices(api_handler=api_handler),
-        ),
-        None,
-    )
+    all_devices = qnx.devices.get_all([IssuerEnum.QUANTINUUM])
+    info = next(filter(lambda x: x.device_name == device_name, all_devices), None)
     if info is None:
         raise TierkreisError(
             f"Device {device_name} is not in the list of available Quantinuum devices"
         )
-    return info
+    return info.backend_info
+
+
+@worker.task()
+def compile_using_info(
+    circuit: Circuit, backend_info: BackendInfo, optimisation_level: int = 2
+) -> Circuit:
+    base_pass = QuantinuumBackend.pass_from_info(
+        backend_info, optimisation_level=optimisation_level
+    )
+    base_pass.apply(circuit)
+    return circuit
 
 
 @worker.task()
@@ -61,23 +67,6 @@ def backend_pass_from_info(
 
 
 @worker.task()
-def backend_default_compilation_pass(
-    device_name: str, optimisation_level: int = 2
-) -> BasePass:
-    """Returns the default compilation pass for a given device name.
-
-    :param device_name: The name of the device.
-    :type device_name: str
-    :param optimisation_level: The optimization level for the compilation, defaults to 2
-    :type optimisation_level: int, optional
-    :return: The default compilation pass for the backend.
-    :rtype: BasePass
-    """
-    backend = QuantinuumBackend(device_name, api_handler=api_handler)
-    return backend.default_compilation_pass(optimisation_level)
-
-
-@worker.task()
 def fixed_pass() -> BasePass:
     """Returns a predefined compilation pass for Quantinuum devices.
 
@@ -85,29 +74,6 @@ def fixed_pass() -> BasePass:
     :rtype: BasePass
     """
     return default_compilation_pass()
-
-
-@worker.task()
-def compile(
-    circuit: Circuit,
-    device_name: str,
-    optimisation_level: int = 2,
-) -> Circuit:
-    """Gets a compiled circuit for a given device name.
-
-    :param circuit: The original circuit to compile.
-    :type circuit: Circuit
-    :param device_name: The name of the device to compile for.
-    :type device_name: str
-    :param optimisation_level: The optimization level for the compilation, defaults to 2
-    :type optimisation_level: int, optional
-    :return: The compiled circuit.
-    :rtype: Circuit
-    """
-    backend = QuantinuumBackend(device_name, api_handler=api_handler)
-    compilation_pass = backend.default_compilation_pass(optimisation_level)
-    compilation_pass.apply(circuit)
-    return circuit
 
 
 @worker.task()
@@ -152,8 +118,25 @@ def run_circuit(circuit: Circuit, n_shots: int, device_name: str) -> BackendResu
     :return: The backend result.
     :rtype: BackendResult
     """
-    backend = QuantinuumBackend(device_name, api_handler=api_handler)
-    return backend.run_circuit(circuit, n_shots)
+    config = qnx.QuantinuumConfig(device_name=device_name)
+    name = f"tkr-quantinuum-submission-{time.time()}"
+    project = qnx.projects.get_or_create("tkr_submissions_project")
+    qnx.context.set_active_project(project)
+    circuit_ref = qnx.circuits.upload(circuit, project=project, name=name + "circuit")
+    job_ref = qnx.start_execute_job(
+        programs=circuit_ref,
+        n_shots=[n_shots],
+        backend_config=config,
+        name=circuit.name or name,
+    )
+    qnx.jobs.wait_for(job_ref)
+    ref_result = qnx.jobs.results(job_ref)[0]
+    if not isinstance(ref_result, ExecutionResultRef):
+        raise TierkreisError(f"Result incomplete: {ref_result}")
+    backend_result = ref_result.download_result()
+    if not isinstance(backend_result, BackendResult):
+        raise TierkreisError(f"Result was not a backend result: {backend_result}")
+    return backend_result
 
 
 def main():

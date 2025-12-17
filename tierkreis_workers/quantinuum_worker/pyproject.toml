@@ -5,9 +5,9 @@ description = "A tierkreis worker for compilation of quanitnuum backends."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "pytket-quantinuum>=0.54.0",
+    "qnexus==0.37.1",
     "tierkreis",
-    "pytket",
-    "pytket-quantinuum",
 ]
 
 [build-system]
@@ -25,7 +25,6 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-pytket-quantinuum = { git = "https://github.com/CQCL/pytket-quantinuum" }
 
 [project.scripts]
 tkr_quantinuum_worker = "main:main"
