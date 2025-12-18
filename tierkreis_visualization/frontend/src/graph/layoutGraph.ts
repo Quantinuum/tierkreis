@@ -147,7 +147,7 @@ const calculateNodePositions = (
       dagreGraph.setEdge(edge.source, edge.target);
     }
   });
-  dagre.layout(dagreGraph);
+  dagre.layout(dagreGraph, { disableOptimalOrderHeuristic: true });
   return nodes.map((node) => {
     const { x, y, width, height } = dagreGraph.node(node.id);
     return {
