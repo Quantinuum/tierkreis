@@ -1,10 +1,12 @@
 from inspect import Signature, signature
 import logging
+from multiprocessing.util import LOGGER_NAME
+from os import getenv
 from pathlib import Path
 import sys
-from types import TracebackType
 from typing import Callable, TypeVar
 
+from tierkreis.consts import TKR_LOG_LEVEL_KEY
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.data.models import (
@@ -23,26 +25,17 @@ from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler(sys.stdout)
-formatter = logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+logger = logging.getLogger(LOGGER_NAME)
+if not logger.hasHandlers():
+    logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 PrimitiveTask = Callable[[WorkerCallArgs, WorkerStorage], None]
 type MethodName = str
-
-
-def handle_unhandled_exception(
-    exc_type: type[BaseException],
-    exc_value: BaseException,
-    exc_traceback: TracebackType | None,
-):
-    logger.critical(
-        "Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback)
-    )
 
 
 class TierkreisWorkerError(TierkreisError):
@@ -89,7 +82,6 @@ class Worker:
             self.storage: WorkerStorage = WorkerFileStorage()
         else:
             self.storage = storage
-        sys.excepthook = handle_unhandled_exception
 
         self.logger = logger
 
@@ -190,12 +182,15 @@ class Worker:
         except Exception as err:
             self.logger.error("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
-            raise TierkreisError(
+            raise TierkreisWorkerError(
                 f"Worker {self.name} encountered error when executing {node_definition.function_name}."
             )
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""
+        log_level = getenv(TKR_LOG_LEVEL_KEY, None)
+        if log_level is not None:
+            self.logger.setLevel(log_level)
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:

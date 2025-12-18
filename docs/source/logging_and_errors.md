@@ -14,6 +14,18 @@ logger = logging.getLogger("TKR")
 logger.setLevel(...)
 ```
 
+### Workers
+
+Similarly in a worker you can access the logger or overwrite it with your own.
+
+```python
+worker.logger.setLevel(...)
+worker.setLogger(...)
+```
+
+When running a python worker, they will check the environment variable `$TKR_LOG_LEVEL`.
+You can either set this manually or provided it as part of the `env` argument of an executor.
+
 ## Error Handling
 
 Errors can occur at multiple points when writing and running a Tierkreis graph.
