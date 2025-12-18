@@ -4,8 +4,13 @@ A worker implements _atomic_ functionalities that will not be broken further by 
 Tierkreis workers come in three flavors:
 
 - Builtin workers, provided by Tierkreis itself
-- User defined workers, by using the `@worker.task()` annotation or writing external ones
+- User defined workers, by using the `@worker.task()` decorator or writing external ones
 - Prepackaged workers from the Tierkreis developers
+
+```{important}
+External workers are a way to interface non-python programs with Tierkreis.
+As long as there is a runnable binary, you can provide a thin wrapper which allows Tierkreis to run this program.
+```
 
 ```{toctree}
 :maxdepth: 2
@@ -14,6 +19,44 @@ external_workers.md
 hello_world.md
 native_workers/index
 ```
+
+## Worker concepts
+
+Workers provide non-trivial functionality to a Tierkreis graph.
+Writing a worker
+
+## Generating workers from the cli
+
+The cli supports you in setting up new workers.
+You can declare a worker by running:
+
+```
+tkr init worker --worker-name <worker-name>
+```
+
+This will generate a new worker directory and the associated files.
+Each worker is an independent project, with it's own dependencies.
+The `main.py` file is the entrypoint for the worker.
+Here you can decorate a python function with `@worker.task()` to declare a worker task.
+At runtime, `main.py` will be called by an executor (more on that later) and search for the correct task in it.
+The inputs and outputs are preserved with the storage layer and be tracked by Tierkreis.
+Other side-effects (e.g., writing a separate file) won't be checked.
+
+When writing a workflow you don't need to call this function directly.
+Instead you need to provide the so-called function **stubs** to the task definition.
+You can generate the stubs from the cli:
+
+```
+tkr init stubs
+```
+
+or running
+
+```
+uv run <worker_dir>/main.py --stubs-path <path to stubs>.py
+```
+
+This allows you to include a workers api for typechecking purposes without the need to building them and therefore making your development environment less polluted.
 
 ## Prepackaged workers
 
