@@ -152,14 +152,7 @@ function parseEdges(edges: PyEdge[], parentId?: string): Edge[] {
     uniqueCount.set(id, count + 1);
     return {
       type: "custom-edge",
-      id:
-        prefix +
-        edge.from_node +
-        "-" +
-        count.toString() +
-        "-" +
-        prefix +
-        edge.to_node,
+      id: `${prefix}${edge.from_node}:${count}:${prefix}${edge.to_node}`,
       source: edge.from_node.toString(),
       target: edge.to_node.toString(),
       sourceHandle: prefix + edge.from_node + "_" + edge.from_port,
