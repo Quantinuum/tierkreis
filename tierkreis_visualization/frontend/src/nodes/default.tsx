@@ -56,11 +56,11 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
       data.setInfo?.({ type: "Eager if/else", content: "" });
     } else if (data.node_type === "ifelse") {
       data.setInfo?.({ type: "Lazy if/else", content: "" });
-    } else if (data.node_type === "eval") {
-      return;
-    } else if (data.node_type === "map") {
-      return;
-    } else if (data.node_type === "loop") {
+    } else if (
+      data.node_type === "eval" ||
+      data.node_type === "map" ||
+      data.node_type === "loop"
+    ) {
       return;
     } else if (data.node_type === "output") {
       const parent = loc_parent(data.node_location);
