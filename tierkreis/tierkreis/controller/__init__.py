@@ -72,7 +72,7 @@ def resume_graph(
             for error_loc in walk_results.errored:
                 print(f"Node: '{error_loc}' encountered an error.")
                 print(
-                    f"Stderr information is available at {storage._error_logs_path(error_loc)}."
+                    f"Stderr information is available at {storage._worker_logs_path(error_loc)}."
                 )
                 print(storage.read_errors(error_loc))
                 print("\n\n")
