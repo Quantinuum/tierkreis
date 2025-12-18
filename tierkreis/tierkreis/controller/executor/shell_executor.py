@@ -35,7 +35,7 @@ class ShellExecutor:
         export_values: bool = False,
     ) -> None:
         launcher_path = self.launchers_path / launcher_name
-        self.errors_path = worker_call_args_path.parent / "errors"
+        self.errors_path = worker_call_args_path.parent / "logs"
 
         if not launcher_path.exists():
             raise TierkreisError(f"Launcher not found: {launcher_name}.")
