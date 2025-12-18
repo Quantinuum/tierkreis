@@ -1,4 +1,3 @@
-from glob import glob
 import os
 import shutil
 from pathlib import Path
@@ -36,7 +35,7 @@ class ControllerFileStorage(ControllerStorage):
         return path.exists()
 
     def list_subpaths(self, path: Path) -> list[Path]:
-        return [Path(x) for x in glob(f"{path}*/*")]
+        return [sub_path for sub_path in path.iterdir()]
 
     def link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)

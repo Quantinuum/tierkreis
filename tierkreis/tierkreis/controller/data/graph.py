@@ -35,6 +35,7 @@ class Loop:
     continue_port: PortID  # The port that specifies if the loop should continue.
     outputs: set[PortID] = field(default_factory=lambda: set())
     type: Literal["loop"] = field(default="loop")
+    name: str | None = None
 
 
 @dataclass
@@ -98,6 +99,7 @@ class GraphData(BaseModel):
     fixed_inputs: dict[PortID, OutputLoc] = {}
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
+    named_nodes: dict[str, NodeIndex] = {}
 
     def input(self, name: str) -> ValueRef:
         return self.add(Input(name))(name)
@@ -116,9 +118,13 @@ class GraphData(BaseModel):
         return self.add(Eval(graph, inputs))
 
     def loop(
-        self, body: ValueRef, inputs: dict[PortID, ValueRef], continue_port: PortID
+        self,
+        body: ValueRef,
+        inputs: dict[PortID, ValueRef],
+        continue_port: PortID,
+        name: str | None = None,
     ) -> Callable[[PortID], ValueRef]:
-        return self.add(Loop(body, inputs, continue_port))
+        return self.add(Loop(body, inputs, continue_port, name=name))
 
     def map(
         self,
@@ -139,7 +145,6 @@ class GraphData(BaseModel):
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
         self.nodes.append(node)
-
         match node.type:
             case "output":
                 if self.graph_output_idx is not None:
@@ -154,8 +159,11 @@ class GraphData(BaseModel):
                 self.nodes[node.if_false[0]].outputs.add(node.if_false[1])
             case "input":
                 self.graph_inputs.add(node.name)
-            case "const" | "eval" | "function" | "loop" | "map":
+            case "const" | "eval" | "function" | "map":
                 pass
+            case "loop":
+                if node.name is not None:
+                    self.named_nodes[node.name] = idx
             case _:
                 assert_never(node)
 

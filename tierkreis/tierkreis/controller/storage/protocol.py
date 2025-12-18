@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 import json
 import logging
@@ -21,6 +21,16 @@ class StorageEntryMetadata:
     Storage implementations should decide which are applicable."""
 
     st_mtime: float | None = None
+
+
+@dataclass
+class StorageDebugData:
+    """Collection of commonly found debugdata.
+
+    Currently only used for loop_nodes
+    Storage implementations should decide which are applicable."""
+
+    loop_loc: str | None = None
 
 
 class ControllerStorage(ABC):
@@ -76,6 +86,10 @@ class ControllerStorage(ABC):
     @property
     def logs_path(self) -> Path:
         return self.workflow_dir / "logs"
+
+    @property
+    def debug_path(self) -> Path:
+        return self.workflow_dir / "debug"
 
     def _nodedef_path(self, node_location: Loc) -> Path:
         return self.workflow_dir / str(node_location) / "nodedef"
@@ -235,3 +249,28 @@ class ControllerStorage(ABC):
         if since_epoch is None:
             return None
         return datetime.fromtimestamp(since_epoch).isoformat()
+
+    def read_loop_trace(self, node_location: Loc, output_name: PortID) -> list[bytes]:
+        definition = self.read_node_def(node_location)
+        if definition.type != "loop":
+            raise TierkreisError("Can only read traces from loop nodes.")
+        result = []
+
+        i = 0
+        while self.is_node_started(node_location.L(i)):
+            result.append(self.read_output(node_location.L(i), output_name))
+            i += 1
+        return result
+
+    def loc_from_node_name(self, node_name: str) -> Loc | None:
+        debug_data = StorageDebugData(**self.read_debug_data(node_name))
+        if debug_data.loop_loc is not None:
+            return Loc(debug_data.loop_loc)
+
+    def write_debug_data(self, name: str, loc: Loc) -> None:
+        self.mkdir(self.debug_path)
+        data = StorageDebugData(loop_loc=loc)
+        self.write(self.debug_path / name, json.dumps(asdict(data)).encode())
+
+    def read_debug_data(self, name: str) -> dict[str, Any]:
+        return json.loads(self.read(self.debug_path / name))

@@ -38,6 +38,15 @@ class ControllerInMemoryStorage(ControllerStorage):
         return path in list(self.files.keys())
 
     def list_subpaths(self, path: Path) -> list[Path]:
+        if path == self.workflow_dir:
+            nodes = set(
+                [
+                    Path("/".join(str(x).split("/")[:2]))
+                    for x in self.files.keys()
+                    if str(x).startswith(str(path) + "/")
+                ]
+            )
+            return list(nodes)
         return [x for x in self.files.keys() if str(x).startswith(str(path) + "/")]
 
     def link(self, src: Path, dst: Path) -> None:

@@ -135,17 +135,26 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         return init_tmodel(body.outputs_type, outputs)
 
     @overload
-    def loop[A: TModel, B: LoopOutput](self, body: TypedGraphRef[A, B], a: A) -> B: ...
-    @overload
-    def loop[A: TModel, B: LoopOutput](self, body: "GraphBuilder[A, B]", a: A) -> B: ...
     def loop[A: TModel, B: LoopOutput](
-        self, body: "TypedGraphRef[A, B] |GraphBuilder[A, B]", a: A
+        self, body: TypedGraphRef[A, B], a: A, name: str | None = None
+    ) -> B: ...
+    @overload
+    def loop[A: TModel, B: LoopOutput](
+        self, body: "GraphBuilder[A, B]", a: A, name: str | None = None
+    ) -> B: ...
+    def loop[A: TModel, B: LoopOutput](
+        self,
+        body: "TypedGraphRef[A, B] |GraphBuilder[A, B]",
+        a: A,
+        name: str | None = None,
     ) -> B:
         if isinstance(body, GraphBuilder):
             body = self._graph_const(body)
 
         g = body.graph_ref
-        idx, _ = self.data.loop(g, dict_from_tmodel(a), "should_continue")("dummy")
+        idx, _ = self.data.loop(g, dict_from_tmodel(a), "should_continue", name)(
+            "dummy"
+        )
         outputs = [(idx, x) for x in model_fields(body.outputs_type)]
         return init_tmodel(body.outputs_type, outputs)
 
