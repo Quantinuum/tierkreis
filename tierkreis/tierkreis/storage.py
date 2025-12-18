@@ -36,6 +36,8 @@ def read_loop_trace(
     if isinstance(g, GraphBuilder):
         g = g.get_data()
     loc = storage.loc_from_node_name(node_name)
+    if loc is None:
+        raise TierkreisError(f"Loop name {node_name} not found in debug data.")
     output_names = storage.read_output_ports(loc)
     if output_name is None:
         traces = {

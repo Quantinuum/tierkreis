@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 import json
 import logging
@@ -21,6 +21,16 @@ class StorageEntryMetadata:
     Storage implementations should decide which are applicable."""
 
     st_mtime: float | None = None
+
+
+@dataclass
+class StorageDebugData:
+    """Collection of commonly found debugdata.
+
+    Currently only used for loop_nodes
+    Storage implementations should decide which are applicable."""
+
+    loop_loc: str | None = None
 
 
 class ControllerStorage(ABC):
@@ -245,46 +255,22 @@ class ControllerStorage(ABC):
         if definition.type != "loop":
             raise TierkreisError("Can only read traces from loop nodes.")
         result = []
-        for iter in range(
-            len(self._list_loop_iters())
-        ):  # heavily overestimates the number of children
-            child_location = node_location.L(iter)
-            if not self.is_node_started(child_location):
-                break
-            result.append(self.read_output(child_location, output_name))
 
+        i = 0
+        while self.is_node_started(node_location.L(i)):
+            result.append(self.read_output(node_location.L(i), output_name))
+            i += 1
         return result
 
-    def loc_from_node_name(self, node_name: str) -> Loc:
-        debug_data = self.read_debug_data(node_name)
-        if debug_data is not None:
-            pass
-            # return debug_data
-        loop_nodes = set(node.stem for node in self._list_loop_iters())
-        for candidate in loop_nodes:
-            loc = Loc(candidate)
-            node = self.read_node_def(loc)
-            if not node.type == "loop":
-                continue
-            if node_name == node.name:
-                return loc
-        raise TierkreisError(f"Node name {node_name} not found in workflow.")
-
-    def _list_loop_iters(self) -> list[Path]:
-        candidates = self.list_subpaths(self.workflow_dir)
-        results: list[Path] = []
-        for sub_path in candidates:
-            if sub_path.is_file():
-                continue
-            if sub_path.suffix.startswith(".L"):
-                results.append(sub_path)
-        return results
+    def loc_from_node_name(self, node_name: str) -> Loc | None:
+        debug_data = StorageDebugData(**self.read_debug_data(node_name))
+        if debug_data.loop_loc is not None:
+            return Loc(debug_data.loop_loc)
 
     def write_debug_data(self, name: str, loc: Loc) -> None:
         self.mkdir(self.debug_path)
-        self.write(self.debug_path / name, loc.encode())
+        data = StorageDebugData(loop_loc=loc)
+        self.write(self.debug_path / name, json.dumps(asdict(data)).encode())
 
-    def read_debug_data(self, name: str) -> Loc | None:
-        if self.exists(self.debug_path / name):
-            return Loc(self.read(self.debug_path / name).decode())
-        return None
+    def read_debug_data(self, name: str) -> dict[str, Any]:
+        return json.loads(self.read(self.debug_path / name))
