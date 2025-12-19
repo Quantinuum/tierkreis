@@ -96,12 +96,12 @@ def start(
         )
         logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
 
-        if launcher_name == "builtins":
-            run_builtin(call_args_path, storage.logs_path)
-        elif isinstance(storage, ControllerInMemoryStorage) and isinstance(
+        if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
             executor.run(launcher_name, call_args_path, debug)
+        elif launcher_name == "builtins":
+            run_builtin(call_args_path, storage.logs_path)
         else:
             executor.run(launcher_name, call_args_path)
 

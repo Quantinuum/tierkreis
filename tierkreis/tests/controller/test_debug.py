@@ -55,3 +55,19 @@ def test_debug_raises():
             g, graph_inputs={}, registry_path=registry_path, debug_values=debug_values
         )
         assert storage.node_has_error(Loc("-.N3.N4"))  # iadd
+
+
+def test_debug_callable():
+    g = simple_eval()
+    debug_values = {iadd: lambda x, y: x + y + 1, itimes: _my_itimes}
+    registry_path = Path("./tierkreis/tierkreis")
+    storage = debug_graph(
+        g, graph_inputs={}, registry_path=registry_path, debug_values=debug_values
+    )
+
+    actual_output = read_outputs(g, storage)
+    assert actual_output == {"simple_eval_output": 8}
+
+
+def _my_itimes(a: int, b: int) -> int:
+    return 7

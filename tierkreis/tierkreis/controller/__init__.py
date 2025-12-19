@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 from time import sleep
+from typing import Callable, Mapping
 from uuid import UUID
 
 from tierkreis.builder import GraphBuilder
@@ -55,7 +56,7 @@ def debug_graph(
     g: GraphData | GraphBuilder,
     graph_inputs: dict[str, PType] | PType,
     registry_path: Path,
-    debug_values: dict[type, PModel] | None = None,
+    debug_values: Mapping[type, PModel | Callable[..., PModel]] | None = None,
     use_debug_values: bool = True,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,

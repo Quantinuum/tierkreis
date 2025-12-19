@@ -3,7 +3,7 @@ import logging
 from logging import getLogger
 from pathlib import Path
 import sys
-from types import TracebackType
+from types import LambdaType, TracebackType
 from typing import Callable, TypeVar
 
 from tierkreis.controller.data.core import PortID
@@ -147,11 +147,16 @@ class Worker:
 
             def wrapper_with_debug_value(
                 node_definition: WorkerCallArgs,
-                dbg: PModel | None = None,
+                dbg: PModel | Callable[..., PModel] | None = None,
             ):
                 kwargs = self._load_args(func, node_definition.inputs)
                 validate_func_args(func, kwargs)
                 if dbg is not None:
+                    if isinstance(dbg, Callable):
+                        if isinstance(dbg, LambdaType):
+                            dbg = dbg(*kwargs.values())
+                        else:
+                            dbg = dbg(**kwargs)
                     self._save_results(func, node_definition.outputs, dbg)
                 else:
                     self._save_results(func, node_definition.outputs, debug_value)

@@ -2,6 +2,7 @@ import json
 import logging
 import importlib.util
 from pathlib import Path
+from typing import Callable
 
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.data.models import PModel
@@ -23,7 +24,7 @@ class InMemoryExecutor:
         self,
         registry_path: Path,
         storage: ControllerInMemoryStorage,
-        debug_values: dict[str, PModel] | None = None,
+        debug_values: dict[str, PModel | Callable[..., PModel]] | None = None,
     ) -> None:
         self.registry_path = registry_path
         self.storage = storage
