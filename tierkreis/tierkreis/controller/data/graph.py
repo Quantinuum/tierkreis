@@ -99,7 +99,6 @@ class GraphData(BaseModel):
     fixed_inputs: dict[PortID, OutputLoc] = {}
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
-    named_nodes: dict[str, NodeIndex] = {}
 
     def input(self, name: str) -> ValueRef:
         return self.add(Input(name))(name)
@@ -145,6 +144,7 @@ class GraphData(BaseModel):
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
         self.nodes.append(node)
+
         match node.type:
             case "output":
                 if self.graph_output_idx is not None:
@@ -159,11 +159,8 @@ class GraphData(BaseModel):
                 self.nodes[node.if_false[0]].outputs.add(node.if_false[1])
             case "input":
                 self.graph_inputs.add(node.name)
-            case "const" | "eval" | "function" | "map":
+            case "const" | "eval" | "function" | "loop" | "map":
                 pass
-            case "loop":
-                if node.name is not None:
-                    self.named_nodes[node.name] = idx
             case _:
                 assert_never(node)
 

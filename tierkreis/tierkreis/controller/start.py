@@ -96,12 +96,12 @@ def start(
         )
         logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
 
-        if isinstance(storage, ControllerInMemoryStorage) and isinstance(
+        if launcher_name == "builtins":
+            run_builtin(call_args_path, storage.logs_path)
+        elif isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
             executor.run(launcher_name, call_args_path, debug)
-        elif launcher_name == "builtins":
-            run_builtin(call_args_path, storage.logs_path)
         else:
             executor.run(launcher_name, call_args_path)
 
@@ -132,10 +132,6 @@ def start(
     elif node.type == "loop":
         ins["body"] = (parent.N(node.body[0]), node.body[1])
         pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
-        if (
-            node.name is not None
-        ):  # should we do this only in debug mode? -> need to think through how this would work
-            storage.write_debug_data(node.name, node_location)
         start(
             storage,
             executor,

@@ -27,7 +27,6 @@ def run_graph(
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
-    use_debug_values: bool = False,
 ) -> None:
     if isinstance(g, GraphBuilder):
         g = g.get_data()
@@ -48,10 +47,8 @@ def run_graph(
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
     }
     node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
-    start(storage, executor, node_run_data, use_debug_values)
-    resume_graph(
-        storage, executor, n_iterations, polling_interval_seconds, use_debug_values
-    )
+    start(storage, executor, node_run_data)
+    resume_graph(storage, executor, n_iterations, polling_interval_seconds)
 
 
 def debug_graph(
@@ -59,9 +56,9 @@ def debug_graph(
     graph_inputs: dict[str, PType] | PType,
     registry_path: Path,
     debug_values: dict[type, PModel] | None = None,
+    use_debug_values: bool = True,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
-    use_debug_values: bool = True,
 ) -> ControllerInMemoryStorage:
     storage = ControllerInMemoryStorage(UUID(int=0), "debug_graph")
     if debug_values is not None:
@@ -72,14 +69,33 @@ def debug_graph(
     else:
         dbg_values = None
     executor = InMemoryExecutor(registry_path, storage, dbg_values)
-    run_graph(
+    # We could invoke run_graph but I prefer to keep `debug` outside of the interface
+
+    if isinstance(g, GraphBuilder):
+        g = g.get_data()
+    if not isinstance(graph_inputs, dict):
+        graph_inputs = {"value": graph_inputs}
+    remaining_inputs = g.remaining_inputs({k for k in graph_inputs.keys()})
+    if len(remaining_inputs) > 0:
+        logger.warning(f"Some inputs were not provided: {remaining_inputs}")
+
+    storage.write_metadata(Loc(""))
+    for name, value in graph_inputs.items():
+        storage.write_output(root_loc.N(-1), name, bytes_from_ptype(value))
+
+    storage.write_output(root_loc.N(-1), "body", bytes_from_ptype(g))
+
+    inputs: dict[PortID, ValueRef] = {
+        k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
+    }
+    node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
+    start(storage, executor, node_run_data, debug=use_debug_values)
+    resume_graph(
         storage,
         executor,
-        g,
-        graph_inputs,
         n_iterations,
         polling_interval_seconds,
-        use_debug_values,
+        debug=use_debug_values,
     )
     return storage
 
