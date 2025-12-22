@@ -20,15 +20,14 @@ const rewireLoop = (loop: string, ng: NestedGraph) => {
   const outputs = ng.nodes.get(loop)?.outputs;
 
   for (const e of ng.inEdges.get(loop) ?? []) {
-    // If the input is also an output then only flow into first inner EVAL.
     if (outputs?.includes(e.to_port)) {
+      // If the input is also an output then only flow into first inner EVAL.
       ng.addEdge(e.from_node, e.to_node + ".L0", e);
-      ng.markEdgeDeleted(e);
-      continue;
+    } else {
+      // Otherwise the value stays constant and should flow into all children.
+      for (const child of children) ng.addEdge(e.from_node, child.id, e);
     }
 
-    // Otherwise the value stays constant and should flow into all children.
-    for (const child of children) ng.addEdge(e.from_node, child.id, e);
     ng.markEdgeDeleted(e);
   }
 
