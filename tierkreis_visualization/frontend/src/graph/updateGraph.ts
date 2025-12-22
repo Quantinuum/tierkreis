@@ -1,140 +1,88 @@
 import { bottomUpLayout } from "./layoutGraph";
 import { Graph } from "./models";
-import { loc_children, loc_peek } from "@/data/loc";
+import { loc_peek } from "@/data/loc";
 import { PyEdge, PyNode } from "@/data/api_types";
 import { getContainingNodes } from "@/nodes/layout";
+import { NestedGraph } from "./NestedGraph";
 
-const DELETE_TAG = "fordeletion";
-
-const rewire = (
-  e: PyEdge,
-  n: PyNode,
-  rewire_at: "source" | "target"
-): PyEdge => {
-  return rewire_at === "source"
-    ? { ...e, from_node: n.id }
-    : { ...e, to_node: n.id };
-};
-
-const rewireAll = (
-  ns: PyNode[],
-  es: PyEdge[],
-  e: PyEdge,
-  expanded_loc: string,
-  rewire_at: "source" | "target"
-) => {
-  const newTargets = loc_children(expanded_loc, ns);
-  const newEdges = newTargets.map((x) => {
-    return rewire(e, x, rewire_at);
-  });
-  e.from_node = DELETE_TAG;
-  es.push(...newEdges);
-};
-
-const concatData = (
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>
-): [PyNode[], PyEdge[]] => {
-  const ns: PyNode[] = [];
-  const es: PyEdge[] = [];
-
-  for (const loc in evalData) {
-    ns.push(...(evalData[loc]?.nodes ?? []));
-    es.push(...(evalData[loc]?.edges ?? []));
+const rewireMap = (map: string, ng: NestedGraph) => {
+  // Each in-edge and out-edge is duplicated for each child of the MAP node.
+  const children = ng.childrenOfOpen.get(map) ?? [];
+  for (const e of ng.inEdges.get(map) ?? []) {
+    for (const child of children) ng.addEdge(e.from_node, child.id, e);
+    ng.markEdgeDeleted(e);
   }
-  return [ns, es];
+
+  for (const e of ng.outEdges.get(map) ?? []) {
+    for (const child of children) ng.addEdge(child.id, e.to_node, e);
+    ng.markEdgeDeleted(e);
+  }
 };
 
-const indexEdges = (
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
-  es: PyEdge[]
-): [Map<string, PyEdge[]>, Map<string, PyEdge[]>] => {
-  const inEdges = new Map<string, PyEdge[]>();
-  const outEdges = new Map<string, PyEdge[]>();
+const rewireLoop = (loop: string, ng: NestedGraph) => {
+  const children = ng.childrenOfOpen.get(loop) ?? [];
+  const outputs = ng.nodes.get(loop)?.outputs;
 
-  for (const e of es) {
-    if (Object.keys(evalData).includes(e.from_node)) {
-      outEdges.set(e.from_node, [...(outEdges.get(e.from_node) ?? []), e]);
+  for (const e of ng.inEdges.get(loop) ?? []) {
+    // If the input is also an output then only flow into first inner EVAL.
+    if (outputs?.includes(e.to_port)) {
+      ng.addEdge(e.from_node, e.to_node + ".L0", e);
+      ng.markEdgeDeleted(e);
+      continue;
     }
-    if (Object.keys(evalData).includes(e.to_node)) {
-      inEdges.set(e.to_node, [...(inEdges.get(e.to_node) ?? []), e]);
+
+    // Otherwise the value stays constant and should flow into all children.
+    for (const child of children) ng.addEdge(e.from_node, child.id, e);
+    ng.markEdgeDeleted(e);
+  }
+
+  for (const e of ng.outEdges.get(loop) ?? []) {
+    // The final outputs should escape into parent graph.
+    const latest = children.at(-1);
+    if (latest) {
+      ng.addEdge(latest.id, e.to_node, e);
+      ng.markEdgeDeleted(e);
     }
   }
-  return [inEdges, outEdges];
 };
 
-const rewireMap = (
-  map: string,
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
-  ns: PyNode[],
-  es: PyEdge[]
-) => {
-  const [inEdges, outEdges] = indexEdges(evalData, es);
-  for (const e of inEdges.get(map) ?? []) rewireAll(ns, es, e, map, "target");
-  for (const e of outEdges.get(map) ?? []) rewireAll(ns, es, e, map, "source");
-};
-
-const rewireLoop = (
-  loop: string,
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
-  ns: PyNode[],
-  es: PyEdge[]
-) => {
-  const [inEdges, outEdges] = indexEdges(evalData, es);
-  const outputs = ns.find((x) => x.id === loop)?.outputs;
-  for (const e of inEdges.get(loop) ?? []) {
-    if (outputs?.includes(e.to_port)) e.to_node = e.to_node + ".L0";
-    else rewireAll(ns, es, e, loop, "target");
-  }
-
-  for (const e of outEdges.get(loop) ?? []) {
-    const latest = loc_children(e.from_node, ns).at(-1);
-    if (latest) e.from_node = latest.id;
-  }
-};
-
-const rewireEvals = (
-  ev: string,
-  evalData: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
-  es: PyEdge[]
-) => {
-  const [inEdges, outEdges] = indexEdges(evalData, es);
-  for (const e of inEdges.get(ev) ?? []) {
+const rewireEvals = (ev: string, ng: NestedGraph) => {
+  // Replace edges into the expanded EVAL with edges to the input nodes inside the EVAL.
+  const children = ng.childrenOfOpen.get(ev) ?? [];
+  for (const e of ng.inEdges.get(ev) ?? []) {
+    // The body graph should remain flowing into the outer EVAL.
     if (e.to_port === "body") continue;
 
-    const newTarget = evalData[e.to_node]?.nodes.find(
-      (x) => x.function_name === "input" && x.value === e.to_port
+    const newTarget = children.find(
+      (x) => x.function_name === "input" && x.value === e.to_port,
     );
     if (newTarget !== undefined) e.to_node = newTarget.id;
   }
 
-  for (const e of outEdges.get(ev) ?? []) {
-    const newSource = evalData[e.from_node]?.nodes.find(
-      (x) => x.function_name === "output"
-    );
+  // Replace edges out of the expended EVAL with edges out of the output node inside the EVAL.
+  for (const e of ng.outEdges.get(ev) ?? []) {
+    const newSource = children.find((x) => x.function_name === "output");
     if (newSource !== undefined) e.from_node = newSource.id;
   }
-};
-
-const cleanOrphans = (es: PyEdge[]): PyEdge[] => {
-  return es.filter((x) => x.from_node !== DELETE_TAG);
 };
 
 export const amalgamateGraphData = (
   openNodes: Record<string, { nodes: PyNode[]; edges: PyEdge[] }>,
   openEvals: string[],
   openLoops: string[],
-  openMaps: string[]
+  openMaps: string[],
 ): {
   nodes: PyNode[];
   edges: PyEdge[];
 } => {
-  const [ns, es] = concatData(openNodes);
+  const ng = new NestedGraph(openNodes);
 
-  for (const map of openMaps) rewireMap(map, openNodes, ns, es);
-  for (const loop of openLoops) rewireLoop(loop, openNodes, ns, es);
-  for (const ev of openEvals) rewireEvals(ev, openNodes, es);
+  // Rewire EVALs last because LOOPs and MAPs contain EVALs.
+  for (const map of openMaps) rewireMap(map, ng);
+  for (const loop of openLoops) rewireLoop(loop, ng);
+  for (const ev of openEvals) rewireEvals(ev, ng);
 
-  return { nodes: ns, edges: cleanOrphans(es) };
+  return ng.getGraph();
 };
 
 export const updateGraph = (graph: Graph, new_graph: Graph): Graph => {
