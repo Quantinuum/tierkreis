@@ -23,9 +23,9 @@ function RouteComponent() {
       key={wid + loc}
       workflow_id={wid}
       node_location_str={loc}
-      openEvals={openEvals ?? []}
-      openLoops={openLoops ?? []}
-      openMaps={openMaps ?? []}
+      openEvals={openEvals}
+      openLoops={openLoops}
+      openMaps={openMaps}
     ></NodePage>
   );
 }
