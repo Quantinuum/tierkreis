@@ -33,8 +33,8 @@ serve:
 
 [working-directory:'tierkreis_visualization/frontend']
 prod:
-  bun install
-  bunx vite build .
+	npm i
+	npm run build
 
 
 examples:
