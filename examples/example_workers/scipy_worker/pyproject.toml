@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "scipy>=1.16.3",
     "tierkreis",
+		"ruff",
 ]
 
 [tool.uv.sources]

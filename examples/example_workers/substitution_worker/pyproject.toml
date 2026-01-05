@@ -6,6 +6,7 @@ dependencies = [
     "pydantic>=2.11.7",
     "pytket>=2.9.3",
     "tierkreis",
+		"ruff"
 ]
 
 [tool.uv.sources]

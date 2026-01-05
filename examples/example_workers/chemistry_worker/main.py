@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["pydantic", "tierkreis", "pyscf"]
+# dependencies = ["pydantic", "tierkreis", "pyscf", "ruff"]
 #
 # [tool.uv.sources]
 # tierkreis = { path = "../../../tierkreis", editable = true }
