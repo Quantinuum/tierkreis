@@ -1,10 +1,3 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pydantic", "tierkreis", "pyscf", "ruff"]
-#
-# [tool.uv.sources]
-# tierkreis = { path = "../../../tierkreis", editable = true }
-# ///
 import logging
 from sys import argv
 from typing import NamedTuple

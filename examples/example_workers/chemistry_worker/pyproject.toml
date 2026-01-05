@@ -1,0 +1,8 @@
+[project]
+name = "chemistry-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["pydantic", "tierkreis", "pyscf", "ruff"]
+
+[tool.uv.sources]
+tierkreis = { path = "../../../tierkreis", editable = true }

@@ -1,10 +1,3 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["pydantic", "tierkreis", "ruff"]
-#
-# [tool.uv.sources]
-# tierkreis = { path = "../../../tierkreis", editable = true }
-# ///
 import logging
 from sys import argv
 from tierkreis import Worker
