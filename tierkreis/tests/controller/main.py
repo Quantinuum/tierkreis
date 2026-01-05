@@ -9,15 +9,15 @@ from pathlib import Path
 from time import sleep
 from sys import argv
 
-from tierkreis import Worker, Value
+from tierkreis import Worker
 
 worker = Worker("tests_worker")
 
 
 @worker.task()
-def sleep_and_return[T](*, output: T) -> Value[T]:
+def sleep_and_return[T](*, output: T) -> T:
     sleep(10)
-    return Value(value=output)
+    return output
 
 
 def main() -> None:
