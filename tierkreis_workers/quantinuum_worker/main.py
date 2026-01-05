@@ -120,7 +120,7 @@ def run_circuit(circuit: Circuit, n_shots: int, device_name: str) -> BackendResu
     """
     config = qnx.QuantinuumConfig(device_name=device_name)
     name = f"tkr-quantinuum-submission-{time.time()}"
-    project = qnx.projects.get_or_create("tkr_submissions_project")
+    project = qnx.projects.get_or_create("tkr_quantinuum_submissions_project")
     qnx.context.set_active_project(project)
     circuit_ref = qnx.circuits.upload(circuit, project=project, name=name + "circuit")
     job_ref = qnx.start_execute_job(
