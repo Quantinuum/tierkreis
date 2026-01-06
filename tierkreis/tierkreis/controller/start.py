@@ -9,6 +9,7 @@ from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
+from tierkreis.executor import _Executor
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
@@ -99,7 +100,12 @@ def start(
         elif launcher_name == "builtins":
             run_builtin(call_args_path, storage.logs_path)
         else:
-            executor.run(launcher_name, call_args_path)
+            # This is a work around to make the builder backward compatible:
+            # BuiltInExecutor doesn't do anything so we fall back to the global defined one
+            if not isinstance(node.executor, _Executor):
+                node.executor.run(launcher_name, call_args_path)
+            else:
+                executor.run(launcher_name, call_args_path)
 
     elif node.type == "input":
         input_loc = parent.N(-1)

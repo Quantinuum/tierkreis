@@ -4,25 +4,28 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from dataclasses import dataclass, field
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
 class UvExecutor:
     """Executes workers in an UV python environment.
 
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(
-        self, registry_path: Path, logs_path: Path, env: dict[str, str] | None = None
-    ) -> None:
-        self.launchers_path = registry_path
-        self.logs_path = logs_path
-        self.errors_path = logs_path
-        self.env = env or {}
+    registry_path: Path
+    logs_path: Path
+    errors_path: Path | None = None
+    env: dict[str, str] = field(default_factory=lambda: {})
+
+    def __post__init__(self) -> None:
+        if self.errors_path is None:
+            self.errors_path = self.logs_path
 
     def run(
         self,
@@ -47,7 +50,7 @@ class UvExecutor:
         if uv_path is None:
             raise TierkreisError("uv is required to use the uv_executor")
 
-        worker_path = self.launchers_path / launcher_name
+        worker_path = self.registry_path / launcher_name
 
         env = os.environ.copy() | self.env.copy()
         if "VIRTUAL_ENVIRONMENT" not in env:

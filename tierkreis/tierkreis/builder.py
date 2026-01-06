@@ -13,6 +13,8 @@ from tierkreis.controller.data.models import (
 )
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.data.graph import GraphData, ValueRef
+from tierkreis.controller.executor.protocol import ControllerExecutor
+from tierkreis.executor import _Executor
 
 
 @dataclass
@@ -66,12 +68,18 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self,
         inputs_type: type[Inputs] = EmptyModel,
         outputs_type: type[Outputs] = EmptyModel,
+        default_executor: ControllerExecutor = _Executor(),
     ):
+        self.default_executor = default_executor
+        self._executor = default_executor
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
         inputs = [self.data.input(x) for x in model_fields(inputs_type)]
         self.inputs = init_tmodel(self.inputs_type, inputs)
+
+    def task_executor(self, executor: ControllerExecutor) -> "Manager":
+        return Manager(executor, self)
 
     def get_data(self) -> GraphData:
         return self.data
@@ -115,7 +123,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     def task[Out: TModel](self, f: Function[Out]) -> Out:
         name = f"{f.namespace}.{f.__class__.__name__}"
         ins = dict_from_tmodel(f)
-        idx, _ = self.data.func(name, ins)("dummy")
+        idx, _ = self.data.func(name, ins, self._executor)("dummy")
         OutModel = f.out()
         outputs = [(idx, x) for x in model_fields(OutModel)]
         return init_tmodel(OutModel, outputs)
@@ -160,14 +168,16 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
         ins = (ref.node_index, ref.port_id)
-        idx, _ = self.data.func("builtins.unfold_values", {"value": ins})("dummy")
+        idx, _ = self.data.func(
+            "builtins.unfold_values", {"value": ins}, self.default_executor
+        )("dummy")
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
         value_ref = (refs._value.node_index, refs._value.port_id)
-        idx, _ = self.data.func("builtins.fold_values", {"values_glob": value_ref})(
-            "dummy"
-        )
+        idx, _ = self.data.func(
+            "builtins.fold_values", {"values_glob": value_ref}, self.default_executor
+        )("dummy")
         return TKR[list[T]](idx, "value")
 
     def _map_fn_single_in[A: PType, B: TModel](
@@ -247,3 +257,15 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             out = self._fold_list(out)
 
         return out
+
+
+class Manager:
+    def __init__(self, exec: ControllerExecutor, builder: GraphBuilder) -> None:
+        self.builder = builder
+        self.exec = exec
+
+    def __enter__(self) -> None:
+        self.builder._executor = self.exec
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.builder._executor = self.builder.default_executor

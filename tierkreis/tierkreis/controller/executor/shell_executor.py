@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import json
 import os
 import subprocess
@@ -8,25 +9,27 @@ from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 
 
+@dataclass
 class ShellExecutor:
     """Executes workers in an unix shell.
 
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(
+    registry_path: Path
+    workflow_dir: Path
+    logs_path: Path | None = None
+    errors_path: Path | None = None
+    timeout: int = 10
+    env: dict[str, str] = field(default_factory=lambda: {})
+
+    def __post__init__(
         self,
-        registry_path: Path,
-        workflow_dir: Path,
-        timeout: int = 10,
-        env: dict[str, str] | None = None,
     ) -> None:
-        self.launchers_path = registry_path
-        self.logs_path = workflow_dir / "logs"
-        self.errors_path = workflow_dir / "logs"
-        self.workflow_dir = workflow_dir
-        self.timeout = timeout
-        self.env = env or {}
+        if self.logs_path is None:
+            self.logs_path = self.workflow_dir / "logs"
+        if self.errors_path is None:
+            self.errors_path = self.workflow_dir / "logs"
 
     def run(
         self,
@@ -34,7 +37,7 @@ class ShellExecutor:
         worker_call_args_path: Path,
         export_values: bool = False,
     ) -> None:
-        launcher_path = self.launchers_path / launcher_name
+        launcher_path = self.registry_path / launcher_name
         self.errors_path = worker_call_args_path.parent / "errors"
 
         if not launcher_path.exists():
@@ -59,6 +62,7 @@ class ShellExecutor:
         )
         done_path = self.workflow_dir.parent / call_args.done_path
         _error_path = self.errors_path.parent / "_error"
+        assert self.logs_path is not None
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
 

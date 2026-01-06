@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 from tierkreis.controller.executor.hpc.hpc_executor import run_hpc_executor
@@ -87,20 +88,31 @@ def generate_slurm_script(spec: JobSpec) -> str:
     return "\n".join(lines)
 
 
+@dataclass
 class SLURMExecutor:
-    def __init__(
-        self,
-        registry_path: Path | None,
-        logs_path: Path,
-        spec: JobSpec,
-        command: str = "sbatch",
-    ) -> None:
-        self.launchers_path = registry_path
-        self.logs_path = logs_path
-        self.errors_path = logs_path
-        self.spec = spec
-        self.script_fn: Callable[[JobSpec], str] = generate_slurm_script
-        self.command = command
+    registry_path: Path | None
+    logs_path: Path
+    spec: JobSpec
+    errors_path: Path | None = None
+    command: str = "pjsub"
+    script_fn: Callable[[JobSpec], str] = field(default=generate_slurm_script)
+
+    # def __init__(
+    #     self,
+    #     registry_path: Path | None,
+    #     logs_path: Path,
+    #     spec: JobSpec,
+    #     command: str = "sbatch",
+    # ) -> None:
+    #     self.launchers_path = registry_path
+    #     self.logs_path = logs_path
+    #     self.errors_path = logs_path
+    #     self.spec = spec
+    #     self.script_fn: Callable[[JobSpec], str] = generate_slurm_script
+    #     self.command = command
+    def __post__init__(self) -> None:
+        if self.errors_path is None:
+            self.errors_path = self.logs_path
 
     def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
         self.errors_path = (
