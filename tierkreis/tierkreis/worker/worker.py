@@ -1,12 +1,10 @@
 from inspect import Signature, signature
 import logging
 from multiprocessing.util import LOGGER_NAME
-from os import getenv
 from pathlib import Path
 import sys
 from typing import Callable, TypeVar
 
-from tierkreis.consts import TKR_LOG_LEVEL_KEY
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.data.models import (
@@ -21,6 +19,7 @@ from tierkreis.controller.data.types import (
     ptype_from_bytes,
 )
 from tierkreis.exceptions import TierkreisError
+from tierkreis.logger_setup import update_logger_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
@@ -188,9 +187,11 @@ class Worker:
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""
-        log_level = getenv(TKR_LOG_LEVEL_KEY, None)
-        if log_level is not None:
-            self.logger.setLevel(log_level)
+        if self.logger.hasHandlers():
+            [
+                update_logger_from_environment(self.logger, idx)
+                for idx in range(len(self.logger.handlers))
+            ]
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:
