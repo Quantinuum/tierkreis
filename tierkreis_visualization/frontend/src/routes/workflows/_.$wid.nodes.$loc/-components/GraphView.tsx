@@ -82,6 +82,7 @@ export const GraphView = (props: {
         onNodesChange={props.onNodesChange}
         onNodeDrag={onNodeDrag}
         minZoom={0.01}
+        defaultEdgeOptions={{zIndex: -2}}
         fitView
       >
         <Background />
