@@ -1,4 +1,3 @@
-import json
 from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -6,6 +5,7 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyNode, PyEdge
+from tierkreis_visualization.data.outputs import outputs_from_loc
 
 
 class LoopNodeData(BaseModel):
@@ -20,15 +20,18 @@ def get_loop_node(
     while storage.is_node_started(node_location.L(i + 1)):
         i += 1
     new_location = node_location.L(i)
+    nodedef = storage.read_node_def(new_location)
 
     nodes = [
         PyNode(
-            id=n,
+            id=node_location.L(n),
             status="Finished",
             function_name=f"L{n}",
             node_location=node_location.L(n),
+            node_type="eval",
             started_time=storage.read_started_time(node_location.L(n)) or "",
             finished_time=storage.read_finished_time(node_location.L(n)) or "",
+            outputs=list(nodedef.outputs),
         )
         for n in range(i)
     ]
@@ -41,12 +44,14 @@ def get_loop_node(
         last_status = "Started"
     nodes.append(
         PyNode(
-            id=i,
+            id=new_location,
             status=last_status,
             function_name=f"L{i}",
             node_location=new_location,
+            node_type="eval",
             started_time=storage.read_started_time(new_location) or "",
             finished_time=storage.read_finished_time(new_location) or "",
+            outputs=list(nodedef.outputs),
         )
     )
     edges = []
@@ -54,13 +59,11 @@ def get_loop_node(
         edges.extend(
             [
                 PyEdge(
-                    from_node=n,
+                    from_node=node_location.L(n),
                     from_port=port_name,
-                    to_node=n + 1,
+                    to_node=node_location.L(n + 1),
                     to_port=port_name,
-                    value=json.loads(
-                        storage.read_output(node_location.L(n), port_name)
-                    ),
+                    value=outputs_from_loc(storage, node_location.L(n), port_name),
                 )
                 for n in range(i)
             ]

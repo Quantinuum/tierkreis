@@ -8,22 +8,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
-import { useErrors, useLogs } from "@/data/logs";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
+import { fetchErrors, fetchLogs, fetchOutput, fetchOutputs } from "@/data/api";
+import { loc_parent } from "@/data/loc";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
-  const { data: logs } = useLogs(
-    data.workflowId,
-    data.node_location,
-    data.title
-  );
-  const { data: errors } = useErrors(
-    data.workflowId,
-    data.node_location,
-    data.status
-  );
   let name = data.title;
   if (name == "Function") {
     name = data.name;
@@ -43,24 +34,56 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     }
   };
 
+  const handleClick = async () => {
+    if (data.node_type === "function") {
+      const content = await fetchLogs(data.workflowId);
+      data.setInfo?.({ type: "Logs", content });
+    } else if (data.node_type === "const") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        "value"
+      );
+      data.setInfo?.({ type: "Constant value", content });
+    } else if (data.node_type === "input") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        name
+      );
+      data.setInfo?.({ type: "Input", content });
+    } else if (data.node_type === "eifelse") {
+      data.setInfo?.({ type: "Eager if/else", content: "" });
+    } else if (data.node_type === "ifelse") {
+      data.setInfo?.({ type: "Lazy if/else", content: "" });
+    } else if (
+      data.node_type === "eval" ||
+      data.node_type === "map" ||
+      data.node_type === "loop"
+    ) {
+      return;
+    } else if (data.node_type === "output") {
+      const parent = loc_parent(data.node_location);
+      const content = await fetchOutputs(data.workflowId, parent);
+      data.setInfo?.({ type: "Output", content });
+    } else {
+      data.node_type satisfies never;
+    }
+  };
+  const handleErrorClick = async () => {
+    const errors = await fetchErrors(data.workflowId, data.node_location);
+    data.setInfo?.({ type: "Errors", content: errors });
+  };
+
   return (
-    <Card className={"w-[180px] " + bg_color(data.status)}>
+    <Card
+      className={"w-[180px] " + bg_color(data.status)}
+      onClick={handleClick}
+    >
       <DialogTrigger asChild>
-        <div
-          onClick={(event) => {
-            //workaround to render errors
-            const target = event.target as HTMLElement;
-            if (target.closest("button") === null) {
-              if (data.title == "Function") {
-                data.setInfo?.({ type: "Logs", content: logs ? logs : "" });
-              }
-            }
-          }}
-        >
+        <div>
           <CardHeader>
-            <CardTitle
-              style={{ whiteSpace: "normal", wordBreak: "break-word" }}
-            >
+            <CardTitle className="whitespace-nowrap overflow-hidden text-ellipsis">
               {name}
             </CardTitle>
           </CardHeader>
@@ -69,7 +92,8 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
               handles={data.handles.inputs}
               id={data.id}
               isOpen={data.isTooltipOpen}
-              onOpenChange={data.onTooltipOpenChange}
+              hoveredId={data.hoveredId}
+              setHoveredId={data.setHoveredId}
             />
             <div className="flex items-center justify-center">
               {data.status == "Error" && (
@@ -77,12 +101,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
                   size="sm"
                   variant="destructive"
                   style={{ zIndex: 5 }}
-                  onClick={() =>
-                    data.setInfo?.({
-                      type: "Errors",
-                      content: errors ? errors : "",
-                    })
-                  }
+                  onClick={handleErrorClick}
                 >
                   <OctagonAlert />
                 </Button>
@@ -92,7 +111,8 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
               handles={data.handles.outputs}
               id={data.id}
               isOpen={data.isTooltipOpen}
-              onOpenChange={data.onTooltipOpenChange}
+              hoveredId={data.hoveredId}
+              setHoveredId={data.setHoveredId}
             />
           </CardContent>
           <CardFooter

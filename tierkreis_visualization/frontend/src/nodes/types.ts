@@ -1,15 +1,7 @@
 import { InfoProps } from "@/components/types";
+import { NodeType } from "@/data/api_types";
 import { Edge, type Node } from "@xyflow/react";
 
-export type PyNode = {
-  id: string | number;
-  status: "Not started" | "Started" | "Error" | "Finished";
-  function_name: string;
-  node_location: string;
-  value?: unknown;
-  started_time: string;
-  finished_time: string;
-};
 export type BackendNode = Node<{
   name: string;
   status: "Not started" | "Started" | "Error" | "Finished";
@@ -36,5 +28,6 @@ export type BackendNode = Node<{
   setHoveredId: (id: string) => void;
   started_time: string;
   finished_time: string;
+  node_type: NodeType;
 }>;
 export type AppNode = BackendNode;

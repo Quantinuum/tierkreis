@@ -8,13 +8,13 @@ import { InfoProps } from "./types";
 
 export function NodeInfo(props: { info: InfoProps }) {
   return (
-    <DialogContent className="min-w-7xl  sm:max-h-[80vh]">
+    <DialogContent className="w-[90vw] h-[90vh]">
       <DialogHeader>
         <DialogTitle>{props.info.type}</DialogTitle>
         <DialogDescription></DialogDescription>
       </DialogHeader>
-      <div className="overflow-auto">
-        <pre style={{ maxHeight: "65vh" }}>{props.info.content}</pre>
+      <div className="text-wrap overflow-auto h-9/10 whitespace-pre-line">
+        {props.info.content}
       </div>
     </DialogContent>
   );

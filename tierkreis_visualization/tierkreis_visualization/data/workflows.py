@@ -15,6 +15,7 @@ class WorkflowDisplay(BaseModel):
     id_int: int
     name: str | None
     start_time: str
+    errors: list[str]
 
 
 def get_workflows(storage_type: StorageType) -> list[WorkflowDisplay]:
@@ -25,6 +26,7 @@ def get_workflows(storage_type: StorageType) -> list[WorkflowDisplay]:
                 id_int=0,
                 name="tmp",
                 start_time=datetime.now().isoformat(),
+                errors=[],
             )
         ]
     return get_workflows_from_disk()
@@ -37,11 +39,16 @@ def get_workflows_from_disk() -> list[WorkflowDisplay]:
     for folder in folders:
         try:
             id = UUID(folder)
-            metadata = file_storage_fn(CONFIG.tierkreis_path)(id).read_metadata(Loc(""))
+            storage = file_storage_fn(CONFIG.tierkreis_path)(id)
+            metadata = storage.read_metadata(Loc(""))
             name = metadata["name"] or "workflow"
             start = metadata.get("start_time", datetime.now().isoformat())
+            errors = [x for x in storage.read_errors(Loc()).split("\n") if x]
+            errors = list(set(errors))
             workflows.append(
-                WorkflowDisplay(id=id, id_int=int(id), name=name, start_time=start)
+                WorkflowDisplay(
+                    id=id, id_int=int(id), name=name, start_time=start, errors=errors
+                )
             )
         except (TypeError, ValueError):
             continue

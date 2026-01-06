@@ -1,7 +1,6 @@
 import json
 from typing import Optional, assert_never
 
-from pydantic import BaseModel
 from tierkreis.controller.data.core import NodeIndex
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.graph import GraphData, IfElse, NodeDef
@@ -11,11 +10,8 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge
-
-
-class EvalNodeData(BaseModel):
-    nodes: list[PyNode]
-    edges: list[PyEdge]
+from tierkreis_visualization.data.outputs import outputs_from_loc
+from tierkreis_visualization.routers.models import PyGraph
 
 
 def node_status(
@@ -52,13 +48,13 @@ def add_conditional_edges(
 
     for branch, (idx, p) in refs.items():
         try:
-            value = json.loads(storage.read_output(loc.N(idx), p))
+            value = outputs_from_loc(storage, loc.N(idx), p)
         except FileNotFoundError:
             value = None
         edge = PyEdge(
-            from_node=idx,
+            from_node=loc.N(idx),
             from_port=p,
-            to_node=i,
+            to_node=loc.N(i),
             to_port=f"If{branch}",
             conditional=pred is None or pred != branch,
             value=value,
@@ -68,7 +64,7 @@ def add_conditional_edges(
 
 def get_eval_node(
     storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
-) -> EvalNodeData:
+) -> PyGraph:
     thunk = storage.read_output(node_location.N(-1), "body")
     graph = ptype_from_bytes(thunk, GraphData)
 
@@ -98,13 +94,13 @@ def get_eval_node(
                 name = node.type
             case "const":
                 name = node.type
-                value = node.value
+                value = outputs_from_loc(storage, node_location.N(i), "value")
             case "output":
                 name = node.type
                 if len(node.inputs) == 1:
                     (idx, p) = next(iter(node.inputs.values()))
                     try:
-                        value = json.loads(storage.read_output(node_location.N(idx), p))
+                        value = outputs_from_loc(storage, node_location.N(idx), p)
                     except (FileNotFoundError, TierkreisError):
                         value = None
             case "input":
@@ -114,27 +110,33 @@ def get_eval_node(
                 assert_never(node)
 
         pynode = PyNode(
-            id=i,
+            id=new_location,
             status=status,
             function_name=name,
             node_location=new_location,
+            node_type=node.type,
             value=value,
             started_time=started_time,
             finished_time=finished_time,
+            outputs=list(node.outputs),
         )
         pynodes.append(pynode)
 
         for p0, (idx, p1) in in_edges(node).items():
-            value = None
+            value: str | None = None
 
             try:
-                value = storage.read_output(node_location.N(idx), p1).decode()
+                value = outputs_from_loc(storage, node_location.N(idx), p1)
             except (FileNotFoundError, TierkreisError, UnicodeDecodeError):
                 value = None
 
             py_edge = PyEdge(
-                from_node=idx, from_port=p1, to_node=i, to_port=p0, value=value
+                from_node=node_location.N(idx),
+                from_port=p1,
+                to_node=node_location.N(i),
+                to_port=p0,
+                value=value,
             )
             py_edges.append(py_edge)
 
-    return EvalNodeData(nodes=pynodes, edges=py_edges)
+    return PyGraph(nodes=pynodes, edges=py_edges)

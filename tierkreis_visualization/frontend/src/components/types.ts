@@ -1,13 +1,14 @@
 export interface InfoProps {
-  type: "Logs" | "Errors";
+  type:
+    | "Logs"
+    | "Errors"
+    | "Constant value"
+    | "Input"
+    | "Output"
+    | "Lazy if/else"
+    | "Eager if/else";
   content: string;
 }
-export interface Workflow {
-  id: string;
-  name: string;
-  start_time: string;
-}
-
 export interface HandleProps {
   handles: string[];
   id: string;

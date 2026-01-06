@@ -1,8 +1,9 @@
 import { CSSProperties } from "react";
-import { calculateNodePositions } from "@/graph/parseGraph";
 import { AppNode, BackendNode } from "@/nodes/types";
 import { nodeHeight, nodeWidth } from "@/data/constants";
 import { Edge } from "@xyflow/react";
+import { loc_depth, loc_peek, loc_steps } from "@/data/loc";
+import dagre from "@dagrejs/dagre";
 
 interface ShallowNode {
   id: string;
@@ -16,7 +17,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
   // calculate each level individually
   const nodeLevels = new Map<number, ShallowNode[]>();
   nodes.forEach((node) => {
-    const level = node.id.split(":").length - 1;
+    const level = loc_depth(node.id) - 1;
     if (!nodeLevels.has(level)) {
       nodeLevels.set(level, []);
     }
@@ -39,7 +40,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
     const idsInLevel = new Set(currentNodes.map((nodeInfo) => nodeInfo.id));
     const levelNodes = nodes.filter((node) => idsInLevel.has(node.id));
     const oldEdges = restoreEdges(level, edges);
-    resizeGroupNodesToFitChildren(levelNodes, previousNodes, 20);
+    resizeGroupNodesToFitChildren(levelNodes, previousNodes, 60);
     // if we don't do this groups wise dagre puts them all on the same plane
     const groups = levelNodes.reduce<{ [key: string]: BackendNode[] }>(
       (acc, currentNode) => {
@@ -69,6 +70,7 @@ export function bottomUpLayout(nodes: BackendNode[], edges: Edge[]) {
     newNodes.push(...tmpNodes);
     previousNodes = tmpNodes;
   }
+
   return newNodes.reverse();
 }
 
@@ -99,25 +101,59 @@ function resizeGroupNodesToFitChildren(
 function restoreEdges(level: number, edges: Edge[]) {
   const levelEdges = edges.filter(
     (edge) =>
-      edge.source.split(":").length <= level + 1 ||
-      edge.target.split(":").length <= level + 1
+      loc_depth(edge.source) <= level + 1 || loc_depth(edge.target) <= level + 1
   );
   const newEdges = new Set<Edge>();
   for (const edge of levelEdges) {
-    const source = edge.source.split(":");
-    const target = edge.target.split(":");
+    const source = loc_steps(edge.source);
+    const target = loc_steps(edge.target);
     if (source.length === target.length) continue; // don't need to update
     if (source.length <= level + 1) {
       newEdges.add({
         ...edge,
-        target: target.slice(0, level + 1).join(":"),
+        target: target.slice(0, level + 1).join("."),
       });
     } else {
       newEdges.add({
         ...edge,
-        source: source.slice(0, level + 1).join(":"),
+        source: source.slice(0, level + 1).join("."),
       });
     }
   }
   return newEdges;
 }
+
+const calculateNodePositions = (
+  nodes: { id: string; style?: CSSProperties }[],
+  edges: Edge[],
+  padding: number = 0
+) => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({ rankdir: "TB", ranker: "longest-path" });
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, {
+      width: node.style?.width ? Number(node.style.width) : nodeWidth,
+      height: node.style?.height ? Number(node.style.height) : nodeHeight,
+    });
+  });
+  edges.forEach((edge) => {
+    if (
+      nodeIds.has(edge.source) &&
+      nodeIds.has(edge.target) &&
+      !loc_peek(edge.source)?.includes("L")
+    ) {
+      dagreGraph.setEdge(edge.source, edge.target);
+    }
+  });
+  dagre.layout(dagreGraph, { disableOptimalOrderHeuristic: true });
+  return nodes.map((node) => {
+    const { x, y, width, height } = dagreGraph.node(node.id);
+    return {
+      id: node.id,
+      x: x - width / 2 + padding,
+      y: y - height / 2 + padding,
+    };
+  });
+};

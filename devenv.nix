@@ -28,8 +28,7 @@
 
   languages.javascript = {
     enable = true;
-    bun.enable = true;
-    bun.install.enable = true;
+    npm.enable = true;
     directory = "./tierkreis_visualization";
   };
 
