@@ -19,9 +19,16 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       props.info.node_location
     );
 
-    const openEvals = search.openEvals?.filter((x) => !invalid.includes(x));
-    const openLoops = search.openLoops?.filter((x) => !invalid.includes(x));
-    const openMaps = search.openMaps?.filter((x) => !invalid.includes(x));
+    const isValid = (openNode: string) => {
+      for (const invalidatedNode of invalid) {
+        if (openNode.startsWith(invalidatedNode)) return false
+      }
+      return true;
+    }
+
+    const openEvals = search.openEvals?.filter(isValid);
+    const openLoops = search.openLoops?.filter(isValid);
+    const openMaps = search.openMaps?.filter(isValid);
 
     navigate({ to: ".", search: { openEvals, openLoops, openMaps } });
     props.closer();
