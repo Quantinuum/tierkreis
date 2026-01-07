@@ -177,8 +177,12 @@ class Worker:
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""
-        add_handler_from_environment(logging.getLogger())
+        logger = logging.getLogger()
+        handler = add_handler_from_environment(logger)
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:
-            self.run(Path(argv[1]))
+            try:
+                self.run(Path(argv[1]))
+            finally:
+                logger.removeHandler(handler)

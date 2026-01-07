@@ -55,7 +55,7 @@ The complete worker file is as follows:
 
 ### Logging and Errors
 
-The Tierkreis controller will automatically collect logs and errors by redirecting any output to `stdout` to `logs_path` and `stderr` to `errors_path` automatically.
+The Tierkreis controller will automatically collect logs and errors from workers by adding a file handler, additionally redirecting any worker output from `stdout` and `stderr` to `errors_path` and `logs_path` automatically.
 Any other output, e.g. writing debug information to a log file won't be captured.
 For convenience you can use the builtin logging functionality `worker.logger` which is an instance of a `logging.Logger`.
 Raising an exception in a worker task will terminate the graph execution.

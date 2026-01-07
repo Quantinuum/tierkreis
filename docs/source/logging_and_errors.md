@@ -10,7 +10,7 @@ To change the log level you can get the tierkreis logger:
 ```python
 import logging
 
-logger = logging.getLogger("TKR")
+logger = logging.getLogger("tierkreis")
 logger.setLevel(...)
 ```
 
@@ -23,7 +23,7 @@ worker.logger.setLevel(...)
 worker.setLogger(...)
 ```
 
-When running a python worker, they will check the environment variable `$TKR_LOG_LEVEL`.
+When running a python worker, they will check the environment variable `$TKR_LOG_LEVEL`, `$TKR_LOG_FORMAT` and `$TKR_DATE_FORMAT` and add a streaming handler to the root logger.
 You can either set this manually or provided it as part of the `env` argument of an executor.
 
 ## Error Handling
@@ -81,6 +81,7 @@ For example running the example `error_handling_graph.py` will produce the follo
 ```
 Graph finished with errors.
 
+<stack_trace for node N0>
 
 Node: -.N0 encountered an error
 Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/errors
@@ -96,6 +97,21 @@ This tells us the following information:
 3. The reason for the error: `I refuse!` typically this would include a stack trace, but here we just raised a simple python `Exception`
 
 Further information can be found in the workflows log file, typically located at `<checkpoints_dir>/<workflow_id>/logs`.
+
+#### Configuring Logs
+
+By default tierkreis will not show any logging statements as it just writes a log file instead.
+If you want you can provide your own configuration.
+
+```py
+logging.basicConfig(
+    format="%(asctime)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+    level=logging.INFO,
+)
+```
+
+For example by uncommenting lines 24-28 in the example.
 
 #### Resume a Workflow
 
