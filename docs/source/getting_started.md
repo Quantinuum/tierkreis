@@ -17,16 +17,16 @@ This will set up the following project structure for you:
 project_root/
 ├── tkr/
 │   ├── graphs/
-│   │   ├── __init__.py
 │   │   └── main.py
 │   └── workers/
-│       ├── __init__.py
 │       └── example_worker/
-│           ├── __init__.py
+│           ├── api/
+│               ├── main.py
+│               ├── pyproject.toml
+│               └── README.md
 │           ├── main.py
 │           ├── pyproject.toml
 │           ├── README.md
-│           ├── stubs.py
 │           └── uv.lock
 ├── .gitignore
 ├── .python-version
