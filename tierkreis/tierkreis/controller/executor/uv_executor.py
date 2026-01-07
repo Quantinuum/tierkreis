@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
+from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,10 @@ class UvExecutor:
             uv_path = shutil.which("uv")
         if uv_path is None:
             raise TierkreisError("uv is required to use the uv_executor")
-
-        worker_path = self.launchers_path / launcher_name
-
+        launcher_path = check_and_set_launcher(
+            self.launchers_path, launcher_name, ".py"
+        )
+        worker_path = launcher_path.parent
         env = os.environ.copy() | self.env.copy()
         if "VIRTUAL_ENVIRONMENT" not in env:
             env["VIRTUAL_ENVIRONMENT"] = ""
