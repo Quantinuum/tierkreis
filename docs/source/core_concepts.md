@@ -4,6 +4,7 @@
 
 In Tierkreis, a computation is represented as a sequence of tasks comprising a workflow.
 They are combined in a directed acyclic graph (DAG), where each task is represented by a node.
+In this documentation we use the terms graph and workflow interchangeably.
 An edge indicates that data computed by one node is required to start another node.
 The data dependencies induce a partial order of execution, which allows parallel and asynchronous execution.
 As a result a computation can be distributed easily and run on different types of hardware including remote (cloud) and onsite:

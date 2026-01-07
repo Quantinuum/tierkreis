@@ -21,9 +21,9 @@ project_root/
 │   └── workers/
 │       └── example_worker/
 │           ├── api/
-│               ├── main.py
-│               ├── pyproject.toml
-│               └── README.md
+│           │   ├── api.py (stubs for the worker)
+│           │   ├── pyproject.toml
+│           │   └── README.md
 │           ├── main.py
 │           ├── pyproject.toml
 │           ├── README.md
