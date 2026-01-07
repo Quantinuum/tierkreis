@@ -19,7 +19,7 @@ from tierkreis.controller.data.types import (
     ptype_from_bytes,
 )
 from tierkreis.exceptions import TierkreisError
-from tierkreis.logger_setup import update_logger_from_environment
+from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
@@ -187,11 +187,7 @@ class Worker:
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""
-        if self.logger.hasHandlers():
-            [
-                update_logger_from_environment(self.logger, idx)
-                for idx in range(len(self.logger.handlers))
-            ]
+        add_handler_from_environment(logging.getLogger())
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:
