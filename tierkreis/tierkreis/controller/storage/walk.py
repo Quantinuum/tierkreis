@@ -52,8 +52,8 @@ def walk_node(
     """Should only be called when a node has not finished."""
     loc = parent.N(idx)
     if storage.node_has_error(loc):
-        logger.error(f"Node {loc} has encountered an error:")
-        logger.error(f"\n\n{storage.read_errors(loc)}\n\n")
+        logger.error(f"Node {loc} has encountered an error.")
+        logger.debug(f"\n\n{storage.read_errors(loc)}\n\n")
         return WalkResult([], [], [loc])
 
     node = graph.nodes[idx]

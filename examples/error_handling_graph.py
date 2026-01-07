@@ -51,7 +51,7 @@ def main() -> None:
         )
     except TierkreisError:
         output = storage.read_errors(root_loc)
-        print(output)
+        print("Errors are at:", output)
 
 
 if __name__ == "__main__":
