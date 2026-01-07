@@ -5,13 +5,12 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 from tierkreis.controller.data.core import PortID
-from tierkreis.logger_setup import LOGGER_NAME
 from typing_extensions import assert_never
 
 from tierkreis.controller.data.core import NodeIndex
 from tierkreis.exceptions import TierkreisError
 
-logger = getLogger(LOGGER_NAME)
+logger = getLogger(__name__)
 
 
 class WorkerCallArgs(BaseModel):

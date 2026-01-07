@@ -9,7 +9,12 @@ class ControllerExecutor(Protocol):
 
     """
 
-    def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
+    def run(
+        self,
+        launcher_name: str,
+        worker_call_args_path: Path,
+        enable_logging: bool = True,
+    ) -> None:
         """Run the node defined by the node_definition path.
 
         Specifies the worker to run by its launcher name.

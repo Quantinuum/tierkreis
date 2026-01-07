@@ -11,9 +11,9 @@ from tierkreis.controller.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.spec import spec
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
-from tierkreis.logger_setup import LOGGER_NAME
 
-logger = getLogger(LOGGER_NAME)
+
+logger = getLogger(__name__)
 WorkerFunction = Callable[..., PModel]
 
 

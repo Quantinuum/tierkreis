@@ -7,14 +7,14 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
-from tierkreis.logger_setup import LOGGER_NAME, set_tkr_logger
+from tierkreis.logger_setup import set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID, ValueRef
 from tierkreis.exceptions import TierkreisError
 
 root_loc = Loc("")
-logger = logging.getLogger(LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 def run_graph(
@@ -24,6 +24,7 @@ def run_graph(
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
+    enable_logging: bool = True,
 ) -> None:
     if isinstance(g, GraphBuilder):
         g = g.get_data()
@@ -35,7 +36,8 @@ def run_graph(
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
     storage.write_metadata(Loc(""))
-    set_tkr_logger(storage.logs_path)
+    if enable_logging:
+        set_tkr_logger(storage.logs_path)
 
     for name, value in graph_inputs.items():
         storage.write_output(root_loc.N(-1), name, bytes_from_ptype(value))
@@ -46,7 +48,7 @@ def run_graph(
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
     }
     node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
-    start(storage, executor, node_run_data)
+    start(storage, executor, node_run_data, enable_logging)
     resume_graph(storage, executor, n_iterations, polling_interval_seconds)
 
 

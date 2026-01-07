@@ -5,12 +5,11 @@ from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.logger_setup import LOGGER_NAME
 from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 from tierkreis.exceptions import TierkreisError
 
 
-logger = logging.getLogger(LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 class InMemoryExecutor:
@@ -27,6 +26,7 @@ class InMemoryExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
+        enable_logging: bool = True,
     ) -> None:
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(

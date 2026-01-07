@@ -7,9 +7,9 @@ from typing import Callable, Protocol
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
 from tierkreis.exceptions import TierkreisError
-from tierkreis.logger_setup import LOGGER_NAME
 
-logger = logging.getLogger(LOGGER_NAME)
+
+logger = logging.getLogger(__name__)
 
 
 class HPCExecutor(Protocol):

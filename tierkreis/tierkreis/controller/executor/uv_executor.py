@@ -6,9 +6,8 @@ from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.exceptions import TierkreisError
-from tierkreis.logger_setup import LOGGER_NAME
 
-logger = logging.getLogger(LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 class UvExecutor:
@@ -29,6 +28,7 @@ class UvExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
+        enable_logging: bool = True,
         uv_path: str | None = None,
     ) -> None:
         self.errors_path = (
