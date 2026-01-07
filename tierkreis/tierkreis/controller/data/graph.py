@@ -8,9 +8,8 @@ from tierkreis.controller.data.core import ValueRef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
-from tierkreis.logger_setup import LOGGER_NAME
 
-logger = logging.getLogger(LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

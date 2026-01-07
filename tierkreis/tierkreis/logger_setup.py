@@ -5,7 +5,7 @@ import sys
 
 from tierkreis.consts import TKR_DATE_FMT_KEY, TKR_LOG_FMT_KEY, TKR_LOG_LEVEL_KEY
 
-LOGGER_NAME = "TKR"
+LOGGER_NAME = "tierkeis"
 
 
 def set_tkr_logger(

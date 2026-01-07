@@ -8,7 +8,6 @@ from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
-from tierkreis.logger_setup import LOGGER_NAME
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
@@ -20,7 +19,7 @@ from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.labels import Labels
 from tierkreis.exceptions import TierkreisError
 
-logger = logging.getLogger(LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,18 +43,6 @@ def start_nodes(
 
 
 def run_builtin(def_path: Path, logs_path: Path) -> None:
-    # logger = getLogger("builtins")
-    # if not logger.hasHandlers():
-    #     formatter = logging.Formatter(
-    #         fmt="%(asctime)s: %(message)s",
-    #         datefmt="%Y-%m-%dT%H:%M:%S%z",
-    #     )
-    #     handler = logging.FileHandler(logs_path, mode="a")
-    #     handler.setFormatter(formatter)
-    #     logger.setLevel(logging.INFO)
-
-    #     logger.addHandler(handler)
-
     logger.info("START builtin %s", def_path)
     with open(logs_path, "a") as fh:
         subprocess.Popen(
@@ -68,7 +55,10 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
 
 
 def start(
-    storage: ControllerStorage, executor: ControllerExecutor, node_run_data: NodeRunData
+    storage: ControllerStorage,
+    executor: ControllerExecutor,
+    node_run_data: NodeRunData,
+    enable_logging: bool = True,
 ) -> None:
     node_location = node_run_data.node_location
     node = node_run_data.node
@@ -95,11 +85,11 @@ def start(
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
-            executor.run(launcher_name, call_args_path)
+            executor.run(launcher_name, call_args_path, enable_logging)
         elif launcher_name == "builtins":
             run_builtin(call_args_path, storage.logs_path)
         else:
-            executor.run(launcher_name, call_args_path)
+            executor.run(launcher_name, call_args_path, enable_logging)
 
     elif node.type == "input":
         input_loc = parent.N(-1)

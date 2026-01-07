@@ -9,10 +9,9 @@ from tierkreis.controller.storage.in_memory import (
     InMemoryFileData,
 )
 from tierkreis.exceptions import TierkreisError
-from tierkreis.logger_setup import LOGGER_NAME
 
 
-logger = logging.getLogger(LOGGER_NAME)
+logger = logging.getLogger(__name__)
 
 
 class InMemoryWorkerStorage:
