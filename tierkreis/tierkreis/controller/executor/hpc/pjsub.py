@@ -101,7 +101,12 @@ class PJSUBExecutor:
         self.script_fn: Callable[[JobSpec], str] = generate_pjsub_script
         self.command = command
 
-    def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
+    def run(
+        self,
+        launcher_name: str,
+        worker_call_args_path: Path,
+        enable_logging: bool = True,
+    ) -> None:
         self.errors_path = (
             self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
         )
