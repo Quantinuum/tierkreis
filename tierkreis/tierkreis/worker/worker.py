@@ -1,8 +1,6 @@
 from inspect import Signature, signature
 import logging
-from multiprocessing.util import LOGGER_NAME
 from pathlib import Path
-import sys
 from typing import Callable, TypeVar
 
 from tierkreis.controller.data.core import PortID
@@ -23,14 +21,6 @@ from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
-
-logger = logging.getLogger(LOGGER_NAME)
-if not logger.hasHandlers():
-    logger.setLevel(logging.INFO)
-    handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
 
 PrimitiveTask = Callable[[WorkerCallArgs, WorkerStorage], None]
@@ -82,12 +72,12 @@ class Worker:
         else:
             self.storage = storage
 
-        self.logger = logger
+        self.logger = logging.getLogger()
 
     def set_logger(self, new_logger: logging.Logger) -> None:
         """Overwrite the internal logger.
 
-        This is useful if you want to change the debug level.
+        By default, the worker uses the root python root logger.
         We recommend the following format to stay consistent with tierkreis:
         logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
 

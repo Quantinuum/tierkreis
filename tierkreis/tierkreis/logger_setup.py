@@ -1,6 +1,7 @@
 import logging
 from os import getenv
 from pathlib import Path
+import sys
 
 from tierkreis.consts import TKR_DATE_FMT_KEY, TKR_LOG_FMT_KEY, TKR_LOG_LEVEL_KEY
 
@@ -34,6 +35,6 @@ def add_handler_from_environment(logger: logging.Logger) -> None:
     log_format = getenv(TKR_LOG_FMT_KEY, None)
     date_format = getenv(TKR_DATE_FMT_KEY, None)
     formatter = logging.Formatter(log_format, date_format)
-    handler = logging.StreamHandler()
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
