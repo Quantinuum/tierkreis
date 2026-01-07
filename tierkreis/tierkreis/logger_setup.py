@@ -13,6 +13,8 @@ def set_tkr_logger(
     level: int | str = logging.INFO,
 ) -> None:
     logger = logging.getLogger(LOGGER_NAME)
+    if logger.hasHandlers():
+        [logger.removeHandler(h) for h in logger.handlers]
     logger.setLevel(level)
     formatter = logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
     try:
@@ -22,10 +24,9 @@ def set_tkr_logger(
 
     except FileNotFoundError:
         logging.warning("Could not log to file, logging to std out instead.")
-
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
 
 def add_handler_from_environment(logger: logging.Logger) -> None:
