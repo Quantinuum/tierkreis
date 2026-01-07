@@ -18,7 +18,12 @@ class StdInOut:
         self.errors_path = workflow_dir / "logs"
         self.workflow_dir = workflow_dir
 
-    def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
+    def run(
+        self,
+        launcher_name: str,
+        worker_call_args_path: Path,
+        enable_logging: bool = True,
+    ) -> None:
         launcher_path = self.launchers_path / launcher_name
         self.errors_path = worker_call_args_path.parent / "errors"
         if not launcher_path.exists():
@@ -40,16 +45,14 @@ class StdInOut:
         output_file = self.workflow_dir.parent / list(call_args.outputs.values())[0]
         done_path = self.workflow_dir.parent / call_args.done_path
 
-        with open(self.workflow_dir.parent / self.logs_path, "a") as lfh:
-            with open(self.workflow_dir.parent / self.errors_path, "a") as efh:
-                proc = subprocess.Popen(
-                    ["bash"],
-                    start_new_session=True,
-                    stdin=subprocess.PIPE,
-                    stderr=efh,
-                    stdout=lfh,
-                )
-                proc.communicate(
-                    f"{launcher_path} <{input_file} >{output_file} && touch {done_path}".encode(),
-                    timeout=10,
-                )
+        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        _error_path = self.errors_path.parent / "_error"
+        proc = subprocess.Popen(
+            ["bash"],
+            start_new_session=True,
+            stdin=subprocess.PIPE,
+        )
+        proc.communicate(
+            f"({launcher_path} <{input_file}  > {output_file} 2> {tee_str} && touch {done_path}|| touch {_error_path})&".encode(),
+            timeout=10,
+        )
