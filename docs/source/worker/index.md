@@ -20,11 +20,6 @@ hello_world.md
 native_workers/index
 ```
 
-## Worker concepts
-
-Workers provide non-trivial functionality to a Tierkreis graph.
-Writing a worker
-
 ## Generating workers from the cli
 
 The cli supports you in setting up new workers.
@@ -43,7 +38,7 @@ The inputs and outputs are preserved with the storage layer and be tracked by Ti
 Other side-effects (e.g., writing a separate file) won't be checked.
 
 When writing a workflow you don't need to call this function directly.
-Instead you need to provide the so-called function **stubs** to the task definition.
+Instead you need to provide the so-called function **stubs** to the task definition, which are available as the workers api.
 You can generate the stubs from the cli:
 
 ```
