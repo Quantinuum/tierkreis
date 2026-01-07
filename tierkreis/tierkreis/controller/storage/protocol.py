@@ -310,12 +310,16 @@ class ControllerStorage(ABC):
         return descs
 
     def restart_task(self, loc: Loc) -> list[Loc]:
-        """Restart the node at the given loc.
+        """Restart the task/function node at the given loc.
 
         Fully dependent nodes will be removed from the storage.
         The parent locs will be partially invalidated.
 
         Returns the invalidated nodes."""
+
+        nodedef = self.read_node_def(loc)
+        if nodedef.type != "function":
+            raise TierkreisError("Can only restart task/function nodes.")
 
         # Remove fully invalidated nodes.
         deps = self.dependents(loc)
