@@ -1,12 +1,8 @@
 [project]
-name = "scipy-worker"
+name = "hello-world-worker"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = [
-    "scipy>=1.16.3",
-    "tierkreis",
-		"ruff",
-]
+dependencies = ["pydantic", "tierkreis", "ruff"]
 
 [tool.uv.sources]
 tierkreis = { path = "../../../tierkreis", editable = true }

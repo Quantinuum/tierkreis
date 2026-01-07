@@ -3,6 +3,7 @@ import warnings
 from datetime import datetime
 from sys import argv
 from time import sleep
+from qnexus.models.references import ExecutionResultRef
 
 import qnexus as qnx
 from pytket._tket.circuit import Circuit
@@ -103,7 +104,10 @@ def get_results(execute_ref: ExecuteJobRef) -> list[BackendResult]:
     execute_job_result_refs = qnx.jobs.results(execute_ref)
     backend_results: list[BackendResult] = []
     for i in range(len(execute_job_result_refs)):
-        result = execute_job_result_refs[i].download_result()
+        ref_result = execute_job_result_refs[i]
+        if not isinstance(ref_result, ExecutionResultRef):
+            raise TierkreisError(f"Result incomplete: {ref_result}")
+        result = ref_result.download_result()
         assert isinstance(result, BackendResult)
         backend_results.append(result)
     return backend_results
@@ -142,7 +146,7 @@ def submit(circuits: list[Circuit], n_shots: int) -> ExecuteJobRef:
         )
 
     execute_job_ref = qnx.start_execute_job(
-        circuits=my_circuit_refs,
+        programs=my_circuit_refs,
         name=f"My Execute Job from {datetime.now()}",
         n_shots=[n_shots] * len(my_circuit_refs),
         backend_config=QuantinuumConfig(device_name="reimei-E"),

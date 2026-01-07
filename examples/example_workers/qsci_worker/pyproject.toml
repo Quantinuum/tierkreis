@@ -8,6 +8,7 @@ dependencies = [
     "pytket-qiskit>=0.71.0",
     "qiskit-ibm-runtime==0.41.1",
     "tierkreis",
+		"ruff",
 ]
 
 [tool.uv.sources]
