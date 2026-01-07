@@ -10,7 +10,7 @@ LOGGER_NAME = "tierkeis"
 
 def set_tkr_logger(
     file_name: Path,
-    level: int | str = logging.INFO,
+    level: int | str = logging.WARNING,
 ) -> None:
     logger = logging.getLogger(LOGGER_NAME)
     if logger.hasHandlers():
@@ -29,7 +29,7 @@ def set_tkr_logger(
         logger.addHandler(handler)
 
 
-def add_handler_from_environment(logger: logging.Logger) -> None:
+def add_handler_from_environment(logger: logging.Logger) -> logging.Handler:
     log_level = getenv(TKR_LOG_LEVEL_KEY, None)
     if log_level is not None:
         logger.setLevel(log_level)
@@ -39,3 +39,4 @@ def add_handler_from_environment(logger: logging.Logger) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    return handler

@@ -79,7 +79,7 @@ Parsing this file will provide the locations of inputs and expected outputs.
 Part of the specification for `WorkerCallArgs` are path descriptions for `logs_path` and `errors_path`.
 These point to files that the Tierkreis controller will collect logs and errors in.
 To make worker errors visible, you can use those paths to write the information.
-Alternatively, the controller will redirect any output to `stdout` to `logs_path` and `stderr` to `errors_path` automatically.
+Additionally, the controller will redirect any output from `stdout` and `stderr` to `errors_path` and `logs_path` automatically.
 If the invoked script returns a non-zero exit code, the controller assumes an error and stop execution.
 This is indicated with an `_error` file in the node location.
 

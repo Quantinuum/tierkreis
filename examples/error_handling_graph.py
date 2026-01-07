@@ -21,6 +21,12 @@ from example_workers.error_worker.stubs import fail
 
 root_loc = Loc()
 
+# logging.basicConfig(
+#     format="%(asctime)s: %(message)s",
+#     datefmt="%Y-%m-%dT%H:%M:%S%z",
+#     level=logging.DEBUG,
+# )
+
 
 def error_graph() -> GraphBuilder:
     """A graph that errors."""
