@@ -120,7 +120,7 @@ def _gen_worker(worker_name: str, worker_dir: Path, external: bool = False) -> N
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
-        raise TierkreisError("uv is required to use the uv_executor")
+        raise TierkreisError("uv is required to use this feature.")
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
@@ -143,10 +143,8 @@ def run_args(args: argparse.Namespace) -> None:
         if not graphs_dir.is_absolute():
             graphs_dir = args.project_directory / graphs_dir
         worker_dir.mkdir(exist_ok=True, parents=True)
-        # (worker_dir / "__init__.py").touch()
         _gen_worker(worker_name, worker_dir)
         graphs_dir.mkdir(exist_ok=True, parents=True)
-        # (graphs_dir / "__init__.py").touch()
         with open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
