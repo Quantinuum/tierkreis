@@ -3,14 +3,6 @@ import pytest
 from pathlib import Path
 from uuid import UUID
 
-from tierkreis import Labels
-from tierkreis.controller.data.graph import (
-    Const,
-    EagerIfElse,
-    Func,
-    Input,
-    Output,
-)
 from tests.controller.sample_graphdata import (
     simple_eagerifelse,
     simple_ifelse,
@@ -27,15 +19,15 @@ from tierkreis.controller.data.graph import GraphData
 
 def eagerifelse_long_running() -> GraphData:
     g = GraphData()
-    pred = g.add(Input("pred"))("pred")
-    pred_long = g.add(Func("controller.sleep_and_return", {"output": pred}))(
-        Labels.VALUE
-    )
-    one = g.add(Const(1))(Labels.VALUE)
-    one_long = g.add(Func("controller.sleep_and_return", {"output": one}))(Labels.VALUE)
-    two = g.add(Const(2))(Labels.VALUE)
-    out = g.add(EagerIfElse(pred_long, one_long, two))(Labels.VALUE)
-    g.add(Output({"simple_eagerifelse_output": out}))
+    pred = g.input("pred")
+    pred_long = g.func("controller.sleep_and_return", {"output": pred})("value")
+
+    one = g.const(1)
+    one_long = g.func("controller.sleep_and_return", {"output": one})("value")
+
+    two = g.const(2)
+    out = g.eager_if_else(pred_long, one_long, two)("value")
+    g.output({"simple_eagerifelse_output": out})
     return g
 
 
@@ -58,7 +50,7 @@ def test_eagerifelse_long_running(input: dict[str, PType], output: int) -> None:
 
 def test_eagerifelse_nodes() -> None:
     g = simple_eagerifelse()
-    storage = ControllerFileStorage(UUID(int=150), name="simple_if_else")
+    storage = ControllerFileStorage(UUID(int=151), name="simple_if_else")
     executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"pred": b"true"})
@@ -68,7 +60,7 @@ def test_eagerifelse_nodes() -> None:
 
 def test_ifelse_nodes():
     g = simple_ifelse()
-    storage = ControllerFileStorage(UUID(int=151), name="simple_if_else")
+    storage = ControllerFileStorage(UUID(int=152), name="simple_if_else")
     executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"pred": b"true"})

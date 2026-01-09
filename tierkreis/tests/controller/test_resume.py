@@ -12,7 +12,11 @@ from tests.controller.sample_graphdata import (
     simple_loop,
     simple_map,
 )
-from tests.controller.loop_graphdata import loop_multiple_acc, loop_multiple_acc_untyped
+from tests.controller.loop_graphdata import (
+    loop_multiple_acc,
+    loop_multiple_acc_untyped,
+    loop_scoping,
+)
 from tests.controller.typed_graphdata import (
     tkr_conj,
     tkr_list_conj,
@@ -98,6 +102,7 @@ params: list[tuple[GraphData, Any, str, int, dict[str, PType] | PType]] = [
         25,
         [complex(1, 1), complex(1, 0)],
     ),
+    (loop_scoping().get_data(), {"result": 11}, "loop_scoping", 26, {}),
 ]
 ids = [
     "simple_eval",
@@ -127,6 +132,7 @@ ids = [
     "gcd_3_0",
     "tkr_conj",
     "tkr_conj_list",
+    "loop_scoping",
 ]
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
