@@ -42,7 +42,7 @@ class ControllerStorage(ABC):
     def delete(self, path: Path) -> None:
         """Delete the storage entry at the specified path.
 
-        Also delete any related data with keys of the form \"{path}/**/*\"."""
+        Also delete any related data of the form \"{path}/**/*\"."""
 
     @abstractmethod
     def exists(self, path: Path) -> bool:
