@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from logging import getLogger
 import logging
 from pathlib import Path
 import subprocess
@@ -44,18 +43,6 @@ def start_nodes(
 
 
 def run_builtin(def_path: Path, logs_path: Path) -> None:
-    logger = getLogger("builtins")
-    if not logger.hasHandlers():
-        formatter = logging.Formatter(
-            fmt="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-        )
-        handler = logging.FileHandler(logs_path, mode="a")
-        handler.setFormatter(formatter)
-        logger.setLevel(logging.INFO)
-
-        logger.addHandler(handler)
-
     logger.info("START builtin %s", def_path)
     with open(logs_path, "a") as fh:
         subprocess.Popen(
@@ -68,7 +55,10 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
 
 
 def start(
-    storage: ControllerStorage, executor: ControllerExecutor, node_run_data: NodeRunData
+    storage: ControllerStorage,
+    executor: ControllerExecutor,
+    node_run_data: NodeRunData,
+    enable_logging: bool = True,
 ) -> None:
     node_location = node_run_data.node_location
     node = node_run_data.node
@@ -95,11 +85,11 @@ def start(
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
-            executor.run(launcher_name, call_args_path)
+            executor.run(launcher_name, call_args_path, enable_logging)
         elif launcher_name == "builtins":
             run_builtin(call_args_path, storage.logs_path)
         else:
-            executor.run(launcher_name, call_args_path)
+            executor.run(launcher_name, call_args_path, enable_logging)
 
     elif node.type == "input":
         input_loc = parent.N(-1)

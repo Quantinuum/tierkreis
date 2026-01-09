@@ -12,6 +12,7 @@ from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.spec import spec
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
 
+
 logger = getLogger(__name__)
 WorkerFunction = Callable[..., PModel]
 

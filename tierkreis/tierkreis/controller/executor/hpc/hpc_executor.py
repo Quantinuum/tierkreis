@@ -8,6 +8,7 @@ from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
 from tierkreis.exceptions import TierkreisError
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,14 +31,6 @@ def generate_script(
 def run_hpc_executor(
     executor: HPCExecutor, launcher_name: str, worker_call_args_path: Path
 ) -> None:
-    logging.basicConfig(
-        format="%(asctime)s: %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S%z",
-        filename=executor.logs_path,
-        filemode="a",
-        level=logging.INFO,
-        force=True,
-    )
     logger.info("START %s %s", launcher_name, worker_call_args_path)
 
     spec = executor.spec.model_copy()

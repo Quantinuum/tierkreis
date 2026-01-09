@@ -1,6 +1,5 @@
 import pytest
 import json
-import logging
 from pathlib import Path
 from uuid import UUID
 from unittest import mock
@@ -10,8 +9,6 @@ from tierkreis.controller.data.graph import GraphData
 from tierkreis.cli.run_workflow import run_workflow
 from tests.controller.sample_graphdata import simple_eval
 from tierkreis.controller.data.types import ptype_from_bytes
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.fixture()

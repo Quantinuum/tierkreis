@@ -112,8 +112,8 @@ class ControllerStorage(ABC):
     def _error_path(self, node_location: Loc) -> Path:
         return self.workflow_dir / str(node_location) / "_error"
 
-    def _error_logs_path(self, node_location: Loc) -> Path:
-        return self.workflow_dir / str(node_location) / "errors"
+    def _worker_logs_path(self, node_location: Loc) -> Path:
+        return self.workflow_dir / str(node_location) / "logs"
 
     def clean_graph_files(self) -> None:
         self.delete(self.workflow_dir)
@@ -146,7 +146,7 @@ class ControllerStorage(ABC):
             },
             output_dir=self._outputs_dir(node_location).relative_to(self.tkr_dir),
             done_path=self._done_path(node_location).relative_to(self.tkr_dir),
-            error_path=self._error_path(node_location).relative_to(self.tkr_dir),
+            error_path=self._worker_logs_path(node_location).relative_to(self.tkr_dir),
             logs_path=self.logs_path.relative_to(self.tkr_dir),
         )
         self.write(call_args_path, node_definition.model_dump_json().encode())
@@ -192,18 +192,14 @@ class ControllerStorage(ABC):
         return self.read(self._output_path(node_location, output_name))
 
     def read_errors(self, node_location: Loc) -> str:
-        if not self.exists(self._error_logs_path(node_location)):
-            if self.exists(self._error_path(node_location)):
-                return self.read(self._error_path(node_location)).decode()
-            return ""
-        errors = self.read(self._error_logs_path(node_location)).decode()
-        if errors == "":
-            if self.exists(self._error_path(node_location)):
-                return self.read(self._error_path(node_location)).decode()
-        return errors
+        if self.exists(self._worker_logs_path(node_location)):
+            return self.read(self._worker_logs_path(node_location)).decode()
+        if self.exists(self._error_path(node_location)):
+            return self.read(self._error_path(node_location)).decode()
+        return ""
 
     def write_node_errors(self, node_location: Loc, error_logs: str) -> None:
-        self.write(self._error_logs_path(node_location), error_logs.encode())
+        self.write(self._worker_logs_path(node_location), error_logs.encode())
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
         dir_list = self.list_subpaths(self._outputs_dir(node_location))

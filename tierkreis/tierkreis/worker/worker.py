@@ -1,9 +1,6 @@
 from inspect import Signature, signature
 import logging
-from logging import getLogger
 from pathlib import Path
-import sys
-from types import TracebackType
 from typing import Callable, TypeVar
 
 from tierkreis.controller.data.core import PortID
@@ -20,23 +17,14 @@ from tierkreis.controller.data.types import (
     ptype_from_bytes,
 )
 from tierkreis.exceptions import TierkreisError
+from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
 
-logger = getLogger(__name__)
+
 PrimitiveTask = Callable[[WorkerCallArgs, WorkerStorage], None]
 type MethodName = str
-
-
-def handle_unhandled_exception(
-    exc_type: type[BaseException],
-    exc_value: BaseException,
-    exc_traceback: TracebackType | None,
-):
-    logger.critical(
-        "Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback)
-    )
 
 
 class TierkreisWorkerError(TierkreisError):
@@ -83,7 +71,20 @@ class Worker:
             self.storage: WorkerStorage = WorkerFileStorage()
         else:
             self.storage = storage
-        sys.excepthook = handle_unhandled_exception
+
+        self.logger = logging.getLogger()
+
+    def set_logger(self, new_logger: logging.Logger) -> None:
+        """Overwrite the internal logger.
+
+        By default, the worker uses the root python root logger.
+        We recommend the following format to stay consistent with tierkreis:
+        logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
+
+        :param new_logger: The new logger.
+        :type new_logger: logging.Logger
+        """
+        self.logger = new_logger
 
     def _load_args(
         self, f: WorkerFunction, inputs: dict[str, Path]
@@ -153,16 +154,7 @@ class Worker:
         :raises TierkreisError: When the function execution results in an error.
         """
         node_definition = self.storage.read_call_args(worker_definition_path)
-
-        logs_path = node_definition.logs_path
-        logging.basicConfig(
-            format="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-            filename=self.storage.resolve(logs_path) if logs_path else None,
-            filemode="a",
-            level=logging.INFO,
-        )
-        logger.info(node_definition.model_dump())
+        self.logger.debug(node_definition.model_dump())
 
         try:
             function = self.functions.get(node_definition.function_name, None)
@@ -170,18 +162,27 @@ class Worker:
                 raise TierkreisError(
                     f"{self.name}: function name {node_definition.function_name} not found"
                 )
-            logger.info(f"running: {node_definition.function_name} in {self.name}")
+            self.logger.info(f"running: {node_definition.function_name} in {self.name}")
 
             function(node_definition)
 
             self.storage.mark_done(node_definition.done_path)
+
         except Exception as err:
-            logger.error("encountered error", exc_info=err)
+            self.logger.error("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
+            raise TierkreisWorkerError(
+                f"Worker {self.name} encountered error when executing {node_definition.function_name}."
+            )
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""
+        logger = logging.getLogger()
+        handler = add_handler_from_environment(logger)
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:
-            self.run(Path(argv[1]))
+            try:
+                self.run(Path(argv[1]))
+            finally:
+                logger.removeHandler(handler)

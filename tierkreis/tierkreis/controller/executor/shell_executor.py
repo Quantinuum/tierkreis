@@ -32,10 +32,11 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
+        enable_logging: bool = True,
         export_values: bool = False,
     ) -> None:
         launcher_path = self.launchers_path / launcher_name
-        self.errors_path = worker_call_args_path.parent / "errors"
+        self.errors_path = worker_call_args_path.parent / "logs"
 
         if not launcher_path.exists():
             raise TierkreisError(f"Launcher not found: {launcher_name}.")
@@ -61,21 +62,17 @@ class ShellExecutor:
         _error_path = self.errors_path.parent / "_error"
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
-
-        with open(self.workflow_dir.parent / self.logs_path, "a") as lfh:
-            with open(self.workflow_dir.parent / self.errors_path, "a") as efh:
-                proc = subprocess.Popen(
-                    ["bash"],
-                    start_new_session=True,
-                    stdin=subprocess.PIPE,
-                    stderr=efh,
-                    stdout=lfh,
-                    env=env,
-                )
-                proc.communicate(
-                    f"({launcher_path} {worker_call_args_path} && touch {done_path}|| touch {_error_path})&".encode(),
-                    timeout=self.timeout,
-                )
+        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        proc = subprocess.Popen(
+            ["bash"],
+            start_new_session=True,
+            stdin=subprocess.PIPE,
+            env=env,
+        )
+        proc.communicate(
+            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&".encode(),
+            timeout=self.timeout,
+        )
 
     def _create_env(
         self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool

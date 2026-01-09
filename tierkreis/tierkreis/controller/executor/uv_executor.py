@@ -28,17 +28,13 @@ class UvExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
+        enable_logging: bool = True,
         uv_path: str | None = None,
     ) -> None:
-        logging.basicConfig(
-            format="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-            filename=self.logs_path,
-            filemode="a",
-            level=logging.INFO,
-        )
         self.errors_path = (
-            self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
+            self.logs_path.parent.parent
+            / worker_call_args_path.parent
+            / "logs"  # made we should change this
         )
         logger.info("START %s %s", launcher_name, worker_call_args_path)
 
@@ -55,19 +51,15 @@ class UvExecutor:
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         _error_path = self.errors_path.parent / "_error"
-
-        with open(self.logs_path, "a") as lfh:
-            with open(self.errors_path, "a") as efh:
-                proc = subprocess.Popen(
-                    ["bash"],
-                    start_new_session=True,
-                    stdin=subprocess.PIPE,
-                    stderr=efh,
-                    stdout=lfh,
-                    cwd=worker_path,
-                    env=env,
-                )
-                proc.communicate(
-                    f"({uv_path} run main.py {worker_call_args_path} || touch {_error_path}) &".encode(),
-                    timeout=10,
-                )
+        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        proc = subprocess.Popen(
+            ["bash"],
+            start_new_session=True,
+            stdin=subprocess.PIPE,
+            cwd=worker_path,
+            env=env,
+        )
+        proc.communicate(
+            f"({uv_path} run main.py {worker_call_args_path} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode(),
+            timeout=10,
+        )
