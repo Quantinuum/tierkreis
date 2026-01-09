@@ -40,7 +40,9 @@ class ControllerStorage(ABC):
 
     @abstractmethod
     def delete(self, path: Path) -> None:
-        """Delete the storage entry at the specified path and all subpaths."""
+        """Delete the storage entry at the specified path.
+
+        Also delete any related data with keys of the form \"{path}/**/*\"."""
 
     @abstractmethod
     def exists(self, path: Path) -> bool:
