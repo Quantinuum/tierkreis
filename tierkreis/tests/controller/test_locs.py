@@ -170,6 +170,22 @@ def test_last_step_exterior(node_location: Loc, expectation: bool) -> None:
 
 
 @pytest.mark.parametrize(
+    ["node_location", "index"],
+    [
+        (node_location_1, None),
+        (node_location_2, None),
+        (node_location_3, None),
+        (node_location_4, None),
+        (Loc().exterior(), None),
+        (Loc().L(1), 1),
+        (Loc().L(4), 4),
+    ],
+)
+def test_get_last_index(node_location: Loc, index: int | None) -> None:
+    assert node_location.peek_index() == index
+
+
+@pytest.mark.parametrize(
     ["node_location", "expected"],
     [
         (

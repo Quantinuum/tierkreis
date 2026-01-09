@@ -9,13 +9,9 @@ from tierkreis_visualization.data.map import get_map_node
 from tierkreis_visualization.routers.models import PyGraph
 
 
-def parse_node_location(node_location_str: str) -> Loc:
-    return Loc(node_location_str)
-
-
 def get_errored_nodes(storage: ControllerStorage) -> list[Loc]:
     errored_nodes = storage.read_errors(Loc("-"))
-    return [parse_node_location(node) for node in errored_nodes.split("\n")]
+    return [Loc(node) for node in errored_nodes.split("\n")]
 
 
 def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:

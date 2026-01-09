@@ -5,14 +5,13 @@ from pathlib import Path
 import subprocess
 import sys
 
-from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
+from tierkreis.controller.data.types import bytes_from_ptype
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis_core import (
     PortID,
     ExteriorRef,
-    GraphData,
     NodeDef,
     new_eval_root,
     NodeDescription,

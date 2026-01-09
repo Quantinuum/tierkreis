@@ -254,7 +254,7 @@ pub mod graph {
         /// than a getter.
         #[pyo3(signature = () -> "identifiers.NodeIndex | None")]
         pub fn output_idx(&self) -> Option<NodeIndex> {
-            self.output_idx.clone()
+            self.output_idx
         }
 
         pub fn input(&mut self, name: &str) -> ValueRef {
@@ -456,12 +456,9 @@ pub mod graph {
 
         #[pyo3(signature = (node_index: "identifiers.NodeIndex") -> "dict[tierkreis_core.aliases.PortID, identifiers.NodeIndex] | None")]
         pub fn outputs(&self, node_index: NodeIndex) -> Option<IndexMap<PortID, NodeIndex>> {
-            self.nodes.get(node_index.0).map(|(_, outputs)| {
-                outputs
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect()
-            })
+            self.nodes
+                .get(node_index.0)
+                .map(|(_, outputs)| outputs.iter().map(|(k, v)| (k.clone(), *v)).collect())
         }
 
         #[pyo3(signature = () -> "dict[tierkreis_core.aliases.PortID, identifiers.NodeIndex] | None")]
@@ -566,10 +563,7 @@ pub mod graph {
                                 body: ExteriorOrValueRef::Exterior(ExteriorRef("body".to_string())),
                                 inputs: inputs.clone(),
                             },
-                            outputs: outputs
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect(),
+                            outputs: outputs.iter().map(|(k, v)| (k.clone(), *v)).collect(),
                             outer_graph: Some(const_graph.clone()),
                         });
                     }
@@ -582,10 +576,7 @@ pub mod graph {
                 }
                 _ => Ok(NodeDescription {
                     definition: nodedef.clone(),
-                    outputs: outputs
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect(),
+                    outputs: outputs.iter().map(|(k, v)| (k.clone(), *v)).collect(),
                     outer_graph: Some(self.clone()),
                 }),
             }

@@ -113,7 +113,6 @@ cli_params = [
     "args,result", cli_params, ids=["simple_eval_cli", "factorial_cli"]
 )
 def test_end_to_end(args: list[str], result: dict[str, bytes]) -> None:
-    print(simple_eval().model_dump_json())
     with mock.patch.object(sys, "argv", args):
         main()
     for key, value in result.items():

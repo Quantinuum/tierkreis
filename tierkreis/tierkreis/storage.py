@@ -20,11 +20,11 @@ def read_outputs(
     if isinstance(g, GraphBuilder):
         g = g.get_data()
 
-    output_idx = g.output_idx()
-    if output_idx is None:
-        raise ValueError("Cannot read outputs of a graph with no Output node.")
+    graph_outputs = g.graph_outputs()
+    if graph_outputs is None:
+        raise ValueError("Cannot read outputs of a graph with no outputs.")
 
-    out_ports = list(g.get_nodedef(output_idx).in_edges.keys())
+    out_ports = list(graph_outputs.keys())
     if len(out_ports) == 1 and "value" in out_ports:
         return ptype_from_bytes(storage.read_output(Loc(), "value"))
     return {k: ptype_from_bytes(storage.read_output(Loc(), k)) for k in out_ports}

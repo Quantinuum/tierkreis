@@ -1,11 +1,8 @@
-from logging import getLogger
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
 from tierkreis_core import Loc, PortID
-
-logger = getLogger(__name__)
 
 
 class WorkerCallArgs(BaseModel):
