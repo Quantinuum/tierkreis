@@ -127,12 +127,6 @@ def start(
             storage.mark_node_finished(node_location)
 
         case NodeDef.Eval():
-            body_loc = parent.extend_from_ref(node.body)
-            message = storage.read_output(body_loc, node.body.port_id)
-            g = ptype_from_bytes(message, GraphData)
-            # ins["body"] = (body_loc, node.body.port_id)
-            ins.update(g.fixed_inputs)
-
             pipe_inputs_to_output_location(storage, node_location.exterior(), ins)
 
         case NodeDef.Loop():
@@ -140,7 +134,6 @@ def start(
                 node.name is not None
             ):  # should we do this only in debug mode? -> need to think through how this would work
                 storage.write_debug_data(node.name, node_location)
-            ins["body"] = (parent.extend_from_ref(node.body), node.body.port_id)
             pipe_inputs_to_output_location(storage, node_location.exterior(), ins)
             start(
                 storage,
@@ -159,10 +152,6 @@ def start(
                 storage.mark_node_finished(node_location)
             for idx, p in map_eles:
                 eval_inputs: dict[PortID, tuple[Loc, PortID]] = {}
-                eval_inputs["body"] = (
-                    parent.extend_from_ref(node.body),
-                    node.body.port_id,
-                )
                 for k, (i, port) in ins.items():
                     if port == "*":
                         eval_inputs[k] = (i, p)
