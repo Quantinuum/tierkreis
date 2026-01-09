@@ -120,31 +120,9 @@ pub mod graph {
 
     #[pymethods]
     impl NodeDef {
-        /// Get the `inputs` attribute for a Node. This is different to
-        /// `in_edges` as it only considers the edges under the `inputs`
-        /// attribute and not things like the body of Eval nodes which
-        /// is considered a different kind of edge.
-        #[getter]
-        pub fn inputs(&self) -> IndexMap<PortID, ExteriorOrValueRef> {
-            match self {
-                Self::Eval { inputs, .. } => inputs.clone(),
-                Self::Loop { inputs, .. } => inputs.clone(),
-                Self::Map { inputs, .. } => inputs.clone(),
-                Self::Func { inputs, .. } => inputs.clone(),
-                Self::Const { .. } => IndexMap::new(),
-                Self::IfElse { .. } => IndexMap::new(),
-                Self::EagerIfElse { .. } => IndexMap::new(),
-                Self::Input { .. } => IndexMap::new(),
-                Self::Output { inputs, .. } => inputs
-                    .iter()
-                    .map(|x| (x.0.clone(), ExteriorOrValueRef::Value(x.1.clone())))
-                    .collect(),
-            }
-        }
-
-        /// Get the `in_edges` attribute for a Node. This is different to
-        /// `inputs` as it also considers the edges connected to the body
-        /// port of Eval nodes which does not come under the `inputs` attribute.
+        /// Get the `in_edges` attribute for a Node. This is dictionary
+        /// also considers the edges connected to the body port of Eval
+        /// nodes which does not come under the `inputs` attribute.
         #[getter]
         pub fn in_edges(&self) -> IndexMap<PortID, ExteriorOrValueRef> {
             match self {

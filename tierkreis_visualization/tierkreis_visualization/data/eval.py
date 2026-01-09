@@ -111,8 +111,9 @@ def get_eval_node(
             case NodeDef.Output():
                 name = "output"
                 node_type = "output"
-                if len(node.inputs) == 1:
-                    ref = next(iter(node.inputs.values()))
+                in_edges = node.in_edges
+                if len(in_edges) == 1:
+                    ref = next(iter(in_edges.values()))
                     try:
                         value = outputs_from_loc(
                             storage, node_location.extend_from_ref(ref), ref.port_id

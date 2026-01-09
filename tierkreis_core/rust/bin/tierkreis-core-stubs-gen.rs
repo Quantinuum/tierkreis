@@ -67,25 +67,19 @@ pub fn main() {
 
             // Extra patches for erroneous typing.Any on properties.
 
-            // // Patch nodes on GraphData
+            // Patch nodes on GraphData
             patched_stub = patched_stub.replace(
                 "def nodes(self, /) -> typing.Any",
                 "def nodes(self, /) -> list[NodeDef]",
             );
 
-            // // Patch inputs on NodeDef
-            patched_stub = patched_stub.replace(
-                "def inputs(self, /) -> typing.Any",
-                "def inputs(self, /) -> dict[tierkreis_core.aliases.PortID, identifiers.ValueRef | identifiers.ExteriorRef]",
-            );
-
-            // // Patch in_edges on NodeDef
+            // Patch in_edges on NodeDef
             patched_stub = patched_stub.replace(
                 "def in_edges(self, /) -> typing.Any",
                 "def in_edges(self, /) -> dict[tierkreis_core.aliases.PortID, identifiers.ValueRef | identifiers.ExteriorRef]",
             );
 
-            // // Patch outer_graph on NodeDescription
+            // Patch outer_graph on NodeDescription
             patched_stub = patched_stub.replace(
                 "def outer_graph(self, /) -> typing.Any",
                 "def outer_graph(self, /) -> graph.GraphData | None",

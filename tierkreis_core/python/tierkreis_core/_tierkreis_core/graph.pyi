@@ -108,12 +108,12 @@ class NodeDef:
     ) -> dict[
         tierkreis_core.aliases.PortID, identifiers.ValueRef | identifiers.ExteriorRef
     ]: ...
-    @property
-    def inputs(
-        self, /
-    ) -> dict[
-        tierkreis_core.aliases.PortID, identifiers.ValueRef | identifiers.ExteriorRef
-    ]: ...
+    # @property
+    # def inputs(
+    #     self, /
+    # ) -> dict[
+    #     tierkreis_core.aliases.PortID, identifiers.ValueRef | identifiers.ExteriorRef
+    # ]: ...
     def model_dump_json(self, /) -> str: ...
     @classmethod
     def model_load_json(cls, /, s: str) -> graph.NodeDef: ...

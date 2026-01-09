@@ -56,6 +56,6 @@ def run_workflow(
         polling_interval_seconds,
     )
     if print_output and (output_idx := graph.output_idx()):
-        all_outputs = graph.get_nodedef(output_idx).inputs
+        all_outputs = graph.get_nodedef(output_idx).in_edges
         for output in all_outputs:
             print(f"{output}: {storage.read_output(Loc(), output)}")

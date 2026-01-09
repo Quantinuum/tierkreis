@@ -86,7 +86,8 @@ def start(
         raise TierkreisError(f"{type(node)} node must have parent Loc.")
 
     ins = {
-        k: (parent.extend_from_ref(ref), ref.port_id) for k, ref in node.inputs.items()
+        k: (parent.extend_from_ref(ref), ref.port_id)
+        for k, ref in node.in_edges.items()
     }
 
     logger.debug(f"start {node_location} {node} {ins}")
@@ -129,7 +130,7 @@ def start(
             body_loc = parent.extend_from_ref(node.body)
             message = storage.read_output(body_loc, node.body.port_id)
             g = ptype_from_bytes(message, GraphData)
-            ins["body"] = (body_loc, node.body.port_id)
+            # ins["body"] = (body_loc, node.body.port_id)
             ins.update(g.fixed_inputs)
 
             pipe_inputs_to_output_location(storage, node_location.exterior(), ins)

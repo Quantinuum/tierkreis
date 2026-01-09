@@ -138,7 +138,7 @@ def walk_loop(
         return walk_node(storage, new_location, output_idx, g)
 
     # The outputs from the previous iteration
-    body_outputs = g.get_nodedef(output_idx).inputs
+    body_outputs = g.get_nodedef(output_idx).in_edges
     if body_outputs is None:
         raise ValueError("Loop body has no outputs.")
 
@@ -202,7 +202,7 @@ def walk_map(
     if len(unfinished) > 0:
         return result
 
-    map_outputs = g.get_nodedef(output_idx).inputs
+    map_outputs = g.get_nodedef(output_idx).in_edges
     for i, j in map_eles:
         for output in map_outputs.keys():
             storage.link_outputs(loc, f"{output}-{j}", loc.M(i), output)
