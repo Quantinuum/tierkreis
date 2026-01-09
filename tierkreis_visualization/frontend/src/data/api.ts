@@ -57,6 +57,22 @@ export const fetchErrors = async (
   return res.data ?? "No errors.";
 };
 
+export const restartNode = async (
+  workflow_id: string,
+  node_location_str: string
+): Promise<string[]> => {
+  const params = { path: { workflow_id, node_location_str } };
+  const res = await fetchClient.POST(
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/restart",
+    { params }
+  );
+  if (res.error) {
+    console.log("Failed to restart node.");
+    return [];
+  }
+  return res.data;
+};
+
 export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
 export const useLogsQuery = (workflow_id: string) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {

@@ -13,8 +13,7 @@ import { updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
 import { GraphView } from "./GraphView";
 import { Graph } from "@/graph/models";
-import {amalgamateGraphData} from "@/graph/amalgamateGraph";
-
+import { amalgamateGraphData } from "@/graph/amalgamateGraph";
 
 export default function NodePage(props: {
   workflow_id: string;
@@ -55,6 +54,8 @@ export default function NodePage(props: {
     content: logsQuery.error
       ? "Failed to fetch logs."
       : logsQuery.data || "No logs.",
+    workflow_id,
+    node_location: node_location_str,
   });
 
   useEffect(() => {

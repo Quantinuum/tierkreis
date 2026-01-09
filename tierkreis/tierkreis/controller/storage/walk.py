@@ -114,10 +114,7 @@ def walk_loop(
     if storage.is_node_finished(loc):
         return WalkResult([], [], [])
 
-    i = 0
-    while storage.is_node_started(loc.L(i + 1)):
-        i += 1
-    new_location = loc.L(i)
+    new_location = storage.latest_loop_iteration(loc)
 
     message = storage.read_output(loc.N(-1), BODY_PORT)
     g = ptype_from_bytes(message, GraphData)
@@ -139,7 +136,7 @@ def walk_loop(
     ins = {k: (-1, k) for k in loop.inputs.keys()}
     ins.update(loop_outputs)
     node_run_data = NodeRunData(
-        loc.L(i + 1),
+        loc.L(new_location.peek_index() + 1),
         Eval((-1, BODY_PORT), ins, loop.outputs),
         list(loop_outputs.keys()),
     )
