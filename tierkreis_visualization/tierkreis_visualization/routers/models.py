@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from tierkreis.controller.data.location import Loc
+from tierkreis_core import Loc
 from tierkreis_visualization.data.models import PyNode, PyEdge
 
 

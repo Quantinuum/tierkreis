@@ -1,11 +1,10 @@
 from pydantic import BaseModel
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis.controller.data.graph import Map
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyEdge, PyNode
+from tierkreis_core import Loc, NodeDef
 
 
 class MapNodeData(BaseModel):
@@ -14,15 +13,15 @@ class MapNodeData(BaseModel):
 
 
 def get_map_node(
-    storage: ControllerStorage, loc: Loc, map: Map, errored_nodes: list[Loc]
+    storage: ControllerStorage, loc: Loc, map: NodeDef.Map, errored_nodes: list[Loc]
 ) -> MapNodeData:
     parent = loc.parent()
     if parent is None:
         raise TierkreisError("MAP node must have parent.")
 
-    first_ref = next(x for x in map.inputs.values() if x[1] == "*")
-    map_eles = outputs_iter(storage, parent.N(first_ref[0]))
-    nodedef = storage.read_node_def(loc.M(0))
+    first_ref = next(x for x in map.inputs.values() if x.port_id == "*")
+    map_eles = outputs_iter(storage, parent.extend_from_ref(first_ref))
+    description = storage.read_node_description(loc.M(0))
     nodes: list[PyNode] = []
     for i, ele in map_eles:
         node = PyNode(
@@ -33,7 +32,7 @@ def get_map_node(
             node_type="eval",
             started_time=storage.read_started_time(loc.M(i)) or "",
             finished_time=storage.read_finished_time(loc.M(i)) or "",
-            outputs=list(nodedef.outputs),
+            outputs=list(description.outputs),
         )
         if check_error(loc.M(i), errored_nodes):
             node.status = "Error"

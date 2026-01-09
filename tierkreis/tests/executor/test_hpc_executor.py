@@ -3,7 +3,6 @@ from uuid import UUID
 import pytest
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.hpc.job_spec import (
     JobSpec,
@@ -12,6 +11,7 @@ from tierkreis.controller.executor.hpc.job_spec import (
 )
 from tierkreis.controller.executor.hpc.slurm import SLURMExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
+from tierkreis_core import GraphData
 
 from tests.executor.stubs import mpi_rank_info
 from tierkreis.storage import read_outputs

@@ -11,9 +11,9 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.app_config import Request
-from tierkreis_visualization.data.graph import get_node_data, parse_node_location
+from tierkreis_visualization.data.graph import get_node_data
 from tierkreis_visualization.data.outputs import outputs_from_loc
-from watchfiles import awatch  # type: ignore
+from watchfiles import awatch
 
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
 from tierkreis_visualization.routers.models import GraphsResponse, PyGraph
@@ -22,36 +22,37 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.websocket("/{workflow_id}/nodes/{node_location_str}")
+@router.websocket("/{workflow_id}/nodes/{node_location}")
 async def websocket_endpoint(
-    websocket: WebSocket, workflow_id: UUID, node_location_str: str
+    websocket: WebSocket, workflow_id: UUID, node_location: Loc
 ) -> None:
     if workflow_id.int == 0:
         return
     storage = websocket.app.state.get_storage_fn(workflow_id)
     try:
         await websocket.accept()
-        await handle_websocket(websocket, node_location_str, storage)
+        await handle_websocket(websocket, node_location, storage)
     except WebSocketDisconnect:
         pass
 
 
 async def handle_websocket(
     websocket: WebSocket,
-    node_location_str: str,
+    node_location: Loc,
     storage: ControllerStorage,
 ) -> None:
-    node_location = parse_node_location(node_location_str)
-
     async for changes in awatch(storage.workflow_dir, recursive=True):
         relevant_changes: set[str] = set()
         for change in changes:
             path = Path(change[1]).relative_to(storage.workflow_dir)
             if not path.parts:
                 continue
-            loc = path.parts[0]
-            if loc.startswith(node_location):
-                relevant_changes.add(loc)
+            # This will include files that are not completely described
+            # by a Loc, so we check for string prefixes rather than
+            # using the Loc data structure directly.
+            path_prefix = path.parts[0]
+            if path_prefix.startswith(str(node_location)):
+                relevant_changes.add(str(path_prefix))
 
         if relevant_changes:
             await websocket.send_json(list(relevant_changes))
@@ -77,35 +78,32 @@ def list_nodes(
     return GraphsResponse(graphs={loc: get_node_data(storage, loc) for loc in locs})
 
 
-@router.get("/{workflow_id}/nodes/{node_location_str}")
-def get_node(request: Request, workflow_id: UUID, node_location_str: str) -> PyGraph:
-    node_location = parse_node_location(node_location_str)
+@router.get("/{workflow_id}/nodes/{node_location}")
+def get_node(request: Request, workflow_id: UUID, node_location: Loc) -> PyGraph:
     storage = request.app.state.get_storage_fn(workflow_id)
     return get_node_data(storage, node_location)
 
 
-@router.get("/{workflow_id}/nodes/{node_location_str}/outputs")
+@router.get("/{workflow_id}/nodes/{node_location}/outputs")
 def get_eval_outputs(
     request: Request,
     workflow_id: UUID,
-    node_location_str: str,
+    node_location: Loc,
 ):
-    loc = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
-    outputs = storage.read_output_ports(loc)
-    out = {k: str(storage.read_output(loc, k)) for k in outputs}
+    outputs = storage.read_output_ports(node_location)
+    out = {k: str(storage.read_output(node_location, k)) for k in outputs}
     return JSONResponse(out)
 
 
-@router.get("/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}")
+@router.get("/{workflow_id}/nodes/{node_location}/inputs/{port_name}")
 def get_input(
     request: Request,
     workflow_id: UUID,
-    node_location_str: str,
+    node_location: Loc,
     port_name: str,
 ):
     try:
-        node_location = parse_node_location(node_location_str)
         storage = request.app.state.get_storage_fn(workflow_id)
         definition = storage.read_worker_call_args(node_location)
 
@@ -115,16 +113,15 @@ def get_input(
         return PlainTextResponse(str(e))
 
 
-@router.get("/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}")
+@router.get("/{workflow_id}/nodes/{node_location}/outputs/{port_name}")
 def get_output(
     request: Request,
     workflow_id: UUID,
-    node_location_str: str,
+    node_location: Loc,
     port_name: str,
 ):
-    loc = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
-    return PlainTextResponse(outputs_from_loc(storage, loc, port_name))
+    return PlainTextResponse(outputs_from_loc(storage, node_location, port_name))
 
 
 @router.get("/{workflow_id}/logs")
@@ -137,13 +134,12 @@ def get_logs(
     return PlainTextResponse(logs)
 
 
-@router.get("/{workflow_id}/nodes/{node_location_str}/errors")
+@router.get("/{workflow_id}/nodes/{node_location}/errors")
 def get_errors(
     request: Request,
     workflow_id: UUID,
-    node_location_str: str,
+    node_location: Loc,
 ):
-    node_location = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
     if not storage.node_has_error(node_location):
         return PlainTextResponse("Node has no errors.", status_code=404)
@@ -152,8 +148,7 @@ def get_errors(
     return PlainTextResponse(messages)
 
 
-@router.post("/{workflow_id}/nodes/{node_location_str}/restart")
-def restart(request: Request, workflow_id: UUID, node_location_str: str) -> list[Loc]:
-    loc = parse_node_location(node_location_str)
+@router.post("/{workflow_id}/nodes/{node_location}/restart")
+def restart(request: Request, workflow_id: UUID, node_location: Loc) -> list[Loc]:
     storage: ControllerStorage = request.app.state.get_storage_fn(workflow_id)
-    return storage.restart_task(loc)
+    return storage.restart_task(node_location)

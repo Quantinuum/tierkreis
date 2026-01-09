@@ -15,12 +15,10 @@ from typing import (
 )
 from typing_extensions import TypeIs
 from tierkreis.controller.data.core import (
-    NodeIndex,
-    PortID,
     RestrictedNamedTuple,
-    ValueRef,
 )
 from tierkreis.controller.data.types import PType, generics_in_ptype
+from tierkreis_core import ValueRef, NodeIndex, PortID
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
@@ -49,7 +47,7 @@ class TKR[T: PModel]:
     port_id: PortID
 
     def value_ref(self) -> ValueRef:
-        return (self.node_index, self.port_id)
+        return ValueRef(self.node_index, self.port_id)
 
 
 @runtime_checkable
@@ -108,9 +106,13 @@ def annotations_from_pmodel(pmodel: type) -> dict[PortID, Any]:
 
 def dict_from_tmodel(tmodel: TModel) -> dict[PortID, ValueRef]:
     if isinstance(tmodel, TNamedModel):
-        return {k: (v.node_index, v.port_id) for k, v in tmodel._asdict().items() if v}
+        return {
+            k: ValueRef(v.node_index, v.port_id)
+            for k, v in tmodel._asdict().items()
+            if v is not None
+        }
 
-    return {"value": (tmodel.node_index, tmodel.port_id)}
+    return {"value": ValueRef(tmodel.node_index, tmodel.port_id)}
 
 
 def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
@@ -129,13 +131,13 @@ def init_tmodel[T: TModel](tmodel: type[T], refs: list[ValueRef]) -> T:
         model = tmodel if not is_tnamedmodel(o) else o
         args: list[TKR] = []
         for ref in refs:
-            key = ref[1].replace("-*", "")
+            key = ref.port_id.replace("-*", "")
             param = model.__annotations__[key]
             if get_origin(param) == Union:
                 param = next(x for x in get_args(param) if x)
-            args.append(param(ref[0], ref[1]))
+            args.append(param(ref.node_index, ref.port_id))
         return cast(T, model(*args))
-    return tmodel(refs[0][0], refs[0][1])
+    return tmodel(refs[0].node_index, refs[0].port_id)
 
 
 def generics_in_pmodel(pmodel: type[PModel]) -> set[str]:

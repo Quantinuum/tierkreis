@@ -1,12 +1,13 @@
 import signal
 from sys import argv
-from tierkreis.controller.data.graph import GraphData
 from tierkreis_visualization.app_config import (
     App,
     StorageType,
     graph_data_lifespan,
     dev_lifespan,
 )
+
+from tierkreis_core import GraphData
 from tierkreis_visualization.config import CONFIG
 from tierkreis_visualization.storage import (
     file_storage_fn,

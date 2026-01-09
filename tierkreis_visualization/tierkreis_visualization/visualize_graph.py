@@ -1,7 +1,7 @@
 import uvicorn
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.controller.data.graph import GraphData
+from tierkreis_core import GraphData
 
 from tierkreis_visualization.app import app_from_graph_data
 

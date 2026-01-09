@@ -5,10 +5,10 @@ import sys
 from typing import Callable
 from uuid import UUID
 
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.graphdata import GraphDataStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis_core import GraphData
 
 
 def file_storage_fn(tkr_dir: Path) -> Callable[[UUID], ControllerStorage]:

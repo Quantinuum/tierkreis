@@ -1,33 +1,35 @@
 from uuid import UUID
 import pytest
 from tests.controller.sample_graphdata import simple_eval, simple_map
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import (
-    Const,
-    Eval,
-    Func,
-    GraphData,
-    Input,
-    graph_node_from_loc,
-)
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.graphdata import GraphDataStorage
 from tierkreis.exceptions import TierkreisError
+from tierkreis_core import (
+    PortID,
+    GraphData,
+    NodeDef,
+    ExteriorRef,
+    NodeDescription,
+    ValueRef,
+    NodeIndex,
+)
 
 
 @pytest.mark.parametrize(
     ["node_location_str", "graph", "target"],
     [
-        ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
-        ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
-        ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
+        ("-.N0", simple_eval(), NodeDef.Const(0)),
+        ("-.N4.M0", simple_map(), NodeDef.Eval(ExteriorRef("body"), {})),
+        ("-.N4.M0.E", simple_map(), NodeDef.Eval(ExteriorRef("body"), {})),
     ],
 )
-def test_read_nodedef(node_location_str: str, graph: GraphData, target: str) -> None:
+def test_read_nodedescription_definition(
+    node_location_str: str, graph: GraphData, target: NodeDef
+) -> None:
     loc = Loc(node_location_str)
     storage = GraphDataStorage(UUID(int=0), graph)
-    node_def = storage.read_node_def(loc)
-    assert node_def == target
+    node_def = storage.read_node_description(loc)
+    assert node_def.definition == target
 
 
 @pytest.mark.parametrize(
@@ -72,35 +74,75 @@ def test_read_output_ports(
 @pytest.mark.parametrize(
     ["node_location_str", "graph", "target"],
     [
-        ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
-        ("-.N3.N1", simple_eval(), Input("intercept", outputs={"intercept": 4})),
+        (
+            "-.N0",
+            simple_eval(),
+            NodeDescription(NodeDef.Const(0), outputs={"value": NodeIndex(3)}),
+        ),
+        (
+            "-.N3.N1",
+            simple_eval(),
+            NodeDescription(
+                NodeDef.Input("intercept"), outputs={"intercept": NodeIndex(4)}
+            ),
+        ),
         (
             "-.N3.N3",
             simple_eval(),
-            Func(
-                "builtins.itimes",
-                inputs={"a": (0, "doubler_input"), "b": (2, "value")},
-                outputs={"value": 4},
+            NodeDescription(
+                NodeDef.Func(
+                    "builtins.itimes",
+                    inputs={
+                        "a": ValueRef(NodeIndex(0), "doubler_input"),
+                        "b": ValueRef(NodeIndex(2), "value"),
+                    },
+                ),
+                outputs={"value": NodeIndex(4)},
             ),
         ),
-        ("-.N-1", simple_eval(), Eval((-1, "body"), {})),
-        ("-.N3.N-1", simple_eval(), Eval((-1, "body"), {})),
+        (
+            "-.E",
+            simple_eval(),
+            NodeDescription(NodeDef.Eval(ExteriorRef("body"), {})),
+        ),
+        (
+            "-.N3.E",
+            simple_eval(),
+            NodeDescription(NodeDef.Eval(ExteriorRef("body"), {})),
+        ),
         (
             "-.N4.M0",
             simple_map(),
-            Eval(
-                (-1, "body"),
-                inputs={"doubler_input": (2, "*"), "intercept": (0, "value")},
-                outputs={"*": 5},
+            NodeDescription(
+                NodeDef.Eval(
+                    ExteriorRef("body"),
+                    inputs={
+                        "doubler_input": ValueRef(NodeIndex(2), "*"),
+                        "intercept": ValueRef(NodeIndex(0), "value"),
+                    },
+                ),
+                outputs={"*": NodeIndex(5)},
             ),
         ),
-        ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
-        ("-.N4.M0.N1", simple_map(), Input("intercept", outputs={"intercept": 4})),
+        (
+            "-.N4.M0.E",
+            simple_map(),
+            NodeDescription(NodeDef.Eval(ExteriorRef("body"), {})),
+        ),
+        (
+            "-.N4.M0.N1",
+            simple_map(),
+            NodeDescription(
+                NodeDef.Input("intercept"), outputs={"intercept": NodeIndex(4)}
+            ),
+        ),
     ],
 )
 def test_graph_node_from_loc(
-    node_location_str: str, graph: GraphData, target: str
+    node_location_str: str, graph: GraphData, target: NodeDescription
 ) -> None:
     loc = Loc(node_location_str)
-    node_def, _ = graph_node_from_loc(loc, graph)
-    assert node_def == target
+    node_description = graph.query_node_description(loc)
+    # TOOD: Avoiding comparing parent graphs
+    assert node_description.definition == target.definition
+    assert node_description.outputs == target.outputs

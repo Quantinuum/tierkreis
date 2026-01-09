@@ -16,6 +16,7 @@ author = "Quantinuum"
 extensions = ["autodoc2", "myst_nb"]
 autodoc2_packages = [
     "../../tierkreis/tierkreis",
+    "../../tierkreis_core/python/tierkreis_core",
     {
         "path": "../../tierkreis_workers/aer_worker/main.py",
         "module": "aer_worker",
@@ -28,6 +29,9 @@ autodoc2_packages = [
         "path": "../../tierkreis_workers/pytket_worker/main.py",
         "module": "pytket_worker",
     },
+]
+autodoc2_module_all_regexes = [
+    r"tierkreis_core",
 ]
 autodoc2_hidden_objects = ["private"]
 

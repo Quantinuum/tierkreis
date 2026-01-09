@@ -6,13 +6,14 @@ from unittest import mock
 from uuid import UUID
 
 from tierkreis.cli.tkr import load_graph, _load_inputs, main
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.exceptions import TierkreisError
+from tierkreis_core import GraphData
 
 from tests.controller.sample_graphdata import simple_eval
 
 simple_eval_graph = simple_eval()
+
 
 graph_params = [
     ("tests.controller.sample_graphdata:simple_eval", simple_eval_graph),

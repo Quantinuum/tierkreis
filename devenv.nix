@@ -5,6 +5,7 @@
   packages = [
     pkgs.just
     pkgs.graphviz
+    pkgs.zlib
   ] ++ lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin.apple_sdk; [
     frameworks.CoreServices
     frameworks.CoreFoundation

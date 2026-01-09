@@ -35,8 +35,8 @@ from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.storage import read_outputs
+from tierkreis_core import GraphData
 
 param_data: list[tuple[GraphData, Any, str, dict[str, PType] | PType]] = [
     (simple_eval(), {"simple_eval_output": 12}, "simple_eval", {}),

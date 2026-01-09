@@ -13,9 +13,6 @@ from typing import (
 )
 
 
-PortID = str
-NodeIndex = int
-ValueRef = tuple[NodeIndex, PortID]
 SerializationFormat = Literal["bytes", "json", "unknown"]
 
 
