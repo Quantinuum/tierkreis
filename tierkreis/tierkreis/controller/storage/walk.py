@@ -159,16 +159,22 @@ def walk_map(
 
     first_ref = next(x for x in map.inputs.values() if x[1] == "*")
     map_eles = outputs_iter(storage, parent.N(first_ref[0]))
-    unfinished = [i for i, _ in map_eles if not storage.is_node_finished(loc.M(i))]
-    map_inputs = NodeRunData.from_node(loc, map, []).inputs  # ALAN This must be wrong
+    unfinished = [(i, e) for i, e in map_eles if not storage.is_node_finished(loc.M(i))]
+    map_inputs = NodeRunData.from_node(loc, map, []).inputs
     graph_loc = map_inputs["body"]
     assert graph_loc == (parent.N(map.body[0]), map.body[1])
     message = storage.read_output(*graph_loc)
     g = ptype_from_bytes(message, GraphData)
-    for p in unfinished:
-        result.extend(walk_node(storage, loc.M(p), g.output_idx(), g, map_inputs))
 
     if len(unfinished) > 0:
+        for idx, p in unfinished:
+            eval_inputs = {"body": graph_loc}
+            for k, (loc, port) in map_inputs.items():
+                eval_inputs[k] = (loc, p if port == "*" else port)
+            result.extend(
+                walk_node(storage, loc.M(idx), g.output_idx(), g, eval_inputs)
+            )
+
         return result
 
     map_outputs = g.nodes[g.output_idx()].inputs
