@@ -32,14 +32,14 @@ def run_graph(
     if len(remaining_inputs) > 0:
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
-    storage.write_metadata(root_loc)
+    storage.write_metadata(Loc(""))
+    nloc = Loc().N(-1)
     for name, value in graph_inputs.items():
-        storage.write_output(root_loc, name, bytes_from_ptype(value))
-
-    storage.write_output(root_loc, "body", bytes_from_ptype(g))
+        storage.write_output(nloc, name, bytes_from_ptype(value))
+    storage.write_output(nloc, "body", bytes_from_ptype(g))
 
     inputs: dict[PortID, OutputLoc] = {
-        k: (root_loc, k) for k in ["body"] + list(graph_inputs.keys())
+        k: (nloc, k) for k in ["body"] + list(graph_inputs.keys())
     }
     node_run_data = NodeRunData(
         Loc(), Eval((-1, "**dummy-never-read**"), {}), [], inputs
@@ -54,10 +54,11 @@ def resume_graph(
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
 ) -> None:
-    message = storage.read_output(Loc(), "body")
+    nloc = Loc().N(-1)
+    message = storage.read_output(nloc, "body")
     graph = ptype_from_bytes(message, GraphData)
     available_inputs = ["body"] + [
-        k for k in graph.graph_inputs if storage.exists(storage._output_path(Loc(), k))
+        k for k in graph.graph_inputs if storage.exists(storage._output_path(nloc, k))
     ]
 
     for _ in range(n_iterations):
@@ -66,7 +67,7 @@ def resume_graph(
             Loc(),
             graph.output_idx(),
             graph,
-            {k: (Loc(), k) for k in available_inputs},
+            {k: (nloc, k) for k in available_inputs},
         )
         if walk_results.errored != []:
             # TODO: add to base class after storage refactor
