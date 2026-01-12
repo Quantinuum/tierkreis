@@ -164,7 +164,8 @@ def walk_loop(
 
     previous_index = new_location.peek_index()
     if previous_index is None:
-        # TODO: This should be impossible
+        # This should be impossible as we expect `latest_loop_iteration`
+        # to always return a loop step.
         raise ValueError("Previous step is not a Loop step.")
 
     # The outputs from the previous iteration

@@ -9,7 +9,9 @@ from typing import Mapping, Sequence
 from tierkreis_core import GraphData
 
 type PortID = str
-# Constant values
+# This `Value` type refers to data that can be used in a constant node.
+#
+# Note that this is a subset of `PType` from `tierkreis`.
 type Value = (
     int | float | bool | str | bytes | Sequence[Value] | Mapping[str, Value] | GraphData
 )
