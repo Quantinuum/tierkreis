@@ -2,17 +2,15 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import assert_never
 
-from tierkreis.controller.consts import BODY_PORT
-from tierkreis.controller.data.core import NodeIndex
+from tierkreis.controller.data.core import NodeIndex, PortID
 from tierkreis.controller.data.graph import (
     EagerIfElse,
     Eval,
     GraphData,
     Loop,
     Map,
-    NodeDef,
 )
-from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.start import NodeRunData
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
@@ -34,20 +32,12 @@ class WalkResult:
         self.errored.extend(walk_result.errored)
 
 
-def unfinished_results(
-    result: WalkResult,
+def walk_node(
     storage: ControllerStorage,
     parent: Loc,
-    node: NodeDef,
+    idx: NodeIndex,
     graph: GraphData,
-) -> int:
-    unfinished = unfinished_inputs(storage, parent, node)
-    [result.extend(walk_node(storage, parent, x[0], graph)) for x in unfinished]
-    return len(unfinished)
-
-
-def walk_node(
-    storage: ControllerStorage, parent: Loc, idx: NodeIndex, graph: GraphData
+    graph_inputs: dict[PortID, OutputLoc],
 ) -> WalkResult:
     """Should only be called when a node has not finished."""
     loc = parent.N(idx)
@@ -57,10 +47,19 @@ def walk_node(
         return WalkResult([], [], [loc])
 
     node = graph.nodes[idx]
-    node_run_data = NodeRunData(loc, node, list(node.outputs))
 
-    result = WalkResult([], [])
-    if unfinished_results(result, storage, parent, node, graph):
+    if node.type == "input":
+        # Pass graph inputs for Input to pick whichever it wants
+        node_run_data = NodeRunData(loc, node, [node.name], graph_inputs)
+        return WalkResult([node_run_data], [])
+
+    node_run_data = NodeRunData.from_node(loc, node, list(node.outputs))
+
+    unfinished = unfinished_inputs(storage, parent, node)
+    if len(unfinished) > 0:
+        result = WalkResult([], [])
+        for r in unfinished:
+            result.extend(walk_node(storage, parent, r[0], graph, graph_inputs))
         return result
 
     if not storage.is_node_started(loc):
@@ -68,9 +67,13 @@ def walk_node(
 
     match node.type:
         case "eval":
-            message = storage.read_output(parent.N(node.graph[0]), node.graph[1])
+            graph_loc: OutputLoc = (parent.N(node.graph[0]), node.graph[1])
+            message = storage.read_output(*graph_loc)
             g = ptype_from_bytes(message, GraphData)
-            return walk_node(storage, loc, g.output_idx(), g)
+            graph_inputs = node_run_data.inputs  # node_run_data unused
+            # graph_inputs["body"] = graph_loc
+            assert node_run_data.inputs["body"] == graph_loc
+            return walk_node(storage, loc, g.output_idx(), g, graph_inputs)
 
         case "output":
             return WalkResult([node_run_data], [])
@@ -93,7 +96,7 @@ def walk_node(
                 storage.mark_node_finished(loc)
                 return WalkResult([], [])
             else:
-                return walk_node(storage, parent, next_node[0], graph)
+                return walk_node(storage, parent, next_node[0], graph, graph_inputs)
 
         case "eifelse":
             return walk_eifelse(storage, parent, idx, node)
@@ -101,9 +104,7 @@ def walk_node(
         case "function":
             return WalkResult([], [loc])
 
-        case "input":
-            return WalkResult([], [])
-        case _:
+        case _:  # includes "input"
             assert_never(node)
 
 
@@ -113,15 +114,18 @@ def walk_loop(
     loc = parent.N(idx)
     if storage.is_node_finished(loc):
         return WalkResult([], [], [])
-
     new_location = storage.latest_loop_iteration(loc)
 
-    message = storage.read_output(loc.N(-1), BODY_PORT)
+    loop_inputs = NodeRunData.from_node(loc, loop, []).inputs
+    graph_loc = loop_inputs["body"]
+    assert graph_loc == (parent.N(loop.body[0]), loop.body[1])
+    message = storage.read_output(*graph_loc)
     g = ptype_from_bytes(message, GraphData)
+
     loop_outputs = g.nodes[g.output_idx()].inputs
 
     if not storage.is_node_finished(new_location):
-        return walk_node(storage, new_location, g.output_idx(), g)
+        return walk_node(storage, new_location, g.output_idx(), g, loop_inputs)
 
     # Latest iteration is finished. Do we BREAK or CONTINUE?
     should_continue = ptype_from_bytes(
@@ -133,12 +137,14 @@ def walk_loop(
         storage.mark_node_finished(loc)
         return WalkResult([], [])
 
-    ins = {k: (-1, k) for k in loop.inputs.keys()}
-    ins.update(loop_outputs)
+    # Override with outputs of previous iter, but keep original inputs
+    # as they may be invariants
+    loop_inputs.update({k: (new_location.N(g.output_idx()), k) for k in loop_outputs})
     node_run_data = NodeRunData(
         loc.L(new_location.peek_index() + 1),
-        Eval((-1, BODY_PORT), ins, loop.outputs),
+        Eval((-1, "**dummy-never-read"), {}, loop.outputs),
         list(loop_outputs.keys()),
+        loop_inputs,
     )
     return WalkResult([node_run_data], [])
 
@@ -154,9 +160,13 @@ def walk_map(
     first_ref = next(x for x in map.inputs.values() if x[1] == "*")
     map_eles = outputs_iter(storage, parent.N(first_ref[0]))
     unfinished = [i for i, _ in map_eles if not storage.is_node_finished(loc.M(i))]
-    message = storage.read_output(loc.M(0).N(-1), BODY_PORT)
+    map_inputs = NodeRunData.from_node(loc, map, []).inputs  # ALAN This must be wrong
+    graph_loc = map_inputs["body"]
+    assert graph_loc == (parent.N(map.body[0]), map.body[1])
+    message = storage.read_output(*graph_loc)
     g = ptype_from_bytes(message, GraphData)
-    [result.extend(walk_node(storage, loc.M(p), g.output_idx(), g)) for p in unfinished]
+    for p in unfinished:
+        result.extend(walk_node(storage, loc.M(p), g.output_idx(), g, map_inputs))
 
     if len(unfinished) > 0:
         return result

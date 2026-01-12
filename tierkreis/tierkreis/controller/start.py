@@ -6,13 +6,13 @@ import subprocess
 import sys
 
 from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
+from tierkreis.controller.data.types import bytes_from_ptype
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
-from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
+from tierkreis.controller.data.graph import Eval, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -28,6 +28,30 @@ class NodeRunData:
     node_location: Loc
     node: NodeDef
     output_list: list[PortID]
+    inputs: dict[PortID, OutputLoc]
+
+    @property
+    def parent_loc(self) -> Loc:
+        parent = self.node_location.parent()
+        assert parent is not None
+        return parent
+
+    @staticmethod
+    def from_node(
+        node_location: Loc, node: NodeDef, output_list: list[PortID]
+    ) -> "NodeRunData":
+        parent = node_location.parent()
+        if parent is None:
+            raise TierkreisError(f"{type(node)} node must have parent Loc.")
+
+        inputs = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
+
+        return NodeRunData(
+            node_location,
+            node,
+            output_list,
+            inputs,
+        )
 
 
 def start_nodes(
@@ -73,14 +97,9 @@ def start(
     node_location = node_run_data.node_location
     node = node_run_data.node
     output_list = node_run_data.output_list
+    ins = node_run_data.inputs
 
     storage.write_node_def(node_location, node)
-
-    parent = node_location.parent()
-    if parent is None:
-        raise TierkreisError(f"{node.type} node must have parent Loc.")
-
-    ins = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
 
     logger.debug(f"start {node_location} {node} {ins} {output_list}")
     if node.type == "function":
@@ -102,15 +121,14 @@ def start(
             executor.run(launcher_name, call_args_path)
 
     elif node.type == "input":
-        input_loc = parent.N(-1)
-        storage.link_outputs(node_location, node.name, input_loc, node.name)
+        storage.link_outputs(node_location, node.name, *ins[node.name])
         storage.mark_node_finished(node_location)
 
     elif node.type == "output":
         storage.mark_node_finished(node_location)
 
-        pipe_inputs_to_output_location(storage, parent, ins)
-        storage.mark_node_finished(parent)
+        pipe_inputs_to_output_location(storage, node_run_data.parent_loc, ins)
+        storage.mark_node_finished(node_run_data.parent_loc)
 
     elif node.type == "const":
         bs = bytes_from_ptype(node.value)
@@ -118,16 +136,14 @@ def start(
         storage.mark_node_finished(node_location)
 
     elif node.type == "eval":
-        message = storage.read_output(parent.N(node.graph[0]), node.graph[1])
-        g = ptype_from_bytes(message, GraphData)
-        ins["body"] = (parent.N(node.graph[0]), node.graph[1])
-        ins.update(g.fixed_inputs)
+        # All parameter-gathering handled by walking, so nothing to do here
+        # except handle fixed inputs... not sure what/how atm.
 
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
-
+        # message = storage.read_output(parent.N(node.graph[0]), node.graph[1])
+        # g = ptype_from_bytes(message, GraphData)
+        # ins.update(g.fixed_inputs)
+        pass
     elif node.type == "loop":
-        ins["body"] = (parent.N(node.body[0]), node.body[1])
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
         if (
             node.name is not None
         ):  # should we do this only in debug mode? -> need to think through how this would work
@@ -137,8 +153,9 @@ def start(
             executor,
             NodeRunData(
                 node_location.L(0),
-                Eval((-1, "body"), {k: (-1, k) for k, _ in ins.items()}, node.outputs),
+                Eval((-1, "**dummy-never-read**"), {}, node.outputs),
                 output_list,
+                ins,  # Possibly remap body to __tkr_body / etc. here?
             ),
         )
 
@@ -148,19 +165,12 @@ def start(
         if not map_eles:
             storage.mark_node_finished(node_location)
         for idx, p in map_eles:
-            eval_inputs: dict[PortID, tuple[Loc, PortID]] = {}
-            eval_inputs["body"] = (parent.N(node.body[0]), node.body[1])
-            for k, (i, port) in ins.items():
-                if port == "*":
-                    eval_inputs[k] = (i, p)
-                else:
-                    eval_inputs[k] = (i, port)
-            pipe_inputs_to_output_location(
-                storage, node_location.M(idx).N(-1), eval_inputs
-            )
+            # establishing inputs to each element is done by `walk_map`
+
             # Necessary in the node visualization
             storage.write_node_def(
-                node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs)
+                node_location.M(idx),
+                Eval((-1, "**dummy-never-read**"), node.inputs, node.outputs),
             )
 
     elif node.type == "ifelse":
