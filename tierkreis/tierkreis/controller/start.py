@@ -148,6 +148,8 @@ def start(
             node.name is not None
         ):  # should we do this only in debug mode? -> need to think through how this would work
             storage.write_debug_data(node.name, node_location)
+        # This doesn't do much, but does mark iter 0 as having "started"
+        # so latest_loop_iteration finds it:
         start(
             storage,
             executor,
@@ -155,7 +157,7 @@ def start(
                 node_location.L(0),
                 Eval((-1, "**dummy-never-read**"), {}, node.outputs),
                 output_list,
-                ins,  # Possibly remap body to __tkr_body / etc. here?
+                ins,
             ),
         )
 

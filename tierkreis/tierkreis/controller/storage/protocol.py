@@ -218,11 +218,11 @@ class ControllerStorage(ABC):
     def is_node_finished(self, node_location: Loc) -> bool:
         return self.exists(self._done_path(node_location))
 
-    def latest_loop_iteration(self, loc: Loc) -> Loc:
+    def latest_loop_iteration(self, loc: Loc) -> int:
         i = 0
         while self.is_node_started(loc.L(i + 1)):
             i += 1
-        return loc.L(i)
+        return i
 
     def node_has_error(self, node_location: Loc) -> bool:
         return self.exists(self._error_path(node_location))
@@ -303,7 +303,7 @@ class ControllerStorage(ABC):
             case ("M", _):
                 descs.update(self.dependents(parent))
             case ("L", idx):
-                latest_idx = self.latest_loop_iteration(parent).peek_index()
+                latest_idx = self.latest_loop_iteration(parent)
                 [descs.add(parent.L(i)) for i in range(idx + 1, latest_idx + 1)]
                 descs.update(self.dependents(parent))
             case _:

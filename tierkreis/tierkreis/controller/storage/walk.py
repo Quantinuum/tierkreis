@@ -71,8 +71,7 @@ def walk_node(
             message = storage.read_output(*graph_loc)
             g = ptype_from_bytes(message, GraphData)
             graph_inputs = node_run_data.inputs  # node_run_data unused
-            # graph_inputs["body"] = graph_loc
-            assert node_run_data.inputs["body"] == graph_loc
+            assert graph_inputs["body"] == graph_loc
             return walk_node(storage, loc, g.output_idx(), g, graph_inputs)
 
         case "output":
@@ -111,42 +110,56 @@ def walk_node(
 def walk_loop(
     storage: ControllerStorage, parent: Loc, idx: NodeIndex, loop: Loop
 ) -> WalkResult:
-    loc = parent.N(idx)
-    if storage.is_node_finished(loc):
+    loop_loc = parent.N(idx)
+    if storage.is_node_finished(loop_loc):
         return WalkResult([], [], [])
-    new_location = storage.latest_loop_iteration(loc)
 
-    loop_inputs = NodeRunData.from_node(loc, loop, []).inputs
-    graph_loc = loop_inputs["body"]
+    loop_input_vals = NodeRunData.from_node(loop_loc, loop, []).inputs
+    graph_loc = loop_input_vals["body"]
     assert graph_loc == (parent.N(loop.body[0]), loop.body[1])
     message = storage.read_output(*graph_loc)
     g = ptype_from_bytes(message, GraphData)
+    loop_output_ports = g.nodes[g.output_idx()].inputs
 
-    loop_outputs = g.nodes[g.output_idx()].inputs
+    current_iter = storage.latest_loop_iteration(loop_loc)
+    current_iter_loc = loop_loc.L(current_iter)
+    if storage.is_node_finished(current_iter_loc):
+        # Latest iteration is finished. Do we BREAK or CONTINUE?
+        should_continue = ptype_from_bytes(
+            storage.read_output(current_iter_loc, loop.continue_port), bool
+        )
+        if should_continue is False:
+            for k in loop_output_ports:
+                storage.link_outputs(loop_loc, k, current_iter_loc, k)
+            storage.mark_node_finished(loop_loc)
+            return WalkResult([], [])
+        # Begin new iter!
+        current_iter += 1
+        current_iter_loc = loop_loc.L(current_iter)
+        start_new_iter = True
+    else:
+        start_new_iter = False
 
-    if not storage.is_node_finished(new_location):
-        return walk_node(storage, new_location, g.output_idx(), g, loop_inputs)
+    # Compute iter inputs...first the inputs at the start of the loop (iter 0)
+    if current_iter > 0:
+        prev_iter_loc = loop_loc.L(current_iter - 1)
+        # Override with outputs of previous iter, but keep original inputs
+        # as they may be invariants
+        loop_input_vals.update({k: (prev_iter_loc, k) for k in loop_output_ports})
 
-    # Latest iteration is finished. Do we BREAK or CONTINUE?
-    should_continue = ptype_from_bytes(
-        storage.read_output(new_location, loop.continue_port), bool
-    )
-    if should_continue is False:
-        for k in loop_outputs:
-            storage.link_outputs(loc, k, new_location, k)
-        storage.mark_node_finished(loc)
-        return WalkResult([], [])
-
-    # Override with outputs of previous iter, but keep original inputs
-    # as they may be invariants
-    loop_inputs.update({k: (new_location.N(g.output_idx()), k) for k in loop_outputs})
-    node_run_data = NodeRunData(
-        loc.L(new_location.peek_index() + 1),
-        Eval((-1, "**dummy-never-read"), {}, loop.outputs),
-        list(loop_outputs.keys()),
-        loop_inputs,
-    )
-    return WalkResult([node_run_data], [])
+    if start_new_iter:
+        # We're doing this for the bit of `start` that applies regardless of the node
+        # but that just records the node having started. (Do the inputs matter?
+        # No - so those are just for visualisation/debugging - we could simplify
+        # this function if we didn't record them)
+        datum = NodeRunData(
+            current_iter_loc,
+            Eval((-1, "**dummy-never-read**"), loop.inputs, {}),
+            [],
+            loop_input_vals,
+        )
+        return WalkResult([datum], [])
+    return walk_node(storage, current_iter_loc, g.output_idx(), g, loop_input_vals)
 
 
 def walk_map(
