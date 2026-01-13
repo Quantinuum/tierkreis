@@ -85,9 +85,7 @@ class Namespace:
 
         return namespace
 
-    def stubs(self, namespace: str | None = None) -> str:
-        if namespace is not None:
-            self.name = namespace
+    def stubs(self) -> str:
         functions = [format_method(self.name, f) for f in self.methods]
         functions_str = "\n\n".join(functions)
         models_str = "\n\n".join([format_model(x) for x in sorted(list(self.models))])
@@ -104,14 +102,14 @@ from tierkreis.controller.data.types import PType, Struct
 {functions_str}
 '''
 
-    def write_stubs(self, stubs_path: Path, namespace: str | None = None) -> None:
+    def write_stubs(self, stubs_path: Path) -> None:
         """Writes the type stubs to stubs_path.
 
         :param stubs_path: The location to write to.
         :type stubs_path: Path
         """
         with open(stubs_path, "w+") as fh:
-            fh.write(self.stubs(namespace))
+            fh.write(self.stubs())
 
         ruff_binary = shutil.which("ruff")
         if ruff_binary:
