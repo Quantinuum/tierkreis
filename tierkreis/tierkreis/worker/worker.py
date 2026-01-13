@@ -165,7 +165,12 @@ class Worker:
         """Wrapper for UV execution."""
         handler = add_handler_from_environment(logger)
         if argv[1] == "--stubs-path":
-            self.namespace.write_stubs(Path(argv[2]))
+            try:
+                assert argv[3] == "--stubs-namespace"
+                namespace = argv[4]
+            except (IndexError, AssertionError):
+                namespace = None
+            self.namespace.write_stubs(Path(argv[2]), namespace)
         else:
             try:
                 self.run(Path(argv[1]))
