@@ -32,8 +32,10 @@ def run_graph(
     if len(remaining_inputs) > 0:
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
-    storage.write_metadata(Loc(""))
+    # This special path's *outputs* are used as *inputs* for the whole graph:
     nloc = Loc().N(-1)
+
+    storage.write_metadata(Loc(""))  # Should this be nloc too? or Loc()?
     for name, value in graph_inputs.items():
         storage.write_output(nloc, name, bytes_from_ptype(value))
     storage.write_output(nloc, "body", bytes_from_ptype(g))
@@ -64,7 +66,7 @@ def resume_graph(
     for _ in range(n_iterations):
         walk_results = walk_node(
             storage,
-            Loc(),
+            Loc(),  # Correct for the rest of the graph, but inputs in special/nonstandard Loc
             graph.output_idx(),
             graph,
             {k: (nloc, k) for k in available_inputs},
