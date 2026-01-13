@@ -11,7 +11,7 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID
 
-root_loc = Loc("")
+root_loc = Loc("") # Special, used as inputs to the toplevel graph
 logger = logging.getLogger(__name__)
 
 
@@ -32,16 +32,13 @@ def run_graph(
     if len(remaining_inputs) > 0:
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
-    # This special path's *outputs* are used as *inputs* for the whole graph:
-    nloc = Loc().N(-1)
-
-    storage.write_metadata(Loc(""))  # Should this be nloc too? or Loc()?
+    storage.write_metadata(root_loc)  # Should this be Loc() ?
     for name, value in graph_inputs.items():
-        storage.write_output(nloc, name, bytes_from_ptype(value))
-    storage.write_output(nloc, "body", bytes_from_ptype(g))
+        storage.write_output(root_loc, name, bytes_from_ptype(value))
+    storage.write_output(root_loc, "body", bytes_from_ptype(g))
 
     inputs: dict[PortID, OutputLoc] = {
-        k: (nloc, k) for k in ["body"] + list(graph_inputs.keys())
+        k: (root_loc, k) for k in ["body"] + list(graph_inputs.keys())
     }
     node_run_data = NodeRunData(
         Loc(), Eval((-1, "**dummy-never-read**"), {}), [], inputs
@@ -56,20 +53,19 @@ def resume_graph(
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
 ) -> None:
-    nloc = Loc().N(-1)
-    message = storage.read_output(nloc, "body")
+    message = storage.read_output(root_loc, "body")
     graph = ptype_from_bytes(message, GraphData)
     available_inputs = ["body"] + [
-        k for k in graph.graph_inputs if storage.exists(storage._output_path(nloc, k))
+        k for k in graph.graph_inputs if storage.exists(storage._output_path(root_loc, k))
     ]
 
     for _ in range(n_iterations):
         walk_results = walk_node(
             storage,
-            Loc(),  # Correct for the rest of the graph, but inputs in special/nonstandard Loc
+            Loc(),
             graph.output_idx(),
             graph,
-            {k: (nloc, k) for k in available_inputs},
+            {k: (root_loc, k) for k in available_inputs},
         )
         if walk_results.errored != []:
             # TODO: add to base class after storage refactor
