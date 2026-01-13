@@ -179,8 +179,8 @@ def walk_map(
     if len(unfinished) > 0:
         for idx, p in unfinished:
             eval_inputs = {"body": graph_loc}
-            for k, (loc, port) in map_inputs.items():
-                eval_inputs[k] = (loc, p if port == "*" else port)
+            for k, (srcloc, port) in map_inputs.items():
+                eval_inputs[k] = (srcloc, p if port == "*" else port)
             result.extend(
                 walk_node(storage, loc.M(idx), g.output_idx(), g, eval_inputs)
             )
