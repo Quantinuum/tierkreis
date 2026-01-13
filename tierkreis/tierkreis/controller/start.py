@@ -8,7 +8,7 @@ import sys
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.storage.adjacency import outputs_iter
+from tierkreis.controller.storage.adjacency import outputs_iter, in_edges
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
@@ -44,7 +44,7 @@ class NodeRunData:
         if parent is None:
             raise TierkreisError(f"{type(node)} node must have parent Loc.")
 
-        inputs = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
+        inputs = {k: (parent.N(idx), p) for k, (idx, p) in in_edges(node).items()}
 
         return NodeRunData(
             node_location,
