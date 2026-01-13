@@ -11,7 +11,7 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID
 
-root_loc = Loc("") # Special, used as inputs to the toplevel graph
+root_loc = Loc("")  # Special, used as inputs to the toplevel graph
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +56,9 @@ def resume_graph(
     message = storage.read_output(root_loc, "body")
     graph = ptype_from_bytes(message, GraphData)
     available_inputs = ["body"] + [
-        k for k in graph.graph_inputs if storage.exists(storage._output_path(root_loc, k))
+        k
+        for k in graph.graph_inputs
+        if storage.exists(storage._output_path(root_loc, k))
     ]
 
     for _ in range(n_iterations):
