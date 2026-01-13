@@ -136,9 +136,6 @@ def walk_loop(
         # Begin new iter!
         current_iter += 1
         current_iter_loc = loop_loc.L(current_iter)
-        start_new_iter = True
-    else:
-        start_new_iter = False
 
     # Compute iter inputs...first the inputs at the start of the loop (iter 0)
     if current_iter > 0:
@@ -147,7 +144,7 @@ def walk_loop(
         # as they may be invariants
         loop_input_vals.update({k: (prev_iter_loc, k) for k in loop_output_ports})
 
-    if start_new_iter:
+    if not storage.is_node_started(current_iter_loc):
         # We're doing this for the bit of `start` that applies regardless of the node
         # but that just records the node having started. (Do the inputs matter?
         # No - so those are just for visualisation/debugging - we could simplify

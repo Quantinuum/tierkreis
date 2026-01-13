@@ -148,19 +148,6 @@ def start(
             node.name is not None
         ):  # should we do this only in debug mode? -> need to think through how this would work
             storage.write_debug_data(node.name, node_location)
-        # This doesn't do much, but does mark iter 0 as having "started"
-        # so latest_loop_iteration finds it:
-        start(
-            storage,
-            executor,
-            NodeRunData(
-                node_location.L(0),
-                Eval((-1, "**dummy-never-read**"), {}, node.outputs),
-                output_list,
-                ins,
-            ),
-        )
-
     elif node.type == "map":
         first_ref = next(x for x in ins.values() if x[1] == "*")
         map_eles = outputs_iter(storage, first_ref[0])
