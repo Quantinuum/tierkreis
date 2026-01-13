@@ -13,6 +13,7 @@ def install_dependencies(deps: dict[str, TKRDependency], target_dir: Path):
             [
                 "uv",
                 "run",
+                "main.py",
                 "--stubs-path",
                 f"../../api/{worker_dir.stem}",
                 "--stubs-namespace",
