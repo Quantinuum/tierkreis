@@ -85,11 +85,11 @@ def start(
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
-            executor.run(launcher_name, call_args_path, enable_logging)
+            executor.run(launcher_name, call_args_path)
         elif launcher_name == "builtins":
             run_builtin(call_args_path, storage.logs_path)
         else:
-            executor.run(launcher_name, call_args_path, enable_logging)
+            executor.run(launcher_name, call_args_path)
 
     elif node.type == "input":
         input_loc = parent.N(-1)
