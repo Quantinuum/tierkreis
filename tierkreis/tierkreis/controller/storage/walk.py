@@ -3,18 +3,18 @@ from logging import getLogger
 from typing import assert_never
 
 from tierkreis.controller.consts import BODY_PORT
-from tierkreis.controller.data.core import NodeIndex
+from tierkreis.controller.data.core import NodeIndex, PortID
 from tierkreis.controller.data.graph import (
     EagerIfElse,
-    Eval,
     GraphData,
     Loop,
     Map,
     NodeDef,
+    ValueRef,
 )
-from tierkreis.controller.data.location import Loc, OutputLoc
+from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.start import NodeRunData, Task
+from tierkreis.controller.start import NodeRunData, Task, LoopIterTask
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.labels import Labels
@@ -79,9 +79,7 @@ def walk_node(
             return WalkResult([node_run_data], [])
 
         case "loop":
-            return walk_loop(
-                storage, parent.N(idx), (parent.N(node.body[0]), node.body[1]), node
-            )
+            return walk_loop(storage, parent, idx, node)
 
         case "map":
             return walk_map(storage, parent, idx, node)
@@ -110,16 +108,18 @@ def walk_node(
 
 
 def walk_loop(
-    storage: ControllerStorage, loc: Loc, graph_input: OutputLoc, loop: Loop
+    storage: ControllerStorage, parent: Loc, idx: NodeIndex, loop: Loop
 ) -> WalkResult:
-    if storage.is_node_finished(loc):
-        return WalkResult([], [], [])
+    loop_loc = parent.N(idx)
+    if storage.is_node_finished(loop_loc):
+        return WalkResult([], [])
 
-    iter = storage.latest_loop_iteration(loc)
-    new_location = loc.L(iter)
+    graph_input = (parent.N(loop.body[0]), loop.body[1])
     message = storage.read_output(*graph_input)
     g = ptype_from_bytes(message, GraphData)
-    loop_outputs = g.nodes[g.output_idx()].inputs
+    loop_outputs: dict[PortID, ValueRef] = g.nodes[g.output_idx()].inputs
+    iter = storage.latest_loop_iteration(loop_loc)
+    new_location = loop_loc.L(iter)
 
     if not storage.is_node_finished(new_location):
         return walk_node(storage, new_location, g.output_idx(), g)
@@ -130,20 +130,14 @@ def walk_loop(
     )
     if should_continue is False:
         for k in loop_outputs:
-            storage.link_outputs(loc, k, new_location, k)
-        storage.mark_node_finished(loc)
+            storage.link_outputs(loop_loc, k, new_location, k)
+        storage.mark_node_finished(loop_loc)
         return WalkResult([], [])
 
-    ins = {k: (-1, k) for k in loop.inputs.keys()}
-    ins.update(loop_outputs)
-    # ALAN this is dodgy....I think WalkResult should have a third component
-    # as "things to pass to start_graph", i.e. with OutputLoc's not these -1's
-    node_run_data = NodeRunData(
-        loc.L(iter + 1),
-        Eval((-1, BODY_PORT), ins, loop.outputs),
-        list(loop_outputs.keys()),
-    )
-    return WalkResult([node_run_data], [])
+    ins = {k: (parent.N(n), p) for k, (n, p) in loop.inputs.items()}
+    ins.update({k: (parent.N(g.output_idx()), k) for k in loop_outputs})
+    task = LoopIterTask(loop_loc.L(iter + 1), graph_input, ins)
+    return WalkResult([task], [])
 
 
 def walk_map(
