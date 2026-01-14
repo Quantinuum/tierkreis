@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import assert_never
 
-from tierkreis.controller.consts import BODY_PORT
 from tierkreis.controller.data.core import NodeIndex, PortID
 from tierkreis.controller.data.graph import (
     EagerIfElse,
@@ -143,27 +142,29 @@ def walk_loop(
 def walk_map(
     storage: ControllerStorage, parent: Loc, idx: NodeIndex, map: Map
 ) -> WalkResult:
-    loc = parent.N(idx)
+    map_loc = parent.N(idx)
     result = WalkResult([], [])
-    if storage.is_node_finished(loc):
+    if storage.is_node_finished(map_loc):
         return result
 
     first_ref = next(x for x in map.inputs.values() if x[1] == "*")
     map_eles = outputs_iter(storage, parent.N(first_ref[0]))
-    unfinished = [i for i, _ in map_eles if not storage.is_node_finished(loc.M(i))]
-    message = storage.read_output(loc.M(0).N(-1), BODY_PORT)
+    unfinished = [i for i, _ in map_eles if not storage.is_node_finished(map_loc.M(i))]
+    graph_input = (parent.N(map.body[0]), map.body[1])
+    message = storage.read_output(*graph_input)
     g = ptype_from_bytes(message, GraphData)
-    [result.extend(walk_node(storage, loc.M(p), g.output_idx(), g)) for p in unfinished]
 
     if len(unfinished) > 0:
+        for p in unfinished:
+            result.extend(walk_node(storage, map_loc.M(p), g.output_idx(), g))
         return result
 
     map_outputs = g.nodes[g.output_idx()].inputs
     for i, j in map_eles:
         for output in map_outputs.keys():
-            storage.link_outputs(loc, f"{output}-{j}", loc.M(i), output)
+            storage.link_outputs(map_loc, f"{output}-{j}", map_loc.M(i), output)
 
-    storage.mark_node_finished(loc)
+    storage.mark_node_finished(map_loc)
     return result
 
 
