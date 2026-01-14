@@ -5,25 +5,10 @@
 Tierkreis stores a central log of the execution of a graph.
 The log is located at `<checkpoint_dir>/<workflow_id>/logs`.
 By default, the log level is set to `INFO`.
-To change the log level you can get the tierkreis logger:
-
-```python
-import logging
-
-logger = logging.getLogger("tierkreis")
-logger.setLevel(...)
-```
 
 ### Workers
 
-Similarly in a worker you can access the logger or overwrite it with your own.
-
-```python
-worker.logger.setLevel(...)
-worker.setLogger(...)
-```
-
-When running a python worker, they will check the environment variable `$TKR_LOG_LEVEL`, `$TKR_LOG_FORMAT` and `$TKR_DATE_FORMAT` and add a streaming handler to the root logger.
+When running a python worker, Tierkreis will check the environment variables `$TKR_LOG_LEVEL`, `$TKR_LOG_FORMAT` and `$TKR_DATE_FORMAT` and add a streaming handler to the root logger with the appropriate level and formatter.
 You can either set this manually or provided it as part of the `env` argument of an executor.
 
 ## Error Handling
@@ -111,7 +96,7 @@ logging.basicConfig(
 )
 ```
 
-For example by uncommenting lines 24-28 in the example.
+For example by uncommenting lines 24-28 in the example and adding `import logging`.
 
 #### Resume a Workflow
 
