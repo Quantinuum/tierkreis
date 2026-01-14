@@ -1,3 +1,5 @@
+"""Tierkreis IDL models representation."""
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import NoneType

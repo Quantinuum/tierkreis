@@ -1,3 +1,5 @@
+"""Tierkreis models for graph builder definitions."""
+
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.models import TKR, portmapping
 from tierkreis.controller.data.types import Struct
