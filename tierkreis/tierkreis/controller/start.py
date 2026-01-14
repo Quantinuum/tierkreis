@@ -111,6 +111,9 @@ def start(
         else:
             executor.run(launcher_name, call_args_path)
 
+    elif node.type == "input":
+        assert storage.is_node_finished(node_location)
+
     elif node.type == "output":
         storage.mark_node_finished(node_location)
 
@@ -158,7 +161,7 @@ def start(
 
     elif node.type == "eifelse":
         pass
-    else:  # includes input as should always have been executed by start_graph
+    else:
         assert_never(node)
 
 

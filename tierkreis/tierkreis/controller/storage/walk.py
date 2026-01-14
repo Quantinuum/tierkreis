@@ -133,9 +133,14 @@ def walk_loop(
         storage.mark_node_finished(loop_loc)
         return WalkResult([], [])
 
+    # Grab loop inputs so we have any invariants
     ins = {k: (parent.N(n), p) for k, (n, p) in loop.inputs.items()}
-    ins.update({k: (parent.N(g.output_idx()), k) for k in loop_outputs})
+    # Override with results from previous iter (copied here by Output node):
+    ins.update({k: (new_location, k) for k in loop_outputs})
     task = LoopIterTask(loop_loc.L(iter + 1), graph_input, ins)
+
+    # Mark the iter as started so latest_loop_iteration picks it up:
+    storage.write_node_def(task.iter_location, loop)
     return WalkResult([task], [])
 
 
