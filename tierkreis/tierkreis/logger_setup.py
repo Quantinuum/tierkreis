@@ -10,7 +10,7 @@ LOGGER_NAME = "tierkeis"
 
 def set_tkr_logger(
     file_name: Path,
-    level: int | str = logging.WARNING,
+    level: int | str = logging.INFO,
 ) -> None:
     logger = logging.getLogger(LOGGER_NAME)
     if logger.hasHandlers():
@@ -24,9 +24,6 @@ def set_tkr_logger(
 
     except FileNotFoundError:
         logging.warning("Could not log to file, logging to std out instead.")
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
 
 
 def add_handler_from_environment(logger: logging.Logger) -> logging.Handler:
@@ -36,7 +33,7 @@ def add_handler_from_environment(logger: logging.Logger) -> logging.Handler:
     log_format = getenv(TKR_LOG_FMT_KEY, None)
     date_format = getenv(TKR_DATE_FMT_KEY, None)
     formatter = logging.Formatter(log_format, date_format)
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     return handler
