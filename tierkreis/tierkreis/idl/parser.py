@@ -5,8 +5,10 @@ But https://github.com/drhagen/parsita/blob/83925f035d0777debfe5a6cb53b4944b4b5b
 doesn't type check things correctly.
 """
 
+import contextlib
 import re
-from typing import Callable, Never, overload
+from collections.abc import Callable
+from typing import Never, overload
 
 from tierkreis.exceptions import TierkreisError
 
@@ -17,7 +19,7 @@ class ParserError(TierkreisError): ...
 class Parser[T]:
     fn: Callable[[str], tuple[T, str]]
 
-    def __init__(self, fn: Callable[[str], tuple[T, str]]):
+    def __init__(self, fn: Callable[[str], tuple[T, str]]) -> None:
         self.fn = fn
 
     def __call__(self, ins: str) -> tuple[T, str]:
@@ -25,7 +27,8 @@ class Parser[T]:
         return self.fn(ins)
 
     def __or__[S](
-        self, other: "Parser[S]" | Callable[[str], tuple[S, str]]
+        self,
+        other: "Parser[S]" | Callable[[str], tuple[S, str]],
     ) -> "Parser[T|S]":
         """Try the left parser and only if it fails try the right parser."""
 
@@ -38,7 +41,8 @@ class Parser[T]:
         return Parser(f)
 
     def __and__[S](
-        self, other: "Parser[S]" | Callable[[str], tuple[S, str]]
+        self,
+        other: "Parser[S]" | Callable[[str], tuple[S, str]],
     ) -> "Parser[tuple[T,S]]":
         """Use the left parser and then use the right parser on the remaining input."""
 
@@ -50,7 +54,8 @@ class Parser[T]:
         return Parser(f)
 
     def __lshift__[S](
-        self, other: "Parser[S]" | Callable[[str], tuple[S, str]]
+        self,
+        other: "Parser[S]" | Callable[[str], tuple[S, str]],
     ) -> "Parser[T]":
         """Use the left parser and then the right parser but discard the result of the right parser."""
 
@@ -62,7 +67,8 @@ class Parser[T]:
         return Parser(f)
 
     def __rshift__[S](
-        self, other: "Parser[S]" | Callable[[str], tuple[S, str]]
+        self,
+        other: "Parser[S]" | Callable[[str], tuple[S, str]],
     ) -> "Parser[S]":
         """Use the left parser and then the right parser but discard the result of the left parser."""
 
@@ -96,10 +102,11 @@ class Parser[T]:
     def coerce[A](self, a: A) -> "Parser[A]":
         """Shorthand for maps that don't need an argument.
 
-        Not strictly speaking required."""
+        Not strictly speaking required.
+        """
 
         def f(ins: str):
-            t, remaining = self(ins)
+            _t, remaining = self(ins)
             return a, remaining
 
         return Parser(f)
@@ -107,7 +114,8 @@ class Parser[T]:
     def rep(self, sep: "Parser[str] | None" = None) -> "Parser[list[T]]":
         """Repeatedly apply a parser with an optional separator.
 
-        The results of the separator parser are discarded."""
+        The results of the separator parser are discarded.
+        """
 
         def f(ins: str):
             outs: list[T] = []
@@ -115,10 +123,8 @@ class Parser[T]:
                 try:
                     t, ins = self(ins)
                     if sep:
-                        try:
+                        with contextlib.suppress(ParserError):
                             _, ins = sep(ins)
-                        except ParserError:
-                            pass
                     outs.append(t)
                 except ParserError:
                     break
@@ -129,11 +135,13 @@ class Parser[T]:
     def fail(self, entity: str) -> "Parser[Never]":
         """Fail early if we find something we don't support.
 
-        Not strictly speaking required."""
+        Not strictly speaking required.
+        """
 
-        def f(ins: str):
+        def f(ins: str) -> Never:
             self(ins)
-            raise TierkreisError(f"{entity} not supported.")
+            msg = f"{entity} not supported."
+            raise TierkreisError(msg)
 
         return Parser(f)
 
@@ -154,7 +162,8 @@ def seq[A, B, C, D, E](
 ) -> Parser[tuple[A, B, C, D, E]]: ...
 def seq(*args: Parser) -> Parser[tuple]:
     """Run a sequence of parsers one after the other
-    and collect their outputs in a tuple."""
+    and collect their outputs in a tuple.
+    """
 
     def f(ins: str):
         outs = []
@@ -168,14 +177,16 @@ def seq(*args: Parser) -> Parser[tuple]:
 
 def lit(*args: str) -> Parser[str]:
     """If the input starts with one of the strings in `args`
-    then take the string off the stream and return it."""
+    then take the string off the stream and return it.
+    """
 
     def f(ins: str):
         for a in args:
             if ins.startswith(a):
                 return a, ins[len(a) :]
 
-        raise ParserError(f"lit: expected {args} found '{ins[:20]}'")
+        msg = f"lit: expected {args} found '{ins[:20]}'"
+        raise ParserError(msg)
 
     return Parser(f)
 
@@ -184,7 +195,8 @@ def reg(regex: str) -> Parser[str]:
     """If start of the input matches the `regex`
     then take the matching text off the stream and return it.
 
-    Please don't pass match groups within the regex; they will be taken care of."""
+    Please don't pass match groups within the regex; they will be taken care of.
+    """
 
     def f(ins: str):
         r = re.compile("^(" + regex + ")")
@@ -192,6 +204,7 @@ def reg(regex: str) -> Parser[str]:
         if a := r.match(ins):
             return a.group(0), ins[a.end() :]
 
-        raise ParserError(f"reg: expected regex {regex} found '{ins[:20]}'")
+        msg = f"reg: expected regex {regex} found '{ins[:20]}'"
+        raise ParserError(msg)
 
     return Parser(f)

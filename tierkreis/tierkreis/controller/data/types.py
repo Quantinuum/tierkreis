@@ -1,19 +1,18 @@
-from collections import defaultdict
-import logging
-from base64 import b64decode, b64encode
 import collections.abc
+import json
+import logging
+import pickle
+from base64 import b64decode, b64encode
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from inspect import Parameter, _empty, isclass
 from itertools import chain
-import json
-import pickle
 from types import NoneType, UnionType
 from typing import (
     Annotated,
     Any,
-    Mapping,
     Protocol,
     Self,
-    Sequence,
     TypeVar,
     Union,
     assert_never,
@@ -25,6 +24,8 @@ from typing import (
 
 from pydantic import BaseModel, ValidationError
 from pydantic._internal._generics import get_args as pydantic_get_args
+from typing_extensions import TypeIs
+
 from tierkreis.controller.data.core import (
     RestrictedNamedTuple,
     SerializationFormat,
@@ -32,7 +33,6 @@ from tierkreis.controller.data.core import (
     get_serializer,
 )
 from tierkreis.exceptions import TierkreisError
-from typing_extensions import TypeIs
 
 
 @runtime_checkable
@@ -40,7 +40,8 @@ class NdarraySurrogate(Protocol):
     """A protocol to enable use of numpy.ndarray.
 
     By default the serialisation will be done using dumps
-    and the deserialisation using `pickle.loads`."""
+    and the deserialisation using `pickle.loads`.
+    """
 
     def dumps(self) -> bytes: ...
     def tobytes(self) -> bytes: ...
@@ -112,7 +113,7 @@ class TierkreisEncoder(json.JSONEncoder):
 class TierkreisDecoder(json.JSONDecoder):
     """Decode bytes also."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         kwargs.setdefault("object_hook", self._object_hook)
         super().__init__(**kwargs)
 
@@ -129,10 +130,7 @@ class TierkreisDecoder(json.JSONDecoder):
 
 def _is_union(o: object) -> bool:
     return (
-        get_origin(o) == UnionType
-        or get_origin(o) == Union
-        or o == Union
-        or o == UnionType
+        o in (Union, UnionType) or get_origin(o) == UnionType or get_origin(o) == Union
     )
 
 
@@ -167,21 +165,20 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     ):
         return all(is_ptype(x) for x in get_args(annotation))
 
-    elif isclass(annotation) and issubclass(
-        annotation,
-        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
-    ):
-        return True
-
-    elif annotation in get_args(ElementaryType.__value__):
+    if (
+        isclass(annotation)
+        and issubclass(
+            annotation,
+            (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
+        )
+    ) or annotation in get_args(ElementaryType.__value__):
         return True
 
     origin = get_origin(annotation)
     if origin is not None:
         return is_ptype(origin) and all(is_ptype(x) for x in get_args(annotation))
 
-    else:
-        return False
+    return False
 
 
 def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> Any:
@@ -242,7 +239,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
                 return coerce_from_annotation(ser, t)
             except (AssertionError, ValidationError):
                 logger.debug(f"Tried deserialising as {t}")
-        raise TierkreisError(f"Could not deserialise {ser} as {annotation}")
+        msg = f"Could not deserialise {ser} as {annotation}"
+        raise TierkreisError(msg)
 
     origin = get_origin(annotation)
     if origin is None:
@@ -281,21 +279,24 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             k: coerce_from_annotation(ser[k], v)
             for k, v in origin.__annotations__.items()
         }
-        return cast(T, origin(**d))
+        return cast("T", origin(**d))
 
     if issubclass(origin, collections.abc.Sequence):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
 
-        return cast(T, [coerce_from_annotation(x, args[0]) for x in ser])
+        return cast("T", [coerce_from_annotation(x, args[0]) for x in ser])
 
     if issubclass(origin, collections.abc.Mapping):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
 
-        return cast(T, {k: coerce_from_annotation(v, args[1]) for k, v in ser.items()})
+        return cast(
+            "T",
+            {k: coerce_from_annotation(v, args[1]) for k, v in ser.items()},
+        )
 
     assert_never(ser)
 
@@ -329,7 +330,7 @@ def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> 
                 j = json.loads(bs, cls=TierkreisDecoder)
                 return coerce_from_annotation(j, annotation)
             except (json.JSONDecodeError, UnicodeDecodeError):
-                return cast(T, bs)
+                return cast("T", bs)
         case _:
             assert_never(method)
 
@@ -352,7 +353,7 @@ def generics_in_ptype(ptype: type[PType]) -> set[str]:
         return set()
 
     if issubclass(ptype, BaseModel):
-        return set((str(x) for x in pydantic_get_args(ptype)))
+        return {str(x) for x in pydantic_get_args(ptype)}
 
     assert_never(ptype)
 

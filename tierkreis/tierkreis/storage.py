@@ -2,20 +2,21 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
-from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
 )
 from tierkreis.controller.storage.in_memory import (
     ControllerInMemoryStorage as InMemoryStorage,
 )
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
 __all__ = ["FileStorage", "InMemoryStorage"]
 
 
 def read_outputs(
-    g: GraphData | GraphBuilder, storage: ControllerStorage
+    g: GraphData | GraphBuilder,
+    storage: ControllerStorage,
 ) -> dict[str, PType] | PType:
     if isinstance(g, GraphBuilder):
         g = g.get_data()
@@ -37,7 +38,8 @@ def read_loop_trace(
         g = g.get_data()
     loc = storage.loc_from_node_name(node_name)
     if loc is None:
-        raise TierkreisError(f"Loop name {node_name} not found in debug data.")
+        msg = f"Loop name {node_name} not found in debug data."
+        raise TierkreisError(msg)
     output_names = storage.read_output_ports(loc)
     if output_name is None:
         traces = {
@@ -45,9 +47,13 @@ def read_loop_trace(
             for name in output_names
             if name != "should_continue"
         }
-        return [dict(zip(traces.keys(), vals)) for vals in zip(*traces.values())]
+        return [
+            dict(zip(traces.keys(), vals, strict=False))
+            for vals in zip(*traces.values(), strict=False)
+        ]
 
     if output_name not in output_names:
-        raise TierkreisError(f"Output name {output_name} not found in loop node output")
+        msg = f"Output name {output_name} not found in loop node output"
+        raise TierkreisError(msg)
     results = storage.read_loop_trace(loc, output_name)
     return [ptype_from_bytes(r) for r in results]

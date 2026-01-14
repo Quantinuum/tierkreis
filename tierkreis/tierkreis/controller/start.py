@@ -1,23 +1,23 @@
+import logging
+import subprocess
+import sys
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-import subprocess
-import sys
-
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
-from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.storage.adjacency import outputs_iter
-from typing_extensions import assert_never
+from typing import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
+from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
+from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
+from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.labels import Labels
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+from tierkreis.labels import Labels
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,8 @@ def start(
 
     parent = node_location.parent()
     if parent is None:
-        raise TierkreisError(f"{node.type} node must have parent Loc.")
+        msg = f"{node.type} node must have parent Loc."
+        raise TierkreisError(msg)
 
     ins = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
 
@@ -78,12 +79,16 @@ def start(
         launcher_name = ".".join(name.split(".")[:-1])
         name = name.split(".")[-1]
         call_args_path = storage.write_worker_call_args(
-            node_location, name, ins, output_list
+            node_location,
+            name,
+            ins,
+            output_list,
         )
         logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
 
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
-            executor, InMemoryExecutor
+            executor,
+            InMemoryExecutor,
         ):
             executor.run(launcher_name, call_args_path)
         elif launcher_name == "builtins":
@@ -146,17 +151,17 @@ def start(
                 else:
                     eval_inputs[k] = (i, port)
             pipe_inputs_to_output_location(
-                storage, node_location.M(idx).N(-1), eval_inputs
+                storage,
+                node_location.M(idx).N(-1),
+                eval_inputs,
             )
             # Necessary in the node visualization
             storage.write_node_def(
-                node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs)
+                node_location.M(idx),
+                Eval((-1, "body"), node.inputs, node.outputs),
             )
 
-    elif node.type == "ifelse":
-        pass
-
-    elif node.type == "eifelse":
+    elif node.type in {"ifelse", "eifelse"}:
         pass
     else:
         assert_never(node)

@@ -32,8 +32,9 @@ class MultipleExecutor:
             return self.default.run(launcher_name, worker_call_args_path)
         executor = self.executors.get(executor_name)
         if executor is None:
+            msg = f"{launcher_name} is assigned to non-existent executor name: {executor_name}."
             raise TierkreisError(
-                f"{launcher_name} is assigned to non-existent executor name: {executor_name}."
+                msg,
             )
 
         return executor.run(launcher_name, worker_call_args_path)

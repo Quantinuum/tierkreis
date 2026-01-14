@@ -1,9 +1,9 @@
 from pathlib import Path
-from uuid import UUID
 from typing import Any
-
+from uuid import UUID
 
 from pydantic import BaseModel, Field
+
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import (
     Eval,
@@ -13,8 +13,8 @@ from tierkreis.controller.data.graph import (
 )
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
     ControllerStorage,
+    StorageEntryMetadata,
 )
 from tierkreis.exceptions import TierkreisError
 
@@ -47,34 +47,44 @@ class GraphDataStorage(ControllerStorage):
         self.tkr_dir = Path.home() / ".tierkreis"
 
     def delete(self, path: Path) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def exists(self, path: Path) -> bool:
-        raise NotImplementedError("GraphDataStorage is only for graph construction.")
+        msg = "GraphDataStorage is only for graph construction."
+        raise NotImplementedError(msg)
 
     def list_subpaths(self, path: Path) -> list[Path]:
-        raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
+        msg = "GraphDataStorage uses GraphData not paths."
+        raise NotImplementedError(msg)
 
     def link(self, src: Path, dst: Path) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def mkdir(self, path: Path) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def read(self, path: Path) -> bytes:
-        raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
+        msg = "GraphDataStorage uses GraphData not paths."
+        raise NotImplementedError(msg)
 
     def stat(self, path: Path) -> StorageEntryMetadata:
-        raise NotImplementedError("GraphDataStorage is only for graph construction.")
+        msg = "GraphDataStorage is only for graph construction."
+        raise NotImplementedError(msg)
 
     def touch(self, path: Path, is_dir: bool = False) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def write(self, path: Path, value: bytes) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def write_node_def(self, node_location: Loc, node: NodeDef) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def read_node_def(self, node_location: Loc) -> NodeDef:
         try:
@@ -92,11 +102,13 @@ class GraphDataStorage(ControllerStorage):
         inputs: dict[PortID, OutputLoc],
         output_list: list[PortID],
     ) -> Path:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def read_worker_call_args(self, node_location: Loc) -> WorkerCallArgs:
+        msg = f"Node location {node_location} doesn't have a associate call args."
         raise TierkreisError(
-            f"Node location {node_location} doesn't have a associate call args."
+            msg,
         )
 
     def read_errors(self, node_location: Loc) -> str:
@@ -106,10 +118,12 @@ class GraphDataStorage(ControllerStorage):
         return False
 
     def write_node_errors(self, node_location: Loc, error_logs: str) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def mark_node_finished(self, node_location: Loc) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def is_node_finished(self, node_location: Loc) -> bool:
         return False
@@ -121,16 +135,21 @@ class GraphDataStorage(ControllerStorage):
         old_location: Loc,
         old_port: PortID,
     ) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def write_output(
-        self, node_location: Loc, output_name: PortID, value: bytes
+        self,
+        node_location: Loc,
+        output_name: PortID,
+        value: bytes,
     ) -> Path:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def read_output(self, node_location: Loc, output_name: PortID) -> bytes:
         node, graph = graph_node_from_loc(node_location, self.graph)
-        if -1 == node_location.peek_index() and output_name == "body":
+        if node_location.peek_index() == -1 and output_name == "body":
             return graph.model_dump_json().encode()
 
         outputs = _build_node_outputs(node)
@@ -138,7 +157,8 @@ class GraphDataStorage(ControllerStorage):
             if output := outputs[output_name]:
                 return output
             return b"null"
-        raise TierkreisError(f"No output named {output_name} in node {node_location}")
+        msg = f"No output named {output_name} in node {node_location}"
+        raise TierkreisError(msg)
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
         node, _ = graph_node_from_loc(node_location, self.graph)
@@ -152,7 +172,8 @@ class GraphDataStorage(ControllerStorage):
         return self.nodes[node_location].metadata
 
     def write_metadata(self, node_location: Loc) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
     def read_started_time(self, node_location: Loc) -> str | None:
         return None
@@ -162,7 +183,7 @@ class GraphDataStorage(ControllerStorage):
 
 
 def _build_node_outputs(node: NodeDef) -> dict[PortID, None | bytes]:
-    outputs: dict[PortID, None | bytes] = {val: None for val in node.outputs}
+    outputs: dict[PortID, None | bytes] = dict.fromkeys(node.outputs)
     if "*" in outputs:
         outputs["0"] = None
     return outputs

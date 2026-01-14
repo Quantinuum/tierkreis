@@ -1,10 +1,11 @@
 from pathlib import Path
+from time import time
 from uuid import UUID
 from time import time
 
 from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
     ControllerStorage,
+    StorageEntryMetadata,
 )
 
 
@@ -38,15 +39,13 @@ class ControllerInMemoryStorage(ControllerStorage):
 
     def list_subpaths(self, path: Path) -> list[Path]:
         if path == self.workflow_dir:
-            nodes = set(
-                [
-                    Path("/".join(str(x).split("/")[:2]))
-                    for x in self.files.keys()
-                    if str(x).startswith(str(path) + "/")
-                ]
-            )
+            nodes = {
+                Path("/".join(str(x).split("/")[:2]))
+                for x in self.files
+                if str(x).startswith(str(path) + "/")
+            }
             return list(nodes)
-        return [x for x in self.files.keys() if str(x).startswith(str(path) + "/")]
+        return [x for x in self.files if str(x).startswith(str(path) + "/")]
 
     def link(self, src: Path, dst: Path) -> None:
         self.files[dst] = self.files[src]

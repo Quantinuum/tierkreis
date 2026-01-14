@@ -1,13 +1,11 @@
 from logging import getLogger
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal, assert_never
 
 from pydantic import BaseModel, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from tierkreis.controller.data.core import PortID
-from typing_extensions import assert_never
 
-from tierkreis.controller.data.core import NodeIndex
+from tierkreis.controller.data.core import NodeIndex, PortID
 from tierkreis.exceptions import TierkreisError
 
 logger = getLogger(__name__)
@@ -20,7 +18,7 @@ class WorkerCallArgs(BaseModel):
     output_dir: Path
     done_path: Path
     error_path: Path
-    logs_path: Optional[Path]
+    logs_path: Path | None
 
 
 NodeStep = Literal["-"] | tuple[Literal["N", "L", "M"], NodeIndex]
@@ -28,7 +26,7 @@ NodeStep = Literal["-"] | tuple[Literal["N", "L", "M"], NodeIndex]
 
 class Loc(str):
     def __new__(cls, k: str = "-") -> "Loc":
-        return super(Loc, cls).__new__(cls, k)
+        return super().__new__(cls, k)
 
     def N(self, idx: int) -> "Loc":
         return Loc(str(self) + f".N{idx}")
@@ -84,13 +82,16 @@ class Loc(str):
                 case ("M", idx_str):
                     steps.append(("M", int(idx_str)))
                 case _:
-                    raise TierkreisError(f"Invalid Loc: {self}")
+                    msg = f"Invalid Loc: {self}"
+                    raise TierkreisError(msg)
 
         return steps
 
     @classmethod
     def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: GetCoreSchemaHandler
+        cls,
+        source_type: Any,
+        handler: GetCoreSchemaHandler,
     ) -> CoreSchema:
         return core_schema.no_info_after_validator_function(cls, handler(str))
 
@@ -99,10 +100,12 @@ class Loc(str):
             return "-", Loc("")
         steps = self.steps()
         if len(steps) < 2:
-            raise TierkreisError("Malformed Loc")
+            msg = "Malformed Loc"
+            raise TierkreisError(msg)
         first = steps.pop(1)
         if first == "-":
-            raise TierkreisError("Malformed Loc")
+            msg = "Malformed Loc"
+            raise TierkreisError(msg)
         return first, Loc.from_steps(steps)
 
     def pop_last(self) -> tuple[NodeStep, "Loc"]:
@@ -110,10 +113,12 @@ class Loc(str):
             return "-", Loc("")
         steps = self.steps()
         if len(steps) < 2:
-            raise TierkreisError("Malformed Loc")
+            msg = "Malformed Loc"
+            raise TierkreisError(msg)
         last = steps.pop(-1)
         if last == "-":
-            raise TierkreisError("Malformed Loc")
+            msg = "Malformed Loc"
+            raise TierkreisError(msg)
         return last, Loc.from_steps(steps)
 
     def peek(self) -> NodeStep:

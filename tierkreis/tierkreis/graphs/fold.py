@@ -1,4 +1,5 @@
-from typing import Generic, NamedTuple, TypeVar
+from typing import NamedTuple, TypeVar
+
 from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins.stubs import head, igt, tkr_len
 from tierkreis.controller.data.graph import GraphData
@@ -39,7 +40,9 @@ def _fold_graph_outer[A: PType, B: PType]():
 
     # Apply the function if we were able to pop off a value.
     tgd = TypedGraphRef[InnerFuncInput, TKR[B]](
-        func.value_ref(), TKR[B], InnerFuncInput
+        func.value_ref(),
+        TKR[B],
+        InnerFuncInput,
     )
     applied_next = g.eval(tgd, InnerFuncInput(accum, headed.head))
 
@@ -53,12 +56,12 @@ A = TypeVar("A", bound=PType, covariant=True)
 B = TypeVar("B", bound=PType, covariant=True)
 
 
-class FoldGraphInputs(NamedTuple, Generic[A, B]):
+class FoldGraphInputs[A: PType, B: PType](NamedTuple):
     initial: TKR[B]
     values: TKR[list[A]]
 
 
-class FoldFunctionInput(NamedTuple, Generic[A, B]):
+class FoldFunctionInput[A: PType, B: PType](NamedTuple):
     accum: TKR[B]
     value: TKR[A]
 
@@ -72,7 +75,9 @@ def fold_graph(
     foldfunc = g._graph_const(func)
     # TODO: include the computation inside the fold
     ins = FoldGraphOuterInputs(
-        TKR(*foldfunc.graph_ref), g.inputs.initial, g.inputs.values
+        TKR(*foldfunc.graph_ref),
+        g.inputs.initial,
+        g.inputs.values,
     )
     loop = g.loop(_fold_graph_outer(), ins)
     g.outputs(loop.accum)

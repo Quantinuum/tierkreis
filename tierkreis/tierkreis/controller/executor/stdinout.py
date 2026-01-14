@@ -26,13 +26,16 @@ class StdInOut:
         launcher_path = self.launchers_path / launcher_name
         self.errors_path = worker_call_args_path.parent / "errors"
         if not launcher_path.exists():
-            raise TierkreisError(f"Launcher not found: {launcher_name}.")
+            msg = f"Launcher not found: {launcher_name}."
+            raise TierkreisError(msg)
 
         if launcher_path.is_dir() and not (launcher_path / "main.sh").exists():
-            raise TierkreisError(f"Expected launcher file. Got {launcher_path}.")
+            msg = f"Expected launcher file. Got {launcher_path}."
+            raise TierkreisError(msg)
 
         if launcher_path.is_dir() and not (launcher_path / "main.sh").is_file():
-            raise TierkreisError(f"Expected launcher file. Got {launcher_path}/main.sh")
+            msg = f"Expected launcher file. Got {launcher_path}/main.sh"
+            raise TierkreisError(msg)
 
         if launcher_path.is_dir() and (launcher_path / "main.sh").is_file():
             launcher_path = launcher_path / "main.sh"
@@ -40,8 +43,8 @@ class StdInOut:
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
-        input_file = self.workflow_dir.parent / list(call_args.inputs.values())[0]
-        output_file = self.workflow_dir.parent / list(call_args.outputs.values())[0]
+        input_file = self.workflow_dir.parent / next(iter(call_args.inputs.values()))
+        output_file = self.workflow_dir.parent / next(iter(call_args.outputs.values()))
         done_path = self.workflow_dir.parent / call_args.done_path
 
         tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"

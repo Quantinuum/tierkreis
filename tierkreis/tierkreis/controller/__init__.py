@@ -1,5 +1,6 @@
 import logging
 from time import sleep
+from typing import TYPE_CHECKING
 
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import Eval, GraphData
@@ -10,6 +11,9 @@ from tierkreis.controller.start import NodeRunData, start, start_nodes
 from tierkreis.logger_setup import set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
+
+if TYPE_CHECKING:
+    from tierkreis.controller.data.core import PortID, ValueRef
 from tierkreis.controller.data.core import PortID, ValueRef
 from tierkreis.exceptions import TierkreisError
 
@@ -31,7 +35,7 @@ def run_graph(
 
     if not isinstance(graph_inputs, dict):
         graph_inputs = {"value": graph_inputs}
-    remaining_inputs = g.remaining_inputs({k for k in graph_inputs.keys()})
+    remaining_inputs = g.remaining_inputs(set(graph_inputs.keys()))
     if len(remaining_inputs) > 0:
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 

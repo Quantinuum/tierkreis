@@ -1,14 +1,13 @@
-from pathlib import Path
-import uuid
 import logging
+import uuid
+from pathlib import Path
 
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
+from tierkreis.controller.storage.filestorage import ControllerFileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -52,5 +51,5 @@ def run_workflow(
     )
     if print_output:
         all_outputs = graph.nodes[graph.output_idx()].inputs
-        for output in all_outputs:
-            print(f"{output}: {storage.read_output(Loc(), output)}")
+        for _output in all_outputs:
+            pass

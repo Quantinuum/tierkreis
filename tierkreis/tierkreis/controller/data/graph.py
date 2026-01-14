@@ -1,10 +1,11 @@
-from dataclasses import dataclass, field
 import logging
-from typing import Any, Callable, Literal, assert_never
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, Literal, assert_never
+
 from pydantic import BaseModel, RootModel
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.core import ValueRef
+
+from tierkreis.controller.data.core import NodeIndex, PortID, ValueRef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class Func:
     function_name: str
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
     type: Literal["function"] = field(default="function")
 
 
@@ -24,7 +25,7 @@ class Func:
 class Eval:
     graph: ValueRef
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
     type: Literal["eval"] = field(default="eval")
 
 
@@ -33,7 +34,7 @@ class Loop:
     body: ValueRef
     inputs: dict[PortID, ValueRef]
     continue_port: PortID  # The port that specifies if the loop should continue.
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
     type: Literal["loop"] = field(default="loop")
     name: str | None = None
 
@@ -42,15 +43,15 @@ class Loop:
 class Map:
     body: ValueRef
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
     type: Literal["map"] = field(default="map")
 
 
 @dataclass
 class Const:
     value: Any
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
-    inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
+    inputs: dict[PortID, ValueRef] = field(default_factory=dict)
     type: Literal["const"] = field(default="const")
 
 
@@ -59,8 +60,8 @@ class IfElse:
     pred: ValueRef
     if_true: ValueRef
     if_false: ValueRef
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
-    inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
+    inputs: dict[PortID, ValueRef] = field(default_factory=dict)
     type: Literal["ifelse"] = field(default="ifelse")
 
 
@@ -69,8 +70,8 @@ class EagerIfElse:
     pred: ValueRef
     if_true: ValueRef
     if_false: ValueRef
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
-    inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
+    inputs: dict[PortID, ValueRef] = field(default_factory=dict)
 
     type: Literal["eifelse"] = field(default="eifelse")
 
@@ -78,15 +79,15 @@ class EagerIfElse:
 @dataclass
 class Input:
     name: str
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
-    inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
+    inputs: dict[PortID, ValueRef] = field(default_factory=dict)
     type: Literal["input"] = field(default="input")
 
 
 @dataclass
 class Output:
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, NodeIndex] = field(default_factory=dict)
     type: Literal["output"] = field(default="output")
 
 
@@ -108,12 +109,16 @@ class GraphData(BaseModel):
         return self.add(Const(value))("value")
 
     def func(
-        self, function_name: str, inputs: dict[PortID, ValueRef]
+        self,
+        function_name: str,
+        inputs: dict[PortID, ValueRef],
     ) -> Callable[[PortID], ValueRef]:
         return self.add(Func(function_name, inputs))
 
     def eval(
-        self, graph: ValueRef, inputs: dict[PortID, ValueRef]
+        self,
+        graph: ValueRef,
+        inputs: dict[PortID, ValueRef],
     ) -> Callable[[PortID], ValueRef]:
         return self.add(Eval(graph, inputs))
 
@@ -148,8 +153,9 @@ class GraphData(BaseModel):
         match node.type:
             case "output":
                 if self.graph_output_idx is not None:
+                    msg = f"Graph already has output at index {self.graph_output_idx}"
                     raise TierkreisError(
-                        f"Graph already has output at index {self.graph_output_idx}"
+                        msg,
                     )
 
                 self.graph_output_idx = idx
@@ -175,20 +181,25 @@ class GraphData(BaseModel):
     def output_idx(self) -> NodeIndex:
         idx = self.graph_output_idx
         if idx is None:
-            raise TierkreisError("Graph has no output index.")
+            msg = "Graph has no output index."
+            raise TierkreisError(msg)
 
         node = self.nodes[idx]
         if node.type != "output":
-            raise TierkreisError(f"Expected output node at {idx} found {node}")
+            msg = f"Expected output node at {idx} found {node}"
+            raise TierkreisError(msg)
 
         return idx
 
     def remaining_inputs(self, provided_inputs: set[PortID]) -> set[PortID]:
         fixed_inputs = set(self.fixed_inputs.keys())
         if fixed_inputs & provided_inputs:
-            raise TierkreisError(
+            msg = (
                 f"Fixed inputs {fixed_inputs}"
                 f" should not intersect provided inputs {provided_inputs}."
+            )
+            raise TierkreisError(
+                msg,
             )
 
         actual_inputs = fixed_inputs.union(provided_inputs)
@@ -199,15 +210,17 @@ def graph_node_from_loc(
     node_location: Loc,
     graph: GraphData,
 ) -> tuple[NodeDef, GraphData]:
-    """Assumes the first part of a loc can be found in current graph"""
+    """Assumes the first part of a loc can be found in current graph."""
     if len(graph.nodes) == 0:
-        raise TierkreisError("Cannot convert location to node. Reason: Empty Graph")
+        msg = "Cannot convert location to node. Reason: Empty Graph"
+        raise TierkreisError(msg)
     if node_location == "-":
         return Eval((-1, "body"), {}), graph
 
     step, remaining_location = node_location.pop_first()
     if isinstance(step, str):
-        raise TierkreisError("Cannot convert location: Reason: Malformed Loc")
+        msg = "Cannot convert location: Reason: Malformed Loc"
+        raise TierkreisError(msg)
     (_, node_id) = step
     if node_id == -1:
         return Eval((-1, "body"), {}), graph
@@ -236,8 +249,11 @@ def graph_node_from_loc(
 def _unwrap_graph(node: NodeDef, node_type: str) -> GraphData:
     """Safely unwraps a const nodes GraphData."""
     if not isinstance(node, Const):
-        raise TierkreisError(
+        msg = (
             f"Cannot convert location to node. Reason: {node_type} does not wrap const"
+        )
+        raise TierkreisError(
+            msg,
         )
     match node.value:
         case GraphData() as graph:
@@ -248,6 +264,7 @@ def _unwrap_graph(node: NodeDef, node_type: str) -> GraphData:
             return GraphData(**data)
 
         case _:
+            msg = "Cannot convert location to node. Reason: const value is not a graph"
             raise TierkreisError(
-                "Cannot convert location to node. Reason: const value is not a graph"
+                msg,
             )

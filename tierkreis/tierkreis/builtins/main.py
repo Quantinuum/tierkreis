@@ -1,11 +1,13 @@
+import statistics
+from collections.abc import Sequence
 from logging import getLogger
 from pathlib import Path
 from random import randint
-import statistics
 from sys import argv
 from time import sleep
-from typing import NamedTuple, Sequence
+from typing import NamedTuple
 
+from tierkreis import Worker
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.data.models import portmapping
 from tierkreis.controller.data.types import (
@@ -13,10 +15,8 @@ from tierkreis.controller.data.types import (
     bytes_from_ptype,
     ptype_from_bytes,
 )
-from tierkreis.worker.worker import TierkreisWorkerError
 from tierkreis.worker.storage.protocol import WorkerStorage
-from tierkreis import Worker
-
+from tierkreis.worker.worker import TierkreisWorkerError
 
 logger = getLogger(__name__)
 
@@ -30,7 +30,7 @@ def iadd(a: int, b: int) -> int:
 
 
 @worker.task()
-def add(a: int | float, b: int | float) -> int | float:
+def add(a: float, b: float) -> int | float:
     return a + b
 
 
@@ -40,7 +40,7 @@ def isubtract(a: int, b: int) -> int:
 
 
 @worker.task()
-def subtract(a: int | float, b: int | float) -> int | float:
+def subtract(a: float, b: float) -> int | float:
     return a - b
 
 
@@ -51,12 +51,12 @@ def itimes(a: int, b: int) -> int:
 
 
 @worker.task()
-def times(a: int | float, b: int | float) -> int | float:
+def times(a: float, b: float) -> int | float:
     return a * b
 
 
 @worker.task()
-def divide(a: int | float, b: int | float) -> float:
+def divide(a: float, b: float) -> float:
     return a / b
 
 
@@ -72,7 +72,7 @@ def igt(a: int, b: int) -> bool:
 
 
 @worker.task()
-def gt(a: int | float, b: int | float) -> bool:
+def gt(a: float, b: float) -> bool:
     return a > b
 
 
@@ -82,12 +82,12 @@ def conjugate(z: complex) -> complex:
 
 
 @worker.task()
-def eq(a: int | float, b: int | float) -> bool:
+def eq(a: float, b: float) -> bool:
     return a == b
 
 
 @worker.task()
-def neq(a: int | float, b: int | float) -> bool:
+def neq(a: float, b: float) -> bool:
     return a != b
 
 
@@ -97,17 +97,17 @@ def ipow(a: int, b: int) -> int:
 
 
 @worker.task()
-def pow(a: int | float, b: int | float) -> int | float:
+def pow(a: float, b: float) -> int | float:
     return a**b
 
 
 @worker.task()
-def tkr_abs(a: int | float) -> int | float:
+def tkr_abs(a: float) -> int | float:
     return abs(a)
 
 
 @worker.task()
-def tkr_round(a: float | int) -> int:
+def tkr_round(a: float) -> int:
     return round(a)
 
 
@@ -135,7 +135,7 @@ def tkr_id[T: PType](value: T) -> T:
 
 
 @worker.task()
-def append[T](v: list[T], a: T) -> list[T]:  # noqa: E741
+def append[T](v: list[T], a: T) -> list[T]:
     v.append(a)
     return v
 
@@ -147,7 +147,7 @@ class Headed[T: PType](NamedTuple):
 
 
 @worker.task()
-def head[T: PType](v: list[T]) -> Headed[T]:  # noqa: E741
+def head[T: PType](v: list[T]) -> Headed[T]:
     head, rest = v[0], v[1:]
     return Headed(head=head, rest=rest)
 
@@ -185,7 +185,8 @@ def unfold_values(args: WorkerCallArgs, storage: WorkerStorage) -> None:
             for i, v in enumerate(value_list):
                 storage.write_output(args.output_dir / str(i), bytes_from_ptype(v))
         case _:
-            raise TierkreisWorkerError(f"Expected list found {value_list}")
+            msg = f"Expected list found {value_list}"
+            raise TierkreisWorkerError(msg)
 
 
 @worker.task()
@@ -195,7 +196,7 @@ def concat(lhs: str, rhs: str) -> str:
 
 @worker.task()
 def tkr_zip[U, V](a: list[U], b: list[V]) -> list[tuple[U, V]]:
-    return list(zip(a, b))
+    return list(zip(a, b, strict=False))
 
 
 @portmapping
@@ -206,7 +207,7 @@ class Unzipped[U: PType, V: PType](NamedTuple):
 
 @worker.task()
 def unzip[U: PType, V: PType](value: list[tuple[U, V]]) -> Unzipped[U, V]:
-    value_a, value_b = map(list, zip(*value))
+    value_a, value_b = map(list, zip(*value, strict=False))
     return Unzipped(a=value_a, b=value_b)
 
 
@@ -286,12 +287,12 @@ def concat_lists[U: PType, V: PType](first: list[U], second: list[V]) -> list[U 
 
 
 @worker.task()
-def tkr_str(value: int | float | bool) -> str:
+def tkr_str(value: float | bool) -> str:
     return str(value)
 
 
 @worker.task()
-def tkr_int(value: int | float | bool | str) -> int:
+def tkr_int(value: float | bool | str) -> int:
     return int(value)
 
 

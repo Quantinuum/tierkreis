@@ -38,13 +38,16 @@ class ShellExecutor:
         self.errors_path = worker_call_args_path.parent / "logs"
 
         if not launcher_path.exists():
-            raise TierkreisError(f"Launcher not found: {launcher_name}.")
+            msg = f"Launcher not found: {launcher_name}."
+            raise TierkreisError(msg)
 
         if launcher_path.is_dir() and not (launcher_path / "main.sh").exists():
-            raise TierkreisError(f"Expected launcher file. Got {launcher_path}.")
+            msg = f"Expected launcher file. Got {launcher_path}."
+            raise TierkreisError(msg)
 
         if launcher_path.is_dir() and not (launcher_path / "main.sh").is_file():
-            raise TierkreisError(f"Expected launcher file. Got {launcher_path}/main.sh")
+            msg = f"Expected launcher file. Got {launcher_path}/main.sh"
+            raise TierkreisError(msg)
 
         if launcher_path.is_dir() and (launcher_path / "main.sh").is_file():
             launcher_path = launcher_path / "main.sh"
@@ -55,7 +58,7 @@ class ShellExecutor:
         env = os.environ.copy() | self.env.copy()
         env.update(self._create_env(call_args, self.workflow_dir.parent, export_values))
         env["worker_call_args_file"] = str(
-            self.workflow_dir.parent / worker_call_args_path
+            self.workflow_dir.parent / worker_call_args_path,
         )
         done_path = self.workflow_dir.parent / call_args.done_path
         _error_path = self.errors_path.parent / "_error"
@@ -74,7 +77,10 @@ class ShellExecutor:
         )
 
     def _create_env(
-        self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool
+        self,
+        call_args: WorkerCallArgs,
+        base_dir: Path,
+        export_values: bool,
     ) -> dict[str, str]:
         env = {
             "checkpoints_directory": str(base_dir),

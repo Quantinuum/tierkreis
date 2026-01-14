@@ -1,5 +1,6 @@
-from pathlib import Path
 import platform
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 
@@ -51,7 +52,7 @@ def pjsub_large_spec() -> JobSpec:
     return JobSpec(
         job_name="pjsub_large",
         account="hp240496",
-        command=f"{str(uv_path)} run main.py",
+        command=f"{uv_path!s} run main.py",
         queue="q-QTM-M",
         resource=ResourceSpec(nodes=32),
         environment={
@@ -74,7 +75,7 @@ def pjsub_small_spec() -> JobSpec:
     return JobSpec(
         job_name="pjsub_small",
         account="hp240496",
-        command=f"{str(uv_path)} run main.py",
+        command=f"{uv_path!s} run main.py",
         resource=ResourceSpec(nodes=1),
         environment={
             "VIRTUAL_ENVIRONMENT": "",

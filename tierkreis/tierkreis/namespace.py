@@ -1,16 +1,18 @@
+import shutil
+import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from inspect import Signature, signature
 from logging import getLogger
 from pathlib import Path
-import shutil
-import subprocess
-from typing import Callable, Self
+from typing import Self
+
 from tierkreis.codegen import format_method, format_model
 from tierkreis.controller.data.models import PModel, is_portmapping
 from tierkreis.controller.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
-from tierkreis.idl.spec import spec
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
+from tierkreis.idl.spec import spec
 
 
 logger = getLogger(__name__)
@@ -20,7 +22,7 @@ WorkerFunction = Callable[..., PModel]
 @dataclass
 class Namespace:
     name: str
-    methods: list[Method] = field(default_factory=lambda: [])
+    methods: list[Method] = field(default_factory=list)
     models: set[Model] = field(default_factory=lambda: set())
 
     def add_struct(self, gt: GenericType) -> None:
@@ -32,7 +34,7 @@ class Namespace:
         for decl in decls:
             [self.add_struct(g) for g in decl.t.included_structs()]
 
-        portmapping_flag = True if is_portmapping(gt.origin) else False
+        portmapping_flag = bool(is_portmapping(gt.origin))
         model = Model(portmapping_flag, gt, decls)
         self.models.add(model)
 
@@ -41,11 +43,13 @@ class Namespace:
         sig = signature(func)
         for param in sig.parameters.values():
             if not is_ptype(param.annotation):
-                raise TierkreisError(f"Expected PType got {param.annotation}")
+                msg = f"Expected PType got {param.annotation}"
+                raise TierkreisError(msg)
 
         out = sig.return_annotation
         if not is_portmapping(out) and not is_ptype(out) and out is not None:
-            raise TierkreisError(f"Expected PModel found {out}")
+            msg = f"Expected PModel found {out}"
+            raise TierkreisError(msg)
 
         return sig
 
@@ -88,7 +92,7 @@ class Namespace:
     def stubs(self) -> str:
         functions = [format_method(self.name, f) for f in self.methods]
         functions_str = "\n\n".join(functions)
-        models_str = "\n\n".join([format_model(x) for x in sorted(list(self.models))])
+        models_str = "\n\n".join([format_model(x) for x in sorted(self.models)])
 
         return f'''"""Code generated from {self.name} namespace. Please do not edit."""
 
@@ -113,7 +117,7 @@ from tierkreis.controller.data.types import PType, Struct
 
         ruff_binary = shutil.which("ruff")
         if ruff_binary:
-            subprocess.run([ruff_binary, "format", stubs_path])
-            subprocess.run([ruff_binary, "check", "--fix", stubs_path])
+            subprocess.run([ruff_binary, "format", stubs_path], check=False)
+            subprocess.run([ruff_binary, "check", "--fix", stubs_path], check=False)
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")

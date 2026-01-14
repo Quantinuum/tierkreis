@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
-    parents = {k: v for k, v in node.inputs.items()}
+    parents = dict(node.inputs.items())
 
     match node.type:
         case "eval":
@@ -36,7 +36,9 @@ def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
 
 
 def unfinished_inputs(
-    storage: ControllerStorage, loc: Loc, node: NodeDef
+    storage: ControllerStorage,
+    loc: Loc,
+    node: NodeDef,
 ) -> list[ValueRef]:
     ins = in_edges(node).values()
     ins = [x for x in ins if x[0] >= 0]  # inputs at -1 already finished

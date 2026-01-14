@@ -5,6 +5,7 @@ We use https://typespec.io/docs/language-basics/built-in-types/ as a guide.
 
 from types import NoneType
 from typing import ForwardRef
+
 from tierkreis.idl.models import GenericType
 from tierkreis.idl.parser import Parser, lit, reg, seq
 
@@ -31,13 +32,13 @@ generics = (lit("<") >> ident.rep(lit(",")) << lit(">")).opt().map(lambda x: x o
 
 def array_t(ins: str) -> tuple[GenericType, str]:
     return (lit("Array<") >> type_symbol << lit(">")).map(
-        lambda x: GenericType(list, [x])
+        lambda x: GenericType(list, [x]),
     )(ins)
 
 
 def record_t(ins: str) -> tuple[GenericType, str]:
     return (lit("Record<") >> type_symbol << lit(">")).map(
-        lambda x: GenericType(dict, [GenericType(str, []), x])
+        lambda x: GenericType(dict, [GenericType(str, []), x]),
     )(ins)
 
 

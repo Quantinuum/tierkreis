@@ -25,5 +25,3 @@ class ControllerExecutor(Protocol):
         :param worker_call_args_path: Location of the worker call args.
         :type worker_call_args_path: Path
         """
-
-    ...

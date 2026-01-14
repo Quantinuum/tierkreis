@@ -17,7 +17,10 @@ class UvExecutor:
     """
 
     def __init__(
-        self, registry_path: Path, logs_path: Path, env: dict[str, str] | None = None
+        self,
+        registry_path: Path,
+        logs_path: Path,
+        env: dict[str, str] | None = None,
     ) -> None:
         self.launchers_path = registry_path
         self.logs_path = logs_path
@@ -40,7 +43,8 @@ class UvExecutor:
         if uv_path is None:
             uv_path = shutil.which("uv")
         if uv_path is None:
-            raise TierkreisError("uv is required to use the uv_executor")
+            msg = "uv is required to use the uv_executor"
+            raise TierkreisError(msg)
 
         worker_path = self.launchers_path / launcher_name
 

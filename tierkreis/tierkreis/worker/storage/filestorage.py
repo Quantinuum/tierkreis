@@ -1,6 +1,6 @@
 import json
-from glob import glob
 import os
+from glob import glob
 from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
@@ -21,7 +21,7 @@ class WorkerFileStorage:
         return path if path.is_absolute() else self.tierkreis_dir / path
 
     def read_call_args(self, path: Path) -> WorkerCallArgs:
-        with open(self.resolve(path), "r") as fh:
+        with open(self.resolve(path)) as fh:
             return WorkerCallArgs(**json.loads(fh.read()))
 
     def read_input(self, path: Path) -> bytes:
