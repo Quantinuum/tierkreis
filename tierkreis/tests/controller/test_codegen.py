@@ -27,4 +27,6 @@ formats: list[tuple[type[PType], str]] = [
 def test_format_ttype(ttype: type[PType], expected: str) -> None:
     generic_type = GenericType.from_type(ttype)
 
-    assert format_generic_type(generic_type, False, False) == expected
+    assert (
+        format_generic_type(generic_type, include_bound=False, is_tkr=False) == expected
+    )

@@ -1,3 +1,5 @@
+"""Namespace for a tierkreis worker."""
+
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -20,21 +22,36 @@ WorkerFunction = Callable[..., PModel]
 
 @dataclass
 class Namespace:
+    """The namespace of a worker.
+
+    attr name: The name of the namespace.
+    attr methods: The methods in the namespace.
+    attr models: The models in the namespace.
+    """
+
     name: str
     methods: list[Method] = field(default_factory=list)
     models: set[Model] = field(default_factory=set)
 
-    def add_struct(self, gt: GenericType) -> None:
-        if not isinstance(gt.origin, Struct) or Model(False, gt, []) in self.models:
+    def add_struct(self, generic_type: GenericType) -> None:
+        """Add a struct to the namespace.
+
+        :param generic_type: The generic type to add.
+        :type generic_type: GenericType
+        """
+        if (
+            not isinstance(generic_type.origin, Struct)
+            or Model(is_portmapping=False, t=generic_type, decls=[]) in self.models
+        ):
             return
 
-        annotations = gt.origin.__annotations__
+        annotations = generic_type.origin.__annotations__
         decls = [TypedArg(k, GenericType.from_type(x)) for k, x in annotations.items()]
         for decl in decls:
             [self.add_struct(g) for g in decl.t.included_structs()]
 
-        portmapping_flag = bool(is_portmapping(gt.origin))
-        model = Model(portmapping_flag, gt, decls)
+        portmapping_flag = bool(is_portmapping(generic_type.origin))
+        model = Model(portmapping_flag, generic_type, decls)
         self.models.add(model)
 
     @staticmethod
@@ -53,6 +70,11 @@ class Namespace:
         return sig
 
     def add_function(self, func: WorkerFunction) -> None:
+        """Add a function to the namespace.
+
+        :param func: The function to add.
+        :type func: WorkerFunction
+        """
         sig = self._validate_signature(func)
 
         method = Method(
@@ -66,12 +88,22 @@ class Namespace:
         )
         self.methods.append(method)
 
-        for t in func.__annotations__.values():
-            [self.add_struct(x) for x in GenericType.from_type(t).included_structs()]
+        for annotation_type in func.__annotations__.values():
+            [
+                self.add_struct(struct)
+                for struct in GenericType.from_type(annotation_type).included_structs()
+            ]
 
     @classmethod
     def from_spec_file(cls, path: Path) -> "Namespace":
-        with open(path) as fh:
+        """Generate a Namespace from a tsp spec file.
+
+        :param path: The path to the spec file.
+        :type path: Path
+        :return: The generated namespace.
+        :rtype: Namespace
+        """
+        with Path.open(path) as fh:
             namespace_spec = spec(fh.read())
             return cls._from_spec(namespace_spec[0])
 
@@ -80,18 +112,23 @@ class Namespace:
         models = args[0]
         interface = args[1]
         namespace = cls(interface.name, models=set(models))
-        for f in interface.methods:
-            model = next((x for x in models if x.t == f.return_type), None)
+        for method in interface.methods:
+            model = next((x for x in models if x.t == method.return_type), None)
             if model is not None:
-                f.return_type_is_portmapping = model.is_portmapping
-            namespace.methods.append(f)
+                method.return_type_is_portmapping = model.is_portmapping
+            namespace.methods.append(method)
 
         return namespace
 
     def stubs(self) -> str:
-        functions = [format_method(self.name, f) for f in self.methods]
+        """Generate type stubs strings for the namespace.
+
+        :return: The generated stubs as string.
+        :rtype: str
+        """
+        functions = [format_method(self.name, method) for method in self.methods]
         functions_str = "\n\n".join(functions)
-        models_str = "\n\n".join([format_model(x) for x in sorted(self.models)])
+        models_str = "\n\n".join([format_model(model) for model in sorted(self.models)])
 
         return f'''"""Code generated from {self.name} namespace. Please do not edit."""
 
@@ -106,12 +143,12 @@ from tierkreis.controller.data.types import PType, Struct
 '''
 
     def write_stubs(self, stubs_path: Path) -> None:
-        """Writes the type stubs to stubs_path.
+        """Write the type stubs to stubs_path.
 
         :param stubs_path: The location to write to.
         :type stubs_path: Path
         """
-        with open(stubs_path, "w+") as fh:
+        with Path.open(stubs_path, "w+") as fh:
             fh.write(self.stubs())
 
         ruff_binary = shutil.which("ruff")
