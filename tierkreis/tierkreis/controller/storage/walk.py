@@ -12,7 +12,7 @@ from tierkreis.controller.data.graph import (
     Map,
     NodeDef,
 )
-from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.start import NodeRunData
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
@@ -79,7 +79,7 @@ def walk_node(
             return WalkResult([node_run_data], [])
 
         case "loop":
-            return walk_loop(storage, parent, idx, node)
+            return walk_loop(storage, parent.N(idx), (parent.N(node.body[0]), node.body[1]), node)
 
         case "map":
             return walk_map(storage, parent, idx, node)
@@ -108,15 +108,14 @@ def walk_node(
 
 
 def walk_loop(
-    storage: ControllerStorage, parent: Loc, idx: NodeIndex, loop: Loop
+    storage: ControllerStorage, loc: Loc, graph_input: OutputLoc, loop: Loop
 ) -> WalkResult:
-    loc = parent.N(idx)
     if storage.is_node_finished(loc):
         return WalkResult([], [], [])
 
     iter = storage.latest_loop_iteration(loc)
     new_location = loc.L(iter)
-    message = storage.read_output(loc.N(-1), BODY_PORT)
+    message = storage.read_output(*graph_input)
     g = ptype_from_bytes(message, GraphData)
     loop_outputs = g.nodes[g.output_idx()].inputs
 
@@ -135,6 +134,8 @@ def walk_loop(
 
     ins = {k: (-1, k) for k in loop.inputs.keys()}
     ins.update(loop_outputs)
+    #ALAN this is dodgy....I think WalkResult should have a third component
+    # as "things to pass to start_graph", i.e. with OutputLoc's not these -1's
     node_run_data = NodeRunData(
         loc.L(iter + 1),
         Eval((-1, BODY_PORT), ins, loop.outputs),
