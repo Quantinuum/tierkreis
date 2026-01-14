@@ -144,11 +144,6 @@ def start(
             storage.mark_node_finished(node_location)
         graph_input = (parent.N(node.body[0]), node.body[1])
         for idx, p in map_eles:
-            # Necessary in the node visualization
-            storage.write_node_def(
-                node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs)
-            )
-
             start_graph(
                 storage,
                 executor,
@@ -172,6 +167,11 @@ def start_graph(
     graph_input: OutputLoc,
     ins: dict[PortID, OutputLoc],
 ) -> None:
+    # We have to write something here to mark the node/graph as started.
+    # TODO ALAN - pass NodeDef? But can't really make valid/correct inputs.
+    # For now just write a dummy, but don't overwrite if there's a better one already!
+    if not storage.is_node_started(loc):
+        storage.write_node_def(loc, Eval((-1, "body"), {}))
     message = storage.read_output(*graph_input)
     g = ptype_from_bytes(message, GraphData)
     ins["body"] = graph_input
