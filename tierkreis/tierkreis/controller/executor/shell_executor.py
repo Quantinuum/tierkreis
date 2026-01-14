@@ -32,7 +32,6 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
         export_values: bool = False,
     ) -> None:
         launcher_path = self.launchers_path / launcher_name

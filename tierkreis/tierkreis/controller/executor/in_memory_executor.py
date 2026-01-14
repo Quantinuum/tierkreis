@@ -26,7 +26,6 @@ class InMemoryExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
     ) -> None:
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(

@@ -13,7 +13,6 @@ class ControllerExecutor(Protocol):
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
     ) -> None:
         """Run the node defined by the node_definition path.
 

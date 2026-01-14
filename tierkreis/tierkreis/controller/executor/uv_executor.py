@@ -28,7 +28,6 @@ class UvExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
         uv_path: str | None = None,
     ) -> None:
         self.errors_path = (

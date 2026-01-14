@@ -22,7 +22,6 @@ class StdInOut:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
     ) -> None:
         launcher_path = self.launchers_path / launcher_name
         self.errors_path = worker_call_args_path.parent / "errors"
