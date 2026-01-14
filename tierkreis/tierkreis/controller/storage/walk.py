@@ -139,7 +139,8 @@ def walk_loop(
     ins.update({k: (new_location, k) for k in loop_outputs})
     task = LoopIterTask(loop_loc.L(iter + 1), graph_input, ins)
 
-    # Mark the iter as started so latest_loop_iteration picks it up:
+    # Mark the iter as started so latest_loop_iteration picks it up
+    # (not really the right node def, but works for is_node_started):
     storage.write_node_def(task.iter_location, loop)
     return WalkResult([task], [])
 
