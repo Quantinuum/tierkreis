@@ -1,3 +1,5 @@
+"""Tierkreis CLI main entrypoint."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,7 +8,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.graph import GraphData
@@ -14,18 +16,32 @@ from tierkreis.controller.data.types import PType, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
 
 if TYPE_CHECKING:
+    import types
     from collections.abc import Callable
 
+logger = logging.getLogger(__name__)
 
-def _import_from_path(module_name: str, file_path: str) -> Any:
-    spec = importlib.util.spec_from_file_location(module_name, file_path)  # type: ignore
-    module = importlib.util.module_from_spec(spec)  # type: ignore
+
+def _import_from_path(module_name: str, file_path: str) -> types.ModuleType:
+    """Import a graph when supplied as a path to a python file."""
+    spec = importlib.util.spec_from_file_location(module_name, file_path)  # type: ignore[no-untyped-call]
+    module = importlib.util.module_from_spec(spec)  # type: ignore[no-untyped-call]
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
 
 
 def load_graph(graph_input: str) -> GraphData:
+    """Load a graph from an argument string.
+
+    Loads a graph similar to how python runs modules with "-m"
+
+    :param graph_input: The argument string specifying the graph.
+    :type graph_input: str
+    :raises TierkreisError: If the argument string is invalid.
+    :return: The loaded graph data.
+    :rtype: GraphData
+    """
     if ":" not in graph_input:
         msg = f"Invalid argument: {graph_input}"
         raise TierkreisError(msg)
@@ -40,8 +56,9 @@ def load_graph(graph_input: str) -> GraphData:
 
 
 def _load_inputs(input_files: list[str]) -> dict[str, PType]:
+    """Load the inputs to a graph."""
     if len(input_files) == 1 and input_files[0].endswith(".json"):
-        with open(input_files[0]) as fh:
+        with Path.open(Path(input_files[0])) as fh:
             return {k: json.dumps(v).encode() for k, v in json.load(fh).items()}
     inputs = {}
     for input_file in input_files:
@@ -49,7 +66,7 @@ def _load_inputs(input_files: list[str]) -> dict[str, PType]:
             msg = f"Invalid argument: {input_file}"
             raise TierkreisError(msg)
         key, value = input_file.split(":")
-        with open(value, "rb") as fh:
+        with Path.open(Path(value), "rb") as fh:
             inputs[key] = ptype_from_bytes(fh.read())
     return inputs
 
@@ -57,6 +74,13 @@ def _load_inputs(input_files: list[str]) -> dict[str, PType]:
 def parse_args(
     main_parser: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> argparse.ArgumentParser:
+    """Parse the arguments for the 'run' subcommand.
+
+    :param main_parser: The main parser to add the subcommand to.
+    :type main_parser: argparse._SubParsersAction[argparse.ArgumentParser]
+    :return: The parser for the 'run' subcommand.
+    :rtype: argparse.ArgumentParser
+    """
     parser = main_parser.add_parser(
         name="run",
         description="Tierkreis: a workflow engine for quantum HPC.",
@@ -140,13 +164,18 @@ def parse_args(
 
 
 def run_workflow_args(args: argparse.Namespace) -> None:
+    """Run a tierkreis workflow according to the run command.
+
+    :param args: The arguments parsed from tkr run.
+    :type args: argparse.Namespace
+    """
     if args.verbose:
         args.log_level = logging.DEBUG
 
     if args.graph_location is not None:
         graph = load_graph(args.graph_location)
     else:
-        with open(args.from_file) as fh:
+        with Path.open(args.from_file) as fh:
             graph = ptype_from_bytes(fh.read().encode(), GraphData)
     inputs = _load_inputs(args.input_files) if args.input_files is not None else {}
     run_workflow(
@@ -155,7 +184,7 @@ def run_workflow_args(args: argparse.Namespace) -> None:
         name=args.name,
         run_id=args.run_id,
         registry_path=args.registry_path,
-        use_uv_worker=args.uv,
+        use_uv_executor=args.uv,
         n_iterations=args.n_iterations,
         polling_interval_seconds=args.polling_interval_seconds,
         print_output=args.print_output,
@@ -163,19 +192,28 @@ def run_workflow_args(args: argparse.Namespace) -> None:
 
 
 class TierkreisCli:
+    """The main CLI class."""
+
     @staticmethod
     def add_subcommand(
         main_parser: argparse._SubParsersAction[argparse.ArgumentParser],
     ) -> None:
+        """Add the 'run' subcommand."""
         parser = parse_args(main_parser)
         parser.set_defaults(func=TierkreisCli.execute)
 
     @staticmethod
     def execute(args: argparse.Namespace) -> None:
+        """Execute function according to parsed args.
+
+        :param args: The parsed arguments.
+        :type args: argparse.Namespace
+        """
         run_workflow_args(args)
 
 
 def main() -> None:
+    """Run the main entry point for the tkr cli."""
     parser = argparse.ArgumentParser(
         prog="tkr",
         description="The main tierkreis command-line tool.",
@@ -183,12 +221,12 @@ def main() -> None:
     subparser = parser.add_subparsers(title="subcommands")
     TierkreisCli.add_subcommand(subparser)
     try:
-        from tierkreis_visualization.cli import TierkreisVizCli
+        from tierkreis_visualization.cli import TierkreisVizCli  # noqa: PLC0415
 
         TierkreisVizCli.add_subcommand(subparser)
     except ImportError:
-        logging.warning("Could not import Tierkreis Visualization CLI")
-        logging.warning(
+        logger.warning("Could not import Tierkreis Visualization CLI")
+        logger.warning(
             "To install it, please run 'pip install tierkreis-visualization'",
         )
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
