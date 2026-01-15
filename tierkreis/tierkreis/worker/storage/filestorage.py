@@ -1,3 +1,6 @@
+"""Filestorage implementation analog to ControllerFileStorage."""
+
+# ruff: noqa: D102 (class methods inherited from WorkerStorage)
 import json
 import os
 from glob import glob
@@ -8,6 +11,13 @@ from tierkreis.controller.data.location import WorkerCallArgs
 
 
 class WorkerFileStorage:
+    """File storage implementation for workers.
+
+    :fields:
+        tierkreis_dir: The directory to use for storing tierkreis data,
+            defaults to ~/.tierkreis/checkpoints.
+    """
+
     def __init__(self, tierkreis_dir: Path | None = None) -> None:
         if tierkreis_dir is not None:
             self.tierkreis_dir = tierkreis_dir
@@ -21,15 +31,15 @@ class WorkerFileStorage:
         return path if path.is_absolute() else self.tierkreis_dir / path
 
     def read_call_args(self, path: Path) -> WorkerCallArgs:
-        with open(self.resolve(path)) as fh:
+        with Path.open(self.resolve(path)) as fh:
             return WorkerCallArgs(**json.loads(fh.read()))
 
     def read_input(self, path: Path) -> bytes:
-        with open(self.resolve(path), "rb") as fh:
+        with Path.open(self.resolve(path), "rb") as fh:
             return fh.read()
 
     def write_output(self, path: Path, value: bytes) -> None:
-        with open(self.resolve(path), "wb+") as fh:
+        with Path.open(self.resolve(path), "wb+") as fh:
             fh.write(value)
 
     def glob(self, path_string: str) -> list[str]:
@@ -39,5 +49,5 @@ class WorkerFileStorage:
         self.resolve(path).touch()
 
     def write_error(self, path: Path, error_logs: str) -> None:
-        with open(self.resolve(path), "w+") as f:
+        with Path.open(self.resolve(path), "w+") as f:
             f.write(error_logs)
