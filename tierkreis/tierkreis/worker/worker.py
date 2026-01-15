@@ -1,8 +1,10 @@
+"""Tierkreis worker implementation."""
+
 import logging
 from collections.abc import Callable
 from inspect import Signature, signature
 from pathlib import Path
-from typing import TypeVar
+from typing import NoReturn, TypeVar
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
@@ -30,7 +32,7 @@ type MethodName = str
 
 
 class TierkreisWorkerError(TierkreisError):
-    pass
+    """Exception raised when a worker encounters an error."""
 
 
 F = TypeVar("F", bound=Callable[..., PModel])
@@ -40,7 +42,8 @@ class Worker:
     """A worker bundles a set of functionality under a common namespace.
 
     The main usage of a worker is to convert python functions into atomic tasks,
-    which can then be executed by the :py:class:`tierkreis.controller.executor.uv_executor.UvExecutor`
+    which can then be executed by the
+    :py:class:`tierkreis.controller.executor.uv_executor.UvExecutor`
     or similar Executors.
     From the worker type stubs can be generated to statically check the function calls.
 
@@ -54,10 +57,14 @@ class Worker:
         def exp(x: float, a: float) -> float:
             return value = a * np.exp(x)
 
-    :param name: The name of the worker.
-    :type name: str
-    :param storage: Storage layer for the worker to interact with the ControllerStorage.
-    :type storage: WorkerStorage
+    :fields:
+        name (str) The name of the worker.
+        storage (WorkerStorage) Storage layer for the
+            worker to interact with the ControllerStorage.
+        namespace (Namespace) The namespace of the worker.
+        types (dict[MethodName, Signature]) Mapping function names to their signatures.
+        functions (dict[str, Callable[[WorkerCallArgs], None]])
+            Mapping function names to their implementations.
     """
 
     functions: dict[str, Callable[[WorkerCallArgs], None]]
@@ -83,10 +90,10 @@ class Worker:
         for k, p in inputs.items():
             try:
                 bs[k] = self.storage.read_input(p)
-            except EntryNotFound:
+            except EntryNotFound as e:
                 if not has_default(self.types[f.__name__].parameters[k]):
                     msg = f"Input {k} not found at {p}."
-                    raise TierkreisError(msg)
+                    raise TierkreisError(msg) from e
 
         args = {}
         for k, b in bs.items():
@@ -109,12 +116,21 @@ class Worker:
             self.storage.write_output(path, bs)
 
     def add_types(self, func: WorkerFunction) -> None:
+        """Add the types of a function to the worker.
+
+        :param func: The function to add types for.
+        :type func: WorkerFunction
+        """
         self.types[func.__name__] = signature(func)
 
     def primitive_task(
         self,
     ) -> Callable[[PrimitiveTask], None]:
-        """Registers a python function as a primitive task with the worker."""
+        """Register a python function as a primitive task with the worker.
+
+        :return: The wrapped task.
+        :rtype: Callable[[PrimitiveTask], None]
+        """
 
         def function_decorator(func: PrimitiveTask) -> None:
             def wrapper(args: WorkerCallArgs) -> None:
@@ -125,7 +141,11 @@ class Worker:
         return function_decorator
 
     def task(self) -> Callable[[F], F]:
-        """Registers a python function as a task with the worker."""
+        """Register a python function as a task with the worker.
+
+        :return: The wrapped function.
+        :rtype: Callable[[Callable[..., PModel]], Callable[..., PModel]]
+        """
 
         def function_decorator(func: F) -> F:
             self.namespace.add_function(func)
@@ -151,14 +171,18 @@ class Worker:
         node_definition = self.storage.read_call_args(worker_definition_path)
         logger.debug(node_definition.model_dump())
 
+        def _check_function(msg: str) -> NoReturn:
+            raise TierkreisError(msg)
+
         try:
             function = self.functions.get(node_definition.function_name, None)
             if function is None:
-                msg = f"{self.name}: function name {node_definition.function_name} not found"
-                raise TierkreisError(
-                    msg,
+                msg = (
+                    f"{self.name}: function name"
+                    f"{node_definition.function_name} not found"
                 )
-            logger.info(f"running: {node_definition.function_name} in {self.name}")
+                _check_function(msg)
+            logger.info("running: %s in %s", node_definition.function_name, self.name)
 
             function(node_definition)
 
@@ -167,13 +191,22 @@ class Worker:
         except Exception as err:
             logger.exception("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
-            msg = f"Worker {self.name} encountered error when executing {node_definition.function_name}."
+            msg = (
+                f"Worker {self.name} encountered error when executing "
+                f"{node_definition.function_name}."
+            )
             raise TierkreisWorkerError(
                 msg,
             ) from err
 
     def app(self, argv: list[str]) -> None:
-        """Wrapper for UV execution."""
+        """Run the worker as uv app.
+
+        Either generate stubs or run the worker.
+
+        :param argv: The cli args.
+        :type argv: list[str]
+        """
         handler = add_handler_from_environment(logger)
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
