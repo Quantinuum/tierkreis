@@ -64,7 +64,10 @@ def test_nested_error() -> None:
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/errors").exists()
+    assert (storage.logs_path.parent / "-/logs").exists()
+    with Path.open((storage.logs_path.parent / "-/logs"), "r") as f:
+        error_contents = f.read()
+        assert "-.N1.N0" in error_contents
 
 
 def test_non_zero_exit_code() -> None:
