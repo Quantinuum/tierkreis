@@ -20,12 +20,16 @@ class MultipleExecutor:
         self.executors = executors
         self.assignments = assignments
 
-    def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
+    def run(
+        self,
+        launcher_name: str,
+        worker_call_args_path: Path,
+        enable_logging: bool = True,
+    ) -> None:
         executor_name = self.assignments.get(launcher_name, None)
         # If there is no assignment for the worker, use the default.
         if executor_name is None:
             return self.default.run(launcher_name, worker_call_args_path)
-
         executor = self.executors.get(executor_name)
         if executor is None:
             raise TierkreisError(

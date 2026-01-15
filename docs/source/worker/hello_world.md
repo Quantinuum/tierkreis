@@ -53,6 +53,14 @@ The complete worker file is as follows:
 :language: python
 ```
 
+### Logging and Errors
+
+The Tierkreis controller will automatically collect logs and errors from workers by adding a file handler, additionally redirecting any worker output from `stdout` and `stderr` to `errors_path` and `logs_path` automatically.
+Any other output, e.g. writing debug information to a log file won't be captured.
+For convenience you can use the builtin logging functionality `worker.logger` which is an instance of a `logging.Logger`.
+Raising an exception in a worker task will terminate the graph execution.
+An example of this can be found in the examples: `error_handling_graph.py`
+
 ## Generating stubs
 
 Since this worker uses the Tierkreis Python library, we can automatically generate stub files using the following command.

@@ -27,12 +27,6 @@ class InMemoryExecutor:
         launcher_name: str,
         worker_call_args_path: Path,
     ) -> None:
-        logging.basicConfig(
-            format="%(asctime)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-            filemode="a",
-            level=logging.INFO,
-        )
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(
             **json.loads(self.storage.read(worker_call_args_path))
