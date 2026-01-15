@@ -8,6 +8,7 @@ from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
+from tierkreis.storage import read_outputs
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ def run_workflow(
     run_id: int | None = None,
     log_level: int | str = logging.INFO,
     registry_path: Path | None = None,
+    *,
     print_output: bool = False,
     use_uv_worker: bool = False,
     n_iterations: int = 10000,
@@ -47,6 +49,9 @@ def run_workflow(
         polling_interval_seconds,
     )
     if print_output:
-        all_outputs = graph.nodes[graph.output_idx()].inputs
-        for _output in all_outputs:
-            pass
+        all_outputs = read_outputs(graph, storage)
+        if isinstance(all_outputs, dict):
+            for output_name, output_value in all_outputs.items():
+                print(f"{output_name}: {output_value!r}")  # noqa: T201
+        else:
+            print(f"value: {all_outputs!r}")  # noqa: T201
