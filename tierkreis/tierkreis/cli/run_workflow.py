@@ -20,6 +20,7 @@ def run_workflow(
     run_id: int | None = None,
     log_level: int | str = logging.INFO,
     registry_path: Path | None = None,
+    *,
     print_output: bool = False,
     use_uv_worker: bool = False,
     n_iterations: int = 10000,
@@ -48,4 +49,9 @@ def run_workflow(
         polling_interval_seconds,
     )
     if print_output:
-        read_outputs(graph, storage)
+        all_outputs = read_outputs(graph, storage)
+        if isinstance(all_outputs, dict):
+            for output_name, output_value in all_outputs.items():
+                print(f"{output_name}: {output_value!r}")  # noqa: T201
+        else:
+            print(f"value: {all_outputs!r}")  # noqa: T201

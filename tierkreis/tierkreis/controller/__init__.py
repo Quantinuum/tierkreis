@@ -28,6 +28,7 @@ def run_graph[A: TModel, B: TModel](
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
+    *,
     enable_logging: bool = True,
 ) -> None:
     if isinstance(g, GraphBuilder):
@@ -38,8 +39,9 @@ def run_graph[A: TModel, B: TModel](
     remaining_inputs = g.remaining_inputs(set(graph_inputs.keys()))
     if len(remaining_inputs) > 0:
         logger.warning(
-            f"Some inputs were not provided: {remaining_inputs}. "
+            "Some inputs were not provided: %s",
             "Tasks will use default values if available.",
+            remaining_inputs,
         )
 
     storage.write_metadata(Loc(""))
@@ -76,10 +78,16 @@ def resume_graph(
             node_errors = "\n".join(x for x in walk_results.errored)
             storage.write_node_errors(Loc(), node_errors)
 
+            logger.error("\n\nGraph finished with errors.\n\n")
+            for error_loc in walk_results.errored:
+                logger.error(storage.read_errors(error_loc))
+                logger.error("Node: '%s' encountered an error.", error_loc)
+                logger.error(
+                    "Stderr information is available at %s.",
+                    storage._worker_logs_path(error_loc),  # noqa: SLF001
+                )
 
-            for _error_loc in walk_results.errored:
-                pass
-
+            logger.error("--- Tierkreis graph errors above this line. ---")
             msg = "Graph encountered errors"
             raise TierkreisError(msg)
 

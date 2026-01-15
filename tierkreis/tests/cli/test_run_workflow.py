@@ -36,7 +36,7 @@ def test_run_workflow_with_output(graph: GraphData, capfd) -> None:  # noqa: ANN
     inputs = {}
     run_workflow(inputs=inputs, graph=graph, run_id=31415, print_output=True)
     out, _ = capfd.readouterr()
-    assert "{'simple_eval_output': 12}\n" in out
+    assert "simple_eval_output: 12\n" in out
 
 
 @pytest.fixture
