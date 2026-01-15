@@ -17,7 +17,7 @@ class GitHubDependency(TKRDependency):
     branch: str = "main"
 
     def install(self, worker_name: str, target_dir: Path):
-        cache_dir = WORKER_CACHE / "github" / self.account / self.repo
+        cache_dir = WORKER_CACHE / "github" / self.account / self.repo / self.branch
         cache_dir.mkdir(exist_ok=True, parents=True)
 
         git_dir = cache_dir / ".git"
