@@ -42,7 +42,7 @@ def run_hpc_executor(
     submission_cmd.append("-j")  # Pipe stderr to the same place as stdout
 
     with NamedTemporaryFile("w+") as output_file:
-        submission_cmd += ["-o", str(output_file)]
+        submission_cmd += ["-o", output_file.name]
         if spec.include_no_check_directory_flag:
             submission_cmd += ["--no-check-directory"]
 
