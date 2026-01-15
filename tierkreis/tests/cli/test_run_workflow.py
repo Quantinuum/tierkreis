@@ -19,7 +19,7 @@ def graph() -> GraphData:
 def test_run_workflow(graph: GraphData) -> None:
     inputs = {}
     run_workflow(inputs=inputs, graph=graph, run_id=31415)
-    with open(
+    with Path.open(
         Path.home()
         / ".tierkreis"
         / "checkpoints"
@@ -32,18 +32,24 @@ def test_run_workflow(graph: GraphData) -> None:
     assert c == 12
 
 
-def test_run_workflow_with_output(graph: GraphData, capfd) -> None:
+def test_run_workflow_with_output(graph: GraphData, capfd) -> None:  # noqa: ANN001
     inputs = {}
     run_workflow(inputs=inputs, graph=graph, run_id=31415, print_output=True)
     out, _ = capfd.readouterr()
     assert "{'simple_eval_output': 12}\n" in out
 
 
-@mock.patch("uuid.uuid4", return_value=UUID(int=31415))
-def test_run_workflow_default_run_id(_, graph: GraphData) -> None:
+@pytest.fixture
+def _patch_uuid4() -> mock.Mock:
+    with mock.patch("uuid.uuid4", return_value=UUID(int=31415)) as m:
+        return m
+
+
+@pytest.mark.usefixtures("_patch_uuid4", "graph")
+def test_run_workflow_default_run_id(graph: GraphData) -> None:
     inputs = {}
     run_workflow(inputs=inputs, graph=graph)
-    with open(
+    with Path.open(
         Path.home()
         / ".tierkreis"
         / "checkpoints"
