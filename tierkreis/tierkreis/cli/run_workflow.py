@@ -1,3 +1,5 @@
+"""Implementation to run a workflow."""
+
 import logging
 import uuid
 from pathlib import Path
@@ -13,7 +15,7 @@ from tierkreis.storage import read_outputs
 logger = logging.getLogger(__name__)
 
 
-def run_workflow(
+def run_workflow(  # noqa: PLR0913
     graph: GraphData,
     inputs: dict[str, PType],
     name: str | None = None,
@@ -22,18 +24,44 @@ def run_workflow(
     registry_path: Path | None = None,
     *,
     print_output: bool = False,
-    use_uv_worker: bool = False,
+    use_uv_executor: bool = False,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.1,
 ) -> None:
-    """Run a workflow."""
+    """Run a workflow.
+
+    Wrapper for :py:func:`tierkreis.controller.run_graph.run_graph` to run a workflow.
+    Adds some sensible defaults.
+
+    :param graph: The graph to run.
+    :type graph: GraphData
+    :param inputs: The inputs to the workflow.
+    :type inputs: dict[str, PType]
+    :param name: The name of the workflow, defaults to None
+    :type name: str | None, optional
+    :param run_id: The run ID of the workflow, defaults to None
+    :type run_id: int | None, optional
+    :param log_level: The log level for the workflow, defaults to logging.INFO
+    :type log_level: int | str, optional
+    :param registry_path: The worker registry, defaults to Path(__file__).parent
+    :type registry_path: Path | None, optional
+    :param print_output: Whether to print final outputs, defaults to False
+    :type print_output: bool, optional
+    :param use_uv_executor: Use the UV executor instead of ShellExecutor
+        , defaults to False
+    :type use_uv_executor: bool, optional
+    :param n_iterations: The maximum number of iterations, defaults to 10000
+    :type n_iterations: int, optional
+    :param polling_interval_seconds: The controller tickrate, defaults to 0.1
+    :type polling_interval_seconds: float, optional
+    """
     logger.setLevel(log_level)
     workflow_id = uuid.uuid4() if run_id is None else uuid.UUID(int=run_id)
     logger.info("Workflow ID is %s", workflow_id)
     storage = ControllerFileStorage(workflow_id, name=name, do_cleanup=True)
     if registry_path is None:
         registry_path = Path(__file__).parent
-    if use_uv_worker:
+    if use_uv_executor:
         executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
     else:
         executor = ShellExecutor(registry_path, storage.workflow_dir)
