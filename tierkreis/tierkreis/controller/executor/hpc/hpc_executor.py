@@ -39,35 +39,35 @@ def run_hpc_executor(
 
     spec.command += " " + str(worker_call_args_path)
     submission_cmd = [executor.command]
-    if spec.output_path is None:
-        submission_cmd += ["-o", str(executor.logs_path)]
-    else:
-        submission_cmd += ["-o", str(spec.output_path)]
-    if spec.error_path is None:
-        submission_cmd += ["-e", str(executor.errors_path)]
-    else:
-        submission_cmd += ["-e", str(spec.error_path)]
-    if spec.include_no_check_directory_flag:
-        submission_cmd += ["--no-check-directory"]
+    submission_cmd.append("-j")  # Pipe stderr to the same place as stdout
 
-    if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
-        spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
+    with NamedTemporaryFile("w+") as output_file:
+        submission_cmd += ["-o", str(output_file)]
+        if spec.include_no_check_directory_flag:
+            submission_cmd += ["--no-check-directory"]
 
-    with NamedTemporaryFile(
-        mode="w+",
-        delete=True,
-        suffix=".sh",
-        prefix=f"{spec.job_name}-",
-    ) as script_file:
-        generate_script(executor.script_fn, spec, Path(script_file.name))
-        submission_cmd.append(script_file.name)
+        if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
+            spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
 
-        process = subprocess.run(
-            submission_cmd,
-            start_new_session=True,
-            capture_output=True,
-            universal_newlines=True,
-        )
+        with NamedTemporaryFile(
+            mode="w+",
+            delete=True,
+            suffix=".sh",
+            prefix=f"{spec.job_name}-",
+        ) as script_file:
+            generate_script(executor.script_fn, spec, Path(script_file.name))
+            submission_cmd.append(script_file.name)
+
+            process = subprocess.run(
+                submission_cmd,
+                start_new_session=True,
+                capture_output=True,
+                universal_newlines=True,
+            )
+
+        with open(executor.logs_path, "a+") as fh:
+            fh.write(output_file.read())
+
     if process.returncode != 0:
         with open(executor.errors_path, "a") as efh:
             efh.write("Error from script")
