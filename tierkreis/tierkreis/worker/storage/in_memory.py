@@ -1,3 +1,6 @@
+"""In-memory storage implementation analog to ControllerInMemoryStorage."""
+
+# ruff: noqa: D102 (class methods inherited from WorkerStorage)
 import fnmatch
 import json
 import logging
@@ -15,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryWorkerStorage:
+    """In-memory storage implementation for workers.
+
+    Delegates calls to the ControllerInMemoryStorage used for the workflow.
+    :fields:
+        controller_storage: The controller storage.
+    """
+
     def __init__(self, controller_storage: ControllerInMemoryStorage) -> None:
         self.controller_storage = controller_storage
 

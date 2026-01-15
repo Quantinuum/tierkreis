@@ -23,8 +23,8 @@ class ParserError(TierkreisError):
 class Parser[T]:
     """A parser for an arbitrary type in tierkreis.
 
-    :arg: fn: The parsing function.
-    :type fn: Callable[[str], tuple[T, str]]
+    :fields:
+        fn: The parsing function.
     """
 
     fn: Callable[[str], tuple[T, str]]
