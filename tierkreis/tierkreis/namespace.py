@@ -154,6 +154,17 @@ from tierkreis.controller.data.types import PType, Struct
         ruff_binary = shutil.which("ruff")
         if ruff_binary:
             subprocess.run([ruff_binary, "format", stubs_path], check=False)
-            subprocess.run([ruff_binary, "check", "--fix", stubs_path], check=False)
+            subprocess.run(
+                [
+                    ruff_binary,
+                    "check",
+                    "--fix",
+                    "--ignore",
+                    "D,N801,UP007",
+                    "--unsafe-fixes",
+                    stubs_path,
+                ],
+                check=False,
+            )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")

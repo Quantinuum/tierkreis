@@ -36,11 +36,11 @@ class iadd(NamedTuple):
 
 
 class add(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -62,11 +62,11 @@ class isubtract(NamedTuple):
 
 
 class subtract(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -88,11 +88,11 @@ class itimes(NamedTuple):
 
 
 class times(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -101,8 +101,8 @@ class times(NamedTuple):
 
 
 class divide(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[float]]:  # fmt: skip
@@ -140,8 +140,21 @@ class igt(NamedTuple):
 
 
 class gt(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[bool]]:  # fmt: skip
+        return TKR[bool]  # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class lt(NamedTuple):
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[bool]]:  # fmt: skip
@@ -165,8 +178,8 @@ class conjugate(NamedTuple):
 
 
 class eq(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[bool]]:  # fmt: skip
@@ -178,8 +191,8 @@ class eq(NamedTuple):
 
 
 class neq(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[bool]]:  # fmt: skip
@@ -203,12 +216,12 @@ class ipow(NamedTuple):
         return "builtins"
 
 
-class pow(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
-    b: TKR[int | float]  # fmt: skip
+class tkr_pow(NamedTuple):
+    a: TKR[float]  # fmt: skip
+    b: TKR[float]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -217,10 +230,10 @@ class pow(NamedTuple):
 
 
 class tkr_abs(NamedTuple):
-    a: TKR[int | float]  # fmt: skip
+    a: TKR[float]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -229,7 +242,7 @@ class tkr_abs(NamedTuple):
 
 
 class tkr_round(NamedTuple):
-    a: TKR[float | int]  # fmt: skip
+    a: TKR[float]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[int]]:  # fmt: skip
@@ -252,7 +265,7 @@ class neg(NamedTuple):
         return "builtins"
 
 
-class trk_and(NamedTuple):
+class tkr_and(NamedTuple):
     a: TKR[bool]  # fmt: skip
     b: TKR[bool]  # fmt: skip
 
@@ -265,7 +278,7 @@ class trk_and(NamedTuple):
         return "builtins"
 
 
-class trk_or(NamedTuple):
+class tkr_or(NamedTuple):
     a: TKR[bool]  # fmt: skip
     b: TKR[bool]  # fmt: skip
 
@@ -479,7 +492,7 @@ class tkr_encode(NamedTuple):
 
 
 class tkr_decode(NamedTuple):
-    bytes: TKR[bytes]  # fmt: skip
+    value_bytes: TKR[bytes]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[str]]:  # fmt: skip
@@ -544,8 +557,8 @@ class concat_lists[U: PType, V: PType](NamedTuple):
     second: TKR[list[V]]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[list[U | V]]]:  # fmt: skip
-        return TKR[list[U | V]]  # fmt: skip
+    def out() -> type[TKR[list[Union[U, V]]]]:  # fmt: skip
+        return TKR[list[Union[U, V]]]  # fmt: skip
 
     @property
     def namespace(self) -> str:
@@ -553,7 +566,7 @@ class concat_lists[U: PType, V: PType](NamedTuple):
 
 
 class tkr_str(NamedTuple):
-    value: TKR[int | float | bool]  # fmt: skip
+    value: TKR[Union[float, bool]]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[str]]:  # fmt: skip
@@ -565,7 +578,7 @@ class tkr_str(NamedTuple):
 
 
 class tkr_int(NamedTuple):
-    value: TKR[int | float | bool | str]  # fmt: skip
+    value: TKR[Union[float, bool, str]]  # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[int]]:  # fmt: skip
@@ -577,10 +590,10 @@ class tkr_int(NamedTuple):
 
 
 class sum_list(NamedTuple):
-    values: TKR[list[int | float]]  # fmt: skip
+    values: TKR[list[Union[int, float]]]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -589,10 +602,10 @@ class sum_list(NamedTuple):
 
 
 class prod_list(NamedTuple):
-    values: TKR[list[int | float]]  # fmt: skip
+    values: TKR[list[Union[int, float]]]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -601,10 +614,10 @@ class prod_list(NamedTuple):
 
 
 class max_item(NamedTuple):
-    values: TKR[list[int | float]]  # fmt: skip
+    values: TKR[list[Union[int, float]]]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -613,10 +626,10 @@ class max_item(NamedTuple):
 
 
 class min_item(NamedTuple):
-    values: TKR[list[int | float]]  # fmt: skip
+    values: TKR[list[Union[int, float]]]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[int | float]]:  # fmt: skip
+    def out() -> type[TKR[Union[int, float]]]:  # fmt: skip
         return TKR[Union[int, float]]  # fmt: skip
 
     @property
@@ -625,11 +638,11 @@ class min_item(NamedTuple):
 
 
 class sort_number_list(NamedTuple):
-    values: TKR[list[int | float]]  # fmt: skip
+    values: TKR[list[Union[int, float]]]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[list[int | float]]]:  # fmt: skip
-        return TKR[list[int | float]]  # fmt: skip
+    def out() -> type[TKR[list[Union[int, float]]]]:  # fmt: skip
+        return TKR[list[Union[int, float]]]  # fmt: skip
 
     @property
     def namespace(self) -> str:
