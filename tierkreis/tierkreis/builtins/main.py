@@ -295,7 +295,7 @@ def neg(*, a: bool) -> bool:
 
 
 @worker.task()
-def trk_and(*, a: bool, b: bool) -> bool:
+def tkr_and(*, a: bool, b: bool) -> bool:
     """Return the logical AND of two boolean values.
 
     :param a: The first boolean value.
@@ -310,7 +310,7 @@ def trk_and(*, a: bool, b: bool) -> bool:
 
 
 @worker.task()
-def trk_or(*, a: bool, b: bool) -> bool:
+def tkr_or(*, a: bool, b: bool) -> bool:
     """Return the logical OR of two boolean values.
 
     :param a: The first boolean value.
