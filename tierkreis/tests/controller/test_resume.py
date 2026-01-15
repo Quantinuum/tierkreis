@@ -46,7 +46,12 @@ from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.storage import read_outputs
 
 param_data: list[
-    tuple[GraphData | GraphBuilder, Any, str, dict[str, PType] | PType]
+    tuple[
+        GraphData | GraphBuilder,
+        dict[str, PType] | PType,
+        str,
+        dict[str, PType] | PType,
+    ]
 ] = [
     (simple_eval(), {"simple_eval_output": 12}, "simple_eval", {}),
     (simple_loop(), 10, "simple_loop", {}),
@@ -169,17 +174,21 @@ storage_ids = ["FileStorage", "In-memory"]
 
 
 @pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
-@pytest.mark.parametrize(("graph", "output", "name", "id", "inputs"), params, ids=ids)
-def test_resume(
+@pytest.mark.parametrize(
+    ("graph", "output", "name", "workflow_id", "inputs"),
+    params,
+    ids=ids,
+)
+def test_resume(  # noqa: PLR0913
     storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
     graph: GraphData,
-    output: Any,
+    output: dict[str, PType] | PType,
     name: str,
-    id: int,
+    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
     g = graph
-    storage = storage_class(UUID(int=id), name=name)
+    storage = storage_class(UUID(int=workflow_id), name=name)
     test_workers_path = Path(__file__).parent.parent / "test_workers"
     executor = UvExecutor(test_workers_path, storage.logs_path)
     if isinstance(storage, ControllerInMemoryStorage):

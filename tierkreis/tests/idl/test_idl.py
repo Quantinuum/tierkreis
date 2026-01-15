@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import pytest
-import tests.idl.namespace1
 
+import tests.idl.namespace1
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType
 from tierkreis.idl.type_symbols import type_symbol
@@ -31,8 +31,8 @@ type_symbols = [
     ),
 ]
 type_symbols_for_failure = ["decimal", "unknown", "duration"]
-dir = Path(__file__).parent
-typespecs = [(dir / "namespace1.tsp", tests.idl.namespace1.expected_namespace)]
+current_dir = Path(__file__).parent
+typespecs = [(current_dir / "namespace1.tsp", tests.idl.namespace1.expected_namespace)]
 
 
 @pytest.mark.parametrize(("type_symb", "expected"), type_symbols)

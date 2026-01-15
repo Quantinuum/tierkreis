@@ -1,5 +1,6 @@
+# noqa: INP001
 import logging
-from sys import argv, exit
+import sys
 
 from tierkreis import Worker
 
@@ -21,8 +22,8 @@ def wont_fail() -> int:
 
 @worker.task()
 def exit_code_1() -> int:
-    exit(1)
+    sys.exit(1)
 
 
 if __name__ == "__main__":
-    worker.app(argv)
+    worker.app(sys.argv)

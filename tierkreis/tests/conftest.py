@@ -1,7 +1,7 @@
 import pytest
 
 
-def pytest_addoption(parser) -> None:
+def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--optional",
         action="store_true",
@@ -10,11 +10,14 @@ def pytest_addoption(parser) -> None:
     )
 
 
-def pytest_configure(config) -> None:
+def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "optional: mark test as optional to run")
 
 
-def pytest_collection_modifyitems(config, items) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
     if config.getoption("--optional"):
         return
     skip_slow = pytest.mark.skip(reason="need --optional option to run")

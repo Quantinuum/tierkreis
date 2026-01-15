@@ -25,14 +25,14 @@ class DoublerOutput(NamedTuple):
     value: TKR[int]
 
 
-def typed_doubler():
+def typed_doubler() -> GraphBuilder[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     out = g.task(itimes(a=g.const(2), b=g.inputs))
     g.outputs(out)
     return g
 
 
-def typed_doubler_plus_multi():
+def typed_doubler_plus_multi() -> GraphBuilder[DoublerInput, DoublerOutput]:
     g = GraphBuilder(DoublerInput, DoublerOutput)
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
@@ -40,7 +40,7 @@ def typed_doubler_plus_multi():
     return g
 
 
-def typed_doubler_plus():
+def typed_doubler_plus() -> GraphBuilder[DoublerInput, TKR[int]]:
     g = GraphBuilder(DoublerInput, TKR[int])
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
@@ -52,7 +52,7 @@ class TypedEvalOutputs(NamedTuple):
     typed_eval_output: TKR[int]
 
 
-def typed_eval():
+def typed_eval() -> GraphBuilder[EmptyModel, TypedEvalOutputs]:
     g = GraphBuilder(EmptyModel, TypedEvalOutputs)
     e = g.eval(typed_doubler_plus(), DoublerInput(x=g.const(6), intercept=g.const(0)))
     g.outputs(TypedEvalOutputs(typed_eval_output=e))
@@ -68,7 +68,7 @@ class LoopBodyOutput(NamedTuple):
     should_continue: TKR[bool]
 
 
-def loop_body():
+def loop_body() -> GraphBuilder[LoopBodyInput, LoopBodyOutput]:
     g = GraphBuilder(LoopBodyInput, LoopBodyOutput)
     a_plus = g.task(iadd(a=g.inputs.loop_acc, b=g.const(1)))
     pred = g.task(igt(a=g.const(10), b=a_plus))
@@ -76,21 +76,21 @@ def loop_body():
     return g
 
 
-def typed_loop():
+def typed_loop() -> GraphBuilder[EmptyModel, TKR[int]]:
     g = GraphBuilder(EmptyModel, TKR[int])
     loop = g.loop(loop_body(), LoopBodyInput(loop_acc=g.const(6)))
     g.outputs(loop.loop_acc)
     return g
 
 
-def typed_map_simple():
+def typed_map_simple() -> GraphBuilder[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     m = g.map(typed_doubler(), g.inputs)
     g.outputs(m)
     return g
 
 
-def typed_map():
+def typed_map() -> GraphBuilder[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     ins = g.map(lambda n: DoublerInput(x=n, intercept=g.const(6)), g.inputs)
     m = g.map(typed_doubler_plus(), ins)
@@ -98,7 +98,7 @@ def typed_map():
     return g
 
 
-def typed_destructuring():
+def typed_destructuring() -> GraphBuilder[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     ins = g.map(lambda n: DoublerInput(x=n, intercept=g.const(6)), g.inputs)
     m = g.map(typed_doubler_plus_multi(), ins)
@@ -107,7 +107,7 @@ def typed_destructuring():
     return g
 
 
-def tuple_untuple():
+def tuple_untuple() -> GraphBuilder[EmptyModel, TKR[int]]:
     g = GraphBuilder(EmptyModel, TKR[int])
     t = g.task(tkr_tuple(g.const(1), g.const(2)))
     ut = g.task(untuple(t))
@@ -115,7 +115,7 @@ def tuple_untuple():
     return g
 
 
-def factorial():
+def factorial() -> GraphBuilder[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     pred = g.task(igt(g.inputs, g.const(1)))
     n_minus_one = g.task(iadd(g.const(-1), g.inputs))
@@ -130,7 +130,7 @@ class GCDInput(NamedTuple):
     b: TKR[int]
 
 
-def gcd():
+def gcd() -> GraphBuilder[GCDInput, TKR[int]]:
     g = GraphBuilder(GCDInput, TKR[int])
 
     pred = g.task(igt(g.inputs.b, g.const(0)))
@@ -141,14 +141,14 @@ def gcd():
     return g
 
 
-def tkr_conj():
+def tkr_conj() -> GraphBuilder[TKR[complex], TKR[complex]]:
     g = GraphBuilder(TKR[complex], TKR[complex])
     z = g.task(conjugate(g.inputs))
     g.outputs(z)
     return g
 
 
-def tkr_list_conj():
+def tkr_list_conj() -> GraphBuilder[TKR[list[complex]], TKR[list[complex]]]:
     g = GraphBuilder(TKR[list[complex]], TKR[list[complex]])
     zs = g.map(tkr_conj(), g.inputs)
     g.outputs(zs)
