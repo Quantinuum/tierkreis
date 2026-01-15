@@ -1,10 +1,13 @@
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from types import NoneType, UnionType
-from typing import Mapping, Sequence, TypeVar
+from typing import TypeVar
 from uuid import UUID
-from pydantic import BaseModel
+
 import pytest
+from pydantic import BaseModel
+
 from tierkreis.controller.data.types import (
     PType,
     bytes_from_ptype,
@@ -96,7 +99,7 @@ ptypes: Sequence[PType] = [
 
 
 @pytest.mark.parametrize("ptype", ptypes)
-def test_bytes_roundtrip(ptype: PType):
+def test_bytes_roundtrip(ptype: PType) -> None:
     bs = bytes_from_ptype(ptype)
     new_type = ptype_from_bytes(bs, type(ptype))
     assert ptype == new_type
@@ -117,7 +120,7 @@ annotated_ptypes: Sequence[tuple[PType, type]] = [
 
 
 @pytest.mark.parametrize("annotated_ptype", annotated_ptypes)
-def test_annotated_bytes_roundtrip(annotated_ptype: tuple[PType, type]):
+def test_annotated_bytes_roundtrip(annotated_ptype: tuple[PType, type]) -> None:
     ptype, annotation = annotated_ptype
     bs = bytes_from_ptype(ptype)
     new_type = ptype_from_bytes(bs, annotation)
@@ -125,12 +128,12 @@ def test_annotated_bytes_roundtrip(annotated_ptype: tuple[PType, type]):
 
 
 @pytest.mark.parametrize("ptype", type_list)
-def test_ptype_from_annotation(ptype: type[PType]):
+def test_ptype_from_annotation(ptype: type[PType]) -> None:
     assert is_ptype(ptype)
 
 
 @pytest.mark.parametrize("ptype", fail_list)
-def test_ptype_from_annotation_fails(ptype: type[PType]):
+def test_ptype_from_annotation_fails(ptype: type[PType]) -> None:
     assert not is_ptype(ptype)
 
 
@@ -145,6 +148,6 @@ generic_types.append((tuple[S, T], {str(S), str(T)}))  # type: ignore
 generic_types.append((UntupledModel[S, T], {str(S), str(T)}))  # type: ignore
 
 
-@pytest.mark.parametrize("ptype,generics", generic_types)
-def test_generic_types(ptype: type[PType], generics: set[type[PType]]):
+@pytest.mark.parametrize(("ptype", "generics"), generic_types)
+def test_generic_types(ptype: type[PType], generics: set[type[PType]]) -> None:
     assert generics_in_ptype(ptype) == generics

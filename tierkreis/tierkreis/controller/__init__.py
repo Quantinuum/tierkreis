@@ -8,13 +8,12 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
-from tierkreis.logger_setup import set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
+from tierkreis.logger_setup import set_tkr_logger
 
 if TYPE_CHECKING:
     from tierkreis.controller.data.core import PortID, ValueRef
-from tierkreis.controller.data.core import PortID, ValueRef
 from tierkreis.exceptions import TierkreisError
 
 root_loc = Loc("")
@@ -73,18 +72,12 @@ def resume_graph(
             node_errors = "\n".join(x for x in walk_results.errored)
             storage.write_node_errors(Loc(), node_errors)
 
-            print("\n\nGraph finished with errors.\n\n")
 
-            for error_loc in walk_results.errored:
-                print(storage.read_errors(error_loc))
-                print(f"Node: '{error_loc}' encountered an error.")
-                print(
-                    f"Stderr information is available at {storage._worker_logs_path(error_loc)}."
-                )
-                print("\n\n")
+            for _error_loc in walk_results.errored:
+                pass
 
-            print("--- Tierkreis graph errors above this line. ---\n\n")
-            raise TierkreisError("Graph encountered errors")
+            msg = "Graph encountered errors"
+            raise TierkreisError(msg)
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):

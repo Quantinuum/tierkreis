@@ -26,10 +26,7 @@ def run_workflow(
 ) -> None:
     """Run a workflow."""
     logger.setLevel(log_level)
-    if run_id is None:
-        workflow_id = uuid.uuid4()
-    else:
-        workflow_id = uuid.UUID(int=run_id)
+    workflow_id = uuid.uuid4() if run_id is None else uuid.UUID(int=run_id)
     logger.info("Workflow ID is %s", workflow_id)
     storage = ControllerFileStorage(workflow_id, name=name, do_cleanup=True)
     if registry_path is None:

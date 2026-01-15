@@ -54,7 +54,7 @@ class UvExecutor:
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         _error_path = self.errors_path.parent / "_error"
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,

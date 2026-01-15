@@ -33,6 +33,7 @@ target-version = "py312"
 extend-exclude = [
     # Ignore worker stubs:
     "*_worker.py",
+    "stubs.py",
 ]
 [tool.ruff.lint]
 select = ["ALL"]

@@ -47,7 +47,7 @@ class StdInOut:
         output_file = self.workflow_dir.parent / next(iter(call_args.outputs.values()))
         done_path = self.workflow_dir.parent / call_args.done_path
 
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         _error_path = self.errors_path.parent / "_error"
         proc = subprocess.Popen(
             ["bash"],

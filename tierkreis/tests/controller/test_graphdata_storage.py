@@ -1,5 +1,7 @@
 from uuid import UUID
+
 import pytest
+
 from tests.controller.sample_graphdata import simple_eval, simple_map
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import (
@@ -16,7 +18,7 @@ from tierkreis.exceptions import TierkreisError
 
 
 @pytest.mark.parametrize(
-    ["node_location_str", "graph", "target"],
+    ("node_location_str", "graph", "target"),
     [
         ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
         ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
@@ -31,14 +33,14 @@ def test_read_nodedef(node_location_str: str, graph: GraphData, target: str) -> 
 
 
 @pytest.mark.parametrize(
-    ["node_location_str", "graph", "port", "target"],
+    ("node_location_str", "graph", "port", "target"),
     [
         ("-.N0", simple_eval(), "value", b"null"),
         ("-.N4.M0", simple_map(), "0", b"null"),
     ],
 )
 def test_read_output(
-    node_location_str: str, graph: GraphData, port: PortID, target: str
+    node_location_str: str, graph: GraphData, port: PortID, target: str,
 ) -> None:
     loc = Loc(node_location_str)
     storage = GraphDataStorage(UUID(int=0), graph)
@@ -54,14 +56,14 @@ def test_raises() -> None:
 
 
 @pytest.mark.parametrize(
-    ["node_location_str", "graph", "target"],
+    ("node_location_str", "graph", "target"),
     [
         ("-.N0", simple_eval(), ["value"]),
         ("-.N4.M0", simple_map(), ["0"]),
     ],
 )
 def test_read_output_ports(
-    node_location_str: str, graph: GraphData, target: str
+    node_location_str: str, graph: GraphData, target: str,
 ) -> None:
     loc = Loc(node_location_str)
     storage = GraphDataStorage(UUID(int=0), graph)
@@ -70,7 +72,7 @@ def test_read_output_ports(
 
 
 @pytest.mark.parametrize(
-    ["node_location_str", "graph", "target"],
+    ("node_location_str", "graph", "target"),
     [
         ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
         ("-.N3.N1", simple_eval(), Input("intercept", outputs={"intercept": 4})),
@@ -99,7 +101,7 @@ def test_read_output_ports(
     ],
 )
 def test_graph_node_from_loc(
-    node_location_str: str, graph: GraphData, target: str
+    node_location_str: str, graph: GraphData, target: str,
 ) -> None:
     loc = Loc(node_location_str)
     node_def, _ = graph_node_from_loc(loc, graph)

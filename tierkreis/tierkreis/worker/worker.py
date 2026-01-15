@@ -1,10 +1,8 @@
 import logging
-import sys
 from collections.abc import Callable
 from inspect import Signature, signature
-import logging
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
@@ -168,8 +166,9 @@ class Worker:
         except Exception as err:
             logger.exception("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
+            msg = f"Worker {self.name} encountered error when executing {node_definition.function_name}."
             raise TierkreisWorkerError(
-                f"Worker {self.name} encountered error when executing {node_definition.function_name}."
+                msg,
             )
 
     def app(self, argv: list[str]) -> None:

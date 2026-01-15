@@ -1,15 +1,16 @@
 from typing import NamedTuple
+
+from tierkreis.builder import GraphBuilder
 from tierkreis.builtins.stubs import (
+    conjugate,
     iadd,
     igt,
     itimes,
+    mod,
     tkr_tuple,
     untuple,
-    mod,
-    conjugate,
 )
 from tierkreis.controller.data.core import EmptyModel
-from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.models import TKR
 
 

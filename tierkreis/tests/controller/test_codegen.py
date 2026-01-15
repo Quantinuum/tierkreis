@@ -23,8 +23,8 @@ formats: list[tuple[type[PType], str]] = [
 ]
 
 
-@pytest.mark.parametrize("ttype,expected", formats)
-def test_format_ttype(ttype: type[PType], expected: str):
+@pytest.mark.parametrize(("ttype", "expected"), formats)
+def test_format_ttype(ttype: type[PType], expected: str) -> None:
     generic_type = GenericType.from_type(ttype)
 
     assert (

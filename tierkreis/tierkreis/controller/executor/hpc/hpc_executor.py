@@ -9,7 +9,6 @@ from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
 from tierkreis.exceptions import TierkreisError
 
-
 logger = logging.getLogger(__name__)
 
 
