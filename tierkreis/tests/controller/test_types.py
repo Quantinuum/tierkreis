@@ -141,11 +141,11 @@ S = TypeVar("S")
 T = TypeVar("T")
 
 generic_types = []
-generic_types.append((list[T], {str(T)}))  # type: ignore
-generic_types.append((list[S | T], {str(S), str(T)}))  # type: ignore
-generic_types.append((list[list[list[T]]], {str(T)}))  # type: ignore
-generic_types.append((tuple[S, T], {str(S), str(T)}))  # type: ignore
-generic_types.append((UntupledModel[S, T], {str(S), str(T)}))  # type: ignore
+generic_types.append((list[T], {str(T)}))  # type: ignore[valid-type]
+generic_types.append((list[S | T], {str(S), str(T)}))  # type: ignore[valid-type]
+generic_types.append((list[list[list[T]]], {str(T)}))  # type: ignore[valid-type]
+generic_types.append((tuple[S, T], {str(S), str(T)}))  # type: ignore[valid-type]
+generic_types.append((UntupledModel[S, T], {str(S), str(T)}))  # type: ignore[valid-type]
 
 
 @pytest.mark.parametrize(("ptype", "generics"), generic_types)

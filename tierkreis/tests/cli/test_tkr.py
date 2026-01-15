@@ -20,9 +20,13 @@ graph_params = [
 ]
 
 
-@pytest.mark.parametrize(("input", "graph"), graph_params, ids=["load_module", "load_file"])
-def test_load_graph(input: str, graph: GraphData) -> None:
-    assert load_graph(input) == graph
+@pytest.mark.parametrize(
+    ("inputs", "graph"),
+    graph_params,
+    ids=["load_module", "load_file"],
+)
+def test_load_graph(inputs: str, graph: GraphData) -> None:
+    assert load_graph(inputs) == graph
 
 
 def test_load_graph_invalid() -> None:
@@ -55,10 +59,12 @@ input_params = [
 
 
 @pytest.mark.parametrize(
-    ("input", "result"), input_params, ids=["json_input", "binary_input"],
+    ("inputs", "result"),
+    input_params,
+    ids=["json_input", "binary_input"],
 )
-def test_load_inputs(input: list[str], result: dict[str, PType]) -> None:
-    assert _load_inputs(input) == result
+def test_load_inputs(inputs: list[str], result: dict[str, PType]) -> None:
+    assert _load_inputs(inputs) == result
 
 
 def test_load_inputs_invalid() -> None:
@@ -95,20 +101,29 @@ cli_params = [
         {"simple_eval_output": 12},
     ),
     (
-        [*default_args, "-g", "tests.controller.sample_graphdata:factorial", "-i", "n:tierkreis/tests/cli/data/n", "factorial:tierkreis/tests/cli/data/factorial"],
+        [
+            *default_args,
+            "-g",
+            "tests.controller.sample_graphdata:factorial",
+            "-i",
+            "n:tierkreis/tests/cli/data/n",
+            "factorial:tierkreis/tests/cli/data/factorial",
+        ],
         {"factorial_output": 120},
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    ("args", "result"), cli_params, ids=["simple_eval_cli", "factorial_cli"],
+    ("args", "result"),
+    cli_params,
+    ids=["simple_eval_cli", "factorial_cli"],
 )
 def test_end_to_end(args: list[str], result: dict[str, bytes]) -> None:
     with mock.patch.object(sys, "argv", args):
         main()
     for key, value in result.items():
-        with open(
+        with Path.open(
             Path.home()
             / ".tierkreis"
             / "checkpoints"

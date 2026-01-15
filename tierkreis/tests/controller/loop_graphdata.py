@@ -137,10 +137,10 @@ def _loop_body_scoping() -> GraphBuilder[Scoping, ScopingOut]:
 
     one = g.const(1)
 
-    next = g.task(tkr_builtins.iadd(g.inputs.current, one))
+    next_val = g.task(tkr_builtins.iadd(g.inputs.current, one))
     should_continue = g.task(tkr_builtins.neq(g.inputs.end, g.inputs.current))
 
-    g.outputs(ScopingOut(should_continue=should_continue, current=next))
+    g.outputs(ScopingOut(should_continue=should_continue, current=next_val))
 
     return g
 

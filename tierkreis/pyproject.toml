@@ -34,6 +34,9 @@ extend-exclude = [
     # Ignore worker stubs:
     "*_worker.py",
     "stubs.py",
+    "stubs_output.py",
+    # Ignore docs
+    "tierkreis/docs/*",
 ]
 [tool.ruff.lint]
 select = ["ALL"]
@@ -50,7 +53,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = [
+"tierkreis/tests/*" = [
     "S101",    # asserts allowed in tests...
     "ARG",     # Unused function args -> fixtures nevertheless are functionally relevant...
     "FBT",     # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()

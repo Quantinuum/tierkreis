@@ -14,25 +14,25 @@ from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.exceptions import TierkreisError
 
 
-def will_fail_graph():
+def will_fail_graph() -> GraphBuilder[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
     graph.outputs(graph.task(fail()))
     return graph
 
 
-def wont_fail_graph():
+def wont_fail_graph() -> GraphBuilder[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
     graph.outputs(graph.task(wont_fail()))
     return graph
 
 
-def fail_in_eval():
+def fail_in_eval() -> GraphBuilder[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
     graph.outputs(graph.eval(will_fail_graph(), EmptyModel()))
     return graph
 
 
-def non_zero_exit_code():
+def non_zero_exit_code() -> GraphBuilder[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
     graph.outputs(graph.task(exit_code_1()))
     return graph
@@ -45,7 +45,7 @@ def test_raise_error() -> None:
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-        assert storage.node_has_error(Loc("-.N0"))
+    assert storage.node_has_error(Loc("-.N0"))
 
 
 def test_raises_no_error() -> None:
@@ -64,7 +64,7 @@ def test_nested_error() -> None:
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-        assert (storage.logs_path.parent / "-/errors").exists()
+    assert (storage.logs_path.parent / "-/errors").exists()
 
 
 def test_non_zero_exit_code() -> None:
@@ -74,4 +74,4 @@ def test_non_zero_exit_code() -> None:
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-        assert (storage.logs_path.parent / "-/_error").exists()
+    assert (storage.logs_path.parent / "-/_error").exists()

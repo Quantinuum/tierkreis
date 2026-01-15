@@ -34,8 +34,8 @@ def eagerifelse_long_running() -> GraphData:
 params = [({"pred": True}, 1), ({"pred": False}, 2)]
 
 
-@pytest.mark.parametrize(("input", "output"), params)
-def test_eagerifelse_long_running(input: dict[str, PType], output: int) -> None:
+@pytest.mark.parametrize(("inputs", "output"), params)
+def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -> None:
     g = eagerifelse_long_running()
     storage = ControllerFileStorage(UUID(int=150), name="eagerifelse_long_running")
 
@@ -43,7 +43,7 @@ def test_eagerifelse_long_running(input: dict[str, PType], output: int) -> None:
     executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
 
     storage.clean_graph_files()
-    run_graph(storage, executor, g, input, n_iterations=20000)
+    run_graph(storage, executor, g, inputs, n_iterations=20000)
     actual_output = json.loads(storage.read_output(Loc(), "simple_eagerifelse_output"))
     assert actual_output == output
 

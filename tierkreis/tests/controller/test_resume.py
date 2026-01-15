@@ -38,7 +38,9 @@ from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.storage import read_outputs
 
-param_data: list[tuple[GraphData, Any, str, dict[str, PType] | PType]] = [
+param_data: list[
+    tuple[GraphData, dict[str, PType] | PType, str, dict[str, PType] | PType]
+] = [
     (simple_eval(), {"simple_eval_output": 12}, "simple_eval", {}),
     (simple_loop(), 10, "simple_loop", {}),
     (simple_map(), list(range(6, 47, 2)), "simple_map", {}),
@@ -138,17 +140,21 @@ storage_ids = ["FileStorage", "In-memory"]
 
 
 @pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
-@pytest.mark.parametrize(("graph", "output", "name", "id", "inputs"), params, ids=ids)
-def test_resume(
+@pytest.mark.parametrize(
+    ("graph", "output", "name", "workflow_id", "inputs"),
+    params,
+    ids=ids,
+)
+def test_resume(  # noqa: PLR0913
     storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
     graph: GraphData,
-    output: Any,
+    output: dict[str, PType] | PType,
     name: str,
-    id: int,
+    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
     g = graph
-    storage = storage_class(UUID(int=id), name=name)
+    storage = storage_class(UUID(int=workflow_id), name=name)
     executor = ShellExecutor(Path("./python/examples/launchers"), Path())
     if isinstance(storage, ControllerInMemoryStorage):
         executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)

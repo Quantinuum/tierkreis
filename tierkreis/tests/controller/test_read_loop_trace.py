@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -18,7 +17,7 @@ return_value = [
     for x, y, z in zip(range(1, 7), range(2, 13, 2), range(3, 19, 3), strict=False)
 ]
 
-params: list[tuple[GraphData, Any, str, int]] = [
+params: list[tuple[GraphData, list[dict[str, int]], str, int]] = [
     (
         loop_multiple_acc_untyped(),
         return_value,
@@ -42,16 +41,16 @@ storage_ids = ["FileStorage", "In-memory"]
 
 
 @pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
-@pytest.mark.parametrize(("graph", "output", "name", "id"), params, ids=ids)
+@pytest.mark.parametrize(("graph", "output", "name", "workflow_id"), params, ids=ids)
 def test_read_loop_trace(
     storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
     graph: GraphData,
-    output: Any,
+    output: list[dict[str, int]],
     name: str,
-    id: int,
+    workflow_id: int,
 ) -> None:
     g = graph
-    storage = storage_class(UUID(int=id), name=name)
+    storage = storage_class(UUID(int=workflow_id), name=name)
     executor = ShellExecutor(Path("./python/examples/launchers"), Path())
     if isinstance(storage, ControllerInMemoryStorage):
         executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
