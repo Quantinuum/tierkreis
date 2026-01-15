@@ -26,7 +26,7 @@ class GitHubDependency(TKRDependency):
 
         subprocess.run(["git", "clean", "-f"], cwd=cache_dir)
         subprocess.run(["git", "checkout", self.branch], cwd=cache_dir)
-        subprocess.run(["git", "pull"], cwd=cache_dir)
+        subprocess.run(["git", "pull", "--rebase"], cwd=cache_dir)
 
         worker_dir = target_dir / worker_name
         if worker_dir.exists():
