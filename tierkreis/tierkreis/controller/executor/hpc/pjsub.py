@@ -1,4 +1,3 @@
-# from functools import partial
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -59,7 +58,8 @@ def generate_pjsub_script(spec: JobSpec) -> str:
             lines.append(f'{_COMMAND_PREFIX} --mpi "proc={spec.mpi.proc}"')
         if spec.mpi.max_proc_per_node is not None:
             lines.append(
-                f'{_COMMAND_PREFIX} --mpi "max-proc-per-node={spec.mpi.max_proc_per_node}"',
+                f'{_COMMAND_PREFIX} --mpi "max-proc-per-node'
+                f'={spec.mpi.max_proc_per_node}"',
             )
 
     # 7. User specific
@@ -78,7 +78,7 @@ def generate_pjsub_script(spec: JobSpec) -> str:
     lines.append("\n# --- User Command ---")
     lines.append(spec.command)
 
-    with open("./script", "w+") as fh:
+    with Path.open(Path("./script"), "w+") as fh:
         fh.write("\n".join(lines))
 
     return "\n".join(lines)

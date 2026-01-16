@@ -157,10 +157,20 @@ class GraphData(BaseModel):
     ) -> Callable[[PortID], ValueRef]:
         return self.add(Map(body, inputs))
 
-    def if_else(self, pred: ValueRef, if_true: ValueRef, if_false: ValueRef):
+    def if_else(
+        self,
+        pred: ValueRef,
+        if_true: ValueRef,
+        if_false: ValueRef,
+    ) -> Callable[[str], tuple[int, str]]:
         return self.add(IfElse(pred, if_true, if_false))
 
-    def eager_if_else(self, pred: ValueRef, if_true: ValueRef, if_false: ValueRef):
+    def eager_if_else(
+        self,
+        pred: ValueRef,
+        if_true: ValueRef,
+        if_false: ValueRef,
+    ) -> Callable[[str], tuple[int, str]]:
         return self.add(EagerIfElse(pred, if_true, if_false))
 
     def output(self, inputs: dict[PortID, ValueRef]) -> None:
@@ -249,7 +259,7 @@ def graph_node_from_loc(
         case "loop" | "map":
             graph = _unwrap_graph(graph.nodes[node.body[0]], node.type)
             _, remaining_location = remaining_location.pop_first()  # Remove the M0/L0
-            if len(remaining_location.steps()) < 2:
+            if len(remaining_location.steps()) <= 1:
                 return Eval((-1, "body"), node.inputs, outputs=node.outputs), graph
 
             node, graph = graph_node_from_loc(remaining_location, graph)
@@ -264,7 +274,9 @@ def graph_node_from_loc(
 def _unwrap_graph(node: NodeDef, node_type: str) -> GraphData:
     """Safely unwraps a const nodes GraphData."""
     if not isinstance(node, Const):
-        msg = f"Cannot convert location to node. Reason: {node_type} does not wrap const"
+        msg = (
+            f"Cannot convert location to node. Reason: {node_type} does not wrap const"
+        )
         raise TierkreisError(
             msg,
         )

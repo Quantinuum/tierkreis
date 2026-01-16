@@ -10,13 +10,16 @@ from tierkreis.controller.storage.protocol import (
     StorageEntryMetadata,
 )
 
+DEFAULT_DIRECTORY = Path.home() / ".tierkreis" / "checkpoints"
+
 
 class ControllerFileStorage(ControllerStorage):
     def __init__(
         self,
         workflow_id: UUID,
         name: str | None = None,
-        tierkreis_directory: Path = Path.home() / ".tierkreis" / "checkpoints",
+        tierkreis_directory: Path = DEFAULT_DIRECTORY,
+        *,
         do_cleanup: bool = False,
     ) -> None:
         self.tkr_dir = tierkreis_directory
@@ -53,12 +56,12 @@ class ControllerFileStorage(ControllerStorage):
 
     def read(self, path: Path) -> bytes:
         try:
-            with open(path, "rb") as fh:
+            with Path.open(path, "rb") as fh:
                 return fh.read()
         except FileNotFoundError as exc:
             raise EntryNotFound(path) from exc
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    def touch(self, path: Path, *, is_dir: bool = False) -> None:
         if is_dir:
             path.mkdir(parents=True, exist_ok=True)
             return
@@ -71,5 +74,5 @@ class ControllerFileStorage(ControllerStorage):
 
     def write(self, path: Path, value: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb+") as fh:
+        with Path.open(path, "wb+") as fh:
             fh.write(value)

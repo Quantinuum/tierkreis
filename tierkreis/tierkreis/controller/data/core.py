@@ -51,9 +51,9 @@ def get_t_from_args[T](t: type[T], hint: type | None) -> T | None:
     return None
 
 
-def get_serializer(hint: type | None):
+def get_serializer(hint: type | None) -> Serializer | None:
     return get_t_from_args(Serializer, hint)
 
 
-def get_deserializer(hint: type | None):
+def get_deserializer(hint: type | None) -> Deserializer | None:
     return get_t_from_args(Deserializer, hint)

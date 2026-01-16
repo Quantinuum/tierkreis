@@ -55,8 +55,8 @@ def walk_node(
     """Should only be called when a node has not finished."""
     loc = parent.N(idx)
     if storage.node_has_error(loc):
-        logger.error(f"Node {loc} has encountered an error.")
-        logger.debug(f"\n\n{storage.read_errors(loc)}\n\n")
+        logger.error("Node %s has encountered an error.", loc)
+        logger.debug("\n\n%s\n\n", storage.read_errors(loc))
         return WalkResult([], [], [loc])
 
     node = graph.nodes[idx]
@@ -153,14 +153,14 @@ def walk_map(
     storage: ControllerStorage,
     parent: Loc,
     idx: NodeIndex,
-    map: Map,
+    map_node: Map,
 ) -> WalkResult:
     loc = parent.N(idx)
     result = WalkResult([], [])
     if storage.is_node_finished(loc):
         return result
 
-    first_ref = next(x for x in map.inputs.values() if x[1] == "*")
+    first_ref = next(x for x in map_node.inputs.values() if x[1] == "*")
     map_eles = outputs_iter(storage, parent.N(first_ref[0]))
     unfinished = [i for i, _ in map_eles if not storage.is_node_finished(loc.M(i))]
     message = storage.read_output(loc.M(0).N(-1), BODY_PORT)

@@ -23,18 +23,22 @@ class WorkerCallArgs(BaseModel):
 
 NodeStep = Literal["-"] | tuple[Literal["N", "L", "M"], NodeIndex]
 
+MIN_LENGTH = 2
+
 
 class Loc(str):
+    __slots__ = []
+
     def __new__(cls, k: str = "-") -> Self:
         return super().__new__(cls, k)
 
-    def N(self, idx: int) -> "Loc":
+    def N(self, idx: int) -> "Loc":  # noqa: N802
         return Loc(str(self) + f".N{idx}")
 
-    def L(self, idx: int) -> "Loc":
+    def L(self, idx: int) -> "Loc":  # noqa: N802
         return Loc(str(self) + f".L{idx}")
 
-    def M(self, idx: int) -> "Loc":
+    def M(self, idx: int) -> "Loc":  # noqa: N802
         return Loc(str(self) + f".M{idx}")
 
     @staticmethod
@@ -90,7 +94,7 @@ class Loc(str):
     @classmethod
     def __get_pydantic_core_schema__(
         cls,
-        source_type: Any,
+        source_type: Any,  # noqa: ANN401 inherited from pydantic
         handler: GetCoreSchemaHandler,
     ) -> CoreSchema:
         return core_schema.no_info_after_validator_function(cls, handler(str))
@@ -99,7 +103,7 @@ class Loc(str):
         if self == "-":
             return "-", Loc("")
         steps = self.steps()
-        if len(steps) < 2:
+        if len(steps) < MIN_LENGTH:
             msg = "Malformed Loc"
             raise TierkreisError(msg)
         first = steps.pop(1)
@@ -112,7 +116,7 @@ class Loc(str):
         if self == "-":
             return "-", Loc("")
         steps = self.steps()
-        if len(steps) < 2:
+        if len(steps) < MIN_LENGTH:
             msg = "Malformed Loc"
             raise TierkreisError(msg)
         last = steps.pop(-1)

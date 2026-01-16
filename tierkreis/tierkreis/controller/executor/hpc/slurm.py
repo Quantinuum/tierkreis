@@ -50,7 +50,7 @@ def generate_slurm_script(spec: JobSpec) -> str:
     if spec.output_path is not None:
         lines.append(f"{_COMMAND_PREFIX} --output={spec.output_path}")
 
-    # 6. MPI, #TODO check if this makes sense
+    # 6. MPI, #TODO@philipp-seitz check if this makes sense
     if spec.mpi is not None:
         lines.append("\n# --- MPI ---")
         if spec.mpi.proc is not None:
@@ -80,7 +80,8 @@ def generate_slurm_script(spec: JobSpec) -> str:
         if spec.mpi.max_proc_per_node is None:
             spec.mpi.max_proc_per_node = 1
         lines.append(
-            f"mpirun -n {spec.resource.nodes * spec.mpi.max_proc_per_node} {spec.command}",
+            f"mpirun -n {spec.resource.nodes * spec.mpi.max_proc_per_node}"
+            f" {spec.command}",
         )
     else:
         lines.append(spec.command)

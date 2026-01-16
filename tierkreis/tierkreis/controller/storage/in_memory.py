@@ -1,3 +1,4 @@
+# ruff: noqa: ARG002 (methods to fulfill interface contract but not possible in storage)
 from pathlib import Path
 from time import time
 from uuid import UUID
@@ -63,7 +64,7 @@ class ControllerInMemoryStorage(ControllerStorage):
         except KeyError as exc:
             raise EntryNotFound(path) from exc
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    def touch(self, path: Path) -> None:
         self.files[path] = InMemoryFileData(b"")
 
     def stat(self, path: Path) -> StorageEntryMetadata:

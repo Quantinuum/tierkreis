@@ -2,7 +2,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, assert_never
 from uuid import UUID
@@ -55,7 +55,7 @@ class ControllerStorage(ABC):
 
     @abstractmethod
     def link(self, src: Path, dst: Path) -> None:
-        """The storage entry at `dst` should have the same value as the entry at `src`."""
+        """Link storage entry at `dst` to have the same value as the entry at `src`."""
 
     @abstractmethod
     def list_subpaths(self, path: Path) -> list[Path]:
@@ -180,13 +180,15 @@ class ControllerStorage(ABC):
         new_dir = self._output_path(new_location, new_port)
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
-        except EntryNotFound:
-            logger.info(
-                f"Could not find {old_location}. "
-                "Tasks using this location will try to use a default value if specified.",
+        except EntryNotFound as e:
+            logger.warning(
+                "Could not find %s."
+                " Tasks using this location will try to use a default value if specified.",
+                old_location,
             )
         except OSError as e:
-            msg = "Workflow already exists. Try running with a different ID or do_cleanup."
+            msg = "Workflow already exists."
+            "Try running with a different ID or do_cleanup."
             raise TierkreisError(
                 msg,
             ) from e
@@ -241,7 +243,7 @@ class ControllerStorage(ABC):
             self.touch(self._metadata_path(parent))
 
     def write_metadata(self, node_location: Loc) -> None:
-        j = json.dumps({"name": self.name, "start_time": datetime.now().isoformat()})
+        j = json.dumps({"name": self.name, "start_time": datetime.now(UTC).isoformat()})
         self.write(self._metadata_path(node_location), j.encode())
 
     def read_metadata(self, node_location: Loc) -> dict[str, Any]:
@@ -254,7 +256,7 @@ class ControllerStorage(ABC):
         since_epoch = self.stat(node_def).st_mtime
         if since_epoch is None:
             return None
-        return datetime.fromtimestamp(since_epoch).isoformat()
+        return datetime.fromtimestamp(since_epoch, UTC).isoformat()
 
     def read_finished_time(self, node_location: Loc) -> str | None:
         done = Path(self._done_path(node_location))
@@ -263,7 +265,7 @@ class ControllerStorage(ABC):
         since_epoch = self.stat(done).st_mtime
         if since_epoch is None:
             return None
-        return datetime.fromtimestamp(since_epoch).isoformat()
+        return datetime.fromtimestamp(since_epoch, UTC).isoformat()
 
     def read_loop_trace(self, node_location: Loc, output_name: PortID) -> list[bytes]:
         definition = self.read_node_def(node_location)
@@ -295,7 +297,8 @@ class ControllerStorage(ABC):
     def dependents(self, loc: Loc) -> set[Loc]:
         """Nodes that are fully invalidated if the node at the given loc is invalidated.
 
-        This does not include the direct parent Loc, which is only partially invalidated.
+        This does not include the direct parent Loc,
+        which is only partially invalidated.
         """
         descs: set[Loc] = set()
         step, parent = loc.pop_last()
@@ -343,7 +346,8 @@ class ControllerStorage(ABC):
         [self.delete(self._done_path(x)) for x in partials]
         [self.delete(self.workflow_dir / a / "outputs") for a in partials]
 
-        # Mark given Loc as not started, so that the controller picks it up on the next tick.
+        # Mark given Loc as not started
+        # so that the controller picks it up on the next tick.
         self.delete(self._nodedef_path(loc))
 
         return list(deps)
