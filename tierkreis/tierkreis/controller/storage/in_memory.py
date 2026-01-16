@@ -1,3 +1,4 @@
+# ruff: noqa: ARG002 (methods to fulfill interface contract but not possible in storage)
 from pathlib import Path
 from time import time
 from uuid import UUID
@@ -55,7 +56,7 @@ class ControllerInMemoryStorage(ControllerStorage):
     def read(self, path: Path) -> bytes:
         return self.files[path].value
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    def touch(self, path: Path) -> None:
         self.files[path] = InMemoryFileData(b"")
 
     def stat(self, path: Path) -> StorageEntryMetadata:

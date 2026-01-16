@@ -1,3 +1,5 @@
+"""The base executor protocol."""
+
 from pathlib import Path
 from typing import Protocol
 
@@ -17,8 +19,9 @@ class ControllerExecutor(Protocol):
         """Run the node defined by the node_definition path.
 
         Specifies the worker to run by its launcher name.
-        For example the function "builtins.iadd" will call the builtins worker's iadd function.
-        The call arguments for the function call are retrieved retrieved from its location.
+        For example the function "builtins.iadd" will call the builtins worker's
+        iadd function. The call arguments for the function call are retrieved retrieved
+        from its location.
 
         :param launcher_name: module description of launcher to run.
         :type launcher_name: str

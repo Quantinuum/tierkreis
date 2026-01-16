@@ -1,3 +1,4 @@
+# ruff: noqa: ANN001 ANN003 ANN401 due to serialization and inheritance from json
 import collections.abc
 import json
 import logging
@@ -100,7 +101,7 @@ worker functions for automatic codegen of graph builder stubs."""
 class TierkreisEncoder(json.JSONEncoder):
     """Encode bytes also."""
 
-    def default(self, o):
+    def default(self, o) -> dict[str, Any] | dict[str, list[float]] | Any:
         if isinstance(o, bytes):
             return {"__tkr_bytes__": True, "bytes": b64encode(o).decode()}
 
@@ -117,7 +118,7 @@ class TierkreisDecoder(json.JSONDecoder):
         kwargs.setdefault("object_hook", self._object_hook)
         super().__init__(**kwargs)
 
-    def _object_hook(self, d):
+    def _object_hook(self, d) -> bytes | complex | Any:
         """Try to decode an object containing bytes."""
         if "__tkr_bytes__" in d and "bytes" in d:
             return b64decode(d["bytes"])
@@ -181,7 +182,7 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     return False
 
 
-def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> Any:
+def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
     if sr := get_serializer(annotation):
         return sr.serializer(ptype)
 
@@ -238,7 +239,7 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             try:
                 return coerce_from_annotation(ser, t)
             except (AssertionError, ValidationError):
-                logger.debug(f"Tried deserialising as {t}")
+                logger.debug("Tried deserialising as %s", t)
         msg = f"Could not deserialise {ser} as {annotation}"
         raise TierkreisError(msg)
 
@@ -260,18 +261,24 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
         return ser
 
     if issubclass(origin, DictConvertible):
-        assert issubclass(annotation, origin)
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
         return annotation.from_dict(ser)
 
     if issubclass(origin, ListConvertible):
-        assert issubclass(annotation, origin)
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
         return annotation.from_list(ser)
 
     if issubclass(origin, NdarraySurrogate):
         return pickle.loads(ser)
 
     if issubclass(origin, BaseModel):
-        assert issubclass(annotation, origin)
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
         return annotation(**ser)
 
     if issubclass(origin, Struct):

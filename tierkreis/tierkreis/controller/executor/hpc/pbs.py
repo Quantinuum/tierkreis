@@ -1,3 +1,4 @@
+# ruff: noqa: ERA001
 from pathlib import Path
 
 # from typing import Callable
@@ -80,7 +81,8 @@ def generate_pbs_script(spec: JobSpec) -> str:
             lines.append(f"{_COMMAND_PREFIX} -l {key}={value}")
         if spec.container.env_file is not None:
             lines.append(
-                f"{_COMMAND_PREFIX} -l {spec.container.engine}_env_file={spec.container.env_file}",
+                f"{_COMMAND_PREFIX} -l {spec.container.engine}_env_file"
+                f"={spec.container.env_file}",
             )  # check if this makes sense for others beside enroot
 
     # 10. User Command, (prologue), command, (epilogue)
@@ -91,7 +93,7 @@ def generate_pbs_script(spec: JobSpec) -> str:
 
 
 # Disabled for now, needs testing with a PBS system, will be re-enabled later
-# See: Issue #182
+# See: TODO@philipp-seitz: Issue #182
 # class PBSExecutor:
 #     def __init__(
 #         self,

@@ -40,7 +40,7 @@ class StdInOut:
         if launcher_path.is_dir() and (launcher_path / "main.sh").is_file():
             launcher_path = launcher_path / "main.sh"
 
-        with open(self.workflow_dir.parent / worker_call_args_path) as fh:
+        with Path.open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
         input_file = self.workflow_dir.parent / next(iter(call_args.inputs.values()))
@@ -50,11 +50,12 @@ class StdInOut:
         tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         _error_path = self.errors_path.parent / "_error"
         proc = subprocess.Popen(
-            ["bash"],
+            ["/bin/bash"],
             start_new_session=True,
             stdin=subprocess.PIPE,
         )
         proc.communicate(
-            f"({launcher_path} <{input_file}  > {output_file} 2> {tee_str} && touch {done_path}|| touch {_error_path})&".encode(),
+            f"({launcher_path} <{input_file}  > {output_file} 2> {tee_str}"
+            f" && touch {done_path}|| touch {_error_path})&".encode(),
             timeout=10,
         )

@@ -26,7 +26,7 @@ def generate_script(
     spec: JobSpec,
     path: Path,
 ) -> None:
-    with open(path, "w+", encoding="utf-8") as fh:
+    with Path.open(path, "w+", encoding="utf-8") as fh:
         fh.write(template_fn(spec))
 
 
@@ -74,7 +74,7 @@ def run_hpc_executor(
             text=True,
         )
     if process.returncode != 0:
-        with open(executor.errors_path, "a") as efh:
+        with Path.open(executor.errors_path, "a") as efh:
             efh.write("Error from script")
             efh.write(process.stderr)
         msg = f"Executor failed with return code {process.returncode}"

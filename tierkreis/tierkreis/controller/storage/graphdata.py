@@ -1,3 +1,4 @@
+# ruff: noqa: ARG002 (methods to fulfill interface contract but not possible in storage)
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -74,7 +75,7 @@ class GraphDataStorage(ControllerStorage):
         msg = "GraphDataStorage is only for graph construction."
         raise NotImplementedError(msg)
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    def touch(self, path: Path) -> None:
         msg = "GraphDataStorage is read only storage."
         raise NotImplementedError(msg)
 

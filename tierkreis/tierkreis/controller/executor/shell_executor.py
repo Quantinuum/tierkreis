@@ -32,6 +32,7 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
+        *,
         export_values: bool = False,
     ) -> None:
         launcher_path = self.launchers_path / launcher_name
@@ -52,7 +53,7 @@ class ShellExecutor:
         if launcher_path.is_dir() and (launcher_path / "main.sh").is_file():
             launcher_path = launcher_path / "main.sh"
 
-        with open(self.workflow_dir.parent / worker_call_args_path) as fh:
+        with Path.open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
         env = os.environ.copy() | self.env.copy()
@@ -66,13 +67,14 @@ class ShellExecutor:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         proc = subprocess.Popen(
-            ["bash"],
+            ["/bin/bash"],
             start_new_session=True,
             stdin=subprocess.PIPE,
             env=env,
         )
         proc.communicate(
-            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&".encode(),
+            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} "
+            f"&& touch {done_path}|| touch {_error_path})&".encode(),
             timeout=self.timeout,
         )
 
@@ -80,6 +82,7 @@ class ShellExecutor:
         self,
         call_args: WorkerCallArgs,
         base_dir: Path,
+        *,
         export_values: bool,
     ) -> dict[str, str]:
         env = {
@@ -103,6 +106,6 @@ class ShellExecutor:
             return env
         values = {}
         for k, v in call_args.inputs.items():
-            with open(v) as fh:
+            with Path.open(v) as fh:
                 values[f"input_{k}_value"] = fh.read()
         return env

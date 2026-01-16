@@ -24,7 +24,6 @@ class MultipleExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
     ) -> None:
         executor_name = self.assignments.get(launcher_name, None)
         # If there is no assignment for the worker, use the default.
@@ -32,7 +31,10 @@ class MultipleExecutor:
             return self.default.run(launcher_name, worker_call_args_path)
         executor = self.executors.get(executor_name)
         if executor is None:
-            msg = f"{launcher_name} is assigned to non-existent executor name: {executor_name}."
+            msg = (
+                f"{launcher_name} is assigned to non-existent"
+                f" executor name: {executor_name}."
+            )
             raise TierkreisError(
                 msg,
             )

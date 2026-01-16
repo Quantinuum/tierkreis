@@ -87,7 +87,7 @@ def is_portmapping(
     return hasattr(o, TKR_PORTMAPPING_FLAG)
 
 
-def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:
+def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:  # noqa: ANN001 inherited from get_origin
     origin = get_origin(o)
     if origin is not None:
         return is_tnamedmodel(origin)

@@ -43,7 +43,7 @@ def start_nodes(
 
 def run_builtin(def_path: Path, logs_path: Path) -> None:
     logger.info("START builtin %s", def_path)
-    with open(logs_path, "a") as fh:
+    with Path.open(logs_path, "a") as fh:
         subprocess.Popen(
             [sys.executable, "main.py", def_path],
             start_new_session=True,
@@ -57,7 +57,6 @@ def start(
     storage: ControllerStorage,
     executor: ControllerExecutor,
     node_run_data: NodeRunData,
-    enable_logging: bool = True,
 ) -> None:
     node_location = node_run_data.node_location
     node = node_run_data.node
@@ -72,7 +71,7 @@ def start(
 
     ins = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
 
-    logger.debug(f"start {node_location} {node} {ins} {output_list}")
+    logger.debug("start %s %s %s %s", node_location, node, ins, output_list)
     if node.type == "function":
         name = node.function_name
         launcher_name = ".".join(name.split(".")[:-1])
@@ -83,7 +82,7 @@ def start(
             ins,
             output_list,
         )
-        logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
+        logger.debug("Executing %s", (str(node_location), name, ins, output_list))
 
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor,
@@ -122,9 +121,7 @@ def start(
     elif node.type == "loop":
         ins["body"] = (parent.N(node.body[0]), node.body[1])
         pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
-        if (
-            node.name is not None
-        ):  # should we do this only in debug mode? -> need to think through how this would work
+        if node.name is not None:
             storage.write_debug_data(node.name, node_location)
         start(
             storage,
