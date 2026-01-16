@@ -1,3 +1,5 @@
+"""Sets up the Tierkreis logger."""
+
 import logging
 import sys
 from os import getenv
@@ -12,6 +14,15 @@ def set_tkr_logger(
     file_name: Path,
     level: int | str = logging.INFO,
 ) -> None:
+    """Set up the 'tierkreis' logger.
+
+    Adds a filehandler for use in the controller.
+
+    :param file_name: The file to use for the logging.
+    :type file_name: Path
+    :param level: The log level, defaults to logging.INFO
+    :type level: int | str, optional
+    """
     logger = logging.getLogger(LOGGER_NAME)
     if logger.hasHandlers():
         [logger.removeHandler(h) for h in logger.handlers]
@@ -23,10 +34,23 @@ def set_tkr_logger(
         logger.addHandler(handler)
 
     except FileNotFoundError:
-        logging.warning("Could not log to file, logging to std out instead.")
+        root_logger = logging.getLogger()
+        root_logger.warning("Could not log to file, logging to std out instead.")
 
 
 def add_handler_from_environment(logger: logging.Logger) -> logging.Handler:
+    """Add a handler to a logger from TKR env variables.
+
+    Adds a stream handler on stderr with log level, format and date format
+    taken from the environment variables $TKR_LOG_LEVEL, $TKR_LOG_FMT and
+    $TKR_DATE_FORMAT.
+    Returns the created handler so it can be removed later if needed.
+
+    :param logger: The logger to add the handler to.
+    :type logger: logging.Logger
+    :return: The created handler.
+    :rtype: logging.Handler
+    """
     log_level = getenv(TKR_LOG_LEVEL_KEY, logging.INFO)
     if log_level is not None:
         logger.setLevel(log_level)
