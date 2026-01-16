@@ -147,7 +147,12 @@ class ControllerStorage(ABC):
             output_dir=self._outputs_dir(node_location).relative_to(self.tkr_dir),
             done_path=self._done_path(node_location).relative_to(self.tkr_dir),
             error_path=self._error_path(node_location).relative_to(self.tkr_dir),
-            logs_path=self.logs_path.relative_to(self.tkr_dir),
+            # Node-local log file for this task invocation.
+            # The controller itself still writes global progress information to
+            # `self.logs_path` (<workflow_dir>/logs).
+            logs_path=(self.workflow_dir / str(node_location) / "logs").relative_to(
+                self.tkr_dir
+            ),
         )
         self.write(call_args_path, node_definition.model_dump_json().encode())
         self.mkdir(self._outputs_dir(node_location))

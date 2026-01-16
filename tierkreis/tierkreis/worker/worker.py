@@ -154,13 +154,39 @@ class Worker:
         """
         node_definition = self.storage.read_call_args(worker_definition_path)
 
+        # Configure logging to write worker logs to both:
+        # - the node-local logs file (node_definition.logs_path)
+        # - the workflow-global logs file (<workflow_id>/logs), so users still get a
+        #   single aggregated stream
         logs_path = node_definition.logs_path
+        handlers: list[logging.Handler] = []
+        node_logs_abs: Path | None = None
+        if logs_path is not None:
+            node_logs_abs = self.storage.resolve(logs_path)
+            handlers.append(logging.FileHandler(node_logs_abs, mode="a"))
+
+        # Derive workflow-global logs path from the worker definition path.
+        # The definition path is typically: <workflow_id>/<node_location>/definition
+        # so <workflow_id>/logs is `worker_definition_path.parents[1] / "logs"`.
+        workflow_logs_abs: Path | None = None
+        try:
+            workflow_logs_rel = worker_definition_path.parents[1] / "logs"
+            workflow_logs_abs = self.storage.resolve(workflow_logs_rel)
+        except IndexError:
+            workflow_logs_abs = None
+
+        if workflow_logs_abs is not None and workflow_logs_abs != node_logs_abs:
+            handlers.append(logging.FileHandler(workflow_logs_abs, mode="a"))
+
         logging.basicConfig(
             format="%(asctime)s: %(message)s",
             datefmt="%Y-%m-%dT%H:%M:%S%z",
-            filename=self.storage.resolve(logs_path) if logs_path else None,
-            filemode="a",
+            handlers=handlers if handlers else None,
             level=logging.INFO,
+            # If this worker instance is reused (e.g. test harnesses), ensure the
+            # log destination updates for each invocation rather than appending
+            # duplicate handlers.
+            force=True,
         )
         logger.info(node_definition.model_dump())
 
