@@ -77,4 +77,4 @@ def test_non_zero_exit_code() -> None:
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/_error").exists()
+    assert (storage.logs_path.parent / "-/logs").exists()

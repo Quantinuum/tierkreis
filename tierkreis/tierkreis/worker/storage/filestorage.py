@@ -3,7 +3,6 @@
 # ruff: noqa: D102 (class methods inherited from WorkerStorage)
 import json
 import os
-from glob import glob
 from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
@@ -43,7 +42,8 @@ class WorkerFileStorage:
             fh.write(value)
 
     def glob(self, path_string: str) -> list[str]:
-        return glob(str(self.resolve(path_string)))
+        tmp_path = self.resolve(path_string)
+        return [str(p) for p in tmp_path.parent.glob(tmp_path.parts[-1])]
 
     def mark_done(self, path: Path) -> None:
         self.resolve(path).touch()
