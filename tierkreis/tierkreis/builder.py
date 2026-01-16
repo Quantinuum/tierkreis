@@ -222,6 +222,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self,
         graph: GraphBuilder[A, B],
     ) -> TypedGraphRef[A, B]:
+        # TODO @philipp-seitz: Turn this into a public method?
         idx, port = self.data.const(graph.data.model_dump())
         return TypedGraphRef[A, B](
             graph_ref=(idx, port),

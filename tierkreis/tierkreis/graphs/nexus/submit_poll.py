@@ -1,3 +1,5 @@
+"""Sample graphs to interact with nexus using the Nexus Worker."""
+
 # ruff: noqa: F821
 from typing import NamedTuple
 
@@ -11,18 +13,34 @@ from tierkreis.nexus_worker import (
     upload_circuit,
 )
 
-type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]
+type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]  # noqa: SLF001
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]
 type ExecuteJobRef = OpaqueType["qnexus.models.references.ExecuteJobRef"]
-type ExecutionProgram = OpaqueType["qnexus.models.references.ExecuteJobRef"]
 
 
 class UploadCircuitInputs(NamedTuple):
+    """The inputs to upload a circuit.
+
+    :fields:
+        project_name (str): The name of the project to upload to.
+        circuit (Circuit): The tket circuit to upload.
+    """
+
     project_name: TKR[str]
     circuit: TKR[Circuit]
 
 
 class JobInputs(NamedTuple):
+    """The inputs to a nexus job.
+
+    :fields:
+        project_name (str): The name of the project to upload to.
+        job_name (str): The name of the job.
+        circuit (list[Circuit]): The list of circuits part of the job.
+        n_shots (int): The number of shots (repetitions) of each circuit.
+        backend_config (BackendConfig): The qnexus configuration of the backend.
+    """
+
     project_name: TKR[str]
     job_name: TKR[str]
     circuits: TKR[list[Circuit]]
@@ -30,30 +48,50 @@ class JobInputs(NamedTuple):
     backend_config: TKR[OpaqueType["qnexus.BackendConfig"]]
 
 
-class LoopOutputs(NamedTuple):
+class _LoopOutputs(NamedTuple):
     results: TKR[list[BackendResult]]
     should_continue: TKR[bool]
 
 
-def upload_circuit_graph():
-    g = GraphBuilder(UploadCircuitInputs, TKR[ExecutionProgram])
+def upload_circuit_graph() -> GraphBuilder[UploadCircuitInputs, TKR[ExecuteJobRef]]:
+    """Construct a graph to upload a circuit to nexus.
+
+    :return: A uploading graph.
+    :rtype: GraphBuilder[UploadCircuitInputs, TKR[ExecuteJobRef]]
+    """
+    g = GraphBuilder(UploadCircuitInputs, TKR[ExecuteJobRef])
     programme = g.task(upload_circuit(g.inputs.project_name, g.inputs.circuit))
-    g.outputs(programme)  # type: ignore
+    g.outputs(programme)  # type: ignore[arg-type]
     return g
 
 
-def polling_loop_body(polling_interval: float):
-    g = GraphBuilder(TKR[ExecuteJobRef], LoopOutputs)
+def _polling_loop_body(
+    polling_interval: float,
+) -> GraphBuilder[TKR[ExecuteJobRef], _LoopOutputs]:
+    g = GraphBuilder(TKR[ExecuteJobRef], _LoopOutputs)
     pred = g.task(is_running(g.inputs))
 
-    wait = g.ifelse(pred, g.task(tkr_sleep(g.const(polling_interval))), g.const(False))
+    wait = g.ifelse(
+        pred,
+        g.task(tkr_sleep(g.const(polling_interval))),
+        g.const(value=False),
+    )
     results = g.ifelse(pred, g.const([]), g.task(get_results(g.inputs)))
 
-    g.outputs(LoopOutputs(results=results, should_continue=wait))
+    g.outputs(_LoopOutputs(results=results, should_continue=wait))
     return g
 
 
-def nexus_submit_and_poll(polling_interval: float = 30.0):
+def nexus_submit_and_poll(
+    polling_interval: float = 30.0,
+) -> GraphBuilder[JobInputs, TKR[list[BackendResult]]]:
+    """Construct a graph submitting and polling a nexus job.
+
+    :param polling_interval: The polling interval in seconds, defaults to 30.0
+    :type polling_interval: float, optional
+    :return: A graph performing submission and polling.
+    :rtype: GraphBuilder[JobInputs, TKR[list[BackendResult]]]
+    """
     g = GraphBuilder(JobInputs, TKR[list[BackendResult]])
     upload_inputs = g.map(
         lambda x: UploadCircuitInputs(g.inputs.project_name, x),
@@ -65,12 +103,12 @@ def nexus_submit_and_poll(polling_interval: float = 30.0):
         start_execute_job(
             g.inputs.project_name,
             g.inputs.job_name,
-            programmes,  # type: ignore
+            programmes,  # type: ignore[arg-type]
             g.inputs.n_shots,
-            g.inputs.backend_config,  # type: ignore
+            g.inputs.backend_config,  # type: ignore[arg-type]
         ),
     )
 
-    res = g.loop(polling_loop_body(polling_interval), ref)
+    res = g.loop(_polling_loop_body(polling_interval), ref)
     g.outputs(res.results)
     return g
