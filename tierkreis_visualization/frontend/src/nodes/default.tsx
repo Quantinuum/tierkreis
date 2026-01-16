@@ -52,8 +52,18 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
             const target = event.target as HTMLElement;
             if (target.closest("button") === null) {
               if (data.title == "Function") {
-                data.setInfo?.({ type: "Logs", content: logs ? logs : "" });
+                data.setInfo?.({
+                  type: "Logs",
+                  content: logs ?? "Loading logs...",
+                });
+                return;
               }
+
+              // Ensure we don't show stale function logs when a non-function node is clicked.
+              data.setInfo?.({
+                type: "Logs",
+                content: `No logs for "${data.title}" nodes.`,
+              });
             }
           }}
         >
