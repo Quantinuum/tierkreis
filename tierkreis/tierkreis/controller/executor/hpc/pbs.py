@@ -1,3 +1,5 @@
+"""Template and Executor for PBS."""
+
 # ruff: noqa: ERA001
 from pathlib import Path
 
@@ -8,7 +10,17 @@ from tierkreis.controller.executor.hpc.job_spec import JobSpec
 _COMMAND_PREFIX = "#PBS"
 
 
-def generate_pbs_script(spec: JobSpec) -> str:
+def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity to cover options
+    """Generate a job submission script according to PBS.
+
+    This uses the "PBS"/qsub syntax and represents a mapping from JobSpec
+    to the native flags.
+
+    :param spec: The job to generate a script for.
+    :type spec: JobSpec
+    :return: A job script for the PBS scheduler.
+    :rtype: str
+    """
     # 1. Shebang and file header
     lines = [
         """#!/bin/bash
