@@ -1,3 +1,6 @@
+"""Special case implementation for external workers."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import json
 import subprocess
 from pathlib import Path
@@ -9,7 +12,17 @@ from tierkreis.exceptions import TierkreisError
 class StdInOut:
     """Executes workers in an unix shell.
 
+    Assumes the worker takes a single input from stdin and will produce a single output
+    to stdout.
+    Will pipe other outputs to errors / logs.
+    Works by creating a subprocess
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        launchers_path (Path): The locations to search for external workers.
+        logs_path (Path): The controller log file.
+        errors_path (Path): The controller error file for the function node.
+        workflow_dir (Path): The workflow dir to resolve relative paths.
     """
 
     def __init__(self, registry_path: Path, workflow_dir: Path) -> None:

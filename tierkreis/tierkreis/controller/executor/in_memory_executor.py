@@ -1,3 +1,6 @@
+"""In memory implementation."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import importlib.util
 import json
 import logging
@@ -12,9 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryExecutor:
-    """Executes workers in the same process as the controller.
+    """Execute workers in the same process as the controller.
 
+    Loads the worker as python module if possible.
+    Cannot only run python workers in conjunction with ControllerInMemoryStorage.
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        registry_path (Path): The locations to search for worker modules.
+        storage (ControllerInMemoryStorage):
+            Storage reference to access in memory values.
     """
 
     def __init__(self, registry_path: Path, storage: ControllerInMemoryStorage) -> None:

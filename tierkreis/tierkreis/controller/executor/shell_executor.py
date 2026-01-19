@@ -1,3 +1,6 @@
+"""Default executor for arbitrary scripts."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import json
 import os
 import subprocess
@@ -11,7 +14,19 @@ from tierkreis.exceptions import TierkreisError
 class ShellExecutor:
     """Executes workers in an unix shell.
 
+    Simply runs any shell script as a worker, if certain conditions on input/output
+    conditions are met, namely the paths/values are provided through the process
+    environment and the script is responsible for reading/writing them.
+
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        launchers_path (Path): The locations to search for external workers.
+        logs_path (Path): The controller log file.
+        errors_path (Path): The controller error file for the function node.
+        workflow_dir (Path): The workflow dir to resolve relative paths.
+        timeout (int): Timeout for the process communication, defaults to 10 seconds.
+        env: (dict[str,str]): Additional environments to hand to the spawned subprocess.
     """
 
     def __init__(
@@ -57,7 +72,13 @@ class ShellExecutor:
             call_args = WorkerCallArgs(**json.load(fh))
 
         env = os.environ.copy() | self.env.copy()
-        env.update(self._create_env(call_args, self.workflow_dir.parent, export_values))
+        env.update(
+            self._create_env(
+                call_args,
+                self.workflow_dir.parent,
+                export_values=export_values,
+            ),
+        )
         env["worker_call_args_file"] = str(
             self.workflow_dir.parent / worker_call_args_path,
         )
@@ -85,6 +106,11 @@ class ShellExecutor:
         *,
         export_values: bool,
     ) -> dict[str, str]:
+        """Set up an environment as interface between controller and worker function.
+
+        If export_values is set, will also write the values of ports to the env.
+        This is useful if you don't want / can't read the files directly.
+        """
         env = {
             "checkpoints_directory": str(base_dir),
             "function_name": str(base_dir / call_args.function_name),

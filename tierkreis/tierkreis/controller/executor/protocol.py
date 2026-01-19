@@ -23,6 +23,11 @@ class ControllerExecutor(Protocol):
         iadd function. The call arguments for the function call are retrieved retrieved
         from its location.
 
+        The executor ensures workers are progressed correctly; This includes:
+        - setting up error and log files and making them available
+        - checking progress (e.g. _done file)
+        - enabling path resolution between tkr paths and worker inputs
+
         :param launcher_name: module description of launcher to run.
         :type launcher_name: str
         :param worker_call_args_path: Location of the worker call args.
