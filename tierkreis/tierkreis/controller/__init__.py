@@ -57,7 +57,7 @@ def run_graph[A: TModel, B: TModel](
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
     }
     node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
-    start(storage, executor, node_run_data, enable_logging)
+    start(storage, executor, node_run_data)
     resume_graph(storage, executor, n_iterations, polling_interval_seconds)
 
 

@@ -13,6 +13,13 @@ from tierkreis.controller.storage.protocol import (
 
 
 class InMemoryFileData:
+    """Class to emulate the file system behaviour in memory.
+
+    :fields:
+        value (bytes): The content of a file, typically used for outputs or empty.
+        stats (StorageEntryMetadata): A metadata entry.
+    """
+
     value: bytes
     stats: StorageEntryMetadata
 
