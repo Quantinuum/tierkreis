@@ -27,7 +27,7 @@ class UvExecutor:
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
 
     :fields:
-        launchers_path (Path): The locations to search for external workers.
+        launchers_path (Path): The locations to search for python workers.
         logs_path (Path): The controller log file.
         errors_path (Path): The controller error file for the function node.
         env: (dict[str,str]): Additional environments to hand to the spawned subprocess.

@@ -16,7 +16,7 @@ class ControllerExecutor(Protocol):
         launcher_name: str,
         worker_call_args_path: Path,
     ) -> None:
-        """Run the node defined by the node_definition path.
+        """Run the node defined by the worker_call_args_path path.
 
         Specifies the worker to run by its launcher name.
         For example the function "builtins.iadd" will call the builtins worker's
@@ -28,7 +28,7 @@ class ControllerExecutor(Protocol):
         - checking progress (e.g. _done file)
         - enabling path resolution between tkr paths and worker inputs
 
-        :param launcher_name: module description of launcher to run.
+        :param launcher_name: module description of worker to run.
         :type launcher_name: str
         :param worker_call_args_path: Location of the worker call args.
         :type worker_call_args_path: Path

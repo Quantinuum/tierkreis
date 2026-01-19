@@ -1,3 +1,5 @@
+"""Template and Executor for PJSUB(FUGAKU)."""
+
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,7 +18,17 @@ if TYPE_CHECKING:
 _COMMAND_PREFIX = "#PJM"
 
 
-def generate_pjsub_script(spec: JobSpec) -> str:
+def generate_pjsub_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity to cover options
+    """Generate a job submission script according to PJSUB.
+
+    This uses the "PJM"/pjsub syntax and represents a mapping from JobSpec
+    to the native flags.
+
+    :param spec: The job to generate a script for.
+    :type spec: JobSpec
+    :return: A job script for the PJSUB scheduler.
+    :rtype: str
+    """
     # 1. Shebang and file header
     lines = [
         """#!/bin/bash
@@ -85,6 +97,12 @@ def generate_pjsub_script(spec: JobSpec) -> str:
 
 
 class PJSUBExecutor:
+    """An executor for the PJSUB submission system.
+
+    Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+    Implements: :py:class:`tierkreis.controller.executor.hpc.hpc_executor.HPCExecutor`
+    """
+
     def __init__(
         self,
         registry_path: Path | None,
@@ -104,6 +122,13 @@ class PJSUBExecutor:
         launcher_name: str,
         worker_call_args_path: Path,
     ) -> None:
+        """Run the node according to ControllerExecutor protocol.
+
+        :param launcher_name: module description of worker to run.
+        :type launcher_name: str
+        :param worker_call_args_path: Location of the worker call args.
+        :type worker_call_args_path: Path
+        """
         self.errors_path = (
             self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
         )
