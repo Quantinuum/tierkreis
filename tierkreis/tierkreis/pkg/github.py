@@ -16,8 +16,12 @@ class GitHubDependency(TKRDependency):
 
     branch: str = "main"
 
+    @property
+    def cache_dir(self):
+        return WORKER_CACHE / "github" / self.account / self.repo / self.branch
+
     def install(self, worker_name: str, target_dir: Path):
-        cache_dir = WORKER_CACHE / "github" / self.account / self.repo / self.branch
+        cache_dir = self.cache_dir
         cache_dir.mkdir(exist_ok=True, parents=True)
 
         git_dir = cache_dir / ".git"
@@ -36,7 +40,7 @@ class GitHubDependency(TKRDependency):
         symlink(cache_dir / self.subdirectory, worker_dir, target_is_directory=True)
 
     def remove(self, worker_name: str, target_dir: Path) -> None:
-        cache_dir = WORKER_CACHE / "github" / self.account / self.repo
+        cache_dir = self.cache_dir
         rmtree(cache_dir, ignore_errors=True)
 
         worker_dir = target_dir / worker_name
