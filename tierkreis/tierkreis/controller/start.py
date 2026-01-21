@@ -45,6 +45,7 @@ def start_tasks(
     storage: ControllerStorage,
     executor: ControllerExecutor,
     tasks: Sequence[Task],
+    enable_logging: bool = True,
 ) -> None:
     started_locs: set[Loc] = set()
     for task in tasks:
@@ -58,7 +59,7 @@ def start_tasks(
             )
             started_locs.add(task.iter_location)
         elif task.node_location not in started_locs:
-            start(storage, executor, task)
+            start(storage, executor, task, enable_logging)
             started_locs.add(task.node_location)
 
 
