@@ -14,7 +14,7 @@ from tierkreis.controller.data.graph import (
 )
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.start import NodeRunData
+from tierkreis.controller.start import NodeRunData, Task
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.labels import Labels
@@ -24,7 +24,7 @@ logger = getLogger(__name__)
 
 @dataclass
 class WalkResult:
-    inputs_ready: list[NodeRunData]
+    inputs_ready: list[Task]
     started: list[Loc]
     errored: list[Loc] = field(default_factory=list[Loc])
 
@@ -79,7 +79,9 @@ def walk_node(
             return WalkResult([node_run_data], [])
 
         case "loop":
-            return walk_loop(storage, parent.N(idx), (parent.N(node.body[0]), node.body[1]), node)
+            return walk_loop(
+                storage, parent.N(idx), (parent.N(node.body[0]), node.body[1]), node
+            )
 
         case "map":
             return walk_map(storage, parent, idx, node)
@@ -134,7 +136,7 @@ def walk_loop(
 
     ins = {k: (-1, k) for k in loop.inputs.keys()}
     ins.update(loop_outputs)
-    #ALAN this is dodgy....I think WalkResult should have a third component
+    # ALAN this is dodgy....I think WalkResult should have a third component
     # as "things to pass to start_graph", i.e. with OutputLoc's not these -1's
     node_run_data = NodeRunData(
         loc.L(iter + 1),

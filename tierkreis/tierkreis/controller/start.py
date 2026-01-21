@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import subprocess
 import sys
+from typing import Sequence
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
@@ -22,6 +23,7 @@ from tierkreis.exceptions import TierkreisError
 logger = logging.getLogger(__name__)
 
 
+# ALAN this should really be NodeRunTask (or RunNodeTask)
 @dataclass
 class NodeRunData:
     node_location: Loc
@@ -29,17 +31,35 @@ class NodeRunData:
     output_list: list[PortID]
 
 
-def start_nodes(
+@dataclass
+class LoopIterTask:
+    iter_location: Loc
+    graph_input: OutputLoc
+    inputs: dict[PortID, OutputLoc]
+
+
+Task = NodeRunData | LoopIterTask
+
+
+def start_tasks(
     storage: ControllerStorage,
     executor: ControllerExecutor,
-    node_run_data: list[NodeRunData],
+    tasks: Sequence[Task],
 ) -> None:
     started_locs: set[Loc] = set()
-    for node_run_datum in node_run_data:
-        if node_run_datum.node_location in started_locs:
-            continue
-        start(storage, executor, node_run_datum)
-        started_locs.add(node_run_datum.node_location)
+    for task in tasks:
+        if isinstance(task, LoopIterTask):
+            start_graph(
+                storage,
+                executor,
+                task.iter_location,
+                task.graph_input,
+                task.inputs,
+            )
+            started_locs.add(task.iter_location)
+        elif task.node_location not in started_locs:
+            start(storage, executor, task)
+            started_locs.add(task.node_location)
 
 
 def run_builtin(def_path: Path, logs_path: Path) -> None:

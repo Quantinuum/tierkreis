@@ -6,7 +6,7 @@ from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.start import start_graph, start_nodes
+from tierkreis.controller.start import start_graph, start_tasks
 from tierkreis.logger_setup import set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
@@ -80,7 +80,7 @@ def resume_graph(
             print("--- Tierkreis graph errors above this line. ---\n\n")
             raise TierkreisError("Graph encountered errors")
 
-        start_nodes(storage, executor, walk_results.inputs_ready)
+        start_tasks(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):
             break
         sleep(polling_interval_seconds)
