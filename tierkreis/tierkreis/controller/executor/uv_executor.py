@@ -18,9 +18,12 @@ class UvExecutor:
     """
 
     def __init__(
-        self, registry_path: Path, logs_path: Path, env: dict[str, str] | None = None
+        self,
+        registry_path: Path | list[Path],
+        logs_path: Path,
+        env: dict[str, str] | None = None,
     ) -> None:
-        self.launchers_path = registry_path
+        self.registries = registry_path
         self.logs_path = logs_path
         self.errors_path = logs_path
         self.env = env or {}
@@ -46,6 +49,18 @@ class UvExecutor:
             self.launchers_path, launcher_name, ".py"
         )
         worker_path = launcher_path.parent
+
+        if isinstance(self.registries, Path):
+            self.registries = [self.registries]
+
+        worker_path: Path | None = None
+        for registry in self.registries:
+            subdirs = [str(x) for x in registry.iterdir() if x.is_dir()]
+            if launcher_name in subdirs:
+                worker_path = registry / launcher_name
+        if worker_path is None:
+            raise TierkreisError(f"{launcher_name} not in registries {self.registries}")
+
         env = os.environ.copy() | self.env.copy()
         if "VIRTUAL_ENVIRONMENT" not in env:
             env["VIRTUAL_ENVIRONMENT"] = ""
