@@ -31,6 +31,7 @@ class Loc(str):
         return super(Loc, cls).__new__(cls, k)
 
     def N(self, idx: int) -> "Loc":
+        assert idx >= 0
         return Loc(str(self) + f".N{idx}")
 
     def L(self, idx: int) -> "Loc":

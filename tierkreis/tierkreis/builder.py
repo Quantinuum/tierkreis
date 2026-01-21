@@ -61,6 +61,7 @@ def script(script_name: str, input: TKR[bytes]) -> Function[TKR[bytes]]:
 class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     outputs_type: type
     inputs: Inputs
+    body_input: ValueRef | None
 
     def __init__(
         self,
@@ -72,12 +73,15 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self.outputs_type = outputs_type
         inputs = [self.data.input(x) for x in model_fields(inputs_type)]
         self.inputs = init_tmodel(self.inputs_type, inputs)
+        self.body_input = None
 
     def get_data(self) -> GraphData:
         return self.data
 
     def ref(self) -> TypedGraphRef[Inputs, Outputs]:
-        return TypedGraphRef((-1, "body"), self.outputs_type, self.inputs_type)
+        if self.body_input is None:
+            self.body_input = self.data.input("body")
+        return TypedGraphRef(self.body_input, self.outputs_type, self.inputs_type)
 
     def outputs(self, outputs: Outputs):
         self.data.output(inputs=dict_from_tmodel(outputs))

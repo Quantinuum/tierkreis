@@ -7,7 +7,7 @@ import sys
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.storage.adjacency import outputs_iter
+from tierkreis.controller.storage.adjacency import outputs_iter, in_edges
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
@@ -91,11 +91,6 @@ def start(
         else:
             executor.run(launcher_name, call_args_path)
 
-    elif node.type == "input":
-        input_loc = parent.N(-1)
-        storage.link_outputs(node_location, node.name, input_loc, node.name)
-        storage.mark_node_finished(node_location)
-
     elif node.type == "output":
         storage.mark_node_finished(node_location)
 
@@ -108,59 +103,54 @@ def start(
         storage.mark_node_finished(node_location)
 
     elif node.type == "eval":
-        message = storage.read_output(parent.N(node.graph[0]), node.graph[1])
-        g = ptype_from_bytes(message, GraphData)
-        ins["body"] = (parent.N(node.graph[0]), node.graph[1])
-        ins.update(g.fixed_inputs)
-
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        graph_input = (parent.N(node.graph[0]), node.graph[1])
+        start_graph(storage, executor, node_location, graph_input, ins)
 
     elif node.type == "loop":
-        ins["body"] = (parent.N(node.body[0]), node.body[1])
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        graph_input = (parent.N(node.body[0]), node.body[1])
         if (
             node.name is not None
         ):  # should we do this only in debug mode? -> need to think through how this would work
             storage.write_debug_data(node.name, node_location)
-        start(
-            storage,
-            executor,
-            NodeRunData(
-                node_location.L(0),
-                Eval((-1, "body"), {k: (-1, k) for k, _ in ins.items()}, node.outputs),
-                output_list,
-            ),
-        )
+        start_graph(storage, executor, node_location.L(0), graph_input, ins)
 
     elif node.type == "map":
         first_ref = next(x for x in ins.values() if x[1] == "*")
         map_eles = outputs_iter(storage, first_ref[0])
         if not map_eles:
             storage.mark_node_finished(node_location)
+        graph_input = (parent.N(node.body[0]), node.body[1])
         for idx, p in map_eles:
-            eval_inputs: dict[PortID, tuple[Loc, PortID]] = {}
-            eval_inputs["body"] = (parent.N(node.body[0]), node.body[1])
-            for k, (i, port) in ins.items():
-                if port == "*":
-                    eval_inputs[k] = (i, p)
-                else:
-                    eval_inputs[k] = (i, port)
-            pipe_inputs_to_output_location(
-                storage, node_location.M(idx).N(-1), eval_inputs
-            )
             # Necessary in the node visualization
-            storage.write_node_def(
-                node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs)
-            )
-
+            storage.write_node_def(node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs))
+            
+            start_graph(storage, executor, node_location.M(idx), graph_input,
+                {k: (i, p if port == "*" else port) for k, (i, port) in ins.items()})
     elif node.type == "ifelse":
         pass
 
     elif node.type == "eifelse":
         pass
-    else:
+    else: # includes input as should always have been executed by start_graph
         assert_never(node)
 
+def start_graph(
+    storage: ControllerStorage,
+    executor: ControllerExecutor,
+    loc: Loc,
+    graph_input: OutputLoc,
+    ins: dict[PortID, OutputLoc],
+) -> None:
+    message = storage.read_output(*graph_input)
+    g = ptype_from_bytes(message, GraphData)    
+    ins["body"] = graph_input
+    ins.update(g.fixed_inputs)
+    for i, n in enumerate(g.nodes):
+        if n.type == "input":
+            input_loc = loc.N(i)
+            value = ins[n.name]
+            storage.link_outputs(input_loc, n.name, *value)
+            storage.mark_node_finished(input_loc)
 
 def pipe_inputs_to_output_location(
     storage: ControllerStorage,

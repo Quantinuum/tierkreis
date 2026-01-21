@@ -13,7 +13,7 @@ from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.data.core import PortID, ValueRef
 from tierkreis.exceptions import TierkreisError
 
-root_loc = Loc("")
+root_loc = Loc("")  # Special, used as inputs to the toplevel graph
 logger = logging.getLogger(__name__)
 
 
@@ -35,14 +35,13 @@ def run_graph(
     if len(remaining_inputs) > 0:
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
-    storage.write_metadata(Loc(""))
+    storage.write_metadata(root_loc)  # Should this be Loc() ?
     if enable_logging:
         set_tkr_logger(storage.logs_path)
 
     for name, value in graph_inputs.items():
-        storage.write_output(root_loc.N(-1), name, bytes_from_ptype(value))
-
-    storage.write_output(root_loc.N(-1), "body", bytes_from_ptype(g))
+        storage.write_output(root_loc, name, bytes_from_ptype(value))
+    storage.write_output(root_loc, "body", bytes_from_ptype(g))
 
     inputs: dict[PortID, ValueRef] = {
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
