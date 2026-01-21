@@ -179,8 +179,10 @@ def start_graph(
     for i, n in enumerate(g.nodes):
         if n.type == "input":
             input_loc = loc.N(i)
-            value = ins[n.name]
-            storage.link_outputs(input_loc, n.name, *value)
+            if value := ins.get(n.name):
+                storage.link_outputs(input_loc, n.name, *value)
+            # else, ideally we'd check if that input is optional and error if not,
+            # but since we don't have the graph type here, we'll assume it's optional!
             storage.mark_node_finished(input_loc)
 
 
