@@ -34,16 +34,23 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
     props.closer();
   };
 
-  const restartButton = props.info.type === "Logs"? (
-    <Button className="cursor-pointer mt-2" onClick={restartHandle}>
-      Restart
-    </Button>) : <></>;
+  const restartButton =
+    props.info.type === "Logs" ? (
+      <Button className="cursor-pointer mt-2" onClick={restartHandle}>
+        Restart
+      </Button>
+    ) : (
+      <></>
+    );
 
   return (
     <DialogContent className="w-[90vw] h-[90vh]">
       <DialogHeader>
         <DialogTitle> {props.info.type}</DialogTitle>
-        <DialogDescription></DialogDescription>
+        <DialogDescription>
+          Started at: {props.info.started_time} Finished at:{" "}
+          {props.info.finished_time ? props.info.finished_time : "N/A"}
+        </DialogDescription>
       </DialogHeader>
       <div className="text-wrap overflow-auto h-9/10">{props.info.content}</div>
       {restartButton}
