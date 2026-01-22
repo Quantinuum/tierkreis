@@ -41,14 +41,12 @@ def run_hpc_executor(
     submission_cmd = [executor.command]
     submission_cmd.append("-j")  # Pipe stderr to the same place as stdout
 
-    submission_cmd += ["-o", str(executor.errors_path)]
+    submission_cmd += ["-o", executor.errors_path]
     if spec.include_no_check_directory_flag:
         submission_cmd += ["--no-check-directory"]
 
     if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
         spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
-
-    executor.errors_path.touch(exist_ok=True)
 
     with NamedTemporaryFile(
         mode="w+",
@@ -63,7 +61,7 @@ def run_hpc_executor(
 
         proc = subprocess.Popen(["bash"], start_new_session=True, stdin=subprocess.PIPE)
         proc.communicate(
-            f"({" ".join(submission_cmd)} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode(),
+            f"({submission_cmd} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode(),
             timeout=10,
         )
 
