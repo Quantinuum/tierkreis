@@ -59,6 +59,11 @@ def run_hpc_executor(
         tee_str = f">(tee -a {str(executor.errors_path)} {str(executor.logs_path)} >/dev/null)"
         _error_path = executor.errors_path.parent / "_error"
 
+        process = subprocess.run(
+            f"{submission_cmd} > {tee_str} 2> {tee_str} || touch {_error_path}",
+            start_new_session=True,
+            universal_newlines=True,
+        )
         proc = subprocess.Popen(["bash"], start_new_session=True, stdin=subprocess.PIPE)
         proc.communicate(
             f"({submission_cmd} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode(),
@@ -71,6 +76,6 @@ def run_hpc_executor(
     with open(executor.logs_path, "a+") as fh:
         fh.write(log_output)
 
-    if proc.returncode != 0:
-        raise TierkreisError(f"Executor failed with return code {proc.returncode}")
-    logger.info("Submitted job with return code %s", proc.stdout)
+    if process.returncode != 0:
+        raise TierkreisError(f"Executor failed with return code {process.returncode}")
+    logger.info("Submitted job with return code %s", process.stdout.rstrip())
