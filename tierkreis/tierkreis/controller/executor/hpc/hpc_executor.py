@@ -63,6 +63,7 @@ def run_hpc_executor(
         process = subprocess.run(
             submission_cmd,
             start_new_session=True,
+            capture_output=True,
             universal_newlines=True,
             stderr=log_writer,
             stdout=log_writer,
@@ -75,5 +76,8 @@ def run_hpc_executor(
         fh.write(log_output)
 
     if process.returncode != 0:
+        with open(executor.errors_path, "a") as efh:
+            efh.write("Error from script")
+            efh.write(process.stderr)
         raise TierkreisError(f"Executor failed with return code {process.returncode}")
     logger.info("Submitted job with return code %s", process.stdout.rstrip())
