@@ -55,9 +55,10 @@ class UvExecutor:
 
         worker_path: Path | None = None
         for registry in self.registries:
-            subdirs = [str(x) for x in registry.iterdir() if x.is_dir()]
+            subdirs = [x.stem for x in registry.iterdir() if x.is_dir()]
             if launcher_name in subdirs:
                 worker_path = registry / launcher_name
+                break
         if worker_path is None:
             raise TierkreisError(f"{launcher_name} not in registries {self.registries}")
 
