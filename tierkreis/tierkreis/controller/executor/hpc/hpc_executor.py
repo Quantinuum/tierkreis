@@ -62,9 +62,10 @@ def run_hpc_executor(
         _error_path = executor.errors_path.parent / "_error"
 
         proc = subprocess.Popen(["bash"], start_new_session=True, stdin=subprocess.PIPE)
-        subproc_cmd = f"({" ".join(submission_cmd)} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode()
-        print(subproc_cmd)
-        proc.communicate(subproc_cmd, timeout=10)
+        proc.communicate(
+            f"({" ".join(submission_cmd)} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode(),
+            timeout=10,
+        )
 
     with open(executor.errors_path) as fh:
         log_output = fh.read()
