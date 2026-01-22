@@ -41,38 +41,37 @@ def run_hpc_executor(
     submission_cmd = [executor.command]
     submission_cmd.append("-j")  # Pipe stderr to the same place as stdout
 
-    submission_cmd += ["-o", executor.errors_path]
+    submission_cmd += ["-o", str(executor.errors_path)]
     if spec.include_no_check_directory_flag:
         submission_cmd += ["--no-check-directory"]
 
     if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
         spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
 
-    with open(executor.errors_path) as efh:
-        with NamedTemporaryFile(
-            mode="w+",
-            delete=True,
-            suffix=".sh",
-            prefix=f"{spec.job_name}-",
-        ) as script_file:
-            generate_script(executor.script_fn, spec, Path(script_file.name))
-            submission_cmd.append(script_file.name)
+    executor.errors_path.touch(exist_ok=True)
 
-            process = subprocess.run(
-                submission_cmd,
-                start_new_session=True,
-                universal_newlines=True,
-                stdout=efh,
-            )
+    with NamedTemporaryFile(
+        mode="w+",
+        delete=True,
+        suffix=".sh",
+        prefix=f"{spec.job_name}-",
+    ) as script_file:
+        generate_script(executor.script_fn, spec, Path(script_file.name))
+        submission_cmd.append(script_file.name)
+        tee_str = f">(tee -a {str(executor.errors_path)} {str(executor.logs_path)} >/dev/null)"
+        _error_path = executor.errors_path.parent / "_error"
 
-            log_output = efh.read()
+        proc = subprocess.Popen(["bash"], start_new_session=True, stdin=subprocess.PIPE)
+        subproc_cmd = f"({" ".join(submission_cmd)} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode()
+        print(subproc_cmd)
+        proc.communicate(subproc_cmd, timeout=10)
+
+    with open(executor.errors_path) as fh:
+        log_output = fh.read()
 
     with open(executor.logs_path, "a+") as fh:
         fh.write(log_output)
 
-    if process.returncode != 0:
-        with open(executor.errors_path, "a") as efh:
-            efh.write("Error from script")
-            efh.write(process.stderr)
-        raise TierkreisError(f"Executor failed with return code {process.returncode}")
-    logger.info("Submitted job with return code %s", process.stdout.rstrip())
+    if proc.returncode != 0:
+        raise TierkreisError(f"Executor failed with return code {proc.returncode}")
+    logger.info("Submitted job with return code %s", proc.stdout)
