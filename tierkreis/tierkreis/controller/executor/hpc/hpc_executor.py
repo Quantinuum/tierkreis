@@ -6,7 +6,6 @@ from typing import Callable, Protocol
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
-from tierkreis.controller.executor.log import LogWriter
 from tierkreis.exceptions import TierkreisError
 
 
@@ -42,38 +41,32 @@ def run_hpc_executor(
     submission_cmd = [executor.command]
     submission_cmd.append("-j")  # Pipe stderr to the same place as stdout
 
-    submission_cmd += ["-o", executor.errors_path]
-    if spec.include_no_check_directory_flag:
-        submission_cmd += ["--no-check-directory"]
+    with NamedTemporaryFile("w+") as output_file:
+        submission_cmd += ["-o", output_file.name]
+        if spec.include_no_check_directory_flag:
+            submission_cmd += ["--no-check-directory"]
 
-    if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
-        spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
+        if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
+            spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
 
-    log_writer = LogWriter(executor.logs_path, executor.errors_path)
+        with NamedTemporaryFile(
+            mode="w+",
+            delete=True,
+            suffix=".sh",
+            prefix=f"{spec.job_name}-",
+        ) as script_file:
+            generate_script(executor.script_fn, spec, Path(script_file.name))
+            submission_cmd.append(script_file.name)
 
-    with NamedTemporaryFile(
-        mode="w+",
-        delete=True,
-        suffix=".sh",
-        prefix=f"{spec.job_name}-",
-    ) as script_file:
-        generate_script(executor.script_fn, spec, Path(script_file.name))
-        submission_cmd.append(script_file.name)
+            process = subprocess.run(
+                submission_cmd,
+                start_new_session=True,
+                capture_output=True,
+                universal_newlines=True,
+            )
 
-        process = subprocess.run(
-            submission_cmd,
-            start_new_session=True,
-            capture_output=True,
-            universal_newlines=True,
-            stderr=log_writer,
-            stdout=log_writer,
-        )
-
-    with open(executor.errors_path) as fh:
-        log_output = fh.read()
-
-    with open(executor.logs_path, "a+") as fh:
-        fh.write(log_output)
+        with open(executor.logs_path, "a+") as fh:
+            fh.write(output_file.read())
 
     if process.returncode != 0:
         with open(executor.errors_path, "a") as efh:
