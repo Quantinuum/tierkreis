@@ -49,8 +49,6 @@ def run_hpc_executor(
     if TKR_DIR_KEY not in spec.environment:  # User can override by setting TKR_DIR
         spec.environment[TKR_DIR_KEY] = str(executor.logs_path.parent.parent)
 
-    log_writer = LogWriter(executor.logs_path, executor.errors_path)
-
     with NamedTemporaryFile(
         mode="w+",
         delete=True,
@@ -59,13 +57,18 @@ def run_hpc_executor(
     ) as script_file:
         generate_script(executor.script_fn, spec, Path(script_file.name))
         submission_cmd.append(script_file.name)
+        tee_str = f">(tee -a {str(executor.errors_path)} {str(executor.logs_path)} >/dev/null)"
+        _error_path = executor.errors_path.parent / "_error"
 
         process = subprocess.run(
-            submission_cmd,
+            f"{submission_cmd} > {tee_str} 2> {tee_str} || touch {_error_path}",
             start_new_session=True,
             universal_newlines=True,
-            stderr=log_writer,
-            stdout=log_writer,
+        )
+        proc = subprocess.Popen(["bash"], start_new_session=True, stdin=subprocess.PIPE)
+        proc.communicate(
+            f"({submission_cmd} > {tee_str} 2> {tee_str} || touch {_error_path}) &".encode(),
+            timeout=10,
         )
 
     with open(executor.errors_path) as fh:
