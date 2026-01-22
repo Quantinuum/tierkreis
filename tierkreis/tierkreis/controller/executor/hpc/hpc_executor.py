@@ -65,8 +65,13 @@ def run_hpc_executor(
                 universal_newlines=True,
             )
 
+            log_output = f"{process.stdout}\n\n{output_file.read()}"
+
         with open(executor.logs_path, "a+") as fh:
-            fh.write(output_file.read())
+            fh.write(log_output)
+
+        with open(executor.errors_path, "a+") as fh:
+            fh.write(log_output)
 
     if process.returncode != 0:
         with open(executor.errors_path, "a") as efh:
