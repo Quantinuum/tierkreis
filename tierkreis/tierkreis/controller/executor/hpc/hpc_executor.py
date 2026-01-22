@@ -6,7 +6,6 @@ from typing import Callable, Protocol
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
-from tierkreis.controller.executor.log import LogWriter
 from tierkreis.exceptions import TierkreisError
 
 
