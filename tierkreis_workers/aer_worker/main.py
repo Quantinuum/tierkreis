@@ -11,7 +11,6 @@ from qiskit import qasm3
 
 worker = Worker("aer_worker")
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 def get_backend(simulation_method: str = "automatic", n_qubits: int = 40) -> AerBackend:
@@ -30,7 +29,7 @@ def get_compiled_circuit(
     simulation_method: str = "automatic",
     n_qubits: int = 40,
 ) -> Circuit:
-    logger.info("get_compiled_circuit")
+    logger.error("get_compiled_circuit")
 
     backend = get_backend(simulation_method, n_qubits)
     return backend.get_compiled_circuit(circuit, optimisation_level, timeout)
@@ -44,7 +43,7 @@ def run_circuit(
     n_qubits: int = 40,
     seed: int | None = None,
 ) -> BackendResult:
-    logger.info("run_circuit")
+    logger.error("run_circuit")
     backend = get_backend(simulation_method, n_qubits)
     config = get_config(seed)
     return backend.run_circuit(circuit, n_shots, **config)
@@ -58,7 +57,7 @@ def run_circuits(
     n_qubits: int = 40,
     seed: int | None = None,
 ) -> list[BackendResult]:
-    logger.info("run_circuits")
+    logger.error("run_circuits")
     backend = get_backend(simulation_method, n_qubits)
     config = get_config(seed)
     return backend.run_circuits(circuits, n_shots, **config)
@@ -75,7 +74,7 @@ def to_qasm3_str(circuit: Circuit) -> str:
     :return: The circuit in QASM3.
     :rtype: str
     """
-    logger.info("to_qasm3_str")
+    logger.error("to_qasm3_str")
     return qasm3.dumps(tk_to_qiskit(circuit))
 
 

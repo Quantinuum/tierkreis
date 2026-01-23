@@ -56,7 +56,6 @@ def run_hpc_executor(
         suffix=".sh",
         prefix=f"{spec.job_name}-",
     ) as script_file:
-        print(script_file.name)
         generate_script(executor.script_fn, spec, Path(script_file.name))
         submission_cmd.append(script_file.name)
 
@@ -78,4 +77,3 @@ def run_hpc_executor(
             efh.write("Error from script")
             efh.write(process.stderr)
         raise TierkreisError(f"Executor failed with return code {process.returncode}")
-    logger.info("Submitted job with return code %s", process.stdout.rstrip())
