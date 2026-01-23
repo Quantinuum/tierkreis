@@ -9,6 +9,7 @@ export type BackendNode = Node<{
     inputs: string[];
     outputs: string[];
   };
+  output_names?: string[];
   hidden_handles?: {
     inputs: string[];
     outputs: string[];

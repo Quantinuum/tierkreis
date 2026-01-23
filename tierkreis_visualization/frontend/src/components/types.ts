@@ -12,6 +12,7 @@ export interface InfoProps {
   node_location: string;
   started_time?: string;
   finished_time?: string;
+  output_names?: string[];
 }
 export interface HandleProps {
   handles: string[];

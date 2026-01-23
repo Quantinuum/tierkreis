@@ -82,7 +82,7 @@ function parseNodeValue(value: unknown): string | null {
 function parseNodes(
   nodes: PyNode[],
   edges: PyEdge[],
-  workflowId: string
+  workflowId: string,
 ): AppNode[] {
   // child nodes prepend their parents id eg. [0,1,2] => [0:0,0:1,0:2]
   const parsedNodes = nodes.map((node) => {
@@ -97,6 +97,7 @@ function parseNodes(
         name: node.function_name,
         status: node.status,
         handles: getHandlesFromEdges(node.id, edges),
+        output_names: node.outputs,
         hidden_handles: undefined,
         hidden_edges: undefined,
         workflowId: workflowId,
@@ -124,7 +125,7 @@ function parseNodes(
 
 function replacer(
   _: string,
-  value: number | string | null | undefined
+  value: number | string | null | undefined,
 ): number | string | null | undefined {
   if (value === null || value === undefined) {
     return;
@@ -168,7 +169,7 @@ export function parseGraph(
   openEvals: string[],
   openLoops: string[],
   openMaps: string[],
-  parentId?: string
+  parentId?: string,
 ) {
   const nodes = parseNodes(data.nodes, data.edges, workflowId);
   const edges = parseEdges(data.edges, parentId);

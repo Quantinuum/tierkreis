@@ -57,12 +57,15 @@ export const GraphView = (props: {
   }, []);
 
   const ns = props.nodes.sort((a, b) =>
-    a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
   );
   const revertPositionChanges = () => {
     reactFlowInstance.setEdges(reactFlowInstance.getEdges());
     reactFlowInstance.setNodes(
-      bottomUpLayout(reactFlowInstance.getNodes(), reactFlowInstance.getEdges())
+      bottomUpLayout(
+        reactFlowInstance.getNodes(),
+        reactFlowInstance.getEdges(),
+      ),
     );
     reactFlowInstance.fitView({ padding: 0.1 });
   };
@@ -82,7 +85,7 @@ export const GraphView = (props: {
         onNodesChange={props.onNodesChange}
         onNodeDrag={onNodeDrag}
         minZoom={0.01}
-        defaultEdgeOptions={{zIndex: -2}}
+        defaultEdgeOptions={{ zIndex: -2 }}
         fitView
       >
         <Background />
