@@ -44,15 +44,7 @@ def generate_pjsub_script(spec: JobSpec) -> str:
             lines.append(f"{_COMMAND_PREFIX} -m e")  # end only
             lines.append(f"{_COMMAND_PREFIX} --mail-list {spec.user.mail}")
 
-    # 5. Output and Error handling
-    lines.append("\n# --- Output and Error Handling ---")
-    if spec.error_path is not None:
-        lines.append(f"{_COMMAND_PREFIX} -e {spec.error_path}")
-    else:
-        lines.append(f"{_COMMAND_PREFIX} -j")
-    if spec.output_path is None:
-        spec.output_path = Path(f"./{spec.job_name}.o")
-    lines.append(f"{_COMMAND_PREFIX} -o {spec.output_path}")
+    # 5. Output and Error handling done by BASH
 
     # 6. MPI
     if spec.mpi is not None:
