@@ -38,6 +38,8 @@ class JobSpec(BaseModel):
     container: ContainerSpec | None = None
     walltime: str = "01:00:00"  # HH:MM:SS Replacement?
     queue: str | None = None
+    output_path: Path | None = None
+    error_path: Path | None = None
     extra_scheduler_args: dict[str, str | None] = Field(default_factory=dict)
     environment: dict[str, str] = Field(default_factory=dict)
     include_no_check_directory_flag: bool = False
