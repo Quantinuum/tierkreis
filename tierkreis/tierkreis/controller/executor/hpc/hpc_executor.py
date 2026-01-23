@@ -52,7 +52,7 @@ def run_hpc_executor(
 
     with NamedTemporaryFile(
         mode="w+",
-        delete=False,
+        delete=True,
         suffix=".sh",
         prefix=f"{spec.job_name}-",
     ) as script_file:
