@@ -7,7 +7,7 @@ from tierkreis.pkg.base import TKRDependency
 
 
 class GitHubDependency(TKRDependency):
-    type: Literal["github"] = "github"
+    type: str = "github"
 
     account: str
     repo: str
@@ -15,12 +15,13 @@ class GitHubDependency(TKRDependency):
 
     branch: str = "main"
 
-    @property
-    def cache_dir(self):
-        return WORKER_CACHE / "github" / self.account / self.repo / self.branch
+    def cache_subdir(self, worker_cache: Path):
+        return worker_cache / "github" / self.account / self.repo / self.branch
 
-    def install(self, worker_name: str, target_dir: Path):
-        cache_dir = self.cache_dir
+    def install(
+        self, worker_name: str, target_dir: Path, worker_cache: Path = WORKER_CACHE
+    ):
+        cache_dir = self.cache_subdir(worker_cache)
         cache_dir.mkdir(exist_ok=True, parents=True)
 
         git_dir = cache_dir / ".git"
