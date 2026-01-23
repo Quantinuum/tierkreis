@@ -49,7 +49,7 @@ def generate_pjsub_script(spec: JobSpec) -> str:
     # So redirect to temporary files.
     lines.append("\n# --- Output and Error Handling ---")
     lines.append(f"{_COMMAND_PREFIX} -j")
-    lines.append(f"{_COMMAND_PREFIX} -o /tmp{uuid4()}-tkr-pjsub.out")
+    lines.append(f"{_COMMAND_PREFIX} -o /tmp/tkr-pjsub-{spec.job_name}-{uuid4()}.out")
 
     # 6. MPI
     if spec.mpi is not None:

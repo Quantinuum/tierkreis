@@ -76,7 +76,8 @@ def run_hpc_executor(
         with open(executor.errors_path, "a") as efh:
             efh.write("Error from script")
             efh.write(process.stderr)
-        print("pjsub script\n\n")
+        print(process.stderr)
+        print("\n\npjsub script\n\n")
         print(executor.script_fn(spec))
 
         raise TierkreisError(f"Executor failed with return code {process.returncode}")
