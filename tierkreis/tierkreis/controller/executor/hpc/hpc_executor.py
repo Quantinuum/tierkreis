@@ -52,10 +52,11 @@ def run_hpc_executor(
 
     with NamedTemporaryFile(
         mode="w+",
-        delete=True,
+        delete=False,
         suffix=".sh",
         prefix=f"{spec.job_name}-",
     ) as script_file:
+        print(script_file.name)
         generate_script(executor.script_fn, spec, Path(script_file.name))
         submission_cmd.append(script_file.name)
 
