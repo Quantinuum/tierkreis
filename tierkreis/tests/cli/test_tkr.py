@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest import mock
 from uuid import UUID
 
-from tierkreis.cli.tkr import load_graph, _load_inputs, main
+from tierkreis.cli.run import load_graph, _load_inputs
+from tierkreis.cli.tkr import main
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.exceptions import TierkreisError
