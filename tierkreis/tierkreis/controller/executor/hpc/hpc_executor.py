@@ -40,7 +40,7 @@ def run_hpc_executor(
 
     spec.command += " " + str(worker_call_args_path)
     spec.command = add_std_handlers(
-        executor.logs_path, executor.errors_path, executor.spec.command
+        executor.logs_path, executor.errors_path, spec.command
     )
 
     submission_cmd = [executor.command]
