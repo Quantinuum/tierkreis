@@ -7,6 +7,3 @@ from pydantic import BaseModel
 class TKRDependency(ABC, BaseModel):
     @abstractmethod
     def install(self, worker_name: str, target_dir: Path) -> None: ...
-
-    @abstractmethod
-    def remove(self, worker_name: str, target_dir: Path) -> None: ...
