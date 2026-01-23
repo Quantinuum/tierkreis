@@ -8,4 +8,4 @@ def add_std_handlers(workflow_logs: Path, node_logs: Path, command: str) -> str:
 
     _error_path = node_logs.parent / "_error"
     tee_str = f">(tee -a {str(node_logs)} {str(workflow_logs)} >/dev/null)"
-    return f"({command} > {tee_str} 2> {tee_str} || touch {_error_path}) &"
+    return f"({command} > {tee_str} 2> {tee_str} || touch {_error_path})"
