@@ -1,7 +1,6 @@
 from os import symlink
 from pathlib import Path
 import subprocess
-from typing import Literal
 from tierkreis.consts import WORKER_CACHE
 from tierkreis.pkg.base import TKRDependency
 
