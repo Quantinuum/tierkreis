@@ -11,7 +11,6 @@ from qiskit import qasm3
 
 worker = Worker("aer_worker")
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 def get_backend(simulation_method: str = "automatic", n_qubits: int = 40) -> AerBackend:
