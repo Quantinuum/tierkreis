@@ -28,6 +28,7 @@ class GitHubDependency(TKRDependency):
         if not git_dir.exists():
             subprocess.run(["git", "clone", git_url, "."], cwd=cache_dir)
 
+        subprocess.run(["git", "restore", "."], cwd=cache_dir)
         subprocess.run(["git", "clean", "-f"], cwd=cache_dir)
         subprocess.run(["git", "checkout", self.branch], cwd=cache_dir)
         subprocess.run(["git", "pull", "--rebase"], cwd=cache_dir)
