@@ -3,7 +3,7 @@
 WIP browser based visualizer.
 
 ```
-uv run fastapi dev tierkreis_visualization/main.py
+uv run tkr-vis-dev
 ```
 
 for the development server.

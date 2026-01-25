@@ -1,6 +1,7 @@
 export interface InfoProps {
   type: "Logs" | "Errors";
   content: string;
+  selectionKey: string;
 }
 export interface Workflow {
   id: string;

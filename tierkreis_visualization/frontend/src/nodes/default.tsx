@@ -8,22 +8,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
-import { useErrors, useLogs } from "@/data/logs";
+import { fetchText } from "@/data/logs";
+import { useQueryClient } from "@tanstack/react-query";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
-  const { data: logs } = useLogs(
-    data.workflowId,
-    data.node_location,
-    data.title
-  );
-  const { data: errors } = useErrors(
-    data.workflowId,
-    data.node_location,
-    data.status
-  );
+  const queryClient = useQueryClient();
   let name = data.title;
   if (name == "Function") {
     name = data.name;
@@ -45,6 +37,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
 
   return (
     <Card className={"w-[180px] " + bg_color(data.status)}>
+      "Hello"
       <DialogTrigger asChild>
         <div
           onClick={(event) => {
@@ -52,17 +45,44 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
             const target = event.target as HTMLElement;
             if (target.closest("button") === null) {
               if (data.title == "Function") {
+                const selectionKey = `${data.workflowId}:${data.node_location}:logs:${Date.now()}`;
                 data.setInfo?.({
                   type: "Logs",
-                  content: logs ?? "Loading logs...",
+                  content: "Loading logs...",
+                  selectionKey,
                 });
+                queryClient
+                  .fetchQuery({
+                    queryKey: ["logs", data.workflowId, data.node_location],
+                    queryFn: () =>
+                      fetchText(data.workflowId, data.node_location, "logs"),
+                  })
+                  .then((content) => {
+                    data.setInfo?.((prev) =>
+                      prev.selectionKey === selectionKey
+                        ? { ...prev, content }
+                        : prev
+                    );
+                  })
+                  .catch((err: unknown) => {
+                    data.setInfo?.((prev) =>
+                      prev.selectionKey === selectionKey
+                        ? {
+                            ...prev,
+                            content: `Failed to load logs: ${String(err)}`,
+                          }
+                        : prev
+                    );
+                  });
                 return;
               }
 
               // Ensure we don't show stale function logs when a non-function node is clicked.
+              const selectionKey = `${data.workflowId}:${data.node_location}:logs:${Date.now()}`;
               data.setInfo?.({
                 type: "Logs",
                 content: `No logs for "${data.title}" nodes.`,
+                selectionKey,
               });
             }
           }}
@@ -79,7 +99,8 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
               handles={data.handles.inputs}
               id={data.id}
               isOpen={data.isTooltipOpen}
-              onOpenChange={data.onTooltipOpenChange}
+              hoveredId={data.hoveredId}
+              setHoveredId={data.setHoveredId}
             />
             <div className="flex items-center justify-center">
               {data.status == "Error" && (
@@ -87,12 +108,41 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
                   size="sm"
                   variant="destructive"
                   style={{ zIndex: 5 }}
-                  onClick={() =>
+                  onClick={() => {
+                    const selectionKey = `${data.workflowId}:${data.node_location}:errors:${Date.now()}`;
                     data.setInfo?.({
                       type: "Errors",
-                      content: errors ? errors : "",
-                    })
-                  }
+                      content: "Loading errors...",
+                      selectionKey,
+                    });
+                    queryClient
+                      .fetchQuery({
+                        queryKey: ["errors", data.workflowId, data.node_location],
+                        queryFn: () =>
+                          fetchText(
+                            data.workflowId,
+                            data.node_location,
+                            "errors"
+                          ),
+                      })
+                      .then((content) => {
+                        data.setInfo?.((prev) =>
+                          prev.selectionKey === selectionKey
+                            ? { ...prev, content }
+                            : prev
+                        );
+                      })
+                      .catch((err: unknown) => {
+                        data.setInfo?.((prev) =>
+                          prev.selectionKey === selectionKey
+                            ? {
+                                ...prev,
+                                content: `Failed to load errors: ${String(err)}`,
+                              }
+                            : prev
+                        );
+                      });
+                  }}
                 >
                   <OctagonAlert />
                 </Button>
@@ -102,7 +152,8 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
               handles={data.handles.outputs}
               id={data.id}
               isOpen={data.isTooltipOpen}
-              onOpenChange={data.onTooltipOpenChange}
+              hoveredId={data.hoveredId}
+              setHoveredId={data.setHoveredId}
             />
           </CardContent>
           <CardFooter

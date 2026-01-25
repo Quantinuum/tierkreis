@@ -153,3 +153,13 @@ main {
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
+
+/* React Flow: show draggable cursor when hovering nodes (override library defaults) */
+.react-flow__node,
+.xyflow__node {
+  cursor: grab !important;
+}
+.react-flow__node:active,
+.xyflow__node:active {
+  cursor: grabbing !important;
+}

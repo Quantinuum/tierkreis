@@ -1,5 +1,6 @@
 import { InfoProps } from "@/components/types";
 import { Edge, type Node } from "@xyflow/react";
+import React from "react";
 
 export type PyNode = {
   id: string | number;
@@ -29,7 +30,7 @@ export type BackendNode = Node<{
   label?: string;
   pinned: boolean;
   value: string | null;
-  setInfo?: (info: InfoProps) => void;
+  setInfo?: React.Dispatch<React.SetStateAction<InfoProps>>;
   is_expanded: boolean;
   isTooltipOpen: boolean;
   hoveredId: string;

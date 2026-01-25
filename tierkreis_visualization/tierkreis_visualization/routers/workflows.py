@@ -247,6 +247,7 @@ def get_function_logs(
 ) -> PlainTextResponse:
     node_location = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
+    print(f"storage.tkr_dir: {storage.tkr_dir}")
     try:
         definition = storage.read_node_def(node_location)
     except (FileNotFoundError, TierkreisError):

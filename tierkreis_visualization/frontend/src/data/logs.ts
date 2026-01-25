@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { URL } from "./constants";
 
-const fetchText = async (
+export const fetchText = async (
   workflowId: string,
   node_location: string,
   type: "errors" | "logs"
@@ -21,23 +21,25 @@ const fetchText = async (
 export const useLogs = (
   workflowId: string,
   node_location: string,
-  node_title: string
+  node_title: string,
+  enabled: boolean = true
 ) => {
   return useQuery({
     queryKey: ["logs", workflowId, node_location],
     queryFn: () => fetchText(workflowId, node_location, "logs"),
-    enabled: !!workflowId && !!node_location && node_title == "Function",
+    enabled: enabled && !!workflowId && !!node_location && node_title == "Function",
   });
 };
 
 export const useErrors = (
   workflowId: string,
   node_location: string,
-  status: "Not started" | "Started" | "Error" | "Finished"
+  status: "Not started" | "Started" | "Error" | "Finished",
+  enabled: boolean = true
 ) => {
   return useQuery({
     queryKey: ["errors", workflowId, node_location],
     queryFn: () => fetchText(workflowId, node_location, "errors"),
-    enabled: !!workflowId && !!node_location && status === "Error",
+    enabled: enabled && !!workflowId && !!node_location && status === "Error",
   });
 };
