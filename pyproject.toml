@@ -20,7 +20,7 @@ lint = [
     "pyright>=1.1.400",
 ]
 test = [
-    "pytest>=6.2,<9",
+    "pytest>=6.2,<10",
     "pytest-asyncio>=0.16,<0.17",
     "pytest-cov>=5.0,<6",
     "pydantic>=2.9.2",
