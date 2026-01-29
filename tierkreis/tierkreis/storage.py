@@ -21,7 +21,7 @@ def _read_output(
     storage: ControllerStorage, port_name: str, annotation: type | None
 ) -> PType:
     """Tries to get the output `port_name` from the root graph.
-    If `annotation` indicates that the value is optional then do not raise on FileNotFound.
+    If `annotation` indicates that the value is optional then do not raise on EntryNotFound.
     """
 
     try:
