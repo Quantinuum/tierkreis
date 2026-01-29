@@ -19,9 +19,13 @@ __all__ = ["FileStorage", "InMemoryStorage"]
 def _read_output(
     storage: ControllerStorage, port_name: str, annotation: type | None
 ) -> PType:
+    """Tries to get the output `port_name` from the root graph.
+    If `annotation` indicates that the value is optional then do not raise on FileNotFound.
+    """
+
     try:
         return ptype_from_bytes(storage.read_output(Loc(), port_name))
-    except FileNotFoundError as exc:
+    except TierkreisError as exc:
         if not annotation or not is_optional(annotation):
             raise TierkreisError(f"Output {port_name} not found.") from exc
         return None
@@ -30,6 +34,10 @@ def _read_output(
 def read_outputs[A: TModel, B: TModel](
     g: GraphData | GraphBuilder[A, B], storage: ControllerStorage
 ) -> dict[str, PType] | PType:
+    """Read the outputs from the `storage`.
+
+    The bytes are parsed into Python types if possible."""
+
     output_annotation = None
     if isinstance(g, GraphBuilder):
         output_annotation = g.outputs_type

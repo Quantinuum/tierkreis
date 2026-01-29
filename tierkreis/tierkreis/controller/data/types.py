@@ -137,6 +137,7 @@ def _is_union(o: object) -> bool:
 
 
 def is_optional(t: type) -> bool:
+    """Check the origin and args of `t` to see if it is a Union containing NoneType."""
     origin = get_origin(t)
     if origin is None:
         return False
