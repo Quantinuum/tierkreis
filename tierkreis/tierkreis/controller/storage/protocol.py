@@ -174,7 +174,7 @@ class ControllerStorage(ABC):
         new_dir = self._output_path(new_location, new_port)
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
-        except EntryNotFound as e:
+        except EntryNotFound:
             logger.info(
                 f"Could not find {old_location}. Will try to use a default value if it exists."
             )
