@@ -8,6 +8,7 @@ from tierkreis.controller.storage.protocol import (
     StorageEntryMetadata,
     ControllerStorage,
 )
+from tierkreis.controller.storage.exceptions import EntryNotFound
 
 
 class ControllerFileStorage(ControllerStorage):
@@ -41,14 +42,21 @@ class ControllerFileStorage(ControllerStorage):
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists() and dst.resolve() == src:
             return  # We have already linked correctly
-        os.link(src, dst)
+
+        try:
+            os.link(src, dst)
+        except FileNotFoundError as exc:
+            raise EntryNotFound(src) from exc
 
     def mkdir(self, path: Path) -> None:
         return path.mkdir(parents=True, exist_ok=True)
 
     def read(self, path: Path) -> bytes:
-        with open(path, "rb") as fh:
-            return fh.read()
+        try:
+            with open(path, "rb") as fh:
+                return fh.read()
+        except FileNotFoundError as exc:
+            raise EntryNotFound(path) from exc
 
     def touch(self, path: Path, is_dir: bool = False) -> None:
         if is_dir:
