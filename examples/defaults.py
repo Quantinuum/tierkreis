@@ -31,7 +31,7 @@ class OuterOutputs(NamedTuple):
     circuit_1: TKR[Circuit]
     circuit_2: TKR[Circuit]
     circuit_3: TKR[Circuit]
-    extra_output: TKR[bool] | None = None
+    extra_output: TKR[int] | None = None
 
 
 def inner_graph() -> GraphBuilder:
@@ -50,16 +50,20 @@ def inner_graph_2() -> GraphBuilder:
     return g
 
 
-def outer_graph() -> GraphBuilder:
+def outer_graph() -> GraphBuilder[OuterInputs, OuterOutputs]:
     g = GraphBuilder(OuterInputs, OuterOutputs)
     compiled_circuit_1 = g.eval(inner_graph(), InnerInputs(g.inputs.circuit))
     compiled_circuit_2 = g.eval(inner_graph_2(), InnerInputs(g.inputs.circuit))
     compiled_circuit_3 = g.eval(
         inner_graph_2(), InnerInputs(g.inputs.circuit, g.const(2))
     )
-    extra = g.const(True)
     g.outputs(
-        OuterOutputs(compiled_circuit_1, compiled_circuit_2, compiled_circuit_3, extra)
+        OuterOutputs(
+            compiled_circuit_1,
+            compiled_circuit_2,
+            compiled_circuit_3,
+            g.inputs.opt_level,
+        )
     )
     return g
 
