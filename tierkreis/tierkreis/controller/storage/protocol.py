@@ -174,9 +174,8 @@ class ControllerStorage(ABC):
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
         except FileNotFoundError as e:
-            logger.warning(
-                f"Could not link {e.filename} to {e.filename2}."
-                " Possibly a mislabelled variable?"
+            logger.info(
+                f"Could not find {e.filename}. Will try to use a default value if it exists."
             )
         except OSError as e:
             raise TierkreisError(

@@ -33,7 +33,10 @@ def run_graph(
         graph_inputs = {"value": graph_inputs}
     remaining_inputs = g.remaining_inputs({k for k in graph_inputs.keys()})
     if len(remaining_inputs) > 0:
-        logger.warning(f"Some inputs were not provided: {remaining_inputs}")
+        logger.warning(
+            f"Some inputs were not provided: {remaining_inputs}. "
+            "Will use default values if available."
+        )
 
     storage.write_metadata(Loc(""))
     if enable_logging:
