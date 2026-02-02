@@ -13,7 +13,7 @@ from tierkreis.controller.data.graph import (
 )
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.start import NodeRunData, Task, LoopIterTask
+from tierkreis.controller.start import RunNodeTask, Task, LoopIterTask
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.labels import Labels
@@ -56,14 +56,14 @@ def walk_node(
         return WalkResult([], [], [loc])
 
     node = graph.nodes[idx]
-    node_run_data = NodeRunData(loc, node, list(node.outputs))
+    run_node_task = RunNodeTask(loc, node, list(node.outputs))
 
     result = WalkResult([], [])
     if unfinished_results(result, storage, parent, node, graph):
         return result
 
     if not storage.is_node_started(loc):
-        return WalkResult([node_run_data], [])
+        return WalkResult([run_node_task], [])
 
     match node.type:
         case "eval":
@@ -72,10 +72,10 @@ def walk_node(
             return walk_node(storage, loc, g.output_idx(), g)
 
         case "output":
-            return WalkResult([node_run_data], [])
+            return WalkResult([run_node_task], [])
 
         case "const":
-            return WalkResult([node_run_data], [])
+            return WalkResult([run_node_task], [])
 
         case "loop":
             return walk_loop(storage, parent, idx, node)

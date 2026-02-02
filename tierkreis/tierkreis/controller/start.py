@@ -23,9 +23,8 @@ from tierkreis.exceptions import TierkreisError
 logger = logging.getLogger(__name__)
 
 
-# ALAN this should really be NodeRunTask (or RunNodeTask)
 @dataclass
-class NodeRunData:
+class RunNodeTask:
     node_location: Loc
     node: NodeDef
     output_list: list[PortID]
@@ -38,7 +37,7 @@ class LoopIterTask:
     inputs: dict[PortID, OutputLoc]
 
 
-Task = NodeRunData | LoopIterTask
+Task = RunNodeTask | LoopIterTask
 
 
 def start_tasks(
@@ -78,12 +77,12 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
 def start(
     storage: ControllerStorage,
     executor: ControllerExecutor,
-    node_run_data: NodeRunData,
+    run_node_task: RunNodeTask,
     enable_logging: bool = True,
 ) -> None:
-    node_location = node_run_data.node_location
-    node = node_run_data.node
-    output_list = node_run_data.output_list
+    node_location = run_node_task.node_location
+    node = run_node_task.node
+    output_list = run_node_task.output_list
 
     storage.write_node_def(node_location, node)
 
