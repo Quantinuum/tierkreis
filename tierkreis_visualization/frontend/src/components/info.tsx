@@ -39,13 +39,11 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       props.info.node_location,
       output_name,
     );
-    console.log(response);
     const data = JSON.parse(response);
     const jsonString = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
 
     const fileUrl = URL.createObjectURL(blob);
-    console.log(jsonString, fileUrl);
     window.open(fileUrl, "_blank");
   };
 
