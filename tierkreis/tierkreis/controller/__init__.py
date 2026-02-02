@@ -36,7 +36,7 @@ def run_graph[A: TModel, B: TModel](
     if len(remaining_inputs) > 0:
         logger.warning(
             f"Some inputs were not provided: {remaining_inputs}. "
-            "Will use default values if available."
+            "Tasks will use default values if available."
         )
 
     storage.write_metadata(Loc(""))
