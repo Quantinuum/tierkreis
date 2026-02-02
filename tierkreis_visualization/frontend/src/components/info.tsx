@@ -9,6 +9,7 @@ import { fetchOutput, restartNode } from "@/data/api";
 import { Button } from "./ui/button";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Download } from "lucide-react";
+import { useEffect, useState } from "react";
 export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
@@ -65,14 +66,36 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       </Button>
     );
   };
+  const [duration, setDuration] = useState<number | null>(null);
+  useEffect(() => {
+    const start = props.info.started_time
+      ? new Date(props.info.started_time)
+      : undefined;
+    const end = props.info.finished_time
+      ? new Date(props.info.finished_time)
+      : undefined;
+    const updateDuration = () => {
+      const endTime = end || new Date();
+      if (start) {
+        setDuration(Math.floor((endTime.getTime() - start.getTime()) / 1000));
+      }
+    };
+    const interval = setInterval(updateDuration, 1000);
+    return () => clearInterval(interval);
+  }, [props.info.started_time, props.info.finished_time]);
 
   return (
-    <DialogContent className="w-[90vw] h-[90vh]">
+    <DialogContent className="w-[90vw] h-[90vh] flex flex-col">
       <DialogHeader>
         <DialogTitle> {props.info.type}</DialogTitle>
+
         <DialogDescription>
-          Started at: {props.info.started_time} Finished at:{" "}
-          {props.info.finished_time ? props.info.finished_time : "N/A"}
+          Started at:{" "}
+          {props.info.started_time ? props.info.started_time : "N/A"} Finished
+          at: {props.info.finished_time ? props.info.finished_time : "N/A"}{" "}
+          {!props.info.has_error && (
+            <>Duration: {duration !== null ? `${duration}s` : "N/A"}</>
+          )}
         </DialogDescription>
         {props.info.output_names && props.info.output_names.length > 0 && (
           <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
@@ -83,7 +106,14 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           </div>
         )}
       </DialogHeader>
-      <div className="text-wrap overflow-auto h-9/10">{props.info.content}</div>
+      {props.info.content !== "Failed to fetch output." && (
+        <div className="text-wrap overflow-y-auto overflow-x-hidden flex-1 mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+          <p className="text-sm text-gray-500 mb-2">Logs</p>
+          <pre className="whitespace-pre-wrap break-words">
+            {props.info.content}
+          </pre>
+        </div>
+      )}
 
       {restartButton}
     </DialogContent>

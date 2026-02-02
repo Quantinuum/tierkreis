@@ -30,5 +30,6 @@ export type BackendNode = Node<{
   started_time: string;
   finished_time: string;
   node_type: NodeType;
+  has_error: boolean;
 }>;
 export type AppNode = BackendNode;

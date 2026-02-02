@@ -115,6 +115,7 @@ function parseNodes(
         started_time: node.started_time,
         finished_time: node.finished_time,
         node_type: node.node_type,
+        has_error: node.status === "Error" || node.status === "Not started",
       },
       parentId: parent,
       // extent: "parent",

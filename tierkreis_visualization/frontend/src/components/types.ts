@@ -13,6 +13,7 @@ export interface InfoProps {
   started_time?: string;
   finished_time?: string;
   output_names?: string[];
+  has_error: boolean;
 }
 export interface HandleProps {
   handles: string[];

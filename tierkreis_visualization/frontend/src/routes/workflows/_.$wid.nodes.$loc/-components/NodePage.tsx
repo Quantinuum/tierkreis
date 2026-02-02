@@ -36,7 +36,7 @@ export default function NodePage(props: {
 
   const [g, setG] = useLocalStorageState<Graph>(
     workflow_id + node_location_str,
-    { defaultValue: { nodes: [], edges: [] } }
+    { defaultValue: { nodes: [], edges: [] } },
   );
 
   const onNodesChange = useCallback(
@@ -46,7 +46,7 @@ export default function NodePage(props: {
         return { nodes: ns, edges: gSnapshot.edges };
       });
     },
-    [setG]
+    [setG],
   );
 
   const [info, setInfo] = useState<InfoProps>({
@@ -56,6 +56,7 @@ export default function NodePage(props: {
       : logsQuery.data || "No logs.",
     workflow_id,
     node_location: node_location_str,
+    has_error: false,
   });
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function NodePage(props: {
       evalData,
       props.openEvals,
       props.openLoops,
-      props.openMaps
+      props.openMaps,
     );
 
     const newG = parseGraph(
@@ -73,7 +74,7 @@ export default function NodePage(props: {
       workflow_id,
       props.openEvals,
       props.openLoops,
-      props.openMaps
+      props.openMaps,
     );
     setG((oldG: Graph) => updateGraph(oldG, newG));
   }, [props, workflow_id, node_location_str, setG, data]);
