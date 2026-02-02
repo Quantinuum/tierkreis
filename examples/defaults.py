@@ -34,14 +34,14 @@ class OuterOutputs(NamedTuple):
     extra_output: TKR[int] | None = None
 
 
-def inner_graph() -> GraphBuilder:
+def inner_graph() -> GraphBuilder[InnerInputs, TKR[Circuit]]:
     g = GraphBuilder(InnerInputs, TKR[Circuit])
     compiled_circuit = g.task(get_compiled_circuit(g.inputs.circuit))
     g.outputs(compiled_circuit)
     return g
 
 
-def inner_graph_2() -> GraphBuilder:
+def inner_graph_2() -> GraphBuilder[InnerInputs, TKR[Circuit]]:
     g = GraphBuilder(InnerInputs, TKR[Circuit])
     compiled_circuit = g.task(
         get_compiled_circuit(g.inputs.circuit, g.inputs.optimisation_level)
