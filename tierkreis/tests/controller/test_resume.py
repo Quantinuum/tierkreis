@@ -4,6 +4,7 @@ from uuid import UUID
 
 import pytest
 
+from tests.controller.defaults_graphs import defaults_omit
 from tests.controller.sample_graphdata import (
     maps_in_series,
     simple_eagerifelse,
@@ -97,6 +98,16 @@ param_data: list[tuple[GraphData, Any, str, dict[str, PType] | PType]] = [
         [complex(1, 1), complex(1, 0)],
     ),
     (loop_scoping().get_data(), {"result": 11}, "loop_scoping", {}),
+    (
+        defaults_omit().get_data(),
+        {
+            "range_1": list(range(1, 10)),
+            "range_2": list(range(1, 10)),
+            "range_3": list(range(1, 10, 2)),
+        },
+        "defaults_omit",
+        {"start": 1, "stop": 10},
+    ),
 ]
 params: list[tuple[GraphData, Any, str, int, dict[str, PType] | PType]] = [
     (graph, output, name, i + 1, inputs)
@@ -131,6 +142,7 @@ ids = [
     "tkr_conj",
     "tkr_conj_list",
     "loop_scoping",
+    "defaults_omit",
 ]
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]

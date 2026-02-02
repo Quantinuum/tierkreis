@@ -439,6 +439,20 @@ class mod(NamedTuple):
         return "builtins"
 
 
+class tkr_range(NamedTuple):
+    start: TKR[int]  # noqa: F821 # fmt: skip
+    stop: TKR[int]  # noqa: F821 # fmt: skip
+    step: TKR[int] | None = None  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[list[int]]]:  # noqa: F821 # fmt: skip
+        return TKR[list[int]]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
 class rand_int(NamedTuple):
     a: TKR[int]  # noqa: F821 # fmt: skip
     b: TKR[int]  # noqa: F821 # fmt: skip
