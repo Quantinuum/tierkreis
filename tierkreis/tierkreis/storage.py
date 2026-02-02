@@ -27,9 +27,9 @@ def _read_output(
     try:
         return ptype_from_bytes(storage.read_output(Loc(), port_name))
     except EntryNotFound as exc:
-        if not annotation or not is_optional(annotation):
-            raise TierkreisError(f"Output {port_name} not found.") from exc
-        return None
+        if annotation and is_optional(annotation):
+            return None
+        raise TierkreisError(f"Output {port_name} not found.") from exc
 
 
 def read_outputs[A: TModel, B: TModel](
