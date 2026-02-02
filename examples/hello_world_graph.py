@@ -8,13 +8,10 @@
 from pathlib import Path
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.controller.data.location import Loc
 from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.models import TKR
 
 from example_workers.hello_world_worker.stubs import greet
-
-root_loc = Loc()
 
 
 def hello_graph() -> GraphBuilder:

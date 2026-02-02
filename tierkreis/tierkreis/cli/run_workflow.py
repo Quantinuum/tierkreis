@@ -4,11 +4,11 @@ import logging
 
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
+from tierkreis.storage import read_outputs
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,5 @@ def run_workflow(
         polling_interval_seconds,
     )
     if print_output:
-        all_outputs = graph.nodes[graph.output_idx()].inputs
-        for output in all_outputs:
-            print(f"{output}: {storage.read_output(Loc(), output)}")
+        res = read_outputs(graph, storage)
+        print(res)

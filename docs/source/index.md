@@ -19,5 +19,6 @@ getting_started.md
 visualization.md
 logging_and_errors.md
 worker/index
+examples/index
 apidocs/index
 ```
