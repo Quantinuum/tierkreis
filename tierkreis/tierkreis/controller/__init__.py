@@ -35,7 +35,7 @@ def run_graph(
     if len(remaining_inputs) > 0:
         logger.warning(f"Some inputs were not provided: {remaining_inputs}")
 
-    storage.write_metadata(root_loc)  # Should this be Loc() ?
+    storage.write_metadata(root_loc)
     if enable_logging:
         set_tkr_logger(storage.logs_path)
 
