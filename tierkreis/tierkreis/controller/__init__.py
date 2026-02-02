@@ -4,6 +4,7 @@ from time import sleep
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.models import TModel
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
@@ -17,10 +18,10 @@ root_loc = Loc("")
 logger = logging.getLogger(__name__)
 
 
-def run_graph(
+def run_graph[A: TModel, B: TModel](
     storage: ControllerStorage,
     executor: ControllerExecutor,
-    g: GraphData | GraphBuilder,
+    g: GraphData | GraphBuilder[A, B],
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
