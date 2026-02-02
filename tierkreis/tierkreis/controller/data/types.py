@@ -143,10 +143,8 @@ def is_optional(t: type) -> bool:
     if origin is None:
         return False
 
-    if origin == Union and NoneType in get_args(t):
-        return True
-
-    if isclass(origin) and issubclass(origin, UnionType) and NoneType in get_args(t):
+    is_union = origin == Union or (isclass(origin) and issubclass(origin, UnionType))
+    if is_union and NoneType in get_args(t):
         return True
 
     return False
