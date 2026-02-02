@@ -176,7 +176,8 @@ class ControllerStorage(ABC):
             self.link(self._output_path(old_location, old_port), new_dir)
         except EntryNotFound:
             logger.info(
-                f"Could not find {old_location}. Will try to use a default value if it exists."
+                f"Could not find {old_location}. "
+                "Tasks using this location will try to use a default value if specified."
             )
         except OSError as e:
             raise TierkreisError(
