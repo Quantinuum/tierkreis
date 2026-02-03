@@ -9,4 +9,5 @@ It is intended that these notebooks are read in the following order.
 worker.ipynb
 hello_world_graph.ipynb
 storage_and_executors.ipynb
+singning_graph.ipynb
 ```
