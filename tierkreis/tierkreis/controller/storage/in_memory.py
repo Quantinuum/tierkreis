@@ -2,6 +2,7 @@ from pathlib import Path
 from uuid import UUID
 from time import time
 
+from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.controller.storage.protocol import (
     StorageEntryMetadata,
     ControllerStorage,
@@ -49,13 +50,19 @@ class ControllerInMemoryStorage(ControllerStorage):
         return [x for x in self.files.keys() if str(x).startswith(str(path) + "/")]
 
     def link(self, src: Path, dst: Path) -> None:
-        self.files[dst] = self.files[src]
+        try:
+            self.files[dst] = self.files[src]
+        except KeyError as exc:
+            raise EntryNotFound(src) from exc
 
     def mkdir(self, path: Path) -> None:
         return
 
     def read(self, path: Path) -> bytes:
-        return self.files[path].value
+        try:
+            return self.files[path].value
+        except KeyError as exc:
+            raise EntryNotFound(path) from exc
 
     def touch(self, path: Path, is_dir: bool = False) -> None:
         self.files[path] = InMemoryFileData(b"")

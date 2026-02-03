@@ -136,6 +136,20 @@ def _is_union(o: object) -> bool:
     )
 
 
+def is_optional(t: type) -> bool:
+    """Check that the origin of `t` is a Union
+    and the args of `t` contains NoneType."""
+    origin = get_origin(t)
+    if origin is None:
+        return False
+
+    is_union = origin == Union or (isclass(origin) and issubclass(origin, UnionType))
+    if is_union and NoneType in get_args(t):
+        return True
+
+    return False
+
+
 def _is_generic(o) -> TypeIs[type[TypeVar]]:
     return isinstance(o, TypeVar)
 

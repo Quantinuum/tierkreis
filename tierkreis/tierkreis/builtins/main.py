@@ -239,6 +239,11 @@ def mod(a: int, b: int) -> int:
 
 
 @worker.task()
+def tkr_range(start: int, stop: int, step: int = 1) -> list[int]:
+    return list(range(start, stop, step))
+
+
+@worker.task()
 def rand_int(a: int, b: int) -> int:
     return randint(a, b)
 
