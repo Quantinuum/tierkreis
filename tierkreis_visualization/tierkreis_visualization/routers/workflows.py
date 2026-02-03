@@ -125,7 +125,14 @@ def get_output(
 ):
     loc = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
-    return PlainTextResponse(outputs_from_loc(storage, loc, port_name))
+    outputs = outputs_from_loc(storage, loc, port_name)
+    if outputs is None:
+        return PlainTextResponse(outputs)
+    try:
+        output_json = json.loads(outputs)
+        return JSONResponse(output_json)
+    except json.JSONDecodeError:
+        return PlainTextResponse(outputs)
 
 
 @router.get("/{workflow_id}/logs")

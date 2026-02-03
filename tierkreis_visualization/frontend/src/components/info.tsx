@@ -5,7 +5,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoProps } from "./types";
-import { fetchOutput, restartNode } from "@/data/api";
+import { restartNode } from "@/data/api";
 import { Button } from "./ui/button";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Download } from "lucide-react";
@@ -35,17 +35,10 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
     props.closer();
   };
   const getOutput = async (output_name: string) => {
-    const response = await fetchOutput(
-      props.info.workflow_id,
-      props.info.node_location,
-      output_name,
+    window.open(
+      `/api/workflows/${props.info.workflow_id}/nodes/${props.info.node_location}/outputs/${output_name}`,
+      "_blank",
     );
-    const data = JSON.parse(response);
-    const jsonString = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonString], { type: "application/json" });
-
-    const fileUrl = URL.createObjectURL(blob);
-    window.open(fileUrl, "_blank");
   };
 
   const restartButton =
@@ -97,23 +90,26 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
             <>Duration: {duration !== null ? `${duration}s` : "N/A"}</>
           )}
         </DialogDescription>
-        {props.info.output_names && props.info.output_names.length > 0 && (
-          <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="text-sm text-gray-500 mb-2">Download Output Values</p>
-            <div className="flex flex-row flex-wrap items-center gap-3">
-              {props.info.output_names.map((name) => outputButton(name))}
+        {props.info.output_names &&
+          props.info.output_names.length > 0 &&
+          props.info.finished_time && (
+            <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
+              <p className="text-xs text-gray-500 mb-2">Outputs</p>
+              <div className="flex flex-row flex-wrap items-center gap-3">
+                {props.info.output_names.map((name) => outputButton(name))}
+              </div>
             </div>
+          )}
+      </DialogHeader>
+      {props.info.content !== "Failed to fetch output." &&
+        props.info.type?.includes("if/else") && (
+          <div className="text-wrap overflow-y-auto overflow-x-hidden flex-1 mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+            <p className="text-sm text-gray-500 mb-2">{props.info.type}</p>
+            <pre className="whitespace-pre-wrap break-words">
+              {props.info.content}
+            </pre>
           </div>
         )}
-      </DialogHeader>
-      {props.info.content !== "Failed to fetch output." && (
-        <div className="text-wrap overflow-y-auto overflow-x-hidden flex-1 mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-sm text-gray-500 mb-2">Logs</p>
-          <pre className="whitespace-pre-wrap break-words">
-            {props.info.content}
-          </pre>
-        </div>
-      )}
 
       {restartButton}
     </DialogContent>
