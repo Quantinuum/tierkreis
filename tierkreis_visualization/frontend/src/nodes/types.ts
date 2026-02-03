@@ -9,6 +9,7 @@ export type BackendNode = Node<{
     inputs: string[];
     outputs: string[];
   };
+  output_names?: string[];
   hidden_handles?: {
     inputs: string[];
     outputs: string[];
@@ -29,5 +30,6 @@ export type BackendNode = Node<{
   started_time: string;
   finished_time: string;
   node_type: NodeType;
+  has_error: boolean;
 }>;
 export type AppNode = BackendNode;

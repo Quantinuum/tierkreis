@@ -10,6 +10,10 @@ export interface InfoProps {
   content: string;
   workflow_id: string;
   node_location: string;
+  started_time?: string;
+  finished_time?: string;
+  output_names?: string[];
+  has_error: boolean;
 }
 export interface HandleProps {
   handles: string[];

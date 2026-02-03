@@ -28,7 +28,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
       case "Finished":
         return "bg-emerald-600";
       case "Error":
-        return "bg-red-400";
+        return "bg-red-400 bg-repeat";
       default:
         return "bg-white";
     }
@@ -39,32 +39,55 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     const node_location = data.node_location;
     if (data.node_type === "function") {
       const content = await fetchLogs(data.workflowId);
-      data.setInfo?.({ type: "Logs", content, workflow_id, node_location });
+      data.setInfo?.({
+        type: "Logs",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+      });
     } else if (data.node_type === "const") {
       const content = await fetchOutput(
         data.workflowId,
         data.node_location,
-        "value"
+        "value",
       );
       data.setInfo?.({
         type: "Constant value",
         content,
         workflow_id,
         node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
       });
     } else if (data.node_type === "input") {
       const content = await fetchOutput(
         data.workflowId,
         data.node_location,
-        name
+        name,
       );
-      data.setInfo?.({ type: "Input", content, workflow_id, node_location });
+      data.setInfo?.({
+        type: "Input",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+      });
     } else if (data.node_type === "eifelse") {
       data.setInfo?.({
         type: "Eager if/else",
         content: "",
         workflow_id,
         node_location,
+        has_error: data.has_error,
       });
     } else if (data.node_type === "ifelse") {
       data.setInfo?.({
@@ -72,6 +95,10 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
         content: "",
         workflow_id,
         node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
       });
     } else if (data.node_type === "eval") {
       return;
@@ -82,7 +109,16 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     } else if (data.node_type === "output") {
       const parent = loc_parent(data.node_location);
       const content = await fetchOutputs(data.workflowId, parent);
-      data.setInfo?.({ type: "Output", content, workflow_id, node_location });
+      data.setInfo?.({
+        type: "Output",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+      });
     } else {
       data.node_type satisfies never;
     }
@@ -94,6 +130,9 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
       content: errors,
       workflow_id: data.workflowId,
       node_location: data.node_location,
+      started_time: data.started_time,
+      finished_time: data.finished_time,
+      has_error: data.has_error,
     });
   };
 
@@ -101,6 +140,11 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     <Card
       className={"w-[180px] " + bg_color(data.status)}
       onClick={handleClick}
+      // style={{
+      //   backgroundImage:
+      //     "radial-gradient(circle, #7f1d1d 1px, transparent 1px)",
+      //   backgroundSize: "20px 20px",
+      // }}
     >
       <DialogTrigger asChild>
         <div>
