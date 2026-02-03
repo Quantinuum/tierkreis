@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -23,9 +24,11 @@ class StdInOut:
         launcher_name: str,
         worker_call_args_path: Path,
     ) -> None:
-        launcher_path = check_and_set_launcher(
-            self.launchers_path, launcher_name, ".sh"
-        )
+        launcher_path = _check_bin(launcher_name)
+        if launcher_path is None:
+            launcher_path = check_and_set_launcher(
+                self.launchers_path, launcher_name, ".sh"
+            )
 
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
@@ -36,7 +39,6 @@ class StdInOut:
 
         tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
         _error_path = done_path.parent / "_error"
-        print(self.workflow_dir, self.errors_path, _error_path)
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,
@@ -46,3 +48,10 @@ class StdInOut:
             f"({launcher_path} <{input_file} >{output_file} 2> {tee_str} && touch {done_path} || touch {_error_path})&".encode(),
             timeout=10,
         )
+
+
+def _check_bin(command: str) -> str | None:
+    path = shutil.which(command)
+    if path is None:
+        return None
+    return command
