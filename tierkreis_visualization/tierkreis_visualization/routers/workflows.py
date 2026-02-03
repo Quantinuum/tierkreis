@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -122,7 +122,7 @@ def get_output(
     workflow_id: UUID,
     node_location_str: str,
     port_name: str,
-):
+) -> Response:
     loc = parse_node_location(node_location_str)
     storage = request.app.state.get_storage_fn(workflow_id)
     outputs = outputs_from_loc(storage, loc, port_name)
