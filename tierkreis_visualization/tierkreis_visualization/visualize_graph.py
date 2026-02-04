@@ -1,3 +1,4 @@
+import asyncio
 import uvicorn
 
 from tierkreis.builder import GraphBuilder
@@ -15,4 +16,8 @@ def visualize_graph(graph_data: GraphData | GraphBuilder) -> None:
     if isinstance(graph_data, GraphBuilder):
         graph_data = graph_data.get_data()
     app = app_from_graph_data(graph_data)
-    uvicorn.run(app)
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
+    server = uvicorn.Server(config)
+
+    # Manually run the serve method, bypassing uvicorn.run's patch logic
+    asyncio.run(server.serve())

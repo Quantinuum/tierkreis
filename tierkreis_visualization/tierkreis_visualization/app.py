@@ -58,7 +58,7 @@ def get_graph_data_app():
 
 
 def app_from_graph_data(graph_data: GraphData):
-    app = get_app()
+    app = get_app(graph_data_lifespan)
     app.state.get_storage_fn = from_graph_data_storage_fn(graph_data)
     app.state.storage_type = StorageType.GRAPHDATA
     return app
