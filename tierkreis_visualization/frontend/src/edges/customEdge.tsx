@@ -21,6 +21,9 @@ function LabelButton({
   labelX: number;
   labelY: number;
 }) {
+  if (children === "null") {
+    return null;
+  }
   return (
     <Button
       variant={"outline"}
