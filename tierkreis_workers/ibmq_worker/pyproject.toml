@@ -25,7 +25,6 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-pytket-qiskit = { git = "https://github.com/Quantinuum/pytket-qiskit" }
 
 [project.scripts]
 tkr_ibmq_worker = "main:main"
