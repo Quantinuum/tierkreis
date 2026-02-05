@@ -10,6 +10,7 @@ worker.ipynb
 hello_world_graph.ipynb
 storage_and_executors.ipynb
 types_and_defaults.ipynb
+parallelism.ipynb
 errors_and_debugging.ipynb
 restart.ipynb
 singning_graph.ipynb
