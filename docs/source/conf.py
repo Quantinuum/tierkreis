@@ -32,7 +32,11 @@ autodoc2_packages = [
 autodoc2_hidden_objects = ["private"]
 
 templates_path = ["_templates"]
-nb_execution_excludepatterns = ["polling_and_dir.ipynb", "storage_and_executors.ipynb"]
+nb_execution_excludepatterns = [
+    "polling_and_dir.ipynb",
+    "storage_and_executors.ipynb",
+    "hpc.ipynb",
+]
 
 
 # -- Options for HTML output -------------------------------------------------
