@@ -15,4 +15,5 @@ errors_and_debugging.ipynb
 restart.ipynb
 singning_graph.ipynb
 hpc.ipynb
+hamiltonian.ipynb
 ```
