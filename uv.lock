@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -1975,8 +1975,8 @@ wheels = [
 
 [[package]]
 name = "pytket-qiskit"
-version = "0.77.0"
-source = { git = "https://github.com/Quantinuum/pytket-qiskit#5e8f005f71049191516e4b597002fe89a6e5853e" }
+version = "0.72.0"
+source = { git = "https://github.com/CQCL/pytket-qiskit#64351e4582768a41f975b65e37ae8e0564f655b0" }
 dependencies = [
     { name = "numpy" },
     { name = "pytket" },
@@ -1985,15 +1985,21 @@ dependencies = [
     { name = "qiskit-ibm-runtime" },
     { name = "symengine" },
 ]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/38/26cdfdac2bc7676c788432b25cff0d2cbdaaa51a198cabfaa95cb1a6cb78/pytket_qiskit-0.72.0-py3-none-any.whl", hash = "sha256:c945592263f1c02164e21e4f757a0ecdab764fe48137d8b6cc447a90fdf2289e", size = 57484, upload-time = "2025-10-03T11:39:10.772Z" },
+]
 
 [[package]]
 name = "pytket-quantinuum"
-version = "0.57.0"
-source = { git = "https://github.com/Quantinuum/pytket-quantinuum#aa8bc7c1c98bc1ca746356b25811164b7b78603d" }
+version = "0.54.0"
+source = { git = "https://github.com/CQCL/pytket-quantinuum#7fa500ba778eaafbb81492c60b0d20d6b0713341" }
 dependencies = [
     { name = "numpy" },
     { name = "pytket" },
     { name = "pytket-qir" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/b1/28873e1d51d32021b51f3967c000838f32d5c463f122687ea4a3959350f5/pytket_quantinuum-0.54.0-py3-none-any.whl", hash = "sha256:7451982dc0820b7ae280c7d5b3e5e392a44a132dd750292a710d847c6db950a9", size = 45311, upload-time = "2025-10-15T13:09:00.356Z" },
 ]
 
 [[package]]
@@ -2988,7 +2994,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pytket" },
-    { name = "pytket-qiskit", git = "https://github.com/Quantinuum/pytket-qiskit" },
+    { name = "pytket-qiskit", git = "https://github.com/CQCL/pytket-qiskit" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
 
@@ -3031,7 +3037,7 @@ requires-dist = [
     { name = "pytket" },
     { name = "pytket-qirpass" },
     { name = "pytket-qiskit", marker = "extra == 'backend-qiskit'" },
-    { name = "pytket-quantinuum", marker = "extra == 'backend-quantinuum'", git = "https://github.com/Quantinuum/pytket-quantinuum" },
+    { name = "pytket-quantinuum", marker = "extra == 'backend-quantinuum'", git = "https://github.com/CQCL/pytket-quantinuum" },
     { name = "qnexus" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
