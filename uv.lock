@@ -1784,7 +1784,7 @@ version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5c/5a/b46fa56bf322901eee5b0454a34343cdbdae202cd421775a8ee4e42fd519/pyjwt-2.11.0.tar.gz", hash = "sha256:35f95c1f0fbe5d5ba6e43f00271c275f7a1a4db1dab27bf708073b75318ea623", size = 98019, upload-time = "2026-01-30T19:59:55.694Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/01/c26ce75ba460d5cd503da9e13b21a33804d38c2165dec7b716d06b13010c/pyjwt-2.11.0-py3-none-any.whl", hash = "sha256:94a6bde30eb5c8e04fee991062b534071fd1439ef58d2adc9ccb823e7bcd0469", size = 28224, upload-time = "2026-01-30T19:59:54.539Z" },
+    { url = "https://files.pythonhosted.org/packages/61/ad/689f02752eeec26aed679477e80e632ef1b682313be70793d798c1d5fc8f/PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb", size = 22997, upload-time = "2024-11-28T03:43:27.893Z" },
 ]
 
 [[package]]
@@ -1927,7 +1927,7 @@ wheels = [
 
 [[package]]
 name = "pytket"
-version = "2.13.0"
+version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "graphviz" },
@@ -1941,11 +1941,11 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/f5/c01dd1ab66186c178a2e5ac81750dc9b0ee53bc9940d6a902e5d1b20d133/pytket-2.13.0-cp312-abi3-macosx_14_0_arm64.whl", hash = "sha256:c62e4b6fbfad4e53ec85c03a6445a3e58bffaa7eeed73463ea19ad86e38d116a", size = 5515578, upload-time = "2026-02-10T15:07:20.129Z" },
-    { url = "https://files.pythonhosted.org/packages/44/17/89d3470a8eca96309c6b1f8df2c975bf6692d60b6dd65870113a63a94a37/pytket-2.13.0-cp312-abi3-macosx_15_0_x86_64.whl", hash = "sha256:534b11410d16243e7051b4cde29554eb6931c70b207b437560b8b3ca7ea3e934", size = 6205782, upload-time = "2026-02-10T15:07:22.319Z" },
-    { url = "https://files.pythonhosted.org/packages/85/94/5c1559474c557cdd5f592e2f84900c0fccbdd080671b4c9d4d39e7c21f41/pytket-2.13.0-cp312-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:4b9c38ab082071c99d4abe60de6557eee0b6813af973d09ad62913d1e6eb89ae", size = 7517377, upload-time = "2026-02-10T15:07:25.202Z" },
-    { url = "https://files.pythonhosted.org/packages/95/0f/a07de114780c031e5a42fc8a5e32ca65bc68806cd27c9233d5936b3972d1/pytket-2.13.0-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:14071e7ef7fda1752fae01b008b6102b05cc6500c7cf91c987b6698690c71831", size = 8247624, upload-time = "2026-02-10T15:07:27.039Z" },
-    { url = "https://files.pythonhosted.org/packages/dc/d1/4b854de5b65453acc3643229b47f230e7ca828c1b24a03500941a51d8289/pytket-2.13.0-cp312-abi3-win_amd64.whl", hash = "sha256:7c0eb4cdb875d8048946e287dde4f084014baef2e9e6303349f8c71117895df1", size = 9746522, upload-time = "2026-02-10T15:07:28.829Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/a7/4442c112cb5e7964c2a3c38933022655e460a2f7ae727673d9a829a9b933/pytket-2.12.0-cp312-abi3-macosx_14_0_arm64.whl", hash = "sha256:92205d244964bdf158287a1bf0358bb68452f9329324f163e3f0549d27c3a4c1", size = 5494204, upload-time = "2026-01-30T12:30:48.413Z" },
+    { url = "https://files.pythonhosted.org/packages/08/28/2653cea5db2eb792bc118dcac37e9319bf978e4df03d7f0c1baa95dbaa40/pytket-2.12.0-cp312-abi3-macosx_15_0_x86_64.whl", hash = "sha256:9560f382387fe976f649f0012bb2b1df3a08d2bdf33ba7e13acce52f32ca4ccd", size = 6183358, upload-time = "2026-01-30T12:30:50.148Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/97/f082ac73878ea7bad6c5d4b69f3410a27f7e313b7265b67d7f7ce90bf5f1/pytket-2.12.0-cp312-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:42d47a5b008f84f4e2ac00fa94325e4ad6e046602e5f81cd717aa02e0b207725", size = 7495091, upload-time = "2026-01-30T12:30:51.883Z" },
+    { url = "https://files.pythonhosted.org/packages/19/62/ac83b21871ce3d6764d869a643bd78024dadb05e0091b6e21ad1b9c5ee6b/pytket-2.12.0-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5be307ab153b0233f417d9bf87fd38f78244dc992ca0edfe9f1f9ed0f8f3d1f2", size = 8225216, upload-time = "2026-01-30T12:30:53.916Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/a7/f7084cc6775eb2d3b8764f6c9f65d0fd45eeaff09296e2a1b334ae79064d/pytket-2.12.0-cp312-abi3-win_amd64.whl", hash = "sha256:5bb147f9f8272b15809adab6157f1b268c77d89626420218c85ecf54e8194276", size = 9719026, upload-time = "2026-01-30T12:30:57.278Z" },
 ]
 
 [[package]]
@@ -1975,8 +1975,8 @@ wheels = [
 
 [[package]]
 name = "pytket-qiskit"
-version = "0.72.0"
-source = { git = "https://github.com/CQCL/pytket-qiskit#64351e4582768a41f975b65e37ae8e0564f655b0" }
+version = "0.77.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pytket" },
@@ -1986,20 +1986,20 @@ dependencies = [
     { name = "symengine" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/38/26cdfdac2bc7676c788432b25cff0d2cbdaaa51a198cabfaa95cb1a6cb78/pytket_qiskit-0.72.0-py3-none-any.whl", hash = "sha256:c945592263f1c02164e21e4f757a0ecdab764fe48137d8b6cc447a90fdf2289e", size = 57484, upload-time = "2025-10-03T11:39:10.772Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/e1/fc355cc6f7a7a33a3842761d6b5a05b4d53b2327079a4da6f17560df1f77/pytket_qiskit-0.77.0-py3-none-any.whl", hash = "sha256:257bc937d80da6e2aaea4ee3a9d8b211e049dc9bfa9ef8a9e93c07f70daad326", size = 90751, upload-time = "2026-02-02T11:04:25.616Z" },
 ]
 
 [[package]]
 name = "pytket-quantinuum"
-version = "0.54.0"
-source = { git = "https://github.com/CQCL/pytket-quantinuum#7fa500ba778eaafbb81492c60b0d20d6b0713341" }
+version = "0.57.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pytket" },
     { name = "pytket-qir" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/b1/28873e1d51d32021b51f3967c000838f32d5c463f122687ea4a3959350f5/pytket_quantinuum-0.54.0-py3-none-any.whl", hash = "sha256:7451982dc0820b7ae280c7d5b3e5e392a44a132dd750292a710d847c6db950a9", size = 45311, upload-time = "2025-10-15T13:09:00.356Z" },
+    { url = "https://files.pythonhosted.org/packages/39/c9/f3d6210388a2757b0a650f8fee69250cc35322ad1ef17166a469aaec641c/pytket_quantinuum-0.57.0-py3-none-any.whl", hash = "sha256:75fd8336ee97796b4bcf15f3f0243e38b2055a02fd7975ea50a18eedb885700d", size = 46362, upload-time = "2026-01-07T17:17:35.615Z" },
 ]
 
 [[package]]
@@ -3036,8 +3036,8 @@ backend-quantinuum = [
 requires-dist = [
     { name = "pytket" },
     { name = "pytket-qirpass" },
-    { name = "pytket-qiskit", marker = "extra == 'backend-qiskit'" },
-    { name = "pytket-quantinuum", marker = "extra == 'backend-quantinuum'", git = "https://github.com/CQCL/pytket-quantinuum" },
+    { name = "pytket-qiskit", marker = "extra == 'backend-qiskit'", specifier = ">=0.77.0" },
+    { name = "pytket-quantinuum", marker = "extra == 'backend-quantinuum'", specifier = ">=0.57.0" },
     { name = "qnexus" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
@@ -3055,7 +3055,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pytket-quantinuum", specifier = ">=0.54.0" },
+    { name = "pytket-quantinuum", specifier = ">=0.57.0" },
     { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
 ]
@@ -3115,7 +3115,7 @@ dependencies = [
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fd/07/b822e1b307d40e263e8253d2384cf98c51aa2368cc7ba9a07e523a1d964b/typer-0.23.1.tar.gz", hash = "sha256:2070374e4d31c83e7b61362fd859aa683576432fd5b026b060ad6b4cd3b86134", size = 120047, upload-time = "2026-02-13T10:04:30.984Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/91/9b286ab899c008c2cb05e8be99814807e7fbbd33f0c0c960470826e5ac82/typer-0.23.1-py3-none-any.whl", hash = "sha256:3291ad0d3c701cbf522012faccfbb29352ff16ad262db2139e6b01f15781f14e", size = 56813, upload-time = "2026-02-13T10:04:32.008Z" },
+    { url = "https://files.pythonhosted.org/packages/78/64/7713ffe4b5983314e9d436a90d5bd4f63b6054e2aca783a3cfc44cb95bbf/typer-0.20.0-py3-none-any.whl", hash = "sha256:5b463df6793ec1dca6213a3cf4c0f03bc6e322ac5e16e13ddd622a889489784a", size = 47028, upload-time = "2025-10-20T17:03:47.617Z" },
 ]
 
 [[package]]

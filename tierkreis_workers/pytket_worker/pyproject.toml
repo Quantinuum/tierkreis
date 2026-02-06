@@ -13,10 +13,10 @@ dependencies = [
 
 [project.optional-dependencies]
 backend-qiskit = [
-    "pytket-qiskit",
+    "pytket-qiskit>=0.77.0",
 ]
 backend-quantinuum = [
-    "pytket-quantinuum",
+    "pytket-quantinuum>=0.57.0",
 ]
 
 
