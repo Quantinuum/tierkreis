@@ -15,4 +15,4 @@ class TKRDependency(ABC, BaseModel):
 
     """Install a worker called `worker_name` into the `target_dir`.
     
-    Any cached files should be installed in the dir `worker_cache / self.type`."""
+    The `TKRDependency` has at its disposal a directory `worker_cache / TKRDependency.type` for any caching it needs."""
