@@ -15,5 +15,7 @@ errors_and_debugging.ipynb
 restart.ipynb
 singning_graph.ipynb
 hpc.ipynb
+scipy.ipynb
 hamiltonian.ipynb
+qsci.ipynb
 ```
