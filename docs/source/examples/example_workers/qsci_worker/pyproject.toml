@@ -1,0 +1,14 @@
+[project]
+name = "qsci-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.11.9",
+    "pytket>=2.9.3",
+    "pytket-qiskit>=0.71.0",
+    "qiskit-ibm-runtime==0.41.1",
+    "tierkreis",
+		"ruff",
+    "pyscf",
+]
+
