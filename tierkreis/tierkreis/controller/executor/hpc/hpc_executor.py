@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 from typing import Callable, Protocol
 
 from tierkreis.consts import TKR_DIR_KEY
+from tierkreis.controller.executor.commands import add_std_handlers
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
 from tierkreis.exceptions import TierkreisError
 
@@ -38,15 +39,11 @@ def run_hpc_executor(
         spec.command = f"cd {executor.launchers_path}/{launcher_name} && {spec.command}"
 
     spec.command += " " + str(worker_call_args_path)
+    spec.command = add_std_handlers(
+        executor.logs_path, executor.errors_path, spec.command
+    )
+
     submission_cmd = [executor.command]
-    if spec.output_path is None:
-        submission_cmd += ["-o", str(executor.logs_path)]
-    else:
-        submission_cmd += ["-o", str(spec.output_path)]
-    if spec.error_path is None:
-        submission_cmd += ["-e", str(executor.errors_path)]
-    else:
-        submission_cmd += ["-e", str(spec.error_path)]
     if spec.include_no_check_directory_flag:
         submission_cmd += ["--no-check-directory"]
 
@@ -68,9 +65,19 @@ def run_hpc_executor(
             capture_output=True,
             universal_newlines=True,
         )
+
+    with open(executor.logs_path, "a+") as fh:
+        fh.write(process.stdout)
+
+    with open(executor.errors_path, "a+") as fh:
+        fh.write(process.stdout)
+
     if process.returncode != 0:
         with open(executor.errors_path, "a") as efh:
             efh.write("Error from script")
             efh.write(process.stderr)
+        print(process.stderr)
+        print("\n\npjsub script\n\n")
+        print(executor.script_fn(spec))
+
         raise TierkreisError(f"Executor failed with return code {process.returncode}")
-    logger.info("Submitted job with return code %s", process.stdout.rstrip())

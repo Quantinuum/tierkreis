@@ -2,6 +2,7 @@
 from functools import partial
 from pathlib import Path
 from typing import Callable
+from uuid import uuid4
 
 from tierkreis.controller.executor.hpc.hpc_executor import run_hpc_executor
 from tierkreis.controller.executor.hpc.job_spec import (
@@ -44,15 +45,11 @@ def generate_pjsub_script(spec: JobSpec) -> str:
             lines.append(f"{_COMMAND_PREFIX} -m e")  # end only
             lines.append(f"{_COMMAND_PREFIX} --mail-list {spec.user.mail}")
 
-    # 5. Output and Error handling
+    # 5. Output and Error handling uses Bash because pjsub always overwrites instead of appends.
+    # So redirect to temporary files.
     lines.append("\n# --- Output and Error Handling ---")
-    if spec.error_path is not None:
-        lines.append(f"{_COMMAND_PREFIX} -e {spec.error_path}")
-    else:
-        lines.append(f"{_COMMAND_PREFIX} -j")
-    if spec.output_path is None:
-        spec.output_path = Path(f"./{spec.job_name}.o")
-    lines.append(f"{_COMMAND_PREFIX} -o {spec.output_path}")
+    lines.append(f"{_COMMAND_PREFIX} -j")
+    lines.append(f"{_COMMAND_PREFIX} -o /tmp/tkr-pjsub-{spec.job_name}-{uuid4()}.out")
 
     # 6. MPI
     if spec.mpi is not None:

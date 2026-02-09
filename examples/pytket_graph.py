@@ -9,8 +9,8 @@ from uuid import UUID
 from pathlib import Path
 from typing import NamedTuple
 
-from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
+from pytket.qasm.qasm import circuit_from_qasm
 
 from tierkreis.builder import GraphBuilder
 
@@ -22,12 +22,7 @@ from tierkreis.ibmq_worker import compile_circuit_ibmq
 from tierkreis.aer_worker import submit_single
 
 
-def ghz() -> Circuit:
-    circ1 = Circuit(2)
-    circ1.H(0)
-    circ1.CX(0, 1)
-    circ1.measure_all()
-    return circ1
+circuit = circuit_from_qasm(Path(__file__).parent / "data" / "simple.qasm")
 
 
 class IBMInput(NamedTuple):
@@ -64,10 +59,7 @@ def main():
         storage,
         executor,
         g,
-        {
-            "circuit": ghz(),
-            "n_shots": n_shots,
-        },
+        {"circuit": circuit, "n_shots": n_shots},
         polling_interval_seconds=0.1,
     )
     res = read_outputs(g, storage)

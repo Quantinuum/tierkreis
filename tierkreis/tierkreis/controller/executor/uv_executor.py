@@ -6,6 +6,7 @@ from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
+from tierkreis.controller.executor.registries import find_registry_for_worker
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -18,9 +19,12 @@ class UvExecutor:
     """
 
     def __init__(
-        self, registry_path: Path, logs_path: Path, env: dict[str, str] | None = None
+        self,
+        registry_path: Path | list[Path],
+        logs_path: Path,
+        env: dict[str, str] | None = None,
     ) -> None:
-        self.launchers_path = registry_path
+        self.registries = registry_path
         self.logs_path = logs_path
         self.errors_path = logs_path
         self.env = env or {}
@@ -42,10 +46,10 @@ class UvExecutor:
             uv_path = shutil.which("uv")
         if uv_path is None:
             raise TierkreisError("uv is required to use the uv_executor")
-        launcher_path = check_and_set_launcher(
-            self.launchers_path, launcher_name, ".py"
-        )
-        worker_path = launcher_path.parent
+
+        registry_path = find_registry_for_worker(launcher_name, self.registries)
+        check_and_set_launcher(registry_path, launcher_name, ".py")
+
         env = os.environ.copy() | self.env.copy()
         if "VIRTUAL_ENVIRONMENT" not in env:
             env["VIRTUAL_ENVIRONMENT"] = ""
@@ -57,7 +61,7 @@ class UvExecutor:
             ["bash"],
             start_new_session=True,
             stdin=subprocess.PIPE,
-            cwd=worker_path,
+            cwd=registry_path / launcher_name,
             env=env,
         )
         proc.communicate(
