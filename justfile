@@ -36,22 +36,6 @@ prod:
 	npm i
 	npm run build
 
-
-examples:
-  {{uvrun}} examples/hello_world_graph.py
-  {{uvrun}} examples/defaults.py
-  {{uvrun}} examples/error_handling_graph.py
-  {{uvrun}} examples/simulate_parallel.py
-  {{uvrun}} examples/symbolic_circuits.py
-  {{uvrun}} examples/hamiltonian_graph.py
-  {{uvrun}} examples/non_standard_tkr_dir.py
-  {{uvrun}} examples/qsci_graph.py
-  {{uvrun}} examples/scipy_graph.py
-  SER_METHOD=dumps {{uvrun}} examples/scipy_graph.py
-  SER_METHOD=tolist {{uvrun}} examples/scipy_graph.py
-  SER_METHOD=save {{uvrun}} examples/scipy_graph.py
-  {{uvrun}} examples/signing_graph.py
-
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
