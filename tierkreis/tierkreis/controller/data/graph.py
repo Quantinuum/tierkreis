@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import logging
-from typing import Any, Callable, Literal, assert_never
+from typing import Any, Callable, Literal, Mapping, assert_never
 from pydantic import BaseModel, RootModel
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.core import NodeIndex
@@ -50,8 +50,11 @@ class Map:
 class Const:
     value: Any
     outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
-    inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["const"] = field(default="const")
+
+    @property
+    def inputs(self) -> Mapping[PortID, ValueRef]:
+        return {}
 
 
 @dataclass
@@ -86,8 +89,11 @@ class Input:
 @dataclass
 class Output:
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["output"] = field(default="output")
+
+    @property
+    def outputs(self) -> Mapping[PortID, NodeIndex]:
+        return {}
 
 
 NodeDef = Func | Eval | Loop | Map | Const | IfElse | EagerIfElse | Input | Output
@@ -156,6 +162,13 @@ class GraphData(BaseModel):
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
         self.nodes.append(node)
+
+        def add_output(outport: ValueRef) -> None:
+            (node_id, port) = outport
+            node = self.nodes[node_id]
+            assert node.type != "output"
+            node.outputs[port] = idx
+
         match node.type:
             case "output":
                 if self.graph_output_idx is not None:
@@ -165,9 +178,8 @@ class GraphData(BaseModel):
 
                 self.graph_output_idx = idx
             case "ifelse" | "eifelse":
-                self.nodes[node.pred[0]].outputs[node.pred[1]] = idx
-                self.nodes[node.if_true[0]].outputs[node.if_true[1]] = idx
-                self.nodes[node.if_false[0]].outputs[node.if_false[1]] = idx
+                for outport in [node.pred, node.if_true, node.if_false]:
+                    add_output(outport)
             case "input":
                 self.graph_inputs.add(node.name)
             case "const" | "eval" | "function" | "map":
@@ -178,8 +190,8 @@ class GraphData(BaseModel):
             case _:
                 assert_never(node)
 
-        for i, port in node.inputs.values():
-            self.nodes[i].outputs[port] = idx
+        for outport in node.inputs.values():
+            add_output(outport)
 
         return lambda k: (idx, k)
 

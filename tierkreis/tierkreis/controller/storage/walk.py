@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from logging import getLogger
-from typing import assert_never
+from typing import Mapping, assert_never
 
 from tierkreis.controller.data.core import NodeIndex, PortID
 from tierkreis.controller.data.graph import (
@@ -116,7 +116,7 @@ def walk_loop(
     graph_input = (parent.N(loop.body[0]), loop.body[1])
     message = storage.read_output(*graph_input)
     g = ptype_from_bytes(message, GraphData)
-    loop_outputs: dict[PortID, ValueRef] = g.nodes[g.output_idx()].inputs
+    loop_outputs: Mapping[PortID, ValueRef] = g.nodes[g.output_idx()].inputs
     iter = storage.latest_loop_iteration(loop_loc)
     new_location = loop_loc.L(iter)
 
