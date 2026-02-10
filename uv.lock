@@ -2145,6 +2145,10 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/ca/a1cd95daf75d09d2dc1744cde95d5d18fed61a0e4922788fb916a7cd8152/qiskit_aer-0.17.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2749e6027f67e1f6b9d328d2dda2d4bf926aebd3653edc62e94c45d8237294d8", size = 12376191, upload-time = "2025-09-17T13:54:38.092Z" },
     { url = "https://files.pythonhosted.org/packages/d6/69/e2f979e2fca054b0092fc52c46da050298513b9b03531305bc3f340c7669/qiskit_aer-0.17.2-cp313-cp313-win32.whl", hash = "sha256:c3ffd40a64bfcf8a6d10cbfdca8734d49ec57502fd70dc63aae9ed3819249dd6", size = 6922275, upload-time = "2025-09-17T13:54:40.024Z" },
     { url = "https://files.pythonhosted.org/packages/ae/91/195cb69d3af4359544939378879093764bd35d8abd7ac0de840bb5477d27/qiskit_aer-0.17.2-cp313-cp313-win_amd64.whl", hash = "sha256:b38c5dfdc6cb2bacac78a47b0df8247123051564007fdecedb8ffbd4256f0f09", size = 9563116, upload-time = "2025-09-17T13:54:42.061Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/1b/b0516cd3d0e83ebe30e8d04d2a156dac883fd8ac4521deb12de582b2fc78/qiskit_aer-0.17.2-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:c282b9b65f2b011d740e76b0ab44201c70d8d48894ddc12e22442acbb81cc7eb", size = 2393891, upload-time = "2026-02-04T21:30:47.913Z" },
+    { url = "https://files.pythonhosted.org/packages/65/5b/c8bf7942ca12d50c4c8c9fde82f25ebcd6198b98f66c51616a9225d541bc/qiskit_aer-0.17.2-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:193de16895ee989a5259331d0f1b1dcad606d506e5e831683ff165e82851a7ac", size = 2117650, upload-time = "2026-02-04T21:30:55.486Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/27/f7b518f0928792e454ca9018d712769abf96033902e41bb3b648ff14833b/qiskit_aer-0.17.2-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b84564d563fb06adb454f3528dcc343be327c30cbd5f9f40aec7efd21d241e55", size = 14160447, upload-time = "2026-02-04T21:30:57.829Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/c1/59fe9c10e8d53533990ccf1bdf87ac74f77ced57d63a233f759df02bd361/qiskit_aer-0.17.2-cp314-cp314-win_amd64.whl", hash = "sha256:5d7b22dd945df4c69d57e966efb549cf9186055e5f32c649a91b7dd1eb133f07", size = 9697912, upload-time = "2026-02-04T21:30:59.913Z" },
 ]
 
 [[package]]
@@ -2897,7 +2901,7 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "2.0.9"
+version = "2.0.10"
 source = { editable = "tierkreis" }
 dependencies = [
     { name = "pydantic" },
@@ -2924,7 +2928,7 @@ dev = [
 
 [[package]]
 name = "tierkreis-visualization"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "tierkreis_visualization" }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
@@ -2945,7 +2949,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-aer-worker"
-version = "0.1.4"
+version = "0.1.5"
 source = { editable = "tierkreis_workers/aer_worker" }
 dependencies = [
     { name = "pytket-qiskit" },
@@ -2960,7 +2964,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-ibmq-worker"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "tierkreis_workers/ibmq_worker" }
 dependencies = [
     { name = "pytket" },
@@ -2977,7 +2981,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-nexus-worker"
-version = "0.1.4"
+version = "0.1.6"
 source = { editable = "tierkreis_workers/nexus_worker" }
 dependencies = [
     { name = "qnexus" },
@@ -2992,7 +2996,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-pytket-worker"
-version = "0.1.5"
+version = "0.1.6"
 source = { editable = "tierkreis_workers/pytket_worker" }
 dependencies = [
     { name = "pytket" },
@@ -3022,7 +3026,7 @@ provides-extras = ["backend-qiskit", "backend-quantinuum"]
 
 [[package]]
 name = "tkr-quantinuum-worker"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "tierkreis_workers/quantinuum_worker" }
 dependencies = [
     { name = "pytket-quantinuum" },
@@ -3039,7 +3043,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-qulacs-worker"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "tierkreis_workers/qulacs_worker" }
 dependencies = [
     { name = "pytket-qulacs" },

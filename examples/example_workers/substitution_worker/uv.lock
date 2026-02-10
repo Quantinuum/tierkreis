@@ -376,7 +376,7 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "2.0.9"
+version = "2.0.10"
 source = { directory = "../../../tierkreis" }
 dependencies = [
     { name = "pydantic" },
