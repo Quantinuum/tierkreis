@@ -136,12 +136,12 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
 def run_args(args: argparse.Namespace) -> None:
     if args.init_type == "project":
         worker_name = "example_worker"
-        worker_dir: Path = args.worker_directory
+        worker_dir = Path(args.worker_directory)
         if not worker_dir.is_absolute():
-            worker_dir = args.project_directory / worker_dir
-        graphs_dir: Path = args.graphs_directory
+            worker_dir = Path(args.project_directory) / worker_dir
+        graphs_dir = Path(args.graphs_directory)
         if not graphs_dir.is_absolute():
-            graphs_dir = args.project_directory / graphs_dir
+            graphs_dir = Path(args.project_directory) / graphs_dir
         worker_dir.mkdir(exist_ok=True, parents=True)
         _gen_worker(worker_name, worker_dir)
         graphs_dir.mkdir(exist_ok=True, parents=True)
@@ -160,10 +160,10 @@ main()
 It is highly recommended to add this to your project definition e.g. pyproject.toml.
 """)
     elif args.init_type == "worker":
-        args.worker_directory.mkdir(exist_ok=True, parents=True)
-        _gen_worker(args.name, args.external)
+        Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
+        _gen_worker(args.name, Path(args.worker_directory), args.external)
     elif args.init_type == "stubs":
-        _gen_stubs(args.worker_directory, args.stubs_name)
+        _gen_stubs(Path(args.worker_directory), args.stubs_name)
 
 
 class TierkreisInitCli:
