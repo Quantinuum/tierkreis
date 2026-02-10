@@ -1,9 +1,9 @@
 import json
-from typing import Optional, assert_never
+from typing import assert_never
 
 from tierkreis.controller.data.core import NodeIndex
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.graph import GraphData, IfElse, NodeDef
+from tierkreis.controller.data.graph import GraphData, IfElse
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import in_edges
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -15,13 +15,13 @@ from tierkreis_visualization.routers.models import PyGraph
 
 
 def node_status(
-    is_finished: bool, definition: Optional[NodeDef], has_error: bool = False
+    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
 ) -> NodeStatus:
-    if is_finished:
+    if storage.is_node_finished(node_location):
         return "Finished"
 
-    if definition is not None:
-        if has_error:
+    if storage.is_node_started(node_location):
+        if check_error(node_location, errored_nodes):
             return "Error"
         return "Started"
 
@@ -73,14 +73,8 @@ def get_eval_node(
 
     for i, node in enumerate(graph.nodes):
         new_location = node_location.N(i)
-        is_finished = storage.is_node_finished(new_location)
-        has_error = check_error(new_location, errored_nodes)
-        try:
-            definition = storage.read_node_def(new_location)
-        except (FileNotFoundError, TierkreisError):
-            definition = None
 
-        status = node_status(is_finished, definition, has_error)
+        status = node_status(storage, new_location, errored_nodes)
         started_time = storage.read_started_time(new_location) or ""
         finished_time = storage.read_finished_time(new_location) or ""
         value: str | None = None

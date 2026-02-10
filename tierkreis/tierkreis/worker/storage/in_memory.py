@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
+from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.controller.storage.in_memory import (
     ControllerInMemoryStorage,
     InMemoryFileData,
@@ -22,11 +23,17 @@ class InMemoryWorkerStorage:
         return Path(path)
 
     def read_call_args(self, path: Path) -> WorkerCallArgs:
-        bs = self.controller_storage.files[path].value
-        return WorkerCallArgs(**json.loads(bs))
+        try:
+            bs = self.controller_storage.files[path].value
+            return WorkerCallArgs(**json.loads(bs))
+        except KeyError as exc:
+            raise EntryNotFound(path) from exc
 
     def read_input(self, path: Path) -> bytes:
-        return self.controller_storage.files[path].value
+        try:
+            return self.controller_storage.files[path].value
+        except KeyError as exc:
+            raise EntryNotFound(path) from exc
 
     def write_output(self, path: Path, value: bytes) -> None:
         self.controller_storage.files[path] = InMemoryFileData(value)

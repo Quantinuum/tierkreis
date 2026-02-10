@@ -28,9 +28,10 @@ export const InputHandleArray = ({
       }}
     >
       {[...new Set(handles)].map((key) => {
+        const handleId = id + "_" + key.toString();
         return (
           <div
-            key={key}
+            key={handleId}
             style={{
               display: "flex",
               alignItems: "center",
@@ -40,21 +41,20 @@ export const InputHandleArray = ({
           >
             <>
               <Tooltip
-                open={isOpen || hoveredId === key}
+                open={isOpen || hoveredId === handleId}
                 //onOpenChange={onOpenChange} for some reason this fixes hover
               >
                 <TooltipTrigger
                   style={{ zIndex: 10 }}
                   onMouseEnter={() => {
-                    console.log(key);
-                    setHoveredId(key);
+                    setHoveredId(handleId);
                   }}
                   onMouseLeave={() => setHoveredId("")}
                 >
                   <Handle
                     type="target"
                     isConnectable={false}
-                    id={id + "_" + key.toString()}
+                    id={handleId}
                     position={Position.Top}
                     style={{
                       position: "initial",
@@ -99,9 +99,10 @@ export const OutputHandleArray = ({
       }}
     >
       {[...new Set(handles)].map((key) => {
+        const handleId = id + "-" + key.toString();
         return (
           <div
-            key={key}
+            key={handleId}
             style={{
               display: "flex",
               alignItems: "center",
@@ -111,14 +112,13 @@ export const OutputHandleArray = ({
           >
             <>
               <Tooltip
-                open={isOpen || hoveredId === key}
+                open={isOpen || hoveredId === handleId}
                 //onOpenChange={onOpenChange} for some reason this fixes hover
               >
                 <TooltipTrigger
                   style={{ zIndex: 10 }}
                   onMouseEnter={() => {
-                    console.log(key);
-                    setHoveredId(key);
+                    setHoveredId(handleId);
                   }}
                   onMouseLeave={() => setHoveredId("")}
                 >

@@ -2,6 +2,7 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
+from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
@@ -10,20 +11,54 @@ from tierkreis.controller.storage.in_memory import (
     ControllerInMemoryStorage as InMemoryStorage,
 )
 from tierkreis.exceptions import TierkreisError
+from tierkreis.controller.data.models import TModel
+from tierkreis.controller.data.types import is_optional
 
 __all__ = ["FileStorage", "InMemoryStorage"]
 
 
-def read_outputs(
-    g: GraphData | GraphBuilder, storage: ControllerStorage
+def _read_output(
+    storage: ControllerStorage, port_name: str, annotation: type | None
+) -> PType:
+    """Tries to get the output `port_name` from the root graph.
+    If `annotation` indicates that the value is optional then do not raise on EntryNotFound.
+    """
+
+    try:
+        return ptype_from_bytes(storage.read_output(Loc(), port_name))
+    except EntryNotFound as exc:
+        if annotation and is_optional(annotation):
+            return None
+        raise TierkreisError(f"Output {port_name} not found.") from exc
+
+
+def read_outputs[A: TModel, B: TModel](
+    g: GraphData | GraphBuilder[A, B], storage: ControllerStorage
 ) -> dict[str, PType] | PType:
+    """Read the outputs from the `storage`.
+
+    The bytes are parsed into Python types if possible."""
+
+    output_annotation = None
     if isinstance(g, GraphBuilder):
+        output_annotation = g.outputs_type
         g = g.get_data()
 
     out_ports = list(g.nodes[g.output_idx()].inputs.keys())
+
     if len(out_ports) == 1 and "value" in out_ports:
-        return ptype_from_bytes(storage.read_output(Loc(), "value"))
-    return {k: ptype_from_bytes(storage.read_output(Loc(), k)) for k in out_ports}
+        return _read_output(storage, "value", output_annotation)
+
+    outputs: dict[str, PType] = {}
+    for port_name in out_ports:
+        port_annotation = (
+            output_annotation.__annotations__.get(port_name)
+            if output_annotation
+            else None
+        )
+        outputs[port_name] = _read_output(storage, port_name, port_annotation)
+
+    return outputs
 
 
 def read_loop_trace(

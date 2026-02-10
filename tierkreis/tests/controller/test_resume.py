@@ -4,6 +4,11 @@ from uuid import UUID
 
 import pytest
 
+from tests.controller.defaults_graphs import (
+    defaults_not_none,
+    defaults_omit,
+    defaults_passthru,
+)
 from tests.controller.sample_graphdata import (
     maps_in_series,
     simple_eagerifelse,
@@ -29,6 +34,7 @@ from tests.controller.typed_graphdata import (
     gcd,
     typed_map_simple,
 )
+from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
@@ -38,67 +44,88 @@ from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.storage import read_outputs
 
-param_data: list[tuple[GraphData, Any, str, dict[str, PType] | PType]] = [
+param_data: list[
+    tuple[GraphData | GraphBuilder, Any, str, dict[str, PType] | PType]
+] = [
     (simple_eval(), {"simple_eval_output": 12}, "simple_eval", {}),
     (simple_loop(), 10, "simple_loop", {}),
     (simple_map(), list(range(6, 47, 2)), "simple_map", {}),
     (maps_in_series(), list(range(0, 81, 4)), "maps_in_series", {}),
     (simple_ifelse(), 1, "simple_ifelse", {"pred": b"true"}),
     (simple_ifelse(), 2, "simple_ifelse", {"pred": b"false"}),
-    (factorial().get_data(), 24, "factorial", 4),
-    (
-        loop_multiple_acc_untyped(),
-        {"acc1": 6, "acc2": 12, "acc3": 18},
-        "multi_acc",
-        {},
-    ),
-    (
-        loop_multiple_acc().get_data(),
-        {"acc1": 6, "acc2": 12, "acc3": 18},
-        "multi_acc",
-        {},
-    ),
+    (factorial(), 24, "factorial", 4),
+    (loop_multiple_acc_untyped(), {"acc1": 6, "acc2": 12, "acc3": 18}, "multi_acc", {}),
+    (loop_multiple_acc(), {"acc1": 6, "acc2": 12, "acc3": 18}, "multi_acc", {}),
     (simple_eagerifelse(), 1, "simple_eagerifelse", {"pred": b"true"}),
-    (factorial().get_data(), 120, "factorial", {"value": b"5"}),
-    (typed_eval().get_data(), {"typed_eval_output": 12}, "typed_eval", {}),
-    (typed_loop().get_data(), 10, "typed_loop", {}),
+    (factorial(), 120, "factorial", {"value": b"5"}),
+    (typed_eval(), {"typed_eval_output": 12}, "typed_eval", {}),
+    (typed_loop(), 10, "typed_loop", {}),
+    (typed_map(), list(range(6, 47, 2)), "typed_map", {"value": list(range(21))}),
+    (typed_map(), [], "typed_map", {"value": []}),
     (
-        typed_map().get_data(),
-        list(range(6, 47, 2)),
-        "typed_map",
-        {"value": list(range(21))},
-    ),
-    (typed_map().get_data(), [], "typed_map", {"value": []}),
-    (
-        typed_map_simple().get_data(),
+        typed_map_simple(),
         list(range(0, 42, 2)),
         "typed_map",
         {"value": list(range(21))},
     ),
-    (typed_map_simple().get_data(), [], "typed_map", {"value": []}),
+    (typed_map_simple(), [], "typed_map", {"value": []}),
     (
-        typed_destructuring().get_data(),
+        typed_destructuring(),
         list(range(6, 47, 2)),
         "typed_destructuring",
         {"value": list(range(21))},
     ),
-    (typed_destructuring().get_data(), [], "typed_destructuring", {"value": []}),
-    (tuple_untuple().get_data(), 3, "tuple_untuple", {}),
-    (gcd().get_data(), 21, "gcd", {"a": 1071, "b": 462}),
-    (gcd().get_data(), 2, "gcd", {"a": 12, "b": 26}),
-    (gcd().get_data(), 24, "gcd", {"a": 48, "b": 360}),
-    (gcd().get_data(), 1, "gcd", {"a": 9357, "b": 5864}),
-    (gcd().get_data(), 3, "gcd", {"a": 3, "b": 0}),
-    (tkr_conj().get_data(), complex(1, -1), "tkr_conj", complex(1, 1)),
+    (typed_destructuring(), [], "typed_destructuring", {"value": []}),
+    (tuple_untuple(), 3, "tuple_untuple", {}),
+    (gcd(), 21, "gcd", {"a": 1071, "b": 462}),
+    (gcd(), 2, "gcd", {"a": 12, "b": 26}),
+    (gcd(), 24, "gcd", {"a": 48, "b": 360}),
+    (gcd(), 1, "gcd", {"a": 9357, "b": 5864}),
+    (gcd(), 3, "gcd", {"a": 3, "b": 0}),
+    (tkr_conj(), complex(1, -1), "tkr_conj", complex(1, 1)),
     (
-        tkr_list_conj().get_data(),
+        tkr_list_conj(),
         [complex(1, -1), complex(1, 0)],
         "tkr_conj",
         [complex(1, 1), complex(1, 0)],
     ),
-    (loop_scoping().get_data(), {"result": 11}, "loop_scoping", {}),
+    (loop_scoping(), {"result": 11}, "loop_scoping", {}),
+    (
+        defaults_omit(),
+        {
+            "range_1": list(range(1, 10)),
+            "range_2": list(range(1, 10)),
+            "range_3": list(range(1, 10, 2)),
+        },
+        "defaults_omit",
+        {"start": 1, "stop": 10},
+    ),
+    (
+        defaults_passthru(),
+        {
+            "range_1": list(range(1, 10)),
+            "range_2": list(range(1, 10)),
+            "range_3": list(range(1, 10, 2)),
+            "extra_output": None,
+        },
+        "defaults_passthru",
+        {"start": 1, "stop": 10},
+    ),
+    (
+        defaults_not_none(),
+        {
+            "range_1": list(range(1, 10)),
+            "range_2": list(range(1, 10)),
+            "range_3": list(range(1, 10, 2)),
+            "extra_output": 1,
+        },
+        "defaults_not_none",
+        {"start": 1, "stop": 10},
+    ),
 ]
-params: list[tuple[GraphData, Any, str, int, dict[str, PType] | PType]] = [
+params: list[
+    tuple[GraphData | GraphBuilder, Any, str, int, dict[str, PType] | PType]
+] = [
     (graph, output, name, i + 1, inputs)
     for i, (graph, output, name, inputs) in enumerate(param_data)
 ]
@@ -131,6 +158,9 @@ ids = [
     "tkr_conj",
     "tkr_conj_list",
     "loop_scoping",
+    "defaults_omit",
+    "defaults_passthru",
+    "defaults_not_none",
 ]
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]

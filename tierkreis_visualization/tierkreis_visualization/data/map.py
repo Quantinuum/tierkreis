@@ -20,9 +20,11 @@ def get_map_node(
     if parent is None:
         raise TierkreisError("MAP node must have parent.")
 
-    first_ref = next(x for x in map.inputs.values() if x[1] == "*")
-    map_eles = outputs_iter(storage, parent.N(first_ref[0]))
-    nodedef = storage.read_node_def(loc.M(0))
+    node_ref = next(n for n, port in map.inputs.values() if port == "*")
+    map_eles = outputs_iter(storage, parent.N(node_ref))
+    # We get the outputs from fake Eval node for the first element, but
+    # we could instead use the *graph* input to the map node
+    outputs = list(storage.read_node_def(loc.M(0)).outputs)
     nodes: list[PyNode] = []
     for i, ele in map_eles:
         node = PyNode(
@@ -33,7 +35,7 @@ def get_map_node(
             node_type="eval",
             started_time=storage.read_started_time(loc.M(i)) or "",
             finished_time=storage.read_finished_time(loc.M(i)) or "",
-            outputs=list(nodedef.outputs),
+            outputs=outputs,
         )
         if check_error(loc.M(i), errored_nodes):
             node.status = "Error"

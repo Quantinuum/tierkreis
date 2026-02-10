@@ -10,7 +10,7 @@ pip install tierkreis-visualization
 It extends the `tkr` cli with a `viz` subcommand which can be invoked as:
 
 ```
-tkr viz
+tkr vis
 ```
 
 This will start a fastapi development server which by default shows all from the checkpoint directory `~/.tierkreis/checkpoints`.
