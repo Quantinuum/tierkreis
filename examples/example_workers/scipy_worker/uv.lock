@@ -266,7 +266,7 @@ requires-dist = [
 
 [[package]]
 name = "tierkreis"
-version = "2.0.9"
+version = "2.0.10"
 source = { editable = "../../../tierkreis" }
 dependencies = [
     { name = "pydantic" },
