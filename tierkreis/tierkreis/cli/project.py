@@ -163,7 +163,7 @@ It is highly recommended to add this to your project definition e.g. pyproject.t
         Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
         _gen_worker(args.name, Path(args.worker_directory), args.external)
     elif args.init_type == "stubs":
-        _gen_stubs(Path(args.worker_directory), args.stubs_name)
+        _gen_stubs(Path(args.worker_directory), args.api_file_name)
 
 
 class TierkreisInitCli:
