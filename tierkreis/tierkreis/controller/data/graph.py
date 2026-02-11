@@ -1,10 +1,10 @@
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, assert_never
+
 from pydantic import BaseModel, RootModel
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.core import ValueRef
+
+from tierkreis.controller.data.core import NodeIndex, PortID, ValueRef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
@@ -94,6 +94,30 @@ NodeDef = Func | Eval | Loop | Map | Const | IfElse | EagerIfElse | Input | Outp
 NodeDefModel = RootModel[NodeDef]
 
 
+def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
+    parents = {k: v for k, v in node.inputs.items()}
+
+    match node.type:
+        case "eval":
+            parents["body"] = node.graph
+        case "loop":
+            parents["body"] = node.body
+        case "map":
+            parents["body"] = node.body
+        case "ifelse":
+            parents["pred"] = node.pred
+        case "eifelse":
+            parents["pred"] = node.pred
+            parents["body_true"] = node.if_true
+            parents["body_false"] = node.if_false
+        case "const" | "function" | "input" | "output":
+            pass
+        case _:
+            assert_never(node)
+
+    return parents
+
+
 class GraphData(BaseModel):
     nodes: list[NodeDef] = []
     fixed_inputs: dict[PortID, OutputLoc] = {}
@@ -167,7 +191,7 @@ class GraphData(BaseModel):
             case _:
                 assert_never(node)
 
-        for i, port in node.inputs.values():
+        for i, port in in_edges(node).values():
             self.nodes[i].outputs[port] = idx
 
         return lambda k: (idx, k)

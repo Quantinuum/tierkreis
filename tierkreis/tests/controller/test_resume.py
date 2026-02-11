@@ -123,12 +123,6 @@ param_data: list[
         "defaults_not_none",
         {"start": 1, "stop": 10},
     ),
-    (
-        eval_body_is_from_worker(),
-        {"value": 21},
-        "eval_body_is_from_worker",
-        {"value": 10},
-    ),
 ]
 params: list[
     tuple[GraphData | GraphBuilder, Any, str, int, dict[str, PType] | PType]
@@ -168,7 +162,6 @@ ids = [
     "defaults_omit",
     "defaults_passthru",
     "defaults_not_none",
-    "eval_body_is_from_worker",
 ]
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
@@ -191,6 +184,37 @@ def test_resume(
     executor = UvExecutor(test_workers_path, storage.logs_path)
     if isinstance(storage, ControllerInMemoryStorage):
         executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
+    storage.clean_graph_files()
+    run_graph(storage, executor, g, inputs)
+
+    actual_output = read_outputs(g, storage)
+    assert actual_output == output
+
+
+with_worker_param_data: list[
+    tuple[GraphData | GraphBuilder, Any, str, dict[str, PType] | PType]
+] = [
+    (eval_body_is_from_worker(), 21, "eval_body_is_from_worker", {"value": 10}),
+]
+with_worker_params: list[
+    tuple[GraphData | GraphBuilder, Any, str, int, dict[str, PType] | PType]
+] = [
+    (graph, output, name, i + 1, inputs)
+    for i, (graph, output, name, inputs) in enumerate(with_worker_param_data)
+]
+with_worker_ids = ["eval_body_is_from_worker"]
+
+
+@pytest.mark.parametrize(
+    "graph,output,name,id,inputs", with_worker_params, ids=with_worker_ids
+)
+def test_resume_with_worker(
+    graph: GraphData, output: Any, name: str, id: int, inputs: dict[str, PType] | PType
+):
+    g = graph
+    storage = ControllerFileStorage(UUID(int=id), name=name)
+    test_workers_path = Path(__file__).parent.parent / "test_workers"
+    executor = UvExecutor(test_workers_path, storage.logs_path)
     storage.clean_graph_files()
     run_graph(storage, executor, g, inputs)
 
