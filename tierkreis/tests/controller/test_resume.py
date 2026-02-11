@@ -9,6 +9,11 @@ from tests.controller.defaults_graphs import (
     defaults_omit,
     defaults_passthru,
 )
+from tests.controller.loop_graphdata import (
+    loop_multiple_acc,
+    loop_multiple_acc_untyped,
+    loop_scoping,
+)
 from tests.controller.sample_graphdata import (
     maps_in_series,
     simple_eagerifelse,
@@ -17,12 +22,10 @@ from tests.controller.sample_graphdata import (
     simple_loop,
     simple_map,
 )
-from tests.controller.loop_graphdata import (
-    loop_multiple_acc,
-    loop_multiple_acc_untyped,
-    loop_scoping,
-)
 from tests.controller.typed_graphdata import (
+    eval_body_is_from_worker,
+    factorial,
+    gcd,
     tkr_conj,
     tkr_list_conj,
     tuple_untuple,
@@ -30,18 +33,16 @@ from tests.controller.typed_graphdata import (
     typed_eval,
     typed_loop,
     typed_map,
-    factorial,
-    gcd,
     typed_map_simple,
 )
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
+from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.executor.shell_executor import ShellExecutor
+from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.storage import read_outputs
 
 param_data: list[
@@ -122,6 +123,12 @@ param_data: list[
         "defaults_not_none",
         {"start": 1, "stop": 10},
     ),
+    (
+        eval_body_is_from_worker(),
+        {"value": 21},
+        "eval_body_is_from_worker",
+        {"value": 10},
+    ),
 ]
 params: list[
     tuple[GraphData | GraphBuilder, Any, str, int, dict[str, PType] | PType]
@@ -161,6 +168,7 @@ ids = [
     "defaults_omit",
     "defaults_passthru",
     "defaults_not_none",
+    "eval_body_is_from_worker",
 ]
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
@@ -179,7 +187,8 @@ def test_resume(
 ):
     g = graph
     storage = storage_class(UUID(int=id), name=name)
-    executor = ShellExecutor(Path("./python/examples/launchers"), Path(""))
+    test_workers_path = Path(__file__).parent.parent / "test_workers"
+    executor = UvExecutor(test_workers_path, storage.logs_path)
     if isinstance(storage, ControllerInMemoryStorage):
         executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
     storage.clean_graph_files()
