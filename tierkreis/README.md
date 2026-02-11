@@ -134,7 +134,7 @@ uv run main.py <node_definition_path>
 The command will be executed in the _registry_ directory of multiple workers which can be configured manually:
 
 ```python
-executor = UVExecutor(registry_path=Path("/example/example_workers"))
+executor = UVExecutor(registry_path=Path("/docs/source/examples/example_workers"))
 # the path to the directory where workers are stored
 ```
 
