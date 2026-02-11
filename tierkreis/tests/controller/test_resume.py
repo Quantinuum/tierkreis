@@ -213,7 +213,7 @@ def test_resume_with_worker(
 ):
     g = graph
     storage = ControllerFileStorage(UUID(int=id), name=name)
-    test_workers_path = Path(__file__).parent.parent / "test_workers"
+    test_workers_path = Path(__file__).parent.parent / "workers"
     executor = UvExecutor(test_workers_path, storage.logs_path)
     storage.clean_graph_files()
     run_graph(storage, executor, g, inputs)

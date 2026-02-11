@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from tests.test_workers.graph.api.api import doubler_plus_graph
+from tests.workers.graph.api.api import doubler_plus_graph
 from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins.stubs import (
     conjugate,
