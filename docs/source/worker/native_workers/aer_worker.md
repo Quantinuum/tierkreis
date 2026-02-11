@@ -29,7 +29,7 @@ The Tierkreis Python package provides a few prepackaged graphs to make it easier
 `tierkreis.graphs.simulate.compile_simulate.compile_simulate` is intended for the common use case of compiling a list of circuits in parallel and then running them in parallel.
 It can be included within a custom graph using `GraphBuilder.eval` or run as a standalone graph.
 
-An example use is in `examples/simulate_parallel.py` in the [Tierkreis repo](https://github.com/CQCL/tierkreis), which looks like:
+An example use is in `docs/source/examples/parallelism.ipynb` in the [Tierkreis repo](https://github.com/CQCL/tierkreis), which looks like:
 
 ```python
 simulator_name = "aer"

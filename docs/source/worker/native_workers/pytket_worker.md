@@ -52,7 +52,8 @@ Trying to use a non-serializable pass will result in an error.
 
 ## Example
 
-An example use is in `examples/pytket_graph.py` in the [Tierkreis repo](https://github.com/CQCL/tierkreis), which runs on a named IBM backend, e.g. `"ibm_torino"`.
+An example use is in `docs/source/examples/hamiltonian.ipynb` in the [Tierkreis repo](https://github.com/CQCL/tierkreis).
+A shorter example which runs on a named IBM backend, e.g. `"ibm_torino"` is given here
 For debugging purposes this also showcases how to use the `InMemoryExecutor` which only works in conjunction with the `InMemoryStorage`.
 
 ```python
