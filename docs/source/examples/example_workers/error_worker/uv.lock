@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 
 [[package]]
@@ -25,7 +25,7 @@ dependencies = [
 requires-dist = [
     { name = "pydantic" },
     { name = "ruff" },
-    { name = "tierkreis" },
+    { name = "tierkreis", editable = "../../../../../tierkreis" },
 ]
 
 [[package]]
@@ -142,14 +142,20 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "2.0.9"
-source = { registry = "https://pypi.org/simple" }
+version = "2.0.10"
+source = { editable = "../../../../../tierkreis" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/6b/5c046e8ae31650496564ee46c994d5b473807997b7b5251c6fd1bb4b1e7e/tierkreis-2.0.9.tar.gz", hash = "sha256:cf9fc8e070165a0439dbcb8e11a489c27bb2ce1652541546a6b727774e62c2f0", size = 94057, upload-time = "2025-11-05T13:41:19.873Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/c9/1120bfb1d377af80b57f44180c4688c4e59c2136e868ed428c7e69f6e436/tierkreis-2.0.9-py3-none-any.whl", hash = "sha256:32ca48163afc6387505ca901cd7342c43c372de4bacca828bf2f286ad965e913", size = 69188, upload-time = "2025-11-05T13:41:17.285Z" },
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = "~=2.5" }]
+
+[package.metadata.requires-dev]
+build = [{ name = "build", extras = ["uv"] }]
+dev = [
+    { name = "ipykernel", specifier = ">=6.29.5" },
+    { name = "pytest" },
 ]
 
 [[package]]
