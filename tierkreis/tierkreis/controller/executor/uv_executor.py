@@ -24,7 +24,7 @@ class UvExecutor:
         registry_path: Path | list[Path],
         logs_path: Path,
         env: dict[str, str] | None = None,
-    ) -> ExecutorData:
+    ) -> None:
         self.registries = registry_path
         self.logs_path = logs_path
         self.errors_path = logs_path
