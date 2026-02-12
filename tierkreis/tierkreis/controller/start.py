@@ -96,7 +96,7 @@ def start(
         else:
             exec_data = executor.run(launcher_name, call_args_path)
 
-        storage.append_executor_data(exec_data)
+        storage.append_executor_data(node_location, exec_data)
     elif node.type == "input":
         input_loc = parent.N(-1)
         storage.link_outputs(node_location, node.name, input_loc, node.name)
