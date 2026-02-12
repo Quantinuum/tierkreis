@@ -1,9 +1,10 @@
 import json
-from pathlib import Path
 from fnmatch import filter
+from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.protocol import ControllerExecutor
+from tierkreis.controller.storage.data import ExecutorData
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
@@ -20,7 +21,7 @@ class TaskExecutor:
         self.assignments = assignments
         self.workflow_dir = storage.workflow_dir
 
-    def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
+    def run(self, launcher_name: str, worker_call_args_path: Path) -> ExecutorData:
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
@@ -28,7 +29,8 @@ class TaskExecutor:
         for pattern, executor in self.assignments.items():
             matching = filter([qualified_task], pattern)
             if matching:
-                executor.run(launcher_name, worker_call_args_path)
-                return
+                data = executor.run(launcher_name, worker_call_args_path)
+                data.executor = f"{__class__}:" + data.executor
+                return data
 
         raise TierkreisError(f"No assigned executor for task {qualified_task}")

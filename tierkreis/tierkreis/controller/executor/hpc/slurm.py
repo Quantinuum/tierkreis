@@ -1,8 +1,11 @@
+import re
 from pathlib import Path
 from typing import Callable
+
 from tierkreis.controller.executor.hpc.hpc_executor import run_hpc_executor
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
-
+from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.exceptions import TierkreisError
 
 _COMMAND_PREFIX = "#SBATCH"
 
@@ -102,12 +105,21 @@ class SLURMExecutor:
         self.script_fn: Callable[[JobSpec], str] = generate_slurm_script
         self.command = command
 
+    def job_id(self, std_out: str) -> str:
+        pattern = re.compile(r"(\d+)")
+        match = pattern.match(std_out)
+        if match:
+            # should be similar to : Submitted batch job <jobid>
+            return match.group(0)
+        message = f"slurm submission doesn't contain job id in \n {std_out}"
+        raise TierkreisError(message)
+
     def run(
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> None:
+    ) -> ExecutorData:
         self.errors_path = (
             self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
         )
-        run_hpc_executor(self, launcher_name, worker_call_args_path)
+        return run_hpc_executor(self, launcher_name, worker_call_args_path)

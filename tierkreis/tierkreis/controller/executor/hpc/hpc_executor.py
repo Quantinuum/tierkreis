@@ -7,8 +7,8 @@ from typing import Callable, Protocol
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.commands import add_std_handlers
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
+from tierkreis.controller.storage.data import ExecutorData
 from tierkreis.exceptions import TierkreisError
-
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,8 @@ class HPCExecutor(Protocol):
     script_fn: Callable[[JobSpec], str]
     command: str
 
+    def job_id(self, std_out: str) -> str: ...
+
 
 def generate_script(
     template_fn: Callable[[JobSpec], str], spec: JobSpec, path: Path
@@ -31,7 +33,7 @@ def generate_script(
 
 def run_hpc_executor(
     executor: HPCExecutor, launcher_name: str, worker_call_args_path: Path
-) -> None:
+) -> ExecutorData:
     logger.info("START %s %s", launcher_name, worker_call_args_path)
 
     spec = executor.spec.model_copy()
@@ -77,7 +79,13 @@ def run_hpc_executor(
             efh.write("Error from script")
             efh.write(process.stderr)
         print(process.stderr)
-        print("\n\npjsub script\n\n")
+        print("\n\nsubmission script\n\n")
         print(executor.script_fn(spec))
 
         raise TierkreisError(f"Executor failed with return code {process.returncode}")
+
+    return ExecutorData(
+        str(executor.__class__),
+        " ".join(submission_cmd),
+        executor.job_id(process.stdout),  # TODO parse JOB ID somehow
+    )

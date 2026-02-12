@@ -6,6 +6,7 @@ from pathlib import Path
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
+from tierkreis.controller.storage.data import ExecutorData
 
 
 class ShellExecutor:
@@ -34,7 +35,8 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> None:
+        export_values: bool = False,
+    ) -> ExecutorData:
         launcher_path = self.launchers_path / launcher_name
 
         launcher_path = check_and_set_launcher(
@@ -62,10 +64,12 @@ class ShellExecutor:
             stdin=subprocess.PIPE,
             env=env,
         )
+        command = f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&"
         proc.communicate(
-            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&".encode(),
+            command.encode(),
             timeout=self.timeout,
         )
+        return self._generate_debug_data(command, env)
 
     def _create_env(
         self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool
@@ -94,3 +98,11 @@ class ShellExecutor:
             with open(v) as fh:
                 values[f"input_{k}_value"] = fh.read()
         return env
+
+    def _generate_debug_data(self, command: str, env: dict[str, str]) -> ExecutorData:
+        # What is the equivalent to the pip freeze here?
+        return ExecutorData(
+            str(self.__class__),
+            command,
+            env=env,
+        )

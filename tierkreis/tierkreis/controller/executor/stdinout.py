@@ -1,9 +1,11 @@
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
+from tierkreis.controller.storage.data import ExecutorData
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 
 
@@ -23,7 +25,7 @@ class StdInOut:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> None:
+    ) -> ExecutorData:
         launcher_path = _check_bin(launcher_name)
         if launcher_path is None:
             launcher_path = check_and_set_launcher(
@@ -44,9 +46,19 @@ class StdInOut:
             start_new_session=True,
             stdin=subprocess.PIPE,
         )
+        command = f"({launcher_path} <{input_file}  > {output_file} 2> {tee_str} && touch {done_path}|| touch {_error_path})&"
         proc.communicate(
-            f"({launcher_path} <{input_file} >{output_file} 2> {tee_str} && touch {done_path} || touch {_error_path})&".encode(),
+            command.encode(),
             timeout=10,
+        )
+        return self._generate_debug_data(command)
+
+    def _generate_debug_data(self, command: str) -> ExecutorData:
+        # What is the equivalent to the pip freeze here?
+        return ExecutorData(
+            str(self.__class__),
+            command,
+            env={k: v for k, v in os.environ},
         )
 
 
