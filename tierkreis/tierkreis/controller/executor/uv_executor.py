@@ -88,7 +88,7 @@ def _uv_freeze(uv_path: str, cwd: Path) -> list[str]:
             str(uv_path),
             "export",
             "--format",
-            "requirements.txt",
+            "requirements-txt",
             "--no-hashes",
             "--no-annotate",
         ],
