@@ -165,9 +165,9 @@ class GraphData(BaseModel):
         self.add(Output(inputs))
 
     def _add_node_output(
-        self, source_idx: NodeIndex, target_port: PortID, target_idx: NodeIndex
+        self, source_idx: NodeIndex, source_port: PortID, target_idx: NodeIndex
     ):
-        self.nodes[source_idx].outputs.setdefault(target_port, []).append(target_idx)
+        self.nodes[source_idx].outputs.setdefault(source_port, []).append(target_idx)
 
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
