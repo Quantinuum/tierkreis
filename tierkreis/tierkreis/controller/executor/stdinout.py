@@ -58,7 +58,7 @@ class StdInOut:
         return ExecutorData(
             str(self.__class__),
             command,
-            env={k: v for k, v in os.environ},
+            env={k: v for k, v in os.environ.items()},
         )
 
 
