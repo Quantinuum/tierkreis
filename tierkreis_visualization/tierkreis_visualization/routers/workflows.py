@@ -145,6 +145,18 @@ def get_logs(
     return PlainTextResponse(logs)
 
 
+@router.get("/{workflow_id}/nodes/{node_location_str}/logs")
+def get_node_logs(
+    request: Request,
+    workflow_id: UUID,
+    node_location_str: str,
+):
+    node_location = parse_node_location(node_location_str)
+    storage = request.app.state.get_storage_fn(workflow_id)
+    messages = storage.read_errors(node_location)
+    return PlainTextResponse(messages)
+
+
 @router.get("/{workflow_id}/nodes/{node_location_str}/errors")
 def get_errors(
     request: Request,

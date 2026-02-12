@@ -11,7 +11,12 @@ import { DialogTrigger } from "@/components/ui/dialog";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 import { OctagonAlert } from "lucide-react";
-import { fetchErrors, fetchLogs, fetchOutput, fetchOutputs } from "@/data/api";
+import {
+  fetchErrors,
+  fetchNodeLogs,
+  fetchOutput,
+  fetchOutputs,
+} from "@/data/api";
 import { loc_parent } from "@/data/loc";
 
 export function DefaultNode({ data }: NodeProps<BackendNode>) {
@@ -38,7 +43,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     const workflow_id = data.workflowId;
     const node_location = data.node_location;
     if (data.node_type === "function") {
-      const content = await fetchLogs(data.workflowId);
+      const content = await fetchNodeLogs(data.workflowId, data.node_location);
       data.setInfo?.({
         type: "Logs",
         content,

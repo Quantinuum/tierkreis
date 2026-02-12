@@ -29,6 +29,9 @@ export function WorkflowsTable(props: {
       header: "Errors",
       sortingFn: (x, y) => y.original.errors.length - x.original.errors.length,
     }),
+    {
+      header: "Logs",
+    },
   ];
 
   const defaultSort = { id: "start_time", desc: false };

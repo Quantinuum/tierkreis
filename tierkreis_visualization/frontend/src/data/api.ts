@@ -19,52 +19,64 @@ export const fetchLogs = async (workflow_id: string) => {
 export const fetchOutput = async (
   workflow_id: string,
   node_location_str: string,
-  port_name: string
+  port_name: string,
 ) => {
   const res = await fetchClient.GET(
     "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}",
     {
       params: { path: { workflow_id, node_location_str, port_name } },
       parseAs: "text",
-    }
+    },
   );
   return res.error ? "Failed to fetch output." : res.data;
 };
 
 export const fetchOutputs = async (
   workflow_id: string,
-  node_location_str: string
+  node_location_str: string,
 ) => {
   const res = await fetchClient.GET(
     "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs",
     {
       params: { path: { workflow_id, node_location_str } },
       parseAs: "text",
-    }
+    },
   );
   return res.error ? "Failed to fetch output." : res.data;
 };
 
 export const fetchErrors = async (
   workflow_id: string,
-  node_location_str: string
+  node_location_str: string,
 ) => {
   const params = { path: { workflow_id, node_location_str } };
   const res = await fetchClient.GET(
     "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors",
-    { params, parseAs: "text" }
+    { params, parseAs: "text" },
   );
   return res.data ?? "No errors.";
 };
 
+export const fetchNodeLogs = async (
+  workflow_id: string,
+  node_location_str: string,
+) => {
+  const params = { path: { workflow_id, node_location_str } };
+  const res = await fetchClient.GET(
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs",
+    { params, parseAs: "text" },
+  );
+  return res.data ?? "No logs.";
+};
+
 export const restartNode = async (
   workflow_id: string,
-  node_location_str: string
+  node_location_str: string,
 ): Promise<string[]> => {
   const params = { path: { workflow_id, node_location_str } };
   const res = await fetchClient.POST(
     "/api/workflows/{workflow_id}/nodes/{node_location_str}/restart",
-    { params }
+    { params },
   );
   if (res.error) {
     console.log("Failed to restart node.");

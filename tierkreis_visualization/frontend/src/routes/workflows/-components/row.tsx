@@ -1,7 +1,9 @@
 import { LoadingIndicator } from "@/components/StatusIndicator";
+import { Button } from "@/components/ui/button";
 import { WorkflowDisplay } from "@/data/api_types";
 import { loc_parent } from "@/data/loc";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Download } from "lucide-react";
 
 const NodeLink = (props: { wid: string; loc: string }) => {
   return (
@@ -17,6 +19,21 @@ const NodeLink = (props: { wid: string; loc: string }) => {
 
 const errorLinks = (wid: string, errors: string[]) => {
   return errors.map((x) => <NodeLink wid={wid} loc={x} />);
+};
+const getLogs = async (wid: string) => {
+  window.open(`/api/workflows/${wid}/logs`, "_blank");
+};
+
+const logsLink = (wid: string) => {
+  return (
+    <Button
+      className="cursor-pointer"
+      size="icon"
+      onClick={async () => await getLogs(wid)}
+    >
+      <Download />
+    </Button>
+  );
 };
 
 export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
@@ -42,6 +59,7 @@ export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
         {d_display}
       </td>
       <td className="p-4 border-t-1">{errorLinks(r.id, r.errors)}</td>
+      <td className="p-4 border-t-1 flex justify-center">{logsLink(r.id)}</td>
     </tr>
   );
 };
