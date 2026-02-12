@@ -27,7 +27,7 @@ def set_tkr_logger(
 
 
 def add_handler_from_environment(logger: logging.Logger) -> logging.Handler:
-    log_level = getenv(TKR_LOG_LEVEL_KEY, None)
+    log_level = getenv(TKR_LOG_LEVEL_KEY, logging.INFO)
     if log_level is not None:
         logger.setLevel(log_level)
     log_format = getenv(TKR_LOG_FMT_KEY, None)
