@@ -12,6 +12,7 @@ from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
+from tierkreis.tierkreis.controller.storage.data import ExecutorData
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,9 @@ class ControllerStorage(ABC):
     @property
     def debug_path(self) -> Path:
         return self.workflow_dir / "debug"
+
+    def _exec_data_path(self) -> Path:
+        return self.debug_path / "executors"
 
     def _nodedef_path(self, node_location: Loc) -> Path:
         return self.workflow_dir / str(node_location) / "nodedef"
@@ -278,8 +282,25 @@ class ControllerStorage(ABC):
         data = StorageDebugData(loop_loc=loc)
         self.write(self.debug_path / name, json.dumps(asdict(data)).encode())
 
+    def append_executor_data(self, data: ExecutorData) -> None:
+        if not self.exists(self._exec_data_path()):
+            self.write(self._exec_data_path(), json.dumps([data]).encode())
+            return
+        existing_data = json.loads(self.read(self._exec_data_path()))
+        if not isinstance(existing_data, list):
+            msg = f"Expecting executor to be list, found {type(existing_data)} instead"
+            raise TierkreisError(msg)
+        self.write(
+            self._exec_data_path(), json.dumps(existing_data.append(data)).encode()
+        )
+
     def read_debug_data(self, name: str) -> dict[str, Any]:
         return json.loads(self.read(self.debug_path / name))
+
+    def read_executor_data(self) -> list[ExecutorData]:
+        return [
+            ExecutorData(**d) for d in json.loads(self.read(self._exec_data_path()))
+        ]
 
     def dependents(self, loc: Loc) -> set[Loc]:
         """Nodes that are fully invalidated if the node at the given loc is invalidated.

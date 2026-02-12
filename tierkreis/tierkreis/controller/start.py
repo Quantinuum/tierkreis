@@ -17,7 +17,7 @@ from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
-from tierkreis.labels import Labels
+from tierkreis.tierkreis.controller.storage.data import ExecutorData
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ def start_nodes(
         started_locs.add(node_run_datum.node_location)
 
 
-def run_builtin(def_path: Path, logs_path: Path) -> None:
+def run_builtin(def_path: Path, logs_path: Path) -> ExecutorData:
     logger.info("START builtin %s", def_path)
     with open(logs_path, "a") as fh:
         subprocess.Popen(
@@ -52,6 +52,10 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
             stderr=fh,
             stdout=fh,
         )
+    return ExecutorData(
+        "builtin",
+        f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} {sys.executable} main.py {def_path}",
+    )
 
 
 def start(
@@ -85,12 +89,13 @@ def start(
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
-            executor.run(launcher_name, call_args_path)
+            exec_data = executor.run(launcher_name, call_args_path)
         elif launcher_name == "builtins":
-            run_builtin(call_args_path, storage.logs_path)
+            exec_data = run_builtin(call_args_path, storage.logs_path)
         else:
-            executor.run(launcher_name, call_args_path)
+            exec_data = executor.run(launcher_name, call_args_path)
 
+        storage.append_executor_data(exec_data)
     elif node.type == "input":
         input_loc = parent.N(-1)
         storage.link_outputs(node_location, node.name, input_loc, node.name)
