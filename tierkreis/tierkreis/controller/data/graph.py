@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class Func:
     function_name: str
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     type: Literal["function"] = field(default="function")
 
 
@@ -24,7 +24,7 @@ class Func:
 class Eval:
     graph: ValueRef
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     type: Literal["eval"] = field(default="eval")
 
 
@@ -33,7 +33,7 @@ class Loop:
     body: ValueRef
     inputs: dict[PortID, ValueRef]
     continue_port: PortID  # The port that specifies if the loop should continue.
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     type: Literal["loop"] = field(default="loop")
     name: str | None = None
 
@@ -42,14 +42,14 @@ class Loop:
 class Map:
     body: ValueRef
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     type: Literal["map"] = field(default="map")
 
 
 @dataclass
 class Const:
     value: Any
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["const"] = field(default="const")
 
@@ -59,7 +59,7 @@ class IfElse:
     pred: ValueRef
     if_true: ValueRef
     if_false: ValueRef
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["ifelse"] = field(default="ifelse")
 
@@ -69,7 +69,7 @@ class EagerIfElse:
     pred: ValueRef
     if_true: ValueRef
     if_false: ValueRef
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
 
     type: Literal["eifelse"] = field(default="eifelse")
@@ -78,7 +78,7 @@ class EagerIfElse:
 @dataclass
 class Input:
     name: str
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["input"] = field(default="input")
 
@@ -86,7 +86,7 @@ class Input:
 @dataclass
 class Output:
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=lambda: {})
     type: Literal["output"] = field(default="output")
 
 
@@ -164,6 +164,11 @@ class GraphData(BaseModel):
     def output(self, inputs: dict[PortID, ValueRef]) -> None:
         self.add(Output(inputs))
 
+    def _add_node_output(
+        self, source_idx: NodeIndex, target_port: PortID, target_idx: NodeIndex
+    ):
+        self.nodes[source_idx].outputs.setdefault(target_port, []).append(target_idx)
+
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
         self.nodes.append(node)
@@ -186,7 +191,7 @@ class GraphData(BaseModel):
                 assert_never(node)
 
         for i, port in in_edges(node).values():
-            self.nodes[i].outputs[port] = idx
+            self._add_node_output(i, port, idx)
 
         return lambda k: (idx, k)
 

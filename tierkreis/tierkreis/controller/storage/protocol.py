@@ -1,14 +1,15 @@
+import json
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from datetime import datetime
-import json
-import logging
 from pathlib import Path
 from typing import Any, assert_never
 from uuid import UUID
+
+from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.controller.data.core import PortID
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
 
@@ -294,9 +295,10 @@ class ControllerStorage(ABC):
                 nodedef = self.read_node_def(loc)
                 if nodedef.type == "output":
                     descs.update(self.dependents(parent))
-                for output in nodedef.outputs.values():
-                    descs.add(parent.N(output))
-                    descs.update(self.dependents(parent.N(output)))
+                for output_set in nodedef.outputs.values():
+                    for output in output_set:
+                        descs.add(parent.N(output))
+                        descs.update(self.dependents(parent.N(output)))
             case ("M", _):
                 descs.update(self.dependents(parent))
             case ("L", idx):

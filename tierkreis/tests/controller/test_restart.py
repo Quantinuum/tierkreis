@@ -1,7 +1,6 @@
 from pathlib import Path
 from uuid import UUID
 
-import pytest
 
 from tierkreis import run_graph
 from tierkreis.builder import GraphBuilder
