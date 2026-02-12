@@ -10,9 +10,9 @@ from uuid import UUID
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
+from tierkreis.controller.storage.data import ExecutorData
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
-from tierkreis.tierkreis.controller.storage.data import ExecutorData
 
 logger = logging.getLogger(__name__)
 
@@ -284,14 +284,16 @@ class ControllerStorage(ABC):
 
     def append_executor_data(self, data: ExecutorData) -> None:
         if not self.exists(self._exec_data_path()):
-            self.write(self._exec_data_path(), json.dumps([data]).encode())
+            self.write(self._exec_data_path(), json.dumps([asdict(data)]).encode())
             return
         existing_data = json.loads(self.read(self._exec_data_path()))
         if not isinstance(existing_data, list):
             msg = f"Expecting executor to be list, found {type(existing_data)} instead"
             raise TierkreisError(msg)
+        existing_data.append(asdict(data))
         self.write(
-            self._exec_data_path(), json.dumps(existing_data.append(data)).encode()
+            self._exec_data_path(),
+            json.dumps(existing_data).encode(),
         )
 
     def read_debug_data(self, name: str) -> dict[str, Any]:

@@ -21,5 +21,5 @@ class ExecutorData:
     executor: str
     launch_command: str
     job_id: str | None = None
-    env: dict[str, str] = field(default={})
-    packages: list[str] = field(default=[])
+    env: dict[str, str] = field(default_factory=lambda: {})
+    packages: list[str] = field(default_factory=lambda: [])

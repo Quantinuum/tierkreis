@@ -14,10 +14,11 @@ from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
+from tierkreis.controller.storage.data import ExecutorData
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
-from tierkreis.tierkreis.controller.storage.data import ExecutorData
+from tierkreis.labels import Labels
 
 logger = logging.getLogger(__name__)
 
