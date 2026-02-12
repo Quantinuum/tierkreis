@@ -55,7 +55,7 @@ def run_builtin(def_path: Path, logs_path: Path) -> ExecutorData:
         )
     return ExecutorData(
         "builtin",
-        f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} {sys.executable} main.py {def_path}",
+        f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {def_path}",
     )
 
 
