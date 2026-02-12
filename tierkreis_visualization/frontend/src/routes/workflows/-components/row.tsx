@@ -31,7 +31,7 @@ const logsLink = (wid: string) => {
       size="icon"
       onClick={async () => await getLogs(wid)}
     >
-      <Download className="inline-block ml-2 mb-1" />
+      <Download />
     </Button>
   );
 };
@@ -59,7 +59,7 @@ export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
         {d_display}
       </td>
       <td className="p-4 border-t-1">{errorLinks(r.id, r.errors)}</td>
-      <td className="p-4 border-t-1">{logsLink(r.id)}</td>
+      <td className="p-4 border-t-1 flex justify-center">{logsLink(r.id)}</td>
     </tr>
   );
 };
