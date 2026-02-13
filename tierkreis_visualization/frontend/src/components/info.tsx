@@ -102,7 +102,7 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           )}
       </DialogHeader>
       {props.info.content !== "Failed to fetch output." &&
-        props.info.type?.includes("if/else") && (
+        !props.info.type?.includes("if/else") && (
           <div className="text-wrap overflow-y-auto overflow-x-hidden flex-1 mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
             <p className="text-sm text-gray-500 mb-2">{props.info.type}</p>
             <pre className="whitespace-pre-wrap break-words">
