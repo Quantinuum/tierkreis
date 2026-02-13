@@ -38,9 +38,12 @@ from tests.controller.typed_graphdata import (
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
+from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
+from tierkreis.controller.storage.data import WorkflowMetaData
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.storage import read_outputs
@@ -189,6 +192,11 @@ def test_resume(
 
     actual_output = read_outputs(g, storage)
     assert actual_output == output
+    if not isinstance(storage, ControllerInMemoryStorage):
+        wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
+        assert wf_metadata.completion_time is not None
+        assert wf_metadata.duration is not None and wf_metadata.duration > 0
+        assert wf_metadata.name == name
 
 
 with_worker_param_data: list[
