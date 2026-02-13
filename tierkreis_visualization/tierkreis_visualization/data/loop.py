@@ -20,7 +20,9 @@ def get_loop_node(
     while storage.is_node_started(node_location.L(i + 1)):
         i += 1
     new_location = node_location.L(i)
-    nodedef = storage.read_node_def(new_location)
+    # We get the outputs from the fake Eval node for each iter, but
+    # could instead use the *graph* input to the loop.
+    outputs = list(storage.read_node_def(new_location).outputs)
 
     nodes = [
         PyNode(
@@ -31,7 +33,7 @@ def get_loop_node(
             node_type="eval",
             started_time=storage.read_started_time(node_location.L(n)) or "",
             finished_time=storage.read_finished_time(node_location.L(n)) or "",
-            outputs=list(nodedef.outputs),
+            outputs=outputs,
         )
         for n in range(i)
     ]
@@ -51,11 +53,11 @@ def get_loop_node(
             node_type="eval",
             started_time=storage.read_started_time(new_location) or "",
             finished_time=storage.read_finished_time(new_location) or "",
-            outputs=list(nodedef.outputs),
+            outputs=list(outputs),
         )
     )
     edges = []
-    for port_name in storage.read_node_def(node_location.L(0)).outputs:
+    for port_name in outputs:
         edges.extend(
             [
                 PyEdge(
