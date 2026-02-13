@@ -10,7 +10,7 @@ from uuid import UUID
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData, NodeDebugData
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
 
@@ -24,16 +24,6 @@ class StorageEntryMetadata:
     Storage implementations should decide which are applicable."""
 
     st_mtime: float | None = None
-
-
-@dataclass
-class StorageDebugData:
-    """Collection of commonly found debugdata.
-
-    Currently only used for loop_nodes
-    Storage implementations should decide which are applicable."""
-
-    loop_loc: str | None = None
 
 
 class ControllerStorage(ABC):
@@ -98,6 +88,9 @@ class ControllerStorage(ABC):
 
     def _exec_data_path(self) -> Path:
         return self.debug_path / "executors"
+
+    def _node_debug_path(self) -> Path:
+        return self.debug_path / "nodes"
 
     def _nodedef_path(self, node_location: Loc) -> Path:
         return self.workflow_dir / str(node_location) / "nodedef"
@@ -273,16 +266,34 @@ class ControllerStorage(ABC):
         return result
 
     def loc_from_node_name(self, node_name: str) -> Loc | None:
-        debug_data = StorageDebugData(**self.read_debug_data(node_name))
+        debug_data = NodeDebugData(**self.read_debug_data(node_name))
         if debug_data.loop_loc is not None:
             return Loc(debug_data.loop_loc)
 
     def write_debug_data(self, name: str, loc: Loc) -> None:
-        self.mkdir(self.debug_path)
-        data = StorageDebugData(loop_loc=loc)
-        self.write(self.debug_path / name, json.dumps(asdict(data)).encode())
+        data = {name: asdict(NodeDebugData(loop_loc=loc))}
+        if not self.exists(self._node_debug_path()):
+            self.write(self._node_debug_path(), json.dumps(data).encode())
+            return
 
-    def append_executor_data(self, loc: Loc, data: ExecutorData) -> None:
+        existing_data = json.loads(self.read(self._node_debug_path()))
+        if not isinstance(existing_data, dict):
+            msg = f"Expecting executor data to be dict, found {type(existing_data)} instead."
+            raise TierkreisError(msg)
+        existing_data.update(data)
+        self.write(
+            self._node_debug_path(),
+            json.dumps(existing_data).encode(),
+        )
+
+    def read_debug_data(self, name: str) -> dict[str, Any]:
+        existing_data = json.loads(self.read(self._node_debug_path()))
+        if not isinstance(existing_data, dict):
+            msg = f"Expecting executor data to be dict, found {type(existing_data)} instead."
+            raise TierkreisError(msg)
+        return existing_data[name]
+
+    def append_executor_data(self, loc: Loc, data: ExecutorDebugData) -> None:
         if not self.exists(self._exec_data_path()):
             self.write(self._exec_data_path(), json.dumps({loc: asdict(data)}).encode())
             return
@@ -296,12 +307,9 @@ class ControllerStorage(ABC):
             json.dumps(existing_data).encode(),
         )
 
-    def read_debug_data(self, name: str) -> dict[str, Any]:
-        return json.loads(self.read(self.debug_path / name))
-
-    def read_executor_data(self) -> dict[Loc, ExecutorData]:
+    def read_executor_data(self) -> dict[Loc, ExecutorDebugData]:
         return {
-            Loc(k): ExecutorData(**v)
+            Loc(k): ExecutorDebugData(**v)
             for k, v in json.loads(self.read(self._exec_data_path()))
         }
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 
 
 class ShellExecutor:
@@ -36,7 +36,7 @@ class ShellExecutor:
         launcher_name: str,
         worker_call_args_path: Path,
         export_values: bool = False,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         launcher_path = self.launchers_path / launcher_name
 
         launcher_path = check_and_set_launcher(
@@ -99,9 +99,11 @@ class ShellExecutor:
                 values[f"input_{k}_value"] = fh.read()
         return env
 
-    def _generate_debug_data(self, command: str, env: dict[str, str]) -> ExecutorData:
+    def _generate_debug_data(
+        self, command: str, env: dict[str, str]
+    ) -> ExecutorDebugData:
         # What is the equivalent to the pip freeze here?
-        return ExecutorData(
+        return ExecutorDebugData(
             str(self.__class__),
             command,
             env=env,

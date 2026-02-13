@@ -10,7 +10,7 @@ from tierkreis.controller.executor.hpc.job_spec import (
     pjsub_large_spec,
     pjsub_small_spec,
 )
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.exceptions import TierkreisError
 
 _COMMAND_PREFIX = "#PJM"
@@ -112,7 +112,7 @@ class PJSUBExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         self.errors_path = (
             self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
         )

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.exceptions import TierkreisError
 
 
@@ -25,7 +25,7 @@ class MultipleExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         executor_name = self.assignments.get(launcher_name, None)
         # If there is no assignment for the worker, use the default.
         if executor_name is None:

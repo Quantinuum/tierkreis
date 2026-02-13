@@ -14,7 +14,7 @@ from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.storage.adjacency import outputs_iter
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
@@ -43,7 +43,7 @@ def start_nodes(
         started_locs.add(node_run_datum.node_location)
 
 
-def run_builtin(def_path: Path, logs_path: Path) -> ExecutorData:
+def run_builtin(def_path: Path, logs_path: Path) -> ExecutorDebugData:
     logger.info("START builtin %s", def_path)
     with open(logs_path, "a") as fh:
         subprocess.Popen(
@@ -53,7 +53,7 @@ def run_builtin(def_path: Path, logs_path: Path) -> ExecutorData:
             stderr=fh,
             stdout=fh,
         )
-    return ExecutorData(
+    return ExecutorDebugData(
         "builtin",
         f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {def_path}",
     )

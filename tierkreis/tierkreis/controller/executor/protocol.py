@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Protocol
 
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 
 
 class ControllerExecutor(Protocol):
@@ -15,7 +15,7 @@ class ControllerExecutor(Protocol):
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         """Run the node defined by the node_definition path.
 
         Specifies the worker to run by its launcher name.

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.exceptions import TierkreisError
 from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
@@ -27,7 +27,7 @@ class InMemoryExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(
             **json.loads(self.storage.read(worker_call_args_path))
@@ -46,5 +46,5 @@ class InMemoryExecutor:
         self.storage.touch(call_args.done_path)
         return self._generate_debug_data(launcher_path)
 
-    def _generate_debug_data(self, launcher_path: Path) -> ExecutorData:
-        return ExecutorData(str(__class__), str(launcher_path))
+    def _generate_debug_data(self, launcher_path: Path) -> ExecutorDebugData:
+        return ExecutorDebugData(str(__class__), str(launcher_path))

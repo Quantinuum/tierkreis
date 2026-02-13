@@ -7,7 +7,7 @@ from pathlib import Path
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.executor.registries import find_registry_for_worker
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class UvExecutor:
         launcher_name: str,
         worker_call_args_path: Path,
         uv_path: str | None = None,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         self.errors_path = (
             self.logs_path.parent.parent
             / worker_call_args_path.parent
@@ -75,9 +75,9 @@ class UvExecutor:
 
     def _generate_debug_data(
         self, command: str, env: dict[str, str], cwd: Path, uv_path: str
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         launcher_command = f"cd {cwd} && {command}"
-        return ExecutorData(
+        return ExecutorDebugData(
             str(__class__), launcher_command, env=env, packages=_uv_freeze(uv_path, cwd)
         )
 

@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 
 
@@ -25,7 +25,7 @@ class StdInOut:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> ExecutorData:
+    ) -> ExecutorDebugData:
         launcher_path = _check_bin(launcher_name)
         if launcher_path is None:
             launcher_path = check_and_set_launcher(
@@ -53,9 +53,9 @@ class StdInOut:
         )
         return self._generate_debug_data(command)
 
-    def _generate_debug_data(self, command: str) -> ExecutorData:
+    def _generate_debug_data(self, command: str) -> ExecutorDebugData:
         # What is the equivalent to the pip freeze here?
-        return ExecutorData(
+        return ExecutorDebugData(
             str(self.__class__),
             command,
             env={k: v for k, v in os.environ.items()},

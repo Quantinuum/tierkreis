@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.storage.data import ExecutorData
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
@@ -21,7 +21,7 @@ class TaskExecutor:
         self.assignments = assignments
         self.workflow_dir = storage.workflow_dir
 
-    def run(self, launcher_name: str, worker_call_args_path: Path) -> ExecutorData:
+    def run(self, launcher_name: str, worker_call_args_path: Path) -> ExecutorDebugData:
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
