@@ -4,7 +4,6 @@ from tests.controller.sample_graphdata import simple_eval, simple_map
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import (
     Const,
-    Eval,
     Func,
     GraphData,
     Input,
@@ -19,10 +18,9 @@ from tierkreis.exceptions import TierkreisError
     ["node_location_str", "graph", "target"],
     [
         ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
-        # ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
     ],
 )
-def test_read_nodedef(node_location_str: str, graph: GraphData, target: str) -> None:
+def test_read_node_def(node_location_str: str, graph: GraphData, target: str) -> None:
     loc = Loc(node_location_str)
     storage = GraphDataStorage(UUID(int=0), graph)
     node_def = storage.read_node_def(loc)
@@ -30,10 +28,32 @@ def test_read_nodedef(node_location_str: str, graph: GraphData, target: str) -> 
 
 
 @pytest.mark.parametrize(
+    ["node_location_str", "graph", "inputs", "outputs"],
+    [
+        (
+            "-.N4.M0",
+            simple_map(),
+            {"doubler_input", "intercept"},
+            {"doubler_output"},
+        ),
+    ],
+)
+def test_read_graph_def(
+    node_location_str: str, graph: GraphData, inputs: set[PortID], outputs: set[PortID]
+) -> None:
+    loc = Loc(node_location_str)
+    storage = GraphDataStorage(UUID(int=0), graph)
+    graph_def = storage.read_graph_def(loc)
+    assert graph_def.graph_inputs == inputs
+    assert set(graph_def.output_ports) == outputs
+
+
+@pytest.mark.parametrize(
     ["node_location_str", "graph", "port", "target"],
     [
-        ("-.N0", simple_eval(), "value", b"null"),
-        ("-.N4.M0", simple_map(), "0", b"null"),
+        ("-.N0", simple_eval(), "value", b"0"),
+        ("-.N1", simple_eval(), "value", b"6"),
+        ("-.N4.M0", simple_map(), "doubler_output", b"null"),
     ],
 )
 def test_read_output(
@@ -56,7 +76,7 @@ def test_raises() -> None:
     ["node_location_str", "graph", "target"],
     [
         ("-.N0", simple_eval(), ["value"]),
-        ("-.N4.M0", simple_map(), ["0"]),
+        ("-.N4.M0", simple_map(), ["doubler_output"]),
     ],
 )
 def test_read_output_ports(
@@ -82,24 +102,35 @@ def test_read_output_ports(
                 outputs={"value": 4},
             ),
         ),
-        # ("-.N-1", simple_eval(), Eval((-1, "body"), {})),
-        # ("-.N3.N-1", simple_eval(), Eval((-1, "body"), {})),
-        (
-            "-.N4.M0",
-            simple_map(),
-            Eval(
-                (-1, "body"),
-                inputs={"doubler_input": (2, "*"), "intercept": (0, "value")},
-                outputs={"*": 5},
-            ),
-        ),
-        # ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
+        ("-.N4.M0", simple_map(), None),
         ("-.N4.M0.N1", simple_map(), Input("intercept", outputs={"intercept": 4})),
     ],
 )
-def test_graph_node_from_loc(
+def test_graph_node_from_loc_node(
     node_location_str: str, graph: GraphData, target: str
 ) -> None:
     loc = Loc(node_location_str)
     node_def, _ = graph_node_from_loc(loc, graph)
     assert node_def == target
+
+
+@pytest.mark.parametrize(
+    ["node_location_str", "graph", "inputs", "outputs"],
+    [
+        (
+            "-",
+            simple_eval(),
+            set(),
+            {"simple_eval_output"},
+        ),
+        ("-.N3", simple_eval(), set(), {"simple_eval_output"}),
+        ("-.N4.M0", simple_map(), {"doubler_input", "intercept"}, {"doubler_output"}),
+    ],
+)
+def test_graph_node_from_loc_graph(
+    node_location_str: str, graph: GraphData, inputs: set[PortID], outputs: set[PortID]
+) -> None:
+    loc = Loc(node_location_str)
+    _, graph = graph_node_from_loc(loc, graph)
+    assert graph.graph_inputs == inputs
+    assert set(graph.output_ports) == outputs
