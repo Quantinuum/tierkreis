@@ -4,7 +4,6 @@ from typing import assert_never
 from tierkreis.controller.data.core import NodeIndex
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.graph import GraphData, IfElse
-from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import in_edges
 from tierkreis.controller.storage.protocol import ControllerStorage
 
@@ -62,12 +61,12 @@ def add_conditional_edges(
         py_edges.append(edge)
 
 
-def get_eval_node(
-    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
+def render_graph(
+    storage: ControllerStorage,
+    node_location: Loc,
+    graph: GraphData,
+    errored_nodes: list[Loc],
 ) -> PyGraph:
-    thunk = storage.read_output(node_location.N(-1), "body")
-    graph = ptype_from_bytes(thunk, GraphData)
-
     pynodes: list[PyNode] = []
     py_edges: list[PyEdge] = []
 
