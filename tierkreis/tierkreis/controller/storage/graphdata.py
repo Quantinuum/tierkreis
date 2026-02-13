@@ -1,15 +1,16 @@
 from pathlib import Path
 from uuid import UUID
 from typing import Any
-
-
 from pydantic import BaseModel, Field
+
+from tierkreis import Labels
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import (
     GraphData,
     NodeDef,
     graph_node_from_loc,
 )
+from tierkreis.controller.data.types import bytes_from_ptype
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.protocol import (
     StorageEntryMetadata,
@@ -82,6 +83,7 @@ class GraphDataStorage(ControllerStorage):
         match node_location.pop_last()[0]:
             case ("N", _):
                 node, _ = graph_node_from_loc(node_location, self.graph)
+                assert node is not None
                 return node
             case _:
                 raise TierkreisError(
@@ -89,7 +91,14 @@ class GraphDataStorage(ControllerStorage):
                 )
 
     def read_graph_def(self, node_location: Loc) -> GraphData:
-        raise NotImplementedError("Depends on runtime execution results")
+        match node_location.pop_last()[0]:
+            case ("M", _) | ("L", _) | "-":
+                _, graph = graph_node_from_loc(node_location, self.graph)
+                return graph
+            case _:
+                raise TierkreisError(
+                    f"Node location {node_location} is not a valid graph"
+                )
 
     def write_worker_call_args(
         self,
@@ -138,17 +147,20 @@ class GraphDataStorage(ControllerStorage):
         assert node_location.peek_index() >= 0
         node, graph = graph_node_from_loc(node_location, self.graph)
 
-        outputs = _build_node_outputs(node)
-        if output_name in outputs:
-            if output := outputs[output_name]:
-                return output
-            return b"null"
-        raise TierkreisError(f"No output named {output_name} in node {node_location}")
+        output_ports = node.outputs.keys() if node else graph.output_ports
+        if output_name not in output_ports:
+            raise TierkreisError(
+                f"No output named {output_name} in node {node_location}"
+            )
+        if node is not None and node.type == "const" and output_name == Labels.VALUE:
+            return bytes_from_ptype(node.value)
+        return b"null"
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
-        node, _ = graph_node_from_loc(node_location, self.graph)
-        outputs = _build_node_outputs(node)
-        return list(filter(lambda k: k != "*", outputs.keys()))
+        node, graph = graph_node_from_loc(node_location, self.graph)
+        if node is None:
+            return graph.output_ports
+        return list(filter(lambda k: k != "*", node.outputs))
 
     def is_node_started(self, node_location: Loc) -> bool:
         return False
@@ -164,10 +176,3 @@ class GraphDataStorage(ControllerStorage):
 
     def read_finished_time(self, node_location: Loc) -> str | None:
         return None
-
-
-def _build_node_outputs(node: NodeDef) -> dict[PortID, None | bytes]:
-    outputs: dict[PortID, None | bytes] = {val: None for val in node.outputs}
-    if "*" in outputs:
-        outputs["0"] = None
-    return outputs
