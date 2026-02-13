@@ -2,8 +2,8 @@ import json
 from typing import assert_never
 
 from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.location import Loc, OutputLoc
-from tierkreis.controller.data.graph import Eval, GraphData, IfElse
+from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.graph import GraphData, IfElse
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import in_edges
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -62,45 +62,10 @@ def add_conditional_edges(
         py_edges.append(edge)
 
 
-def _get_eval_graph(storage: ControllerStorage, parent: Loc, ev: Eval) -> OutputLoc:
-    thunk_src, thunk_port = ev.graph
-    if thunk_src >= 0:
-        return parent.N(thunk_src), thunk_port
-    # Fake eval node for graph root, map and loop bodies.
-    if parent == Loc(""):
-        # Fake eval node for graph root
-        return parent, thunk_port
-
-    # Fake eval node for map and loop bodies.
-    assert parent.pop_last()[0] in ["M", "L"]
-    loop_map = parent.parent()
-    if loop_map is None:
-        raise TierkreisError("LOOP/MAP parent of EVAL must have parent.")
-    lm_parent = loop_map.parent()
-    if lm_parent is None:
-        raise TierkreisError("LOOP/MAP parent of EVAL must have parent.")
-    node = storage.read_node_def(lm_parent)
-    match node.type:
-        case "loop":
-            thunk_src, thunk_port = node.body
-        case "map":
-            thunk_src, thunk_port = node.body
-        case _:
-            raise TierkreisError(
-                "EVAL with no graph input must be child of LOOP or MAP."
-            )
-
-    return lm_parent.N(thunk_src), thunk_port
-
-
 def get_eval_node(
-    storage: ControllerStorage, node_location: Loc, ev: Eval, errored_nodes: list[Loc]
+    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
 ) -> PyGraph:
-    parent = node_location.parent()
-    if parent is None:
-        raise TierkreisError("EVAL node must have parent.")
-
-    thunk = storage.read_output(*_get_eval_graph(storage, parent, ev))
+    thunk = storage.read_output(node_location.N(-1), "body")
     graph = ptype_from_bytes(thunk, GraphData)
 
     pynodes: list[PyNode] = []
