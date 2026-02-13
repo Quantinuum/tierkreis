@@ -1,12 +1,12 @@
 from dataclasses import dataclass, field
-from uuid import UUID
 
 
 @dataclass
 class WorkflowMetaData:
-    workflow_id: UUID
+    workflow_id: str
     tierkreis_version: str
     user_id: str
+    name: str | None = None
     start_time: str | None = None  # can we store workflows to be run later?
     completion_time: str | None = None
     execution_count: int = 0

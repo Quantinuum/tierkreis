@@ -1,8 +1,10 @@
+import getpass
 import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, assert_never
 from uuid import UUID
@@ -10,7 +12,11 @@ from uuid import UUID
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.controller.storage.data import ExecutorDebugData, NodeDebugData
+from tierkreis.controller.storage.data import (
+    ExecutorDebugData,
+    NodeDebugData,
+    WorkflowMetaData,
+)
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
 
@@ -229,11 +235,39 @@ class ControllerStorage(ABC):
             self.touch(self._metadata_path(parent))
 
     def write_metadata(self, node_location: Loc) -> None:
+        if node_location == Loc(""):
+            self.write_workflow_metadata()
+            return
         j = json.dumps({"name": self.name, "start_time": datetime.now().isoformat()})
         self.write(self._metadata_path(node_location), j.encode())
 
     def read_metadata(self, node_location: Loc) -> dict[str, Any]:
         return json.loads(self.read(self._metadata_path(node_location)))
+
+    def write_workflow_metadata(
+        self,
+    ) -> None:
+        wf_data = WorkflowMetaData(
+            workflow_id=str(self.workflow_id),
+            name=self.name,
+            user_id=getpass.getuser(),
+            tierkreis_version=version("tierkreis"),
+            start_time=datetime.now().isoformat(),
+            execution_count=1,
+        )
+        self.write(self._metadata_path(Loc("")), json.dumps(asdict(wf_data)).encode())
+
+    def write_workflow_completion_time(self) -> None:
+        try:
+            data = self.read_metadata(Loc(""))
+        except json.JSONDecodeError as e:
+            # Only in memory should trigger this
+            logger.error(
+                "Invalid json found. Dumping completion time anyway.\n Error: %s", e.msg
+            )
+            data = {}
+        data["completion_time"] = datetime.now().isoformat()
+        self.write(self._metadata_path(Loc()), json.dumps(data).encode())
 
     def read_started_time(self, node_location: Loc) -> str | None:
         node_def = Path(self._nodedef_path(node_location))

@@ -88,5 +88,6 @@ def resume_graph(
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):
+            storage.write_workflow_completion_time()
             break
         sleep(polling_interval_seconds)
