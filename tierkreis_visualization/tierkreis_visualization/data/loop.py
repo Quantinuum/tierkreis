@@ -1,7 +1,9 @@
 from pydantic import BaseModel
+from tierkreis.controller.data.graph import GraphData, Loop
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.protocol import ControllerStorage
-
+from tierkreis.exceptions import TierkreisError
 
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyNode, PyEdge
@@ -14,15 +16,22 @@ class LoopNodeData(BaseModel):
 
 
 def get_loop_node(
-    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
+    storage: ControllerStorage, node_location: Loc, node: Loop, errored_nodes: list[Loc]
 ) -> LoopNodeData:
+    parent = node_location.parent()
+    if parent is None:
+        raise TierkreisError("LOOP node must have parent.")
+
     i = 0
     while storage.is_node_started(node_location.L(i + 1)):
         i += 1
     new_location = node_location.L(i)
-    # We get the outputs from the fake Eval node for each iter, but
-    # could instead use the *graph* input to the loop.
-    outputs = list(storage.read_node_def(new_location).outputs)
+
+    # Get the outputs from the graph fed into the Loop's body input.
+    graph_input = ptype_from_bytes(
+        storage.read_output(parent.N(node.body[0]), node.body[1]), GraphData
+    )
+    outputs = graph_input.output_ports
 
     nodes = [
         PyNode(

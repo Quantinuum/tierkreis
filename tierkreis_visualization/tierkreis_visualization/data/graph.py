@@ -27,11 +27,11 @@ def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
 
     match node.type:
         case "eval":
-            data = get_eval_node(storage, loc, errored_nodes)
+            data = get_eval_node(storage, loc, node, errored_nodes)
             return PyGraph(nodes=data.nodes, edges=data.edges)
 
         case "loop":
-            data = get_loop_node(storage, loc, errored_nodes)
+            data = get_loop_node(storage, loc, node, errored_nodes)
             return PyGraph(nodes=data.nodes, edges=data.edges)
 
         case "map":

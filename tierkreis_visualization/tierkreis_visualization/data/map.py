@@ -1,8 +1,9 @@
 from pydantic import BaseModel
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.graph import GraphData, Map
+from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis.controller.data.graph import Map
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyEdge, PyNode
@@ -22,9 +23,12 @@ def get_map_node(
 
     node_ref = next(n for n, port in map.inputs.values() if port == "*")
     map_eles = outputs_iter(storage, parent.N(node_ref))
-    # We get the outputs from fake Eval node for the first element, but
-    # we could instead use the *graph* input to the map node
-    outputs = list(storage.read_node_def(loc.M(0)).outputs)
+
+    # Get the outputs from the graph fed into the Map's body input.
+    graph_input = ptype_from_bytes(
+        storage.read_output(parent.N(map.body[0]), map.body[1]), GraphData
+    )
+    outputs = graph_input.output_ports
     nodes: list[PyNode] = []
     for i, ele in map_eles:
         node = PyNode(
