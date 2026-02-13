@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import logging
-from typing import Any, Callable, Literal, assert_never
+from typing import Any, Callable, Literal, Mapping, assert_never
 from pydantic import BaseModel, RootModel
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.core import NodeIndex
@@ -50,8 +50,11 @@ class Map:
 class Const:
     value: Any
     outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
-    inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["const"] = field(default="const")
+
+    @property
+    def inputs(self) -> Mapping[PortID, ValueRef]:
+        return {}
 
 
 @dataclass
@@ -86,8 +89,11 @@ class Input:
 @dataclass
 class Output:
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["output"] = field(default="output")
+
+    @property
+    def outputs(self) -> Mapping[PortID, NodeIndex]:
+        return {}
 
 
 NodeDef = Func | Eval | Loop | Map | Const | IfElse | EagerIfElse | Input | Output
@@ -100,6 +106,17 @@ class GraphData(BaseModel):
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
     named_nodes: dict[str, NodeIndex] = {}
+
+    @property
+    def output_ports(self) -> list[PortID]:
+        if self.graph_output_idx is None:
+            raise TierkreisError("Graph has no output index.")
+        output_node = self.nodes[self.graph_output_idx]
+        if output_node.type != "output":
+            raise TierkreisError(
+                f"Expected output node at {self.graph_output_idx} found {output_node}"
+            )
+        return list(output_node.inputs)
 
     def input(self, name: str) -> ValueRef:
         return self.add(Input(name))(name)
@@ -145,6 +162,13 @@ class GraphData(BaseModel):
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
         self.nodes.append(node)
+
+        def add_output(outport: ValueRef) -> None:
+            (node_id, port) = outport
+            node = self.nodes[node_id]
+            assert node.type != "output"
+            node.outputs[port] = idx
+
         match node.type:
             case "output":
                 if self.graph_output_idx is not None:
@@ -154,9 +178,8 @@ class GraphData(BaseModel):
 
                 self.graph_output_idx = idx
             case "ifelse" | "eifelse":
-                self.nodes[node.pred[0]].outputs[node.pred[1]] = idx
-                self.nodes[node.if_true[0]].outputs[node.if_true[1]] = idx
-                self.nodes[node.if_false[0]].outputs[node.if_false[1]] = idx
+                for outport in [node.pred, node.if_true, node.if_false]:
+                    add_output(outport)
             case "input":
                 self.graph_inputs.add(node.name)
             case "const" | "eval" | "function" | "map":
@@ -167,8 +190,8 @@ class GraphData(BaseModel):
             case _:
                 assert_never(node)
 
-        for i, port in node.inputs.values():
-            self.nodes[i].outputs[port] = idx
+        for outport in node.inputs.values():
+            add_output(outport)
 
         return lambda k: (idx, k)
 
@@ -198,39 +221,56 @@ class GraphData(BaseModel):
 def graph_node_from_loc(
     node_location: Loc,
     graph: GraphData,
-) -> tuple[NodeDef, GraphData]:
-    """Assumes the first part of a loc can be found in current graph"""
+) -> tuple[NodeDef | None, GraphData]:
+    """Assumes the first part of a loc can be found in current graph.
+    For root Loc (-), or Locs ending in M or L, the first element of the tuple will be None
+        and the GraphData will be that run inside that location.
+     For Locs ending in N, the first element of the tuple will be a NodeDef, being an element of the GraphData."""
     if len(graph.nodes) == 0:
         raise TierkreisError("Cannot convert location to node. Reason: Empty Graph")
-    if node_location == "-":
-        return Eval((-1, "body"), {}), graph
-
-    step, remaining_location = node_location.pop_first()
-    if isinstance(step, str):
-        raise TierkreisError("Cannot convert location: Reason: Malformed Loc")
-    (_, node_id) = step
-    if node_id == -1:
-        return Eval((-1, "body"), {}), graph
-    node = graph.nodes[node_id]
-    if remaining_location == Loc():
-        return node, graph
-    match node.type:
-        case "eval":
-            graph = _unwrap_graph(graph.nodes[node.graph[0]], node.type)
-            node, graph = graph_node_from_loc(remaining_location, graph)
-        case "loop" | "map":
-            graph = _unwrap_graph(graph.nodes[node.body[0]], node.type)
-            _, remaining_location = remaining_location.pop_first()  # Remove the M0/L0
-            if len(remaining_location.steps()) < 2:
-                return Eval((-1, "body"), node.inputs, node.outputs), graph
-
-            node, graph = graph_node_from_loc(remaining_location, graph)
-        case "const" | "function" | "input" | "output" | "ifelse" | "eifelse":
-            pass
-        case _:
-            assert_never(node)
-
-    return node, graph
+    if node_location == Loc():
+        return (None, graph)
+    last, earlier = node_location.pop_last()
+    if last is None:
+        assert node_location == Loc("")
+        raise TierkreisError("Root Loc is staging for inputs, not for nodes")
+    parent, parent_graph = graph_node_from_loc(earlier, graph)
+    match last:
+        case ("N", idx):
+            if parent is not None:
+                if parent.type != "eval":
+                    raise TierkreisError(
+                        f"Malformed Loc: ran Node {idx} within {earlier} but that was {parent} not an Eval"
+                    )
+                parent_graph = _unwrap_graph(
+                    parent_graph.nodes[parent.graph[0]], parent.type
+                )
+            node = parent_graph.nodes[idx]
+            return node, parent_graph
+        case ("L", _):
+            if parent is None or parent.type != "loop":
+                raise TierkreisError(
+                    f"Malformed Loc: ran Loop within {earlier} but that was {parent} not a Loop"
+                )
+            parent_graph = _unwrap_graph(
+                parent_graph.nodes[parent.body[0]], parent.type
+            )
+            return None, parent_graph
+        case ("M", _):
+            if parent is None or parent.type != "map":
+                raise TierkreisError(
+                    f"Malformed Loc: ran Map within {earlier} but that was {parent} not a Map"
+                )
+            parent_graph = _unwrap_graph(
+                parent_graph.nodes[parent.body[0]], parent.type
+            )
+            return None, parent_graph
+        case "-":
+            raise TierkreisError(
+                f"Malformed Loc {node_location}: '-' can only occur at start"
+            )
+        case x:
+            assert_never(x)
 
 
 def _unwrap_graph(node: NodeDef, node_type: str) -> GraphData:

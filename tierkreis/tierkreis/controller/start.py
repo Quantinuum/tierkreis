@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import subprocess
 import sys
+from typing import Sequence
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
@@ -11,7 +12,7 @@ from tierkreis.controller.storage.adjacency import outputs_iter
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
-from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
+from tierkreis.controller.data.graph import GraphData, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -23,23 +24,42 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class NodeRunData:
+class RunNodeTask:
     node_location: Loc
     node: NodeDef
     output_list: list[PortID]
 
 
-def start_nodes(
+@dataclass
+class LoopIterTask:
+    iter_location: Loc
+    graph_input: OutputLoc
+    inputs: dict[PortID, OutputLoc]
+
+
+Task = RunNodeTask | LoopIterTask
+
+
+def start_tasks(
     storage: ControllerStorage,
     executor: ControllerExecutor,
-    node_run_data: list[NodeRunData],
+    tasks: Sequence[Task],
+    enable_logging: bool = True,
 ) -> None:
     started_locs: set[Loc] = set()
-    for node_run_datum in node_run_data:
-        if node_run_datum.node_location in started_locs:
-            continue
-        start(storage, executor, node_run_datum)
-        started_locs.add(node_run_datum.node_location)
+    for task in tasks:
+        if isinstance(task, LoopIterTask):
+            start_graph(
+                storage,
+                executor,
+                task.iter_location,
+                task.graph_input,
+                task.inputs,
+            )
+            started_locs.add(task.iter_location)
+        elif task.node_location not in started_locs:
+            start(storage, executor, task, enable_logging)
+            started_locs.add(task.node_location)
 
 
 def run_builtin(def_path: Path, logs_path: Path) -> None:
@@ -57,12 +77,12 @@ def run_builtin(def_path: Path, logs_path: Path) -> None:
 def start(
     storage: ControllerStorage,
     executor: ControllerExecutor,
-    node_run_data: NodeRunData,
+    run_node_task: RunNodeTask,
     enable_logging: bool = True,
 ) -> None:
-    node_location = node_run_data.node_location
-    node = node_run_data.node
-    output_list = node_run_data.output_list
+    node_location = run_node_task.node_location
+    node = run_node_task.node
+    output_list = run_node_task.output_list
 
     storage.write_node_def(node_location, node)
 
@@ -92,9 +112,7 @@ def start(
             executor.run(launcher_name, call_args_path)
 
     elif node.type == "input":
-        input_loc = parent.N(-1)
-        storage.link_outputs(node_location, node.name, input_loc, node.name)
-        storage.mark_node_finished(node_location)
+        assert storage.is_node_finished(node_location)
 
     elif node.type == "output":
         storage.mark_node_finished(node_location)
@@ -108,51 +126,31 @@ def start(
         storage.mark_node_finished(node_location)
 
     elif node.type == "eval":
-        message = storage.read_output(parent.N(node.graph[0]), node.graph[1])
-        g = ptype_from_bytes(message, GraphData)
-        ins["body"] = (parent.N(node.graph[0]), node.graph[1])
-        ins.update(g.fixed_inputs)
-
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        graph_input = (parent.N(node.graph[0]), node.graph[1])
+        start_graph(storage, executor, node_location, graph_input, ins)
 
     elif node.type == "loop":
-        ins["body"] = (parent.N(node.body[0]), node.body[1])
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        graph_input = (parent.N(node.body[0]), node.body[1])
         if (
             node.name is not None
         ):  # should we do this only in debug mode? -> need to think through how this would work
             storage.write_debug_data(node.name, node_location)
-        start(
-            storage,
-            executor,
-            NodeRunData(
-                node_location.L(0),
-                Eval((-1, "body"), {k: (-1, k) for k, _ in ins.items()}, node.outputs),
-                output_list,
-            ),
-        )
+        start_graph(storage, executor, node_location.L(0), graph_input, ins)
 
     elif node.type == "map":
         first_ref = next(x for x in ins.values() if x[1] == "*")
         map_eles = outputs_iter(storage, first_ref[0])
         if not map_eles:
             storage.mark_node_finished(node_location)
+        graph_input = (parent.N(node.body[0]), node.body[1])
         for idx, p in map_eles:
-            eval_inputs: dict[PortID, tuple[Loc, PortID]] = {}
-            eval_inputs["body"] = (parent.N(node.body[0]), node.body[1])
-            for k, (i, port) in ins.items():
-                if port == "*":
-                    eval_inputs[k] = (i, p)
-                else:
-                    eval_inputs[k] = (i, port)
-            pipe_inputs_to_output_location(
-                storage, node_location.M(idx).N(-1), eval_inputs
+            start_graph(
+                storage,
+                executor,
+                node_location.M(idx),
+                graph_input,
+                {k: (i, p if port == "*" else port) for k, (i, port) in ins.items()},
             )
-            # Necessary in the node visualization
-            storage.write_node_def(
-                node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs)
-            )
-
     elif node.type == "ifelse":
         pass
 
@@ -160,6 +158,32 @@ def start(
         pass
     else:
         assert_never(node)
+
+
+def start_graph(
+    storage: ControllerStorage,
+    executor: ControllerExecutor,
+    loc: Loc,
+    graph_input: OutputLoc,
+    ins: dict[PortID, OutputLoc],
+) -> None:
+    if not storage.is_node_started(loc):
+        storage.write_graph_def(loc, graph_input)  # For Map/Loop/root
+    # Graphs that are executing inside Eval nodes will have a node definition
+    # (i.e. be marked as started) already, but we still need to write the inputs.
+
+    message = storage.read_output(*graph_input)
+    g = ptype_from_bytes(message, GraphData)
+    ins["body"] = graph_input
+    ins.update(g.fixed_inputs)
+    for i, n in enumerate(g.nodes):
+        if n.type == "input":
+            input_loc = loc.N(i)
+            if value := ins.get(n.name):
+                storage.link_outputs(input_loc, n.name, *value)
+            # else, ideally we'd check if that input is optional and error if not,
+            # but since we don't have the graph type here, we'll assume it's optional!
+            storage.mark_node_finished(input_loc)
 
 
 def pipe_inputs_to_output_location(

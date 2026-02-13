@@ -22,9 +22,7 @@ def get_map_node(
 
     node_ref = next(n for n, port in map.inputs.values() if port == "*")
     map_eles = outputs_iter(storage, parent.N(node_ref))
-    # We get the outputs from fake Eval node for the first element, but
-    # we could instead use the *graph* input to the map node
-    outputs = list(storage.read_node_def(loc.M(0)).outputs)
+    outputs = storage.read_graph_def(loc.M(0)).output_ports
     nodes: list[PyNode] = []
     for i, ele in map_eles:
         node = PyNode(

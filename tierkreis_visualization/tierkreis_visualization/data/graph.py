@@ -1,8 +1,11 @@
 from typing import assert_never
 from fastapi import HTTPException
+from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis_visualization.data.eval import get_eval_node
+from tierkreis.exceptions import TierkreisError
+from tierkreis_visualization.data.eval import render_graph
 from tierkreis_visualization.data.loop import get_loop_node
 from tierkreis_visualization.data.map import get_map_node
 from tierkreis_visualization.routers.models import PyGraph
@@ -20,6 +23,14 @@ def get_errored_nodes(storage: ControllerStorage) -> list[Loc]:
 def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
     errored_nodes = get_errored_nodes(storage)
 
+    match loc.pop_last()[0]:
+        case ("M", _) | ("L", _) | "-":
+            graph = storage.read_graph_def(loc)
+            return render_graph(storage, loc, graph, errored_nodes)
+        case ("N", _):
+            pass  # Fall through below
+        case x:
+            assert_never(x)
     try:
         node = storage.read_node_def(loc)
     except FileNotFoundError:
@@ -27,7 +38,7 @@ def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
 
     match node.type:
         case "eval":
-            data = get_eval_node(storage, loc, errored_nodes)
+            data = get_eval_node(storage, loc, node, errored_nodes)
             return PyGraph(nodes=data.nodes, edges=data.edges)
 
         case "loop":
@@ -45,3 +56,15 @@ def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
 
         case _:
             assert_never(node)
+
+
+def get_eval_node(
+    storage: ControllerStorage, node_location: Loc, node: Eval, errored_nodes: list[Loc]
+) -> PyGraph:
+    parent = node_location.parent()
+    if parent is None:
+        raise TierkreisError("Eval node must have parent.")
+
+    thunk = storage.read_output(parent.N(node.graph[0]), node.graph[1])
+    graph = ptype_from_bytes(thunk, GraphData)
+    return render_graph(storage, node_location, graph, errored_nodes)

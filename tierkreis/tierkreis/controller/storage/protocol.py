@@ -6,9 +6,10 @@ import logging
 from pathlib import Path
 from typing import Any, assert_never
 from uuid import UUID
-from tierkreis.controller.data.graph import NodeDef, NodeDefModel
+from tierkreis.controller.data.graph import GraphData, NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.data.core import PortID
+from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
 
@@ -121,13 +122,44 @@ class ControllerStorage(ABC):
     def clean_graph_files(self) -> None:
         self.delete(self.workflow_dir)
 
-    def write_node_def(self, node_location: Loc, node: NodeDef):
-        bs = NodeDefModel(root=node).model_dump_json().encode()
-        self.write(self._nodedef_path(node_location), bs)
+    def write_node_def(self, node_location: Loc, node: NodeDef) -> None:
+        match node_location.pop_last()[0]:
+            case ("N", _):
+                bs = NodeDefModel(root=node).model_dump_json().encode()
+                self.write(self._nodedef_path(node_location), bs)
+            case _:
+                raise TierkreisError(
+                    f"Node location {node_location} should be initialized via write_graph_def."
+                )
+
+    def write_graph_def(self, node_location: Loc, graph: OutputLoc) -> None:
+        match node_location.pop_last()[0]:
+            case ("M", _) | ("L", _) | "-":
+                self.link(self._output_path(*graph), self._nodedef_path(node_location))
+            case _:
+                raise TierkreisError(
+                    f"Node location {node_location} should be initialized via write_node_def."
+                )
 
     def read_node_def(self, node_location: Loc) -> NodeDef:
-        bs = self.read(self._nodedef_path(node_location))
-        return NodeDefModel(**json.loads(bs)).root
+        match node_location.pop_last()[0]:
+            case ("N", _):
+                bs = self.read(self._nodedef_path(node_location))
+                return NodeDefModel(**json.loads(bs)).root
+            case _:
+                raise TierkreisError(
+                    f"Node location {node_location} is not a valid node location."
+                )
+
+    def read_graph_def(self, node_location: Loc) -> GraphData:
+        match node_location.pop_last()[0]:
+            case ("M", _) | ("L", _) | "-":
+                bs = self.read(self._nodedef_path(node_location))
+                return ptype_from_bytes(bs, GraphData)
+            case _:
+                raise TierkreisError(
+                    f"Node location {node_location} is not a valid graph"
+                )
 
     def write_worker_call_args(
         self,
@@ -215,11 +247,11 @@ class ControllerStorage(ABC):
     def is_node_finished(self, node_location: Loc) -> bool:
         return self.exists(self._done_path(node_location))
 
-    def latest_loop_iteration(self, loc: Loc) -> Loc:
+    def latest_loop_iteration(self, loc: Loc) -> int:
         i = 0
         while self.is_node_started(loc.L(i + 1)):
             i += 1
-        return loc.L(i)
+        return i
 
     def node_has_error(self, node_location: Loc) -> bool:
         return self.exists(self._error_path(node_location))
@@ -300,7 +332,7 @@ class ControllerStorage(ABC):
             case ("M", _):
                 descs.update(self.dependents(parent))
             case ("L", idx):
-                latest_idx = self.latest_loop_iteration(parent).peek_index()
+                latest_idx = self.latest_loop_iteration(parent)
                 [descs.add(parent.L(i)) for i in range(idx + 1, latest_idx + 1)]
                 descs.update(self.dependents(parent))
             case _:
@@ -316,9 +348,13 @@ class ControllerStorage(ABC):
 
         Returns the invalidated nodes."""
 
-        nodedef = self.read_node_def(loc)
-        if nodedef.type != "function":
-            raise TierkreisError("Can only restart task/function nodes.")
+        match loc.pop_last()[0]:
+            case ("N", _):
+                nodedef = self.read_node_def(loc)
+                if nodedef.type != "function":
+                    raise TierkreisError("Can only restart task/function nodes.")
+            case _:
+                raise TierkreisError("Can only restart task/function nodes.")
 
         # Remove fully invalidated nodes.
         deps = self.dependents(loc)

@@ -163,7 +163,6 @@ def test_pop_last_multiple() -> None:
         (node_location_2, 0),
         (node_location_3, 0),
         (node_location_4, 0),
-        (Loc().N(-1), -1),
     ],
 )
 def test_get_last_index(node_location: Loc, index: int) -> None:

@@ -2,19 +2,19 @@ import logging
 from time import sleep
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.controller.data.graph import Eval, GraphData
-from tierkreis.controller.data.location import Loc
+from tierkreis.controller.data.graph import GraphData
+from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.models import TModel
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.start import NodeRunData, start, start_nodes
+from tierkreis.controller.start import start_graph, start_tasks
 from tierkreis.logger_setup import set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
-from tierkreis.controller.data.core import PortID, ValueRef
+from tierkreis.controller.data.core import PortID
 from tierkreis.exceptions import TierkreisError
 
-root_loc = Loc("")
+root_loc = Loc("")  # Special, used as inputs to the toplevel graph
 logger = logging.getLogger(__name__)
 
 
@@ -39,20 +39,18 @@ def run_graph[A: TModel, B: TModel](
             "Tasks will use default values if available."
         )
 
-    storage.write_metadata(Loc(""))
+    storage.write_metadata(root_loc)
     if enable_logging:
         set_tkr_logger(storage.logs_path)
 
     for name, value in graph_inputs.items():
-        storage.write_output(root_loc.N(-1), name, bytes_from_ptype(value))
+        storage.write_output(root_loc, name, bytes_from_ptype(value))
+    storage.write_output(root_loc, "body", bytes_from_ptype(g))
 
-    storage.write_output(root_loc.N(-1), "body", bytes_from_ptype(g))
-
-    inputs: dict[PortID, ValueRef] = {
-        k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
+    inputs: dict[PortID, OutputLoc] = {
+        k: (root_loc, k) for k, _ in graph_inputs.items() if k != "body"
     }
-    node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
-    start(storage, executor, node_run_data, enable_logging)
+    start_graph(storage, executor, Loc(), (root_loc, "body"), inputs)
     resume_graph(storage, executor, n_iterations, polling_interval_seconds)
 
 
@@ -62,7 +60,7 @@ def resume_graph(
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
 ) -> None:
-    message = storage.read_output(Loc().N(-1), "body")
+    message = storage.read_output(root_loc, "body")
     graph = ptype_from_bytes(message, GraphData)
 
     for _ in range(n_iterations):
@@ -86,7 +84,7 @@ def resume_graph(
             print("--- Tierkreis graph errors above this line. ---\n\n")
             raise TierkreisError("Graph encountered errors")
 
-        start_nodes(storage, executor, walk_results.inputs_ready)
+        start_tasks(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):
             break
         sleep(polling_interval_seconds)
