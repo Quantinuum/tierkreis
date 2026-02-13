@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
@@ -12,7 +13,11 @@ class WorkflowMetaData:
     execution_count: int = 0
 
     @property
-    def duration(self) -> str | None:
+    def duration(self) -> float | None:
+        if self.start_time and self.completion_time:
+            start = datetime.fromisoformat(self.start_time)
+            end = datetime.fromisoformat(self.completion_time)
+            return (end - start).total_seconds()
         return None
 
 
