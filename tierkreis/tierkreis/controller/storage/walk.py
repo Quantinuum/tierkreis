@@ -141,7 +141,7 @@ def walk_loop(
 
     # Mark the iter as started so latest_loop_iteration picks it up
     # (not really the right node def, but works for is_node_started):
-    storage.write_node_def(task.iter_location, loop)
+    storage.write_graph_def(task.iter_location, graph_input)
     return WalkResult([task], [])
 
 

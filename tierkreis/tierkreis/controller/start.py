@@ -12,7 +12,7 @@ from tierkreis.controller.storage.adjacency import outputs_iter
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
-from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
+from tierkreis.controller.data.graph import GraphData, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -167,11 +167,11 @@ def start_graph(
     graph_input: OutputLoc,
     ins: dict[PortID, OutputLoc],
 ) -> None:
-    # We have to write something here to mark the node/graph as started.
-    # TODO ALAN - pass NodeDef? But can't really make valid/correct inputs.
-    # For now just write a dummy, but don't overwrite if there's a better one already!
     if not storage.is_node_started(loc):
-        storage.write_node_def(loc, Eval((-1, "body"), {}))
+        storage.write_graph_def(loc, graph_input)  # For Map/Loop/root
+    # Graphs that are executing inside Eval nodes will have a node definition
+    # (i.e. be marked as started) already, but we still need to write the inputs.
+
     message = storage.read_output(*graph_input)
     g = ptype_from_bytes(message, GraphData)
     ins["body"] = graph_input

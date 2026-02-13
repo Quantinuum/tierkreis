@@ -20,9 +20,7 @@ def get_loop_node(
     while storage.is_node_started(node_location.L(i + 1)):
         i += 1
     new_location = node_location.L(i)
-    # We get the outputs from the fake Eval node for each iter, but
-    # could instead use the *graph* input to the loop.
-    outputs = list(storage.read_node_def(new_location).outputs)
+    outputs = storage.read_graph_def(new_location).output_ports
 
     nodes = [
         PyNode(

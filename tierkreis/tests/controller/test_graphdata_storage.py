@@ -19,7 +19,7 @@ from tierkreis.exceptions import TierkreisError
     ["node_location_str", "graph", "target"],
     [
         ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
-        ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
+        # ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
         ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
     ],
 )

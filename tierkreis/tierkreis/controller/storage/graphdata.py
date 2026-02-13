@@ -6,7 +6,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import (
-    Eval,
     GraphData,
     NodeDef,
     graph_node_from_loc,
@@ -76,14 +75,21 @@ class GraphDataStorage(ControllerStorage):
     def write_node_def(self, node_location: Loc, node: NodeDef) -> None:
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
+    def write_graph_def(self, node_location: Loc, graph: OutputLoc) -> None:
+        raise NotImplementedError("GraphDataStorage is read only storage.")
+
     def read_node_def(self, node_location: Loc) -> NodeDef:
-        try:
-            if node_location.pop_last()[0][0] in ["M", "L"]:
-                return Eval((-1, "body"), {})
-        except (TierkreisError, TypeError):
-            return Eval((-1, "body"), {})
-        node, _ = graph_node_from_loc(node_location, self.graph)
-        return node
+        match node_location.pop_last()[0]:
+            case ("N", _):
+                node, _ = graph_node_from_loc(node_location, self.graph)
+                return node
+            case _:
+                raise TierkreisError(
+                    f"Node location {node_location} is not a valid node location."
+                )
+
+    def read_graph_def(self, node_location: Loc) -> GraphData:
+        raise NotImplementedError("Depends on runtime execution results")
 
     def write_worker_call_args(
         self,
