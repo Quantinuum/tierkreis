@@ -101,6 +101,17 @@ class GraphData(BaseModel):
     graph_output_idx: NodeIndex | None = None
     named_nodes: dict[str, NodeIndex] = {}
 
+    @property
+    def output_ports(self) -> list[PortID]:
+        if self.graph_output_idx is None:
+            raise TierkreisError("Graph has no output index.")
+        output_node = self.nodes[self.graph_output_idx]
+        if output_node.type != "output":
+            raise TierkreisError(
+                f"Expected output node at {self.graph_output_idx} found {output_node}"
+            )
+        return list(output_node.inputs)
+
     def input(self, name: str) -> ValueRef:
         return self.add(Input(name))(name)
 
