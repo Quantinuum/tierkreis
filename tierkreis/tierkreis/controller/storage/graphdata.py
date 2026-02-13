@@ -135,9 +135,8 @@ class GraphDataStorage(ControllerStorage):
         raise NotImplementedError("GraphDataStorage is read only storage.")
 
     def read_output(self, node_location: Loc, output_name: PortID) -> bytes:
+        assert node_location.peek_index() >= 0
         node, graph = graph_node_from_loc(node_location, self.graph)
-        if -1 == node_location.peek_index() and output_name == "body":
-            return graph.model_dump_json().encode()
 
         outputs = _build_node_outputs(node)
         if output_name in outputs:

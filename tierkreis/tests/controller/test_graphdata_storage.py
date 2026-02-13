@@ -20,7 +20,6 @@ from tierkreis.exceptions import TierkreisError
     [
         ("-.N0", simple_eval(), Const(0, outputs={"value": 3})),
         # ("-.N4.M0", simple_map(), Eval((-1, "body"), {})),
-        ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
     ],
 )
 def test_read_nodedef(node_location_str: str, graph: GraphData, target: str) -> None:
@@ -83,8 +82,8 @@ def test_read_output_ports(
                 outputs={"value": 4},
             ),
         ),
-        ("-.N-1", simple_eval(), Eval((-1, "body"), {})),
-        ("-.N3.N-1", simple_eval(), Eval((-1, "body"), {})),
+        # ("-.N-1", simple_eval(), Eval((-1, "body"), {})),
+        # ("-.N3.N-1", simple_eval(), Eval((-1, "body"), {})),
         (
             "-.N4.M0",
             simple_map(),
@@ -94,7 +93,7 @@ def test_read_output_ports(
                 outputs={"*": 5},
             ),
         ),
-        ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
+        # ("-.N4.M0.N-1", simple_map(), Eval((-1, "body"), {})),
         ("-.N4.M0.N1", simple_map(), Input("intercept", outputs={"intercept": 4})),
     ],
 )
