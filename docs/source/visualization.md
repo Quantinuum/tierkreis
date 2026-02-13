@@ -7,7 +7,7 @@ It can be installed with
 pip install tierkreis-visualization
 ```
 
-It extends the `tkr` cli with a `viz` subcommand which can be invoked as:
+It extends the `tkr` cli with a `vis` subcommand which can be invoked as:
 
 ```
 tkr vis
@@ -32,13 +32,13 @@ start()
 Alternatively you can visualize a graph that is still under construction using the syntax
 
 ```bash
-uv run tkr_viz_graph <PATH_TO_PYTHON_FILE>:<VARIABLE_CONTAINING_GRAPH>
+uv run tkr-vis-graph <PATH_TO_PYTHON_FILE>:<VARIABLE_CONTAINING_GRAPH>
 ```
 
 For example one could run the following command from the root of the Tierkreis repo.
 
 ```bash
-uv run tkr_viz_graph examples/defaults.py:outer_g
+uv run tkr-vis-graph examples/defaults.py:outer_g
 ```
 
 which will show one of the examples in the Tierkreis repo as a partially constructed graph.
