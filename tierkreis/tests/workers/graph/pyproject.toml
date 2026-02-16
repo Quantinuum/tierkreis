@@ -10,3 +10,8 @@ dependencies = [
 
 [tool.uv.sources]
 tierkreis = { path = "../../../", editable = true }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.1",
+]
