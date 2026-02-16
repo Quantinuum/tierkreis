@@ -2,8 +2,6 @@ import json
 from pathlib import Path
 from uuid import UUID
 
-from docs.source.worker.hello_stubs import greet
-
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins.stubs import neg
 from tierkreis.consts import PACKAGE_PATH
@@ -18,6 +16,8 @@ from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.storage import read_outputs
+
+from .hello_world_worker.stubs import greet
 
 
 def shell_graph():
