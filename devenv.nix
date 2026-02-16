@@ -4,13 +4,9 @@
 
   packages = [
     pkgs.just
-    pkgs.graphviz
-  ] ++ lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin.apple_sdk; [
-    frameworks.CoreServices
-    frameworks.CoreFoundation
-    frameworks.Security
-    frameworks.SystemConfiguration
-  ]);
+  ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    pkgs.apple-sdk
+  ];
 
   git-hooks.hooks = {
     pyright.enable = true;
