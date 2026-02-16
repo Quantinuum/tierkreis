@@ -104,9 +104,7 @@ def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
             parents["body"] = node.body
         case "map":
             parents["body"] = node.body
-        case "ifelse":
-            parents["pred"] = node.pred
-        case "eifelse":
+        case "ifelse" | "eifelse":
             parents["pred"] = node.pred
             parents["body_true"] = node.if_true
             parents["body_false"] = node.if_false
@@ -177,13 +175,9 @@ class GraphData(BaseModel):
                     )
 
                 self.graph_output_idx = idx
-            case "ifelse" | "eifelse":
-                self.nodes[node.pred[0]].outputs[node.pred[1]] = idx
-                self.nodes[node.if_true[0]].outputs[node.if_true[1]] = idx
-                self.nodes[node.if_false[0]].outputs[node.if_false[1]] = idx
             case "input":
                 self.graph_inputs.add(node.name)
-            case "const" | "eval" | "function" | "map":
+            case "const" | "eval" | "function" | "map" | "ifelse" | "eifelse":
                 pass
             case "loop":
                 if node.name is not None:
