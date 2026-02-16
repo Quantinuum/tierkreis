@@ -13,8 +13,8 @@ def unfinished_inputs(
 ) -> list[ValueRef]:
     raw_ins = in_edges(node)
     if node.type == "ifelse":  # ifelse is lazy: only wait for pred before starting
-        _ = raw_ins.pop("body_true", None)
-        _ = raw_ins.pop("body_false", None)
+        _ = raw_ins.pop("if_true", None)
+        _ = raw_ins.pop("if_false", None)
     ins = [x for x in raw_ins.values() if x[0] >= 0]  # inputs at -1 already finished
     return [x for x in ins if not storage.is_node_finished(loc.N(x[0]))]
 
