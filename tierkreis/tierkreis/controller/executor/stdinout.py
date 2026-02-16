@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
+from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 
@@ -38,6 +39,8 @@ class StdInOut:
         input_file = self.workflow_dir.parent / list(call_args.inputs.values())[0]
         output_file = self.workflow_dir.parent / list(call_args.outputs.values())[0]
         done_path = self.workflow_dir.parent / call_args.done_path
+        self.errors_path = done_path.parent / "logs"
+        _error_path = self.errors_path.parent / "_error"
 
         tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
         _error_path = done_path.parent / "_error"

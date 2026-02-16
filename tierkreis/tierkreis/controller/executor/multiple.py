@@ -29,7 +29,9 @@ class MultipleExecutor:
         executor_name = self.assignments.get(launcher_name, None)
         # If there is no assignment for the worker, use the default.
         if executor_name is None:
-            return self.default.run(launcher_name, worker_call_args_path)
+            data = self.default.run(launcher_name, worker_call_args_path)
+            data.executor = f"{__class__}:" + data.executor
+            return data
         executor = self.executors.get(executor_name)
         if executor is None:
             raise TierkreisError(
