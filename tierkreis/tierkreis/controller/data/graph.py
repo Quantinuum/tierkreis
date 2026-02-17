@@ -162,12 +162,7 @@ class GraphData(BaseModel):
         return self.add(EagerIfElse(pred, if_true, if_false))
 
     def output(self, inputs: dict[PortID, ValueRef]) -> None:
-        self.add(Output(inputs))
-
-    def _add_node_output(
-        self, source_idx: NodeIndex, source_port: PortID, target_idx: NodeIndex
-    ):
-        self.nodes[source_idx].outputs.setdefault(source_port, []).append(target_idx)
+        _ = self.add(Output(inputs))
 
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
@@ -191,7 +186,7 @@ class GraphData(BaseModel):
                 assert_never(node)
 
         for i, port in in_edges(node).values():
-            self._add_node_output(i, port, idx)
+            self.nodes[i].outputs.setdefault(port, []).append(idx)
 
         return lambda k: (idx, k)
 
@@ -211,7 +206,7 @@ class GraphData(BaseModel):
         if fixed_inputs & provided_inputs:
             raise TierkreisError(
                 f"Fixed inputs {fixed_inputs}"
-                f" should not intersect provided inputs {provided_inputs}."
+                + f" should not intersect provided inputs {provided_inputs}."
             )
 
         actual_inputs = fixed_inputs.union(provided_inputs)
