@@ -12,6 +12,7 @@
     pyright.enable = true;
     ruff.enable = true;
     ruff-format.enable = true;
+    git-hooks.package = pkgs.prek;
   };
 
   # https://devenv.sh/languages/
