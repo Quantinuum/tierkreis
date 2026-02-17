@@ -7,6 +7,7 @@ from pydantic import BaseModel, RootModel
 from tierkreis.controller.data.core import NodeIndex, PortID, ValueRef
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
+from tierkreis.controller.executor.base_executor import BaseExecutor
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ class Func:
     inputs: dict[PortID, ValueRef]
     outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["function"] = field(default="function")
+    executor: BaseExecutor | None = None
 
 
 @dataclass
@@ -130,9 +132,12 @@ class GraphData(BaseModel):
         return self.add(Const(value))("value")
 
     def func(
-        self, function_name: str, inputs: dict[PortID, ValueRef]
+        self,
+        function_name: str,
+        inputs: dict[PortID, ValueRef],
+        executor: BaseExecutor | None = None,
     ) -> Callable[[PortID], ValueRef]:
-        return self.add(Func(function_name, inputs))
+        return self.add(Func(function_name, inputs, executor=executor))
 
     def eval(
         self, graph: ValueRef, inputs: dict[PortID, ValueRef]

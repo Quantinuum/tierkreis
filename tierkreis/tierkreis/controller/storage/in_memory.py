@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import UUID
 from time import time
@@ -9,27 +10,21 @@ from tierkreis.controller.storage.protocol import (
 )
 
 
+@dataclass
 class InMemoryFileData:
     value: bytes
-    stats: StorageEntryMetadata
+    # stats: StorageEntryMetadata
 
-    def __init__(self, value: bytes) -> None:
-        self.value = value
+    def __post_init__(self) -> None:
         self.stats = StorageEntryMetadata(time())
 
 
+@dataclass
 class ControllerInMemoryStorage(ControllerStorage):
-    def __init__(
-        self,
-        workflow_id: UUID,
-        name: str | None = None,
-        tierkreis_directory: Path = Path(),
-    ) -> None:
-        self.tkr_dir = tierkreis_directory
-        self.workflow_id = workflow_id
-        self.name = name
-
-        self.files: dict[Path, InMemoryFileData] = {}
+    workflow_id: UUID
+    name: str | None = None
+    tkr_dir: Path = Path()
+    files: dict[Path, InMemoryFileData] = field(default_factory=lambda: {})
 
     def delete(self, path: Path) -> None:
         self.files = {}

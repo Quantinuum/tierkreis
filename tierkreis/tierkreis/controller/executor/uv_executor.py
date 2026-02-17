@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import logging
 import os
 import shutil
@@ -12,22 +13,16 @@ from tierkreis.exceptions import TierkreisError
 logger = logging.getLogger(__name__)
 
 
+@dataclass
 class UvExecutor:
     """Executes workers in an UV python environment.
 
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(
-        self,
-        registry_path: Path | list[Path],
-        logs_path: Path,
-        env: dict[str, str] | None = None,
-    ) -> None:
-        self.registries = registry_path
-        self.logs_path = logs_path
-        self.errors_path = logs_path
-        self.env = env or {}
+    registry_path: Path | list[Path]
+    logs_path: Path
+    env: dict[str, str] = field(default_factory=lambda: {})
 
     def run(
         self,
@@ -35,7 +30,7 @@ class UvExecutor:
         worker_call_args_path: Path,
         uv_path: str | None = None,
     ) -> None:
-        self.errors_path = (
+        errors_path = (
             self.logs_path.parent.parent
             / worker_call_args_path.parent
             / "logs"  # made we should change this
@@ -47,7 +42,7 @@ class UvExecutor:
         if uv_path is None:
             raise TierkreisError("uv is required to use the uv_executor")
 
-        registry_path = find_registry_for_worker(launcher_name, self.registries)
+        registry_path = find_registry_for_worker(launcher_name, self.registry_path)
         check_and_set_launcher(registry_path, launcher_name, ".py")
 
         env = os.environ.copy() | self.env.copy()
@@ -55,8 +50,8 @@ class UvExecutor:
             env["VIRTUAL_ENVIRONMENT"] = ""
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
-        _error_path = self.errors_path.parent / "_error"
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        _error_path = errors_path.parent / "_error"
+        tee_str = f">(tee -a {str(errors_path)} {str(self.logs_path)} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,

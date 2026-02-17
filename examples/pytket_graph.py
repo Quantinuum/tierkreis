@@ -51,9 +51,7 @@ def compile_run_single():
 def main():
     g = compile_run_single()
     storage = InMemoryStorage(UUID(int=109))
-    executor = InMemoryExecutor(
-        Path(__file__).parent.parent / "tierkreis_workers", storage
-    )
+    executor = InMemoryExecutor(Path(__file__).parent.parent / "tierkreis_workers")
     n_shots = 30
     run_graph(
         storage,

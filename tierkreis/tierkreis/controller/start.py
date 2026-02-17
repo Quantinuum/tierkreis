@@ -69,7 +69,6 @@ def start(
     parent = node_location.parent()
     if parent is None:
         raise TierkreisError(f"{node.type} node must have parent Loc.")
-
     ins = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
 
     logger.debug(f"start {node_location} {node} {ins} {output_list}")
@@ -81,11 +80,13 @@ def start(
             node_location, name, ins, output_list
         )
         logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
+        if node.executor is not None:
+            executor = node.executor
 
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
             executor, InMemoryExecutor
         ):
-            executor.run(launcher_name, call_args_path)
+            executor.run(launcher_name, call_args_path, storage)
         elif launcher_name == "builtins":
             run_builtin(call_args_path, storage.logs_path)
         else:

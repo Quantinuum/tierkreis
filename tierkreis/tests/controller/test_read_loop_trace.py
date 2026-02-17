@@ -54,7 +54,7 @@ def test_read_loop_trace(
     storage = storage_class(UUID(int=id), name=name)
     executor = ShellExecutor(Path("./python/examples/launchers"), Path(""))
     if isinstance(storage, ControllerInMemoryStorage):
-        executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
+        executor = InMemoryExecutor(Path("./tierkreis/tierkreis"))
     storage.clean_graph_files()
     run_graph(storage, executor, g, {})
 

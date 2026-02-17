@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import json
 import os
 import subprocess
@@ -8,25 +9,20 @@ from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 
 
+@dataclass
 class ShellExecutor:
     """Executes workers in an unix shell.
 
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(
-        self,
-        registry_path: Path,
-        workflow_dir: Path,
-        timeout: int = 10,
-        env: dict[str, str] | None = None,
-    ) -> None:
-        self.launchers_path = registry_path
-        self.logs_path = workflow_dir / "logs"
-        self.errors_path = workflow_dir / "logs"
-        self.workflow_dir = workflow_dir
-        self.timeout = timeout
-        self.env = env or {}
+    registry_path: Path
+    workflow_dir: Path
+    timeout: int = 10
+    env: dict[str, str] = field(default_factory=lambda: {})
+
+    def __post_init__(self) -> None:
+        self.logs_path = self.workflow_dir / "logs"
 
     def run(
         self,
@@ -34,12 +30,10 @@ class ShellExecutor:
         worker_call_args_path: Path,
         export_values: bool = False,
     ) -> None:
-        launcher_path = self.launchers_path / launcher_name
-        self.errors_path = worker_call_args_path.parent / "logs"
+        launcher_path = self.registry_path / launcher_name
+        errors_path = worker_call_args_path.parent / "logs"
 
-        launcher_path = check_and_set_launcher(
-            self.launchers_path, launcher_name, ".sh"
-        )
+        launcher_path = check_and_set_launcher(self.registry_path, launcher_name, ".sh")
 
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
@@ -50,10 +44,10 @@ class ShellExecutor:
             self.workflow_dir.parent / worker_call_args_path
         )
         done_path = self.workflow_dir.parent / call_args.done_path
-        _error_path = self.errors_path.parent / "_error"
+        _error_path = errors_path.parent / "_error"
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {str(errors_path)} {str(self.logs_path)} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,

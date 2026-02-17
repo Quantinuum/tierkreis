@@ -12,7 +12,9 @@ from tierkreis.controller.data.models import (
     init_tmodel,
 )
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.data.graph import GraphData, ValueRef
+from tierkreis.controller.data.graph import GraphData
+from tierkreis.controller.data.core import ValueRef
+from tierkreis.controller.executor.base_executor import BaseExecutor
 
 
 @dataclass
@@ -112,10 +114,12 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             inputs_type=graph.inputs_type,
         )
 
-    def task[Out: TModel](self, f: Function[Out]) -> Out:
+    def task[Out: TModel](
+        self, f: Function[Out], executor: BaseExecutor | None = None
+    ) -> Out:
         name = f"{f.namespace}.{f.__class__.__name__}"
         ins = dict_from_tmodel(f)
-        idx, _ = self.data.func(name, ins)("dummy")
+        idx, _ = self.data.func(name, ins, executor=executor)("dummy")
         OutModel = f.out()
         outputs = [(idx, x) for x in model_fields(OutModel)]
         return init_tmodel(OutModel, outputs)

@@ -2,29 +2,37 @@ import json
 import subprocess
 from pathlib import Path
 
+from dataclasses import dataclass
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 
 
+@dataclass
 class StdInOut:
     """Executes workers in an unix shell.
 
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(self, registry_path: Path, workflow_dir: Path) -> None:
-        self.launchers_path = registry_path
-        self.logs_path = workflow_dir / "logs"
-        self.errors_path = workflow_dir / "logs"
-        self.workflow_dir = workflow_dir
+    registry_path: Path
+    workflow_dir: Path
+
+    def __post_init__(self) -> None:
+        self.logs_path = self.workflow_dir / "logs"
+
+    # def __init__(self, registry_path: Path, workflow_dir: Path) -> None:
+    #     self.registry_path = registry_path
+    #     self.logs_path = workflow_dir / "logs"
+    #     self.errors_path = workflow_dir / "logs"
+    #     self.workflow_dir = workflow_dir
 
     def run(
         self,
         launcher_name: str,
         worker_call_args_path: Path,
     ) -> None:
-        launcher_path = self.launchers_path / launcher_name
-        self.errors_path = worker_call_args_path.parent / "errors"
+        launcher_path = self.registry_path / launcher_name
+        errors_path = worker_call_args_path.parent / "errors"
         if not launcher_path.exists():
             raise TierkreisError(f"Launcher not found: {launcher_name}.")
 
@@ -44,8 +52,8 @@ class StdInOut:
         output_file = self.workflow_dir.parent / list(call_args.outputs.values())[0]
         done_path = self.workflow_dir.parent / call_args.done_path
 
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
-        _error_path = self.errors_path.parent / "_error"
+        tee_str = f">(tee -a {str(errors_path)} {str(self.logs_path)} >/dev/null)"
+        _error_path = errors_path.parent / "_error"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,
