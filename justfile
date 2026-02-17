@@ -25,7 +25,7 @@ fix:
   {{uvrun}} ruff check --fix
 
 docs:
-  just docs/build	
+  just docs/build
 
 [working-directory:'tierkreis_visualization']
 serve:
@@ -57,7 +57,7 @@ stubs-generate dir:
   cd {{dir}}
   uv run main.py --stubs-path ./stubs.py
 
-generate: 
+generate:
   just stubs-generate 'tierkreis/tierkreis/builtins'
   just stubs-generate 'tierkreis_workers/aer_worker'
   just stubs-generate 'tierkreis_workers/ibmq_worker'
@@ -72,6 +72,8 @@ generate:
   just stubs-generate 'examples/example_workers/chemistry_worker'
   just stubs-generate 'examples/example_workers/qsci_worker'
   just stubs-generate 'examples/example_workers/scipy_worker'
+
+  just stubs-generate 'tierkreis/tests/workers/graph'
 
   mkdir -p examples/example_workers/aer_worker
   mkdir -p examples/example_workers/nexus_worker

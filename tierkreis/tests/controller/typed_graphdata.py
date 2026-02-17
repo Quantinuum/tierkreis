@@ -1,15 +1,17 @@
 from typing import NamedTuple
+
+from tests.workers.graph.stubs import doubler_plus_graph
+from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins.stubs import (
+    conjugate,
     iadd,
     igt,
     itimes,
+    mod,
     tkr_tuple,
     untuple,
-    mod,
-    conjugate,
 )
 from tierkreis.controller.data.core import EmptyModel
-from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.models import TKR
 
 
@@ -150,4 +152,13 @@ def tkr_list_conj():
     g = GraphBuilder(TKR[list[complex]], TKR[list[complex]])
     zs = g.map(tkr_conj(), g.inputs)
     g.outputs(zs)
+    return g
+
+
+def eval_body_is_from_worker():
+    g = GraphBuilder(TKR[int], TKR[int])
+    graph = g.task(doubler_plus_graph())
+    graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
+    out = g.eval(graph_ref, g.inputs)
+    g.outputs(out)
     return g
