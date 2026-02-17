@@ -4,18 +4,15 @@
 
   packages = [
     pkgs.just
-    pkgs.graphviz
-  ] ++ lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin.apple_sdk; [
-    frameworks.CoreServices
-    frameworks.CoreFoundation
-    frameworks.Security
-    frameworks.SystemConfiguration
-  ]);
+  ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    pkgs.apple-sdk
+  ];
 
   git-hooks.hooks = {
     pyright.enable = true;
     ruff.enable = true;
     ruff-format.enable = true;
+    git-hooks.package = pkgs.prek;
   };
 
   # https://devenv.sh/languages/

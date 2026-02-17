@@ -25,4 +25,4 @@ include = [
 tierkreis = { workspace = true }
 
 [project.scripts]
-tkr_aer_worker = "main:main"
+tkr_qulacs_worker = "main:main"

@@ -35,8 +35,8 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-pytket-qiskist = { git = "https://github.com/CQCL/pytket-qiskit" }
-pytket-quantinuum = { git = "https://github.com/CQCL/pytket-quantinuum" }
+pytket-qiskist = { git = "https://github.com/Quantinuum/pytket-qiskit" }
+pytket-quantinuum = { git = "https://github.com/Quantinuum/pytket-quantinuum" }
 
 [project.scripts]
 tkr_pytket_worker = "main:main"
