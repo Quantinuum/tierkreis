@@ -33,7 +33,8 @@ def test_read_nodedef(node_location_str: str, graph: GraphData, target: str) -> 
 @pytest.mark.parametrize(
     ["node_location_str", "graph", "port", "target"],
     [
-        ("-.N0", simple_eval(), "value", b"null"),
+        ("-.N0", simple_eval(), "value", b"0"),
+        ("-.N2", simple_eval(), "value", b"null"),
         ("-.N4.M0", simple_map(), "0", b"null"),
     ],
 )
