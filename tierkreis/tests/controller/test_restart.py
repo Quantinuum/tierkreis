@@ -3,7 +3,7 @@ from uuid import UUID
 
 from tierkreis import run_graph
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd
+from tierkreis.builtins.stubs import iadd, itimes
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
 from tierkreis.executor import UvExecutor
@@ -18,7 +18,7 @@ def test_restart():
     g = GraphBuilder(TKR[int], TKR[int])
     plus_one = g.task(iadd(g.const(1), g.inputs))
     left = g.task(iadd(g.const(1), plus_one))
-    right = g.task(iadd(g.const(1), plus_one))
+    right = g.task(itimes(g.const(2), plus_one))
     out = g.task(iadd(left, right))
     g.outputs(out)
 
