@@ -8,7 +8,7 @@ kernelspec:
 
 We see how to run a worker using `pjsub` on Fugaku.
 In particular we do not focus on the exact structure of our Tierkreis graph.
-For a full working example please see the symbolic circuits graph in the `examples` folder of the [Tierkreis repo](https://github.com/CQCL/tierkreis).
+For a full working example please see the HPC graph in the [HPC example](../../examples/hpc.ipynb).
 
 In this example we configure a `UvExecutor` as the default executor for small tasks and a `PJSUBExecutor` to run larger tasks using the `pjsub` job submission system.
 

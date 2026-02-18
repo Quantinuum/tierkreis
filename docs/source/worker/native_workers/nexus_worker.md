@@ -40,7 +40,7 @@ It can be included within a custom graph using `GraphBuilder.eval` or run as a s
 The function `nexus_submit_and_poll` takes an optional argument to specify the minimum delay between successive polls in the status polling loop.
 The default is to poll every `30` seconds.
 
-An example use is in `docs/source/examples/polling_and_dir.ipynb` in the [Tierkreis repo](https://github.com/CQCL/tierkreis), which looks like:
+An example use is in `docs/source/examples/polling_and_dir.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis), which looks like:
 
 ```python
 backend_config = ...select the right hardware by specifying the BackendConfig instance...

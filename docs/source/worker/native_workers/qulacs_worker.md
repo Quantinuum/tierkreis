@@ -2,7 +2,7 @@
 
 A Tierkreis worker that compiles and runs circuits with Qulacs.
 
-The Qulacs worker largely wraps the functionality from [pytket-qulacs](https://github.com/CQCL/pytket-qulacs/).
+The Qulacs worker largely wraps the functionality from [pytket-qulacs](https://github.com/Quantinuum/pytket-qulacs/).
 In addition to the elementary tasks exposed, there are also prepackaged graphs to make using the worker more convenient.
 
 ## Installation
@@ -19,7 +19,7 @@ The Qulacs worker exposes the following elementary tasks to the user.
 
 - `get_compiled_circuit`. A wrapper around `QulacsBackend.get_compiled_circuit`, which is intended to be parallelised using a Tierkreis `map`.
 - `run_circuit`. A wrapper around `QulacsBackend.run_circuit`, which is intended to be parallelised using a Tierkreis `map`.
-- `run_circuits`. A runs multiple circuits according to the logic defined in the `process_circuits` method in [pytket-qulacs](https://github.com/CQCL/pytket-qulacs/blob/main/pytket/extensions/qulacs/backends/qulacs_backend.py#L186).
+- `run_circuits`. A runs multiple circuits according to the logic defined in the `process_circuits` method in [pytket-qulacs](https://github.com/Quantinuum/pytket-qulacs/blob/main/pytket/extensions/qulacs/backends/qulacs_backend.py#L186).
 
 ## Prepackaged graphs
 
@@ -28,7 +28,7 @@ The Tierkreis Python package provides a few prepackaged graphs to make it easier
 `tierkreis.graphs.simulate.compile_simulate.compile_simulate` is intended for the common use case of compiling a list of circuits in parallel and then running them in parallel.
 It can be included within a custom graph using `GraphBuilder.eval` or run as a standalone graph.
 
-An example use is in `docs/source/examples/parallelism.ipynb` in the [Tierkreis repo](https://github.com/CQCL/tierkreis), which looks like:
+An example use is in `docs/source/examples/parallelism.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis), which looks like:
 
 ```python
 simulator_name = "qulacs"

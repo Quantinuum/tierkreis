@@ -144,7 +144,7 @@ def _default_pass(
     arch: Architecture | FullyConnected,
     primitive_gates: set[OpType],
 ) -> BasePass:
-    ## Modified from https://github.com/CQCL/pytket-qiskit/blob/main/pytket/extensions/qiskit/backends/ibm.py
+    ## Modified from https://github.com/Quantinuum/pytket-qiskit/blob/main/pytket/extensions/qiskit/backends/ibm.py
     primitive_1q_gates = primitive_gates & ALL_TKET_1Q_GATES
     supports_rz = OpType.Rz in primitive_gates
 

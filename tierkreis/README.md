@@ -66,7 +66,7 @@ Opening [`localhost:8000`](https://localhost:8000) will open a browser window wi
 
 Tierkreis comes with a command line interface for running workflows.
 To see all available options use `tkr --help`.
-To run the hello world example from the cli put the contents of `/docs/examples/examples/hello_world/hello_world_graph.ipynb` into `./hello_world.py` and run
+To run the hello world example from the cli put the contents of `/docs/source/examples/hello_world.py` into `./hello_world.py` and run
 
 ```
 uv run tkr -g hello_world.py:hello_graph -i data.json --uv --registry-path docs/source/examples/example_workers/ -o

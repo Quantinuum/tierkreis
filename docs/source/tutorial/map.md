@@ -13,7 +13,7 @@ An example of how to run several CPU intensive nodes in parallel and aggregate t
 We use an encryption function as a placeholder for a CPU intensive worker function.
 For demonstration purposes we ensure that the plaintexts are short enough (and the work factor small enough) that the graph runs in under 10s.
 
-The following worker is in the [Tierkreis GitHub repo](https://github.com/CQCL/tierkreis) at `docs/source/examples/example_workers/auth_worker`:
+The following worker is in the [Tierkreis GitHub repo](https://github.com/Quantinuum/tierkreis) at `docs/source/examples/example_workers/auth_worker`:
 
 ```{literalinclude} ../examples/example_workers/auth_worker/src/main.py
 :language: python

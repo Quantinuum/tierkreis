@@ -2,7 +2,7 @@
 
 A Tierkreis worker that interacts with the Quantinuums `pytket` toolkit.
 
-The pytket worker largely wraps the functionality from [tket](https://github.com/CQCL/tket).
+The pytket worker largely wraps the functionality from [tket](https://github.com/Quantinuum/tket).
 
 ## Installation
 
@@ -52,7 +52,7 @@ Trying to use a non-serializable pass will result in an error.
 
 ## Example
 
-An example use is in `docs/source/examples/hamiltonian.ipynb` in the [Tierkreis repo](https://github.com/CQCL/tierkreis).
+An example use is in `docs/source/examples/hamiltonian.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis).
 A shorter example which runs on a named IBM backend, e.g. `"ibm_torino"` is given here
 For debugging purposes this also showcases how to use the `InMemoryExecutor` which only works in conjunction with the `InMemoryStorage`.
 
