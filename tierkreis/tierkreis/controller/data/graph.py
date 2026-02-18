@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class NodeDefBase:
     outputs: dict[PortID, list[NodeIndex]] = field(
-        default_factory=lambda: {}, kw_only=True
+        default_factory=dict, kw_only=True
     )
     """Map each out-port to the list of nodes that use it."""
 
