@@ -35,3 +35,7 @@ def test_restart():
         Loc().N(g.get_data().output_idx()),
     ]
     assert sorted(invalidated) == sorted(expected)
+
+    run_graph(storage, executor, g, {"value": 0})
+    outputs = read_outputs(g, storage)
+    assert outputs == 4
