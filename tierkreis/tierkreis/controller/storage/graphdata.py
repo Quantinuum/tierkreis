@@ -169,6 +169,8 @@ def _build_node_outputs(node: NodeDef) -> dict[PortID, None | bytes]:
                 return {"value": json.dumps(node.value).encode()}
             else:
                 return {"value": b"Graph"}
+        elif isinstance(node.value, GraphData):
+            return {"value": b"Graph"}
         else:
             return {"value": json.dumps(node.value).encode()}
     outputs: dict[PortID, None | bytes] = {val: None for val in node.outputs}
