@@ -118,7 +118,6 @@ def main(pjsub_group_name: str | None) -> None:
         workflow_id,
         name="symbolic_circuits",
         do_cleanup=True,
-        tierkreis_directory=Path.home() / ".tierkreis" / "checkpoints2",
     )
 
     # Look for workers in the `example_workers` directory.
