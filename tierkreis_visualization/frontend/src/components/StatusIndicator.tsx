@@ -45,7 +45,7 @@ const StatusBorder = ({
       <div
         className={clsx(
           "absolute -left-[1px] -top-[1px] h-[calc(100%+2px)] w-[calc(100%+2px)] rounded-xl border-2",
-          className
+          className,
         )}
         style={{ pointerEvents: "none" }}
       />
@@ -68,6 +68,10 @@ export const NodeStatusIndicator = ({
     case "Error":
       return <StatusBorder className="border-red-400">{children}</StatusBorder>;
     default:
-      return <>{children}</>;
+      return (
+        <StatusBorder className="border py-6 shadow-sm">
+          {children}
+        </StatusBorder>
+      );
   }
 };

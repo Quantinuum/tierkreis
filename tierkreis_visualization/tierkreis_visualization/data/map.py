@@ -29,7 +29,7 @@ def get_map_node(
     for i, ele in map_eles:
         node = PyNode(
             id=loc.M(i),
-            status="Started",
+            status="Not started",
             function_name=ele,
             node_location=loc.M(i),
             node_type="eval",
@@ -41,6 +41,8 @@ def get_map_node(
             node.status = "Error"
         elif storage.is_node_finished(loc.M(i)):
             node.status = "Finished"
+        elif storage.is_node_started(loc.M(i)):
+            node.status = "Started"
         nodes.append(node)
 
     return MapNodeData(nodes=nodes, edges=[])

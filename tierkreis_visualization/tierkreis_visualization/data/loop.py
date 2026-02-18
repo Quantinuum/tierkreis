@@ -42,8 +42,10 @@ def get_loop_node(
         last_status = "Error"
     elif storage.is_node_finished(new_location):
         last_status = "Finished"
-    else:
+    elif storage.is_node_started(new_location):
         last_status = "Started"
+    else:
+        last_status = "Not started"
     nodes.append(
         PyNode(
             id=new_location,

@@ -10,6 +10,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from tierkreis_visualization.data.outputs import outputs_from_loc
@@ -141,7 +142,10 @@ def get_logs(
     workflow_id: UUID,
 ) -> PlainTextResponse:
     storage = request.app.state.get_storage_fn(workflow_id)
-    logs = storage.read(storage.logs_path)
+    try:
+        logs = storage.read(storage.logs_path)
+    except (TierkreisError, NotImplementedError):
+        logs = "Logs not available."
     return PlainTextResponse(logs)
 
 

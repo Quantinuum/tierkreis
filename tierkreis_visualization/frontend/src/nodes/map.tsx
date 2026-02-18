@@ -36,7 +36,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
     );
   }
 
-  const inButton = node_data.status != "Not started" && (
+  const inButton = (
     <ZoomInButton wid={wid} loc={loc} node_loc={node_loc} node_type="map" />
   );
 
