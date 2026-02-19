@@ -5,4 +5,4 @@ requires-python = ">=3.12"
 dependencies = ["pydantic", "tierkreis", "ruff"]
 
 [tool.uv.sources]
-tierkreis = { path = "../../../tierkreis", editable = true }
+tierkreis = { path = "../../../", editable = true }

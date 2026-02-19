@@ -2,7 +2,7 @@ import getpass
 import json
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -305,7 +305,7 @@ class ControllerStorage(ABC):
             return Loc(debug_data.loop_loc)
 
     def write_debug_data(self, name: str, loc: Loc) -> None:
-        data = {name: asdict(NodeDebugData(loop_loc=loc))}
+        data = {name: NodeDebugData(loop_loc=loc).model_dump()}
         if not self.exists(self._node_debug_path()):
             self.write(self._node_debug_path(), json.dumps(data).encode())
             return

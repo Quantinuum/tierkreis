@@ -3,7 +3,6 @@ from uuid import UUID
 
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins.stubs import neg
-from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
@@ -118,7 +117,7 @@ def test_uv_executor():
     g = hello_graph()
     storage = ControllerFileStorage(UUID(int=303), name="Shell")
     executor = UvExecutor(
-        PACKAGE_PATH.parent / "examples" / "example_workers",
+        WORKER_PATH,
         logs_path=storage.logs_path,
         env={"TEST_FLAG": "Hello"},
     )
