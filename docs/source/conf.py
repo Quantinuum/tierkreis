@@ -44,7 +44,6 @@ nb_execution_excludepatterns = [
 
 html_theme = "furo"
 html_static_path = ["_static"]
-html_theme_options = {"use_download_button": True}
 html_favicon = "_static/quantinuum_favicon.svg"
 
 # -- Notebook options --------------------------------------------------------
