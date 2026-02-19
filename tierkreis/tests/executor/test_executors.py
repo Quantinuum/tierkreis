@@ -133,7 +133,7 @@ def test_uv_executor():
     assert "TEST_FLAG" in exec_data.env
     assert exec_data.executor == str(executor.__class__)
     assert "uv" in exec_data.launch_command
-    assert any("tierkreis" in x for x in exec_data.packages)
+    assert any("ruff" in x for x in exec_data.packages)
 
 
 def stdinout_graph():

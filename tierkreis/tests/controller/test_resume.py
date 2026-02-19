@@ -39,7 +39,6 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
