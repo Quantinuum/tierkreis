@@ -137,7 +137,7 @@ def walk_loop(
     ins.update(loop_outputs)
     node_run_data = NodeRunData(
         loc.L(new_location.peek_index() + 1),
-        Eval((-1, BODY_PORT), ins, loop.outputs),
+        Eval((-1, BODY_PORT), ins, outputs=loop.outputs),
         list(loop_outputs.keys()),
     )
     return WalkResult([node_run_data], [])

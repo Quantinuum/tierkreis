@@ -13,80 +13,77 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Func:
+class NodeDefBase:
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=dict, kw_only=True)
+    """Map each out-port to the list of nodes that use it."""
+
+
+@dataclass
+class Func(NodeDefBase):
     function_name: str
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["function"] = field(default="function")
 
 
 @dataclass
-class Eval:
+class Eval(NodeDefBase):
     graph: ValueRef
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["eval"] = field(default="eval")
 
 
 @dataclass
-class Loop:
+class Loop(NodeDefBase):
     body: ValueRef
     inputs: dict[PortID, ValueRef]
     continue_port: PortID  # The port that specifies if the loop should continue.
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["loop"] = field(default="loop")
     name: str | None = None
 
 
 @dataclass
-class Map:
+class Map(NodeDefBase):
     body: ValueRef
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["map"] = field(default="map")
 
 
 @dataclass
-class Const:
+class Const(NodeDefBase):
     value: Any
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["const"] = field(default="const")
 
 
 @dataclass
-class IfElse:
+class IfElse(NodeDefBase):
     pred: ValueRef
     if_true: ValueRef
     if_false: ValueRef
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["ifelse"] = field(default="ifelse")
 
 
 @dataclass
-class EagerIfElse:
+class EagerIfElse(NodeDefBase):
     pred: ValueRef
     if_true: ValueRef
     if_false: ValueRef
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
 
     type: Literal["eifelse"] = field(default="eifelse")
 
 
 @dataclass
-class Input:
+class Input(NodeDefBase):
     name: str
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     inputs: dict[PortID, ValueRef] = field(default_factory=lambda: {})
     type: Literal["input"] = field(default="input")
 
 
 @dataclass
-class Output:
+class Output(NodeDefBase):
     inputs: dict[PortID, ValueRef]
-    outputs: dict[PortID, NodeIndex] = field(default_factory=lambda: {})
     type: Literal["output"] = field(default="output")
 
 
@@ -162,7 +159,7 @@ class GraphData(BaseModel):
         return self.add(EagerIfElse(pred, if_true, if_false))
 
     def output(self, inputs: dict[PortID, ValueRef]) -> None:
-        self.add(Output(inputs))
+        _ = self.add(Output(inputs))
 
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         idx = len(self.nodes)
@@ -186,7 +183,7 @@ class GraphData(BaseModel):
                 assert_never(node)
 
         for i, port in in_edges(node).values():
-            self.nodes[i].outputs[port] = idx
+            self.nodes[i].outputs.setdefault(port, []).append(idx)
 
         return lambda k: (idx, k)
 
@@ -206,7 +203,7 @@ class GraphData(BaseModel):
         if fixed_inputs & provided_inputs:
             raise TierkreisError(
                 f"Fixed inputs {fixed_inputs}"
-                f" should not intersect provided inputs {provided_inputs}."
+                + f" should not intersect provided inputs {provided_inputs}."
             )
 
         actual_inputs = fixed_inputs.union(provided_inputs)
@@ -240,7 +237,7 @@ def graph_node_from_loc(
             graph = _unwrap_graph(graph.nodes[node.body[0]], node.type)
             _, remaining_location = remaining_location.pop_first()  # Remove the M0/L0
             if len(remaining_location.steps()) < 2:
-                return Eval((-1, "body"), node.inputs, node.outputs), graph
+                return Eval((-1, "body"), node.inputs, outputs=node.outputs), graph
 
             node, graph = graph_node_from_loc(remaining_location, graph)
         case "const" | "function" | "input" | "output" | "ifelse" | "eifelse":

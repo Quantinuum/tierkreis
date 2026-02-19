@@ -1,23 +1,23 @@
-from dataclasses import dataclass
 import logging
-from pathlib import Path
 import subprocess
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
-from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.storage.adjacency import outputs_iter
 from typing_extensions import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
+from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
 from tierkreis.controller.data.location import Loc, OutputLoc
+from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
+from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.labels import Labels
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+from tierkreis.labels import Labels
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,11 @@ def start(
             executor,
             NodeRunData(
                 node_location.L(0),
-                Eval((-1, "body"), {k: (-1, k) for k, _ in ins.items()}, node.outputs),
+                Eval(
+                    (-1, "body"),
+                    {k: (-1, k) for k, _ in ins.items()},
+                    outputs=node.outputs,
+                ),
                 output_list,
             ),
         )
@@ -150,7 +154,8 @@ def start(
             )
             # Necessary in the node visualization
             storage.write_node_def(
-                node_location.M(idx), Eval((-1, "body"), node.inputs, node.outputs)
+                node_location.M(idx),
+                Eval((-1, "body"), node.inputs, outputs=node.outputs),
             )
 
     elif node.type == "ifelse":

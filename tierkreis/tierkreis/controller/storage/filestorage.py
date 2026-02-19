@@ -4,11 +4,11 @@ from pathlib import Path
 from time import time_ns
 from uuid import UUID
 
-from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
-    ControllerStorage,
-)
 from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.protocol import (
+    ControllerStorage,
+    StorageEntryMetadata,
+)
 
 
 class ControllerFileStorage(ControllerStorage):
@@ -45,7 +45,7 @@ class ControllerFileStorage(ControllerStorage):
 
         try:
             os.link(src, dst)
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, FileExistsError) as exc:
             raise EntryNotFound(src) from exc
 
     def mkdir(self, path: Path) -> None:
