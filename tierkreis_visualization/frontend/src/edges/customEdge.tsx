@@ -53,7 +53,7 @@ export default function CustomEdge({
   });
 
   let content;
-  if (label === undefined || label === null) {
+  if (label === undefined || label === null || label === "null") {
     return <BaseEdge id={id} path={edgePath} />;
   } else if (label === "Graph Body") {
     content = (

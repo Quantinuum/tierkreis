@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from uuid import UUID
 from typing import Any
@@ -162,6 +163,16 @@ class GraphDataStorage(ControllerStorage):
 
 
 def _build_node_outputs(node: NodeDef) -> dict[PortID, None | bytes]:
+    if node.type == "const":
+        if isinstance(node.value, dict):
+            if "nodes" not in node.value:
+                return {"value": json.dumps(node.value).encode()}
+            else:
+                return {"value": b"Graph"}
+        elif isinstance(node.value, GraphData):
+            return {"value": b"Graph"}
+        else:
+            return {"value": json.dumps(node.value).encode()}
     outputs: dict[PortID, None | bytes] = {val: None for val in node.outputs}
     if "*" in outputs:
         outputs["0"] = None

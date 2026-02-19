@@ -50,7 +50,7 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
     );
   }
 
-  const inButton = node_data.status != "Not started" && (
+  const inButton = (
     <ZoomInButton
       wid={wid}
       loc={loc}
