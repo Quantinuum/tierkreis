@@ -1,9 +1,9 @@
-from dataclasses import dataclass, field
 from datetime import datetime
 
+from pydantic import BaseModel, Field
 
-@dataclass
-class WorkflowMetaData:
+
+class WorkflowMetaData(BaseModel):
     workflow_id: str
     tierkreis_version: str
     user_id: str
@@ -21,19 +21,17 @@ class WorkflowMetaData:
         return None
 
 
-@dataclass
-class ExecutorDebugData:
+class ExecutorDebugData(BaseModel):
     """Debug data from executors."""
 
     executor: str
     launch_command: str
     job_id: str | None = None
-    env: dict[str, str] = field(default_factory=lambda: {})
-    packages: list[str] = field(default_factory=lambda: [])
+    env: dict[str, str] = Field(default_factory=dict)
+    packages: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class NodeDebugData:
+class NodeDebugData(BaseModel):
     """Debug data for graph nodes.
 
     Currently only used for loop_nodes
