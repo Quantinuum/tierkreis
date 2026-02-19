@@ -17,7 +17,10 @@ from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.storage import read_outputs
 
-from .hello_world_worker.stubs import greet
+from tests.workers.hello_world_worker.stubs import greet
+
+
+WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 
 def shell_graph():
@@ -36,7 +39,7 @@ def test_shell_executor():
     g = shell_graph()
     storage = ControllerFileStorage(UUID(int=301), name="Shell")
     executor = ShellExecutor(
-        Path(__file__).parent,
+        WORKER_PATH,
         workflow_dir=storage.workflow_dir,
         env={"TEST_FLAG": "Hello"},
     )
@@ -132,7 +135,7 @@ def test_stdinout_executor():
     g = stdinout_graph()
     storage = ControllerFileStorage(UUID(int=304), name="StdInOut")
     executor = StdInOut(
-        Path(__file__).parent,
+        WORKER_PATH,
         workflow_dir=storage.workflow_dir,
     )
     storage.clean_graph_files()
@@ -171,12 +174,12 @@ def test_task_executor():
     g = task_graph()
     storage = ControllerFileStorage(UUID(int=305), name="Task")
     first = ShellExecutor(
-        Path(__file__).parent,
+        WORKER_PATH,
         workflow_dir=storage.workflow_dir,
         env={"TEST_FLAG": "cruel"},
     )
     second = ShellExecutor(
-        Path(__file__).parent,
+        WORKER_PATH,
         workflow_dir=storage.workflow_dir,
         env={"TEST_FLAG": "Goodbye"},
     )
@@ -227,12 +230,12 @@ def test_multiple_executor():
     g = multiple_graph()
     storage = ControllerFileStorage(UUID(int=306), name="Multiple")
     first = ShellExecutor(
-        Path(__file__).parent,
+        WORKER_PATH,
         workflow_dir=storage.workflow_dir,
         env={"TEST_FLAG": "beautiful"},
     )
     second = StdInOut(
-        Path(__file__).parent,
+        WORKER_PATH,
         workflow_dir=storage.workflow_dir,
     )
     executor = MultipleExecutor(
