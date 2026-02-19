@@ -54,8 +54,8 @@ def run_builtin(def_path: Path, logs_path: Path) -> ExecutorDebugData:
             stdout=fh,
         )
     return ExecutorDebugData(
-        "builtin",
-        f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {def_path}",
+        executor="builtin",
+        launch_command=f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {def_path}",
     )
 
 
@@ -96,7 +96,7 @@ def start(
         else:
             exec_data = executor.run(launcher_name, call_args_path)
 
-        storage.append_executor_data(node_location, exec_data)
+        storage.write_executor_data(node_location, exec_data)
     elif node.type == "input":
         input_loc = parent.N(-1)
         storage.link_outputs(node_location, node.name, input_loc, node.name)

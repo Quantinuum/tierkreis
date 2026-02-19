@@ -104,7 +104,7 @@ class ShellExecutor:
     ) -> ExecutorDebugData:
         # What is the equivalent to the pip freeze here?
         return ExecutorDebugData(
-            str(self.__class__),
-            command,
+            executor=str(self.__class__),
+            launch_command=command,
             env=env,
         )

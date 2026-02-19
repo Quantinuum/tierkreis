@@ -59,8 +59,8 @@ class StdInOut:
     def _generate_debug_data(self, command: str) -> ExecutorDebugData:
         # What is the equivalent to the pip freeze here?
         return ExecutorDebugData(
-            str(self.__class__),
-            command,
+            executor=str(self.__class__),
+            launch_command=command,
             env={k: v for k, v in os.environ.items()},
         )
 

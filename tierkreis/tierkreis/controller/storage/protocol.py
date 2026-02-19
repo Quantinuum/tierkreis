@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any, assert_never
+from typing import Any, assert_never, overload
 from uuid import UUID
 
 from tierkreis.controller.data.core import PortID
@@ -92,8 +92,8 @@ class ControllerStorage(ABC):
     def debug_path(self) -> Path:
         return self.workflow_dir / "debug"
 
-    def _exec_data_path(self) -> Path:
-        return self.debug_path / "executors"
+    def _exec_data_path(self, node_location: Loc) -> Path:
+        return self.debug_path / "executors" / str(node_location)
 
     def _node_debug_path(self) -> Path:
         return self.debug_path / "nodes"
@@ -255,7 +255,7 @@ class ControllerStorage(ABC):
             start_time=datetime.now().isoformat(),
             execution_count=1,
         )
-        self.write(self._metadata_path(Loc("")), json.dumps(asdict(wf_data)).encode())
+        self.write(self._metadata_path(Loc("")), wf_data.model_dump_json().encode())
 
     def write_workflow_completion_time(self) -> None:
         try:
@@ -327,25 +327,27 @@ class ControllerStorage(ABC):
             raise TierkreisError(msg)
         return existing_data[name]
 
-    def append_executor_data(self, loc: Loc, data: ExecutorDebugData) -> None:
-        if not self.exists(self._exec_data_path()):
-            self.write(self._exec_data_path(), json.dumps({loc: asdict(data)}).encode())
-            return
-        existing_data = json.loads(self.read(self._exec_data_path()))
-        if not isinstance(existing_data, dict):
-            msg = f"Expecting executor data to be dict, found {type(existing_data)} instead."
-            raise TierkreisError(msg)
-        existing_data[loc] = asdict(data)
-        self.write(
-            self._exec_data_path(),
-            json.dumps(existing_data).encode(),
-        )
+    def write_executor_data(self, loc: Loc, data: ExecutorDebugData) -> None:
+        self.write(self._exec_data_path(loc), data.model_dump_json().encode())
 
-    def read_executor_data(self) -> dict[Loc, ExecutorDebugData]:
-        return {
-            Loc(k): ExecutorDebugData(**v)
-            for k, v in json.loads(self.read(self._exec_data_path()))
-        }
+    @overload
+    def read_executor_data(self) -> dict[Loc, ExecutorDebugData]: ...
+
+    @overload
+    def read_executor_data(self, loc: Loc) -> ExecutorDebugData: ...
+
+    def read_executor_data(
+        self, loc: Loc | None = None
+    ) -> dict[Loc, ExecutorDebugData] | ExecutorDebugData:
+        if loc is None:
+            result = {}
+            for path in self.list_subpaths(self._exec_data_path(Loc()).parent):
+                data = json.loads(self.read(path))
+                result[Loc(path.parts[-1])] = ExecutorDebugData(**data)
+            return result
+        else:
+            data = json.loads(self.read(self._exec_data_path(loc)))
+            return ExecutorDebugData(**data)
 
     def dependents(self, loc: Loc) -> set[Loc]:
         """Nodes that are fully invalidated if the node at the given loc is invalidated.

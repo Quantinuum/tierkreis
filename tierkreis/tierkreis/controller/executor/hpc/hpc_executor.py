@@ -85,7 +85,7 @@ def run_hpc_executor(
         raise TierkreisError(f"Executor failed with return code {process.returncode}")
 
     return ExecutorDebugData(
-        str(executor.__class__),
-        " ".join(submission_cmd),
-        executor.job_id(process.stdout),  # TODO parse JOB ID somehow
+        executor=str(executor.__class__),
+        launch_command=" ".join(submission_cmd),
+        job_id=executor.job_id(process.stdout),  # TODO parse JOB ID somehow
     )

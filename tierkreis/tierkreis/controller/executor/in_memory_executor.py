@@ -47,4 +47,6 @@ class InMemoryExecutor:
         return self._generate_debug_data(launcher_path)
 
     def _generate_debug_data(self, launcher_path: Path) -> ExecutorDebugData:
-        return ExecutorDebugData(str(__class__), str(launcher_path))
+        return ExecutorDebugData(
+            executor=str(__class__), launch_command=str(launcher_path)
+        )

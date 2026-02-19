@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from uuid import UUID
 
@@ -13,7 +12,6 @@ from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.stdinout import StdInOut
 from tierkreis.controller.executor.task_executor import TaskExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
-from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.storage import read_outputs
 
@@ -47,12 +45,11 @@ def test_shell_executor():
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
     assert actual_output == b'Hello "world"\n'
-    assert storage._exec_data_path().exists()
+    assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
+    data = storage.read_executor_data()
     assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "Hello"
     assert exec_data.executor == str(executor.__class__)
     assert "main.sh" in exec_data.launch_command
@@ -76,12 +73,11 @@ def test_builtin_executor():
     run_graph(storage, executor, g, {"value": True})
     actual_output = read_outputs(g, storage)
     assert not actual_output
-    assert storage._exec_data_path().exists()
+    assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
+    data = storage.read_executor_data()
     assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" not in exec_data.env
     assert exec_data.executor == "builtin"
 
@@ -107,12 +103,11 @@ def test_uv_executor():
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
     assert actual_output == "hello world"
-    assert storage._exec_data_path().exists()
+    assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N2")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
+    data = storage.read_executor_data()
     assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" in exec_data.env
     assert exec_data.executor == str(executor.__class__)
     assert "uv" in exec_data.launch_command
@@ -142,12 +137,11 @@ def test_stdinout_executor():
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
     assert actual_output == b'Hello "world"\n'
-    assert storage._exec_data_path().exists()
+    assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
+    data = storage.read_executor_data()
     assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" not in exec_data.env
     assert exec_data.executor == str(executor.__class__)
     assert "main.sh" in exec_data.launch_command
@@ -190,20 +184,16 @@ def test_task_executor():
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
     assert actual_output == b'Goodbye cruel "world"\n'
-    assert storage._exec_data_path().exists()
+    assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
+    data = storage.read_executor_data()
     assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "cruel"
     assert exec_data.executor == f"{executor.__class__}:{str(first.__class__)}"
     assert "main.sh" in exec_data.launch_command
     node_loc = Loc("-.N2")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
-    assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = storage.read_executor_data(node_loc)
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "Goodbye"
     assert exec_data.executor == f"{executor.__class__}:{str(second.__class__)}"
     assert "main.sh" in exec_data.launch_command
@@ -245,20 +235,16 @@ def test_multiple_executor():
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
     assert actual_output == b'Hello beautiful "world"\n'
-    assert storage._exec_data_path().exists()
+    assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
+    data = storage.read_executor_data()
     assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "beautiful"
     assert exec_data.executor == f"{executor.__class__}:{str(first.__class__)}"
     assert "main.sh" in exec_data.launch_command
     node_loc = Loc("-.N2")
-    with open(storage._exec_data_path(), "r") as fh:
-        data = json.loads(fh.read())
-    assert node_loc in data
-    exec_data = ExecutorDebugData(**data[node_loc])
+    exec_data = data[node_loc]
     assert "TEST_FLAG" not in exec_data.env
     assert exec_data.executor == f"{executor.__class__}:{str(second.__class__)}"
     assert "main.sh" in exec_data.launch_command

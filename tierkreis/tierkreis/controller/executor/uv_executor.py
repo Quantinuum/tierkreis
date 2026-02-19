@@ -78,7 +78,10 @@ class UvExecutor:
     ) -> ExecutorDebugData:
         launcher_command = f"cd {cwd} && {command}"
         return ExecutorDebugData(
-            str(__class__), launcher_command, env=env, packages=_uv_freeze(uv_path, cwd)
+            executor=str(__class__),
+            launch_command=launcher_command,
+            env=env,
+            packages=_uv_freeze(uv_path, cwd),
         )
 
 
