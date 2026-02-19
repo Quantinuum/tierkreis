@@ -8,3 +8,5 @@ dependencies = [
 		"ruff",
 ]
 
+[tool.uv.sources]
+tierkreis = { path = "../../../../../tierkreis", editable = true }

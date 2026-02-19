@@ -8,3 +8,5 @@ dependencies = [
     "pyscrypt>=1.6.2",
     "tierkreis",
 ]
+[tool.uv.sources]
+tierkreis = { path = "../../../../../tierkreis", editable = true }
