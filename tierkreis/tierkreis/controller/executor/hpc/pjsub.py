@@ -66,6 +66,8 @@ def generate_pjsub_script(spec: JobSpec) -> str:
     lines.append("\n# --- User-Specific Arguments ---")
     for key, value in spec.extra_scheduler_args.items():
         lines.append(f"{_COMMAND_PREFIX} {key} {value if value is not None else ''}")
+    if "-z" not in spec.extra_scheduler_args:
+        lines.append(f"{_COMMAND_PREFIX} -z jid")
 
     # 8. Environment
     lines.append("\n# --- Environment Setup ---")

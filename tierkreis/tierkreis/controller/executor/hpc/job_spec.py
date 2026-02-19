@@ -75,6 +75,7 @@ def pjsub_small_spec() -> JobSpec:
         job_name="pjsub_small",
         account="hp240496",
         command=f"{str(uv_path)} run main.py",
+        queue="q-QTM-S",
         resource=ResourceSpec(nodes=1),
         environment={
             "VIRTUAL_ENVIRONMENT": "",
