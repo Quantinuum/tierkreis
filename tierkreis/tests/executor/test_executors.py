@@ -115,7 +115,7 @@ def hello_graph() -> GraphBuilder[TKR[str], TKR[str]]:
 
 def test_uv_executor():
     g = hello_graph()
-    storage = ControllerFileStorage(UUID(int=303), name="Shell")
+    storage = ControllerFileStorage(UUID(int=303), name="UV")
     executor = UvExecutor(
         WORKER_PATH,
         logs_path=storage.logs_path,
