@@ -24,11 +24,13 @@ class UvExecutor:
         registry_path: Path | list[Path],
         logs_path: Path,
         env: dict[str, str] | None = None,
+        log_env_in_debug: bool = True,
     ) -> None:
         self.registries = registry_path
         self.logs_path = logs_path
         self.errors_path = logs_path
         self.env = env or {}
+        self.log_env_in_debug = log_env_in_debug
 
     def run(
         self,
@@ -76,6 +78,8 @@ class UvExecutor:
     def _generate_debug_data(
         self, command: str, env: dict[str, str], cwd: Path, uv_path: str
     ) -> ExecutorDebugData:
+        if not self.log_env_in_debug:
+            env = {}
         launcher_command = f"cd {cwd} && {command}"
         return ExecutorDebugData(
             executor=str(__class__),

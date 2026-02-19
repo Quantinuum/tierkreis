@@ -22,6 +22,7 @@ class ShellExecutor:
         timeout: int = 10,
         env: dict[str, str] | None = None,
         export_values: bool = False,
+        log_env_in_debug: bool = True,
     ) -> None:
         self.launchers_path = registry_path
         self.logs_path = workflow_dir / "logs"
@@ -30,6 +31,7 @@ class ShellExecutor:
         self.export_values = export_values
         self.timeout = timeout
         self.env = env or {}
+        self.log_env_in_debug = log_env_in_debug
 
     def run(
         self,
@@ -102,6 +104,8 @@ class ShellExecutor:
     def _generate_debug_data(
         self, command: str, env: dict[str, str]
     ) -> ExecutorDebugData:
+        if not self.log_env_in_debug:
+            env = {}
         # What is the equivalent to the pip freeze here?
         return ExecutorDebugData(
             executor=str(self.__class__),

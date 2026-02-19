@@ -16,11 +16,17 @@ class StdInOut:
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
     """
 
-    def __init__(self, registry_path: Path, workflow_dir: Path) -> None:
+    def __init__(
+        self,
+        registry_path: Path,
+        workflow_dir: Path,
+        log_env_in_debug: bool = True,
+    ) -> None:
         self.launchers_path = registry_path
         self.logs_path = workflow_dir / "logs"
         self.errors_path = workflow_dir / "logs"
         self.workflow_dir = workflow_dir
+        self.log_env_in_debug = log_env_in_debug
 
     def run(
         self,
@@ -57,11 +63,15 @@ class StdInOut:
         return self._generate_debug_data(command)
 
     def _generate_debug_data(self, command: str) -> ExecutorDebugData:
+        if not self.log_env_in_debug:
+            env = {}
+        else:
+            env = {k: v for k, v in os.environ.items()}
         # What is the equivalent to the pip freeze here?
         return ExecutorDebugData(
             executor=str(self.__class__),
             launch_command=command,
-            env={k: v for k, v in os.environ.items()},
+            env=env,
         )
 
 

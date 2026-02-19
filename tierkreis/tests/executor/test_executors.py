@@ -55,6 +55,29 @@ def test_shell_executor():
     assert "main.sh" in exec_data.launch_command
 
 
+def test_suppress_env():
+    g = shell_graph()
+    storage = ControllerFileStorage(UUID(int=301), name="Shell")
+    executor = ShellExecutor(
+        WORKER_PATH,
+        workflow_dir=storage.workflow_dir,
+        env={"TEST_FLAG": "Hello"},
+        log_env_in_debug=False,
+    )
+    storage.clean_graph_files()
+    run_graph(storage, executor, g, {"value": "world"})
+    actual_output = read_outputs(g, storage)
+    assert actual_output == b'Hello "world"\n'
+    assert storage._exec_data_path(Loc()).parent.exists()
+    node_loc = Loc("-.N1")
+    data = storage.read_executor_data()
+    assert node_loc in data
+    exec_data = data[node_loc]
+    assert "TEST_FLAG" not in exec_data.env
+    assert exec_data.executor == str(executor.__class__)
+    assert "main.sh" in exec_data.launch_command
+
+
 def builtin_graph() -> GraphBuilder[TKR[bool], TKR[bool]]:
     g = GraphBuilder(TKR[bool], TKR[bool])
     g.outputs(g.task(neg(g.inputs)))
