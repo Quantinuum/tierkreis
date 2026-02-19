@@ -100,7 +100,7 @@ class GraphDataStorage(ControllerStorage):
             f"Node location {node_location} doesn't have a associate call args."
         )
 
-    def read_errors(self, node_location: Loc) -> str:
+    def read_errors(self, node_location: Loc = Loc()) -> str:
         return ""
 
     def node_has_error(self, node_location: Loc) -> bool:
