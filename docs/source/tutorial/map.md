@@ -13,9 +13,9 @@ An example of how to run several CPU intensive nodes in parallel and aggregate t
 We use an encryption function as a placeholder for a CPU intensive worker function.
 For demonstration purposes we ensure that the plaintexts are short enough (and the work factor small enough) that the graph runs in under 10s.
 
-The following worker is in the [Tierkreis GitHub repo](https://github.com/CQCL/tierkreis) at `examples/example_workers/auth_worker`:
+The following worker is in the [Tierkreis GitHub repo](https://github.com/Quantinuum/tierkreis) at `docs/source/examples/example_workers/auth_worker`:
 
-```{literalinclude} ../../../examples/example_workers/auth_worker/main.py
+```{literalinclude} ../examples/example_workers/auth_worker/src/main.py
 :language: python
 ```
 
@@ -25,7 +25,7 @@ Since this worker uses the Tierkreis Python library, we can automatically genera
 The stub files will provide us with type hints in the graph building process later on.
 
 ```{code-cell}
-!cd ../../../examples/example_workers/auth_worker && uv run main.py --stubs-path ../../../docs/source/tutorial/auth_stubs.py > /dev/null 2>&1
+!cd ../examples/example_workers/auth_worker && uv run src/main.py --stubs-path ../../../tutorial/auth_stubs.py > /dev/null 2>&1
 ```
 
 ## Writing a graph
@@ -94,7 +94,7 @@ from tierkreis.storage import FileStorage, read_outputs
 
 storage = FileStorage(UUID(int=2048), "auth_graph", do_cleanup=True)
 executor = UvExecutor(
-    registry_path=Path("../../../examples/example_workers"), logs_path=storage.logs_path
+    registry_path=Path("../examples/example_workers"), logs_path=storage.logs_path
 )
 start = time.time()
 run_graph(storage, executor, graph().data, {})

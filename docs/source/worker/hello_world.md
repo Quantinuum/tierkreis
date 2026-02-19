@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
 The complete worker file is as follows:
 
-```{literalinclude} ../../../examples/example_workers/hello_world_worker/main.py
+```{literalinclude} ../examples/example_workers/hello_world_worker/src/main.py
 :language: python
 ```
 
@@ -66,7 +66,7 @@ An example of this can be found in the examples: `error_handling_graph.py`
 Since this worker uses the Tierkreis Python library, we can automatically generate stub files using the following command.
 
 ```{code-cell}
-!cd ../../../examples/example_workers/hello_world_worker && uv run main.py --stubs-path ../../../docs/source/worker/hello_stubs.py > /dev/null 2>&1
+!cd ../examples/example_workers/hello_world_worker && uv run src/main.py --stubs-path ../../../worker/hello_stubs.py > /dev/null 2>&1
 ```
 
 ## Graph creation
@@ -101,7 +101,7 @@ from tierkreis.storage import FileStorage, read_outputs
 
 storage = FileStorage(UUID(int=99), "hello_world_tutorial", do_cleanup=True)
 executor = UvExecutor(
-    registry_path=Path("../../../examples/example_workers"), logs_path=storage.logs_path
+    registry_path=Path("../examples/example_workers"), logs_path=storage.logs_path
 )
 run_graph(storage, executor, g.data, "world!")
 read_outputs(g, storage)

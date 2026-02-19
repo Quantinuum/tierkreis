@@ -9,6 +9,7 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.storage.graphdata import GraphDataStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.app_config import Request
@@ -144,9 +145,9 @@ def get_logs(
     storage = request.app.state.get_storage_fn(workflow_id)
     try:
         logs = storage.read(storage.logs_path)
-    except (TierkreisError, NotImplementedError):
-        logs = "Logs not available."
-    return PlainTextResponse(logs)
+        return PlainTextResponse(logs)
+    except (TierkreisError, NotImplementedError):  # GraphdataStorage
+        return PlainTextResponse("Logs not available.", status_code=404)
 
 
 @router.get("/{workflow_id}/nodes/{node_location_str}/logs")
@@ -180,4 +181,6 @@ def get_errors(
 def restart(request: Request, workflow_id: UUID, node_location_str: str) -> list[Loc]:
     loc = parse_node_location(node_location_str)
     storage: ControllerStorage = request.app.state.get_storage_fn(workflow_id)
+    if isinstance(storage, GraphDataStorage):
+        return []
     return storage.restart_task(loc)

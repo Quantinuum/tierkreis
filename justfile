@@ -36,28 +36,17 @@ prod:
 	npm i
 	npm run build
 
-
-examples:
-  {{uvrun}} examples/hello_world_graph.py
-  {{uvrun}} examples/defaults.py
-  {{uvrun}} examples/error_handling_graph.py
-  {{uvrun}} examples/simulate_parallel.py
-  {{uvrun}} examples/symbolic_circuits.py
-  {{uvrun}} examples/hamiltonian_graph.py
-  {{uvrun}} examples/non_standard_tkr_dir.py
-  {{uvrun}} examples/qsci_graph.py
-  {{uvrun}} examples/scipy_graph.py
-  SER_METHOD=dumps {{uvrun}} examples/scipy_graph.py
-  SER_METHOD=tolist {{uvrun}} examples/scipy_graph.py
-  SER_METHOD=save {{uvrun}} examples/scipy_graph.py
-  {{uvrun}} examples/signing_graph.py
-
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
   uv run main.py --stubs-path ./stubs.py
 
-generate:
+stubs-generate-api dir:
+  #!/usr/bin/env bash
+  cd {{dir}}
+  uv run src/main.py --stubs-path api/stubs.py
+
+generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
   just stubs-generate 'tierkreis_workers/aer_worker'
   just stubs-generate 'tierkreis_workers/ibmq_worker'
@@ -66,18 +55,13 @@ generate:
   just stubs-generate 'tierkreis_workers/quantinuum_worker'
   just stubs-generate 'tierkreis_workers/qulacs_worker'
 
-  just stubs-generate 'examples/example_workers/error_worker'
-  just stubs-generate 'examples/example_workers/hello_world_worker'
-  just stubs-generate 'examples/example_workers/substitution_worker'
-  just stubs-generate 'examples/example_workers/chemistry_worker'
-  just stubs-generate 'examples/example_workers/qsci_worker'
-  just stubs-generate 'examples/example_workers/scipy_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/auth_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/error_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/hello_world_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/qsci_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/scipy_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/substitution_worker'
 
-  just stubs-generate 'tierkreis/tests/workers/graph'
-
-  mkdir -p examples/example_workers/aer_worker
-  mkdir -p examples/example_workers/nexus_worker
-  mkdir -p examples/example_workers/pytket_worker
   cp 'tierkreis_workers/aer_worker/stubs.py' tierkreis/tierkreis/aer_worker.py
   cp 'tierkreis_workers/ibmq_worker/stubs.py' tierkreis/tierkreis/ibmq_worker.py
   cp 'tierkreis_workers/nexus_worker/stubs.py' tierkreis/tierkreis/nexus_worker.py

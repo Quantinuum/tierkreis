@@ -68,7 +68,7 @@ def parse_args(
         help="Fully qualifying name of a Callable () -> GraphData. "
         + "Example: tierkreis.cli.sample_graph:simple_eval"
         + "Or a path to a python file and function."
-        + "Example: examples/hello_world/hello_world_graph.py:hello_graph",
+        + "Example: docs/source/examples/hello_world.py:graph",
         type=str,
     )
     parser.add_argument(

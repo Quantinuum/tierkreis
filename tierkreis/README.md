@@ -66,10 +66,10 @@ Opening [`localhost:8000`](https://localhost:8000) will open a browser window wi
 
 Tierkreis comes with a command line interface for running workflows.
 To see all available options use `tkr --help`.
-To run the hello world example from the cli
+To run the hello world example from the cli put the contents of `/docs/source/examples/hello_world.py` into `./hello_world.py` and run
 
 ```
-uv run tkr -g examples/hello_world/hello_world_graph.py:hello_graph -i data.json --uv --registry-path examples/hello_world/ -o
+uv run tkr -g hello_world.py:hello_graph -i data.json --uv --registry-path docs/source/examples/example_workers/ -o
 ```
 
 Explanation:
@@ -134,7 +134,7 @@ uv run main.py <node_definition_path>
 The command will be executed in the _registry_ directory of multiple workers which can be configured manually:
 
 ```python
-executor = UVExecutor(registry_path=Path("/example/example_workers"))
+executor = UVExecutor(registry_path=Path("/docs/source/examples/example_workers"))
 # the path to the directory where workers are stored
 ```
 

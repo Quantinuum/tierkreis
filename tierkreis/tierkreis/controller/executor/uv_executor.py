@@ -48,8 +48,7 @@ class UvExecutor:
             raise TierkreisError("uv is required to use the uv_executor")
 
         registry_path = find_registry_for_worker(launcher_name, self.registries)
-        check_and_set_launcher(registry_path, launcher_name, ".py")
-
+        worker_path = check_and_set_launcher(registry_path, launcher_name, ".py").parent
         env = os.environ.copy() | self.env.copy()
         if "VIRTUAL_ENVIRONMENT" not in env:
             env["VIRTUAL_ENVIRONMENT"] = ""
@@ -61,7 +60,7 @@ class UvExecutor:
             ["bash"],
             start_new_session=True,
             stdin=subprocess.PIPE,
-            cwd=registry_path / launcher_name,
+            cwd=worker_path,
             env=env,
         )
         proc.communicate(

@@ -13,10 +13,10 @@ dependencies = [
 
 [project.optional-dependencies]
 backend-qiskit = [
-    "pytket-qiskit",
+    "pytket-qiskit>=0.77.0",
 ]
 backend-quantinuum = [
-    "pytket-quantinuum",
+    "pytket-quantinuum>=0.57.0",
 ]
 
 
@@ -35,8 +35,6 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-pytket-qiskist = { git = "https://github.com/Quantinuum/pytket-qiskit" }
-pytket-quantinuum = { git = "https://github.com/Quantinuum/pytket-quantinuum" }
 
 [project.scripts]
 tkr_pytket_worker = "main:main"

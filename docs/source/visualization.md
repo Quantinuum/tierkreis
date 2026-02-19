@@ -35,10 +35,11 @@ Alternatively you can visualize a graph that is still under construction using t
 uv run tkr-vis-graph <PATH_TO_PYTHON_FILE>:<VARIABLE_CONTAINING_GRAPH>
 ```
 
-For example one could run the following command from the root of the Tierkreis repo.
+For example one could run the following command from the root of the Tierkreis repo
+if we have a graph `outer_g` in a file `defaults.py` (taken from ])
 
 ```bash
-uv run tkr-vis-graph examples/defaults.py:outer_g
+uv run tkr-vis-graph /defaults.py:outer_g
 ```
 
 which will show one of the examples in the Tierkreis repo as a partially constructed graph.

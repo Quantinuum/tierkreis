@@ -54,7 +54,6 @@ This is currently only available through a python script:
 # ///
 
 from pathlib import Path
-from tierkreis import Worker
 from tierkreis.namespace import Namespace
 
 

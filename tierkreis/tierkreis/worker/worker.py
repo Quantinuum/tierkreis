@@ -160,7 +160,7 @@ class Worker:
             self.storage.write_error(node_definition.error_path, str(err))
             raise TierkreisWorkerError(
                 f"Worker {self.name} encountered error when executing {node_definition.function_name}."
-            )
+            ) from err
 
     def app(self, argv: list[str]) -> None:
         """Wrapper for UV execution."""
@@ -168,7 +168,5 @@ class Worker:
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:
-            try:
-                self.run(Path(argv[1]))
-            finally:
-                logger.removeHandler(handler)
+            self.run(Path(argv[1]))
+            logger.removeHandler(handler)

@@ -5,7 +5,7 @@ description = "A tierkreis worker for compilation of quanitnuum backends."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "pytket-quantinuum>=0.54.0",
+    "pytket-quantinuum>=0.57.0",
     "qnexus==0.37.1",
     "tierkreis",
 ]

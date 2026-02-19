@@ -20,11 +20,13 @@ class ShellExecutor:
         workflow_dir: Path,
         timeout: int = 10,
         env: dict[str, str] | None = None,
+        export_values: bool = False,
     ) -> None:
         self.launchers_path = registry_path
         self.logs_path = workflow_dir / "logs"
         self.errors_path = workflow_dir / "logs"
         self.workflow_dir = workflow_dir
+        self.export_values = export_values
         self.timeout = timeout
         self.env = env or {}
 
@@ -32,10 +34,8 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        export_values: bool = False,
     ) -> None:
         launcher_path = self.launchers_path / launcher_name
-        self.errors_path = worker_call_args_path.parent / "logs"
 
         launcher_path = check_and_set_launcher(
             self.launchers_path, launcher_name, ".sh"
@@ -45,12 +45,14 @@ class ShellExecutor:
             call_args = WorkerCallArgs(**json.load(fh))
 
         env = os.environ.copy() | self.env.copy()
-        env.update(self._create_env(call_args, self.workflow_dir.parent, export_values))
+        env.update(
+            self._create_env(call_args, self.workflow_dir.parent, self.export_values)
+        )
         env["worker_call_args_file"] = str(
             self.workflow_dir.parent / worker_call_args_path
         )
         done_path = self.workflow_dir.parent / call_args.done_path
-        _error_path = self.errors_path.parent / "_error"
+        _error_path = done_path.parent / "_error"
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"

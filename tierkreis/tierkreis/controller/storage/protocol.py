@@ -194,7 +194,7 @@ class ControllerStorage(ABC):
     def read_output(self, node_location: Loc, output_name: PortID) -> bytes:
         return self.read(self._output_path(node_location, output_name))
 
-    def read_errors(self, node_location: Loc) -> str:
+    def read_errors(self, node_location: Loc = Loc()) -> str:
         if self.exists(self._worker_logs_path(node_location)):
             return self.read(self._worker_logs_path(node_location)).decode()
         if self.exists(self._error_path(node_location)):

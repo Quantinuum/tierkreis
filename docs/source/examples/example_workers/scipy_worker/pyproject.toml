@@ -1,0 +1,12 @@
+[project]
+name = "scipy-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "scipy>=1.16.3",
+    "tierkreis>=2.0.10",
+    "ruff",
+]
+
+[tool.uv.sources]
+tierkreis = { path = "../../../../../tierkreis", editable = true }

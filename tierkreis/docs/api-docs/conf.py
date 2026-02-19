@@ -20,7 +20,7 @@ html_theme = "sphinx_book_theme"
 html_title = "Tierkreis python package API documentation."
 
 html_theme_options = {
-    "repository_url": "https://github.com/CQCL/tierkreis",
+    "repository_url": "https://github.com/Quantinuum/tierkreis",
     "use_repository_button": True,
     "navigation_with_keys": True,
     "logo": {
