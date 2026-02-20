@@ -3,19 +3,21 @@ from uuid import UUID
 
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins.stubs import neg
+from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
+from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.multiple import MultipleExecutor
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.stdinout import StdInOut
 from tierkreis.controller.executor.task_executor import TaskExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
+from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.storage import read_outputs
 
 from tests.workers.hello_world_worker.stubs import greet
-
 
 WORKER_PATH = Path(__file__).parent.parent / "workers"
 
@@ -85,7 +87,7 @@ def builtin_graph() -> GraphBuilder[TKR[bool], TKR[bool]]:
 
 def test_builtin_executor():
     g = builtin_graph()
-    storage = ControllerFileStorage(UUID(int=302), name="Shell")
+    storage = ControllerFileStorage(UUID(int=302), name="Builtin")
     executor = ShellExecutor(
         Path("./python/examples/launchers"),
         workflow_dir=storage.workflow_dir,
@@ -270,3 +272,22 @@ def test_multiple_executor():
     assert "TEST_FLAG" not in exec_data.env
     assert exec_data.executor == f"{executor.__class__}:{str(second.__class__)}"
     assert "main.sh" in exec_data.launch_command
+
+
+def test_inmemory_executor():
+    g = builtin_graph()
+    storage = ControllerInMemoryStorage(UUID(int=307), name="InMemory")
+    executor = InMemoryExecutor(PACKAGE_PATH / "tierkreis", storage=storage)
+    storage.clean_graph_files()
+    run_graph(storage, executor, g, {"value": True})
+    actual_output = read_outputs(g, storage)
+    assert not actual_output
+    assert not storage._exec_data_path(
+        Loc()
+    ).parent.exists()  # in memory doesn't produce files
+    node_loc = Loc("-.N1")
+    data = storage.read_executor_data()
+    assert node_loc in data
+    exec_data = data[node_loc]
+    assert "TEST_FLAG" not in exec_data.env
+    assert exec_data.executor == str(executor.__class__)
