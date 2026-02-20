@@ -1,7 +1,7 @@
 import logging
+import sys
 from os import getenv
 from pathlib import Path
-import sys
 
 from tierkreis.consts import TKR_DATE_FMT_KEY, TKR_LOG_FMT_KEY, TKR_LOG_LEVEL_KEY
 

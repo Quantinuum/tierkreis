@@ -38,7 +38,9 @@ class ShellExecutor:
         launcher_path = self.launchers_path / launcher_name
 
         launcher_path = check_and_set_launcher(
-            self.launchers_path, launcher_name, ".sh"
+            self.launchers_path,
+            launcher_name,
+            ".sh",
         )
 
         with open(self.workflow_dir.parent / worker_call_args_path) as fh:
@@ -46,16 +48,16 @@ class ShellExecutor:
 
         env = os.environ.copy() | self.env.copy()
         env.update(
-            self._create_env(call_args, self.workflow_dir.parent, self.export_values)
+            self._create_env(call_args, self.workflow_dir.parent, self.export_values),
         )
         env["worker_call_args_file"] = str(
-            self.workflow_dir.parent / worker_call_args_path
+            self.workflow_dir.parent / worker_call_args_path,
         )
         done_path = self.workflow_dir.parent / call_args.done_path
         _error_path = done_path.parent / "_error"
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,
@@ -68,7 +70,10 @@ class ShellExecutor:
         )
 
     def _create_env(
-        self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool
+        self,
+        call_args: WorkerCallArgs,
+        base_dir: Path,
+        export_values: bool,
     ) -> dict[str, str]:
         env = {
             "checkpoints_directory": str(base_dir),

@@ -45,7 +45,8 @@ class UvExecutor:
         if uv_path is None:
             uv_path = shutil.which("uv")
         if uv_path is None:
-            raise TierkreisError("uv is required to use the uv_executor")
+            msg = "uv is required to use the uv_executor"
+            raise TierkreisError(msg)
 
         registry_path = find_registry_for_worker(launcher_name, self.registries)
         worker_path = check_and_set_launcher(registry_path, launcher_name, ".py").parent
@@ -55,7 +56,7 @@ class UvExecutor:
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         _error_path = self.errors_path.parent / "_error"
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,

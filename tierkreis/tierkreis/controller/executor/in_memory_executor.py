@@ -1,14 +1,13 @@
+import importlib.util
 import json
 import logging
-import importlib.util
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 from tierkreis.exceptions import TierkreisError
-
+from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +29,14 @@ class InMemoryExecutor:
     ) -> None:
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(
-            **json.loads(self.storage.read(worker_call_args_path))
+            **json.loads(self.storage.read(worker_call_args_path)),
         )
         launcher_path = check_and_set_launcher(self.registry_path, launcher_name, ".py")
         spec = importlib.util.spec_from_file_location("in_memory", launcher_path)
         if spec is None or spec.loader is None:
+            msg = f"Couldn't load module main.py in {self.registry_path / launcher_name}"
             raise TierkreisError(
-                f"Couldn't load module main.py in {self.registry_path / launcher_name}"
+                msg,
             )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

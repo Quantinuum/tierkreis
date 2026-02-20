@@ -1,6 +1,6 @@
 import json
-from glob import glob
 import os
+from glob import glob
 from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
@@ -23,7 +23,7 @@ class WorkerFileStorage:
 
     def read_call_args(self, path: Path) -> WorkerCallArgs:
         try:
-            with open(self.resolve(path), "r") as fh:
+            with open(self.resolve(path)) as fh:
                 return WorkerCallArgs(**json.loads(fh.read()))
         except FileNotFoundError as exc:
             raise EntryNotFound(path) from exc

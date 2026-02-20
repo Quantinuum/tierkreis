@@ -1,14 +1,14 @@
 import logging
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Callable, Protocol
+from typing import Protocol
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.commands import add_std_handlers
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
 from tierkreis.exceptions import TierkreisError
-
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +23,18 @@ class HPCExecutor(Protocol):
 
 
 def generate_script(
-    template_fn: Callable[[JobSpec], str], spec: JobSpec, path: Path
+    template_fn: Callable[[JobSpec], str],
+    spec: JobSpec,
+    path: Path,
 ) -> None:
     with open(path, "w+", encoding="utf-8") as fh:
         fh.write(template_fn(spec))
 
 
 def run_hpc_executor(
-    executor: HPCExecutor, launcher_name: str, worker_call_args_path: Path
+    executor: HPCExecutor,
+    launcher_name: str,
+    worker_call_args_path: Path,
 ) -> None:
     logger.info("START %s %s", launcher_name, worker_call_args_path)
 
@@ -40,7 +44,9 @@ def run_hpc_executor(
 
     spec.command += " " + str(worker_call_args_path)
     spec.command = add_std_handlers(
-        executor.logs_path, executor.errors_path, spec.command
+        executor.logs_path,
+        executor.errors_path,
+        spec.command,
     )
 
     submission_cmd = [executor.command]
@@ -63,7 +69,7 @@ def run_hpc_executor(
             submission_cmd,
             start_new_session=True,
             capture_output=True,
-            universal_newlines=True,
+            text=True,
         )
 
     with open(executor.logs_path, "a+") as fh:
@@ -76,8 +82,6 @@ def run_hpc_executor(
         with open(executor.errors_path, "a") as efh:
             efh.write("Error from script")
             efh.write(process.stderr)
-        print(process.stderr)
-        print("\n\npjsub script\n\n")
-        print(executor.script_fn(spec))
 
-        raise TierkreisError(f"Executor failed with return code {process.returncode}")
+        msg = f"Executor failed with return code {process.returncode}"
+        raise TierkreisError(msg)

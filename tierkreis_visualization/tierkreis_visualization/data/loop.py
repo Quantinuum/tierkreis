@@ -1,10 +1,9 @@
 from pydantic import BaseModel
+
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
-
-
 from tierkreis_visualization.data.eval import check_error
-from tierkreis_visualization.data.models import PyNode, PyEdge
+from tierkreis_visualization.data.models import PyEdge, PyNode
 from tierkreis_visualization.data.outputs import outputs_from_loc
 
 
@@ -14,7 +13,7 @@ class LoopNodeData(BaseModel):
 
 
 def get_loop_node(
-    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
+    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc],
 ) -> LoopNodeData:
     i = 0
     while storage.is_node_started(node_location.L(i + 1)):
@@ -56,7 +55,7 @@ def get_loop_node(
             started_time=storage.read_started_time(new_location) or "",
             finished_time=storage.read_finished_time(new_location) or "",
             outputs=list(outputs),
-        )
+        ),
     )
     edges = []
     for port_name in outputs:
@@ -70,6 +69,6 @@ def get_loop_node(
                     value=outputs_from_loc(storage, node_location.L(n), port_name),
                 )
                 for n in range(i)
-            ]
+            ],
         )
     return LoopNodeData(nodes=nodes, edges=edges)

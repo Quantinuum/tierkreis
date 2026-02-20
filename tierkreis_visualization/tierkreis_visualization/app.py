@@ -1,24 +1,25 @@
 import signal
 from sys import argv
+
 from tierkreis.controller.data.graph import GraphData
 from tierkreis_visualization.app_config import (
     App,
     StorageType,
-    graph_data_lifespan,
     dev_lifespan,
+    graph_data_lifespan,
 )
 from tierkreis_visualization.config import CONFIG
+from tierkreis_visualization.routers.frontend import assets
+from tierkreis_visualization.routers.frontend import router as frontend_router
+from tierkreis_visualization.routers.workflows import router as workflows_router
 from tierkreis_visualization.storage import (
     file_storage_fn,
     from_graph_data_storage_fn,
     graph_data_storage_fn,
 )
-from tierkreis_visualization.routers.frontend import assets
-from tierkreis_visualization.routers.workflows import router as workflows_router
-from tierkreis_visualization.routers.frontend import router as frontend_router
 
 
-def transform_to_sigkill(signum, frame):
+def transform_to_sigkill(signum, frame) -> None:
     signal.raise_signal(signal.SIGKILL)
 
 

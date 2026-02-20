@@ -5,7 +5,7 @@ import uvicorn
 
 def start() -> None:
     uvicorn.run(
-        "tierkreis_visualization.app:get_filestorage_app", timeout_graceful_shutdown=10
+        "tierkreis_visualization.app:get_filestorage_app", timeout_graceful_shutdown=10,
     )
 
 
@@ -27,8 +27,8 @@ def graph(argv_index: int = 1) -> None:
 
 
 def openapi() -> None:
-    from tierkreis_visualization.openapi import generate_openapi
     from tierkreis_visualization.app import get_filestorage_app
+    from tierkreis_visualization.openapi import generate_openapi
 
     generate_openapi(get_filestorage_app())
 

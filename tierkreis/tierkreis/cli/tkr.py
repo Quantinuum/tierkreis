@@ -2,8 +2,8 @@ import argparse
 import logging
 import sys
 
-from tierkreis.cli.run import TierkreisRunCli
 from tierkreis.cli.project import TierkreisInitCli
+from tierkreis.cli.run import TierkreisRunCli
 
 
 def main() -> None:
@@ -21,7 +21,7 @@ def main() -> None:
     except ImportError:
         logging.warning("Could not import Tierkreis Visualization CLI")
         logging.warning(
-            "To install it, please run 'pip install tierkreis-visualization'"
+            "To install it, please run 'pip install tierkreis-visualization'",
         )
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
     args.func(args)

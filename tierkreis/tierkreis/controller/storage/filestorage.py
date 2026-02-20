@@ -36,7 +36,7 @@ class ControllerFileStorage(ControllerStorage):
         return path.exists()
 
     def list_subpaths(self, path: Path) -> list[Path]:
-        return [sub_path for sub_path in path.iterdir()]
+        return list(path.iterdir())
 
     def link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)

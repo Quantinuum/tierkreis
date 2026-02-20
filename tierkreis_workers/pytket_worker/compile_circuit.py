@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from enum import Enum, auto
-from typing import Sequence, assert_never
+from typing import assert_never
 
 from pytket._tket.circuit import Circuit
 from pytket.architecture import Architecture, FullyConnected
@@ -11,10 +12,10 @@ from pytket.passes import (
     BasePass,
     CliffordSimp,
     DecomposeBoxes,
+    FullMappingPass,
     FullPeepholeOptimise,
     GreedyPauliSimp,
     KAKDecomposition,
-    FullMappingPass,
     RemoveBarriers,
     RemoveRedundancies,
     SequencePass,
@@ -22,6 +23,7 @@ from pytket.passes import (
 )
 from pytket.placement import GraphPlacement
 from pytket.qasm.qasm import circuit_from_qasm_str, circuit_to_qasm_str
+
 from tierkreis.exceptions import TierkreisError
 
 
@@ -95,23 +97,27 @@ def compile_circuit(
         if input_format == CircuitFormat.QASM2:
             circuit = circuit_from_qasm_str(circuit)
         else:
-            raise TierkreisError("Invalid combination of input type and format.")
+            msg = "Invalid combination of input type and format."
+            raise TierkreisError(msg)
     if isinstance(circuit, bytes):
         if input_format == CircuitFormat.QIR:
             try:
                 from pytket_qirpass import qir_to_pytket
             except ModuleNotFoundError:
-                raise TierkreisError("Could not resolve pytket_qirpass")
+                msg = "Could not resolve pytket_qirpass"
+                raise TierkreisError(msg)
             circuit = qir_to_pytket(circuit)
         else:
-            raise TierkreisError("Invalid combination of input type and format.")
+            msg = "Invalid combination of input type and format."
+            raise TierkreisError(msg)
 
     assert isinstance(circuit, Circuit)
     qubits: set[int] = set()
     if coupling_map is not None:
-        qubits = set([q for pair in coupling_map for q in pair])
+        qubits = {q for pair in coupling_map for q in pair}
         if len(qubits) < len(circuit.qubits):
-            raise TierkreisError("Circuit does not fit on device.")
+            msg = "Circuit does not fit on device."
+            raise TierkreisError(msg)
         arch = Architecture(coupling_map)
     else:
         arch = FullyConnected(len(qubits))
@@ -130,10 +136,12 @@ def compile_circuit(
             try:
                 from pytket.qir.conversion.api import pytket_to_qir
             except ModuleNotFoundError:
-                raise TierkreisError("Could not resolve pytket_qirpass")
+                msg = "Could not resolve pytket_qirpass"
+                raise TierkreisError(msg)
             ret = pytket_to_qir(circuit)
             if ret is None:
-                raise TierkreisError("Could not transform circuit to QIR.")
+                msg = "Could not transform circuit to QIR."
+                raise TierkreisError(msg)
             return ret
         case _:
             assert_never()
@@ -185,11 +193,11 @@ def _default_pass(
                     OpType.XXPhase,
                     OpType.YYPhase,
                     OpType.PhasedX,
-                }
+                },
             ),
         )
         passlist.append(
-            GreedyPauliSimp(thread_timeout=300, only_reduce=True, trials=10)
+            GreedyPauliSimp(thread_timeout=300, only_reduce=True, trials=10),
         )
     assert arch is not None
     if not isinstance(arch, FullyConnected):
@@ -201,7 +209,7 @@ def _default_pass(
                 arch,
                 GraphPlacement(arch),
                 [LexiLabellingMethod(), LexiRouteRoutingMethod(10)],
-            )
+            ),
         )
     if optimization_level == 1:
         passlist.append(SynthesiseTket())
@@ -211,7 +219,7 @@ def _default_pass(
                 KAKDecomposition(allow_swaps=False),
                 CliffordSimp(False),
                 SynthesiseTket(),
-            ]
+            ],
         )
     if optimization_level == 3:  # noqa: PLR2004
         passlist.append(SynthesiseTket())
@@ -220,6 +228,6 @@ def _default_pass(
             AutoRebase(primitive_gates),
             AutoSquash(primitive_1q_gates),
             RemoveRedundancies(),
-        ]
+        ],
     )
     return SequencePass(passlist)

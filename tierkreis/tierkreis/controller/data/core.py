@@ -1,8 +1,8 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import (
     Annotated,
     Any,
-    Callable,
     Literal,
     NamedTuple,
     Protocol,
@@ -11,7 +11,6 @@ from typing import (
     get_origin,
     runtime_checkable,
 )
-
 
 PortID = str
 NodeIndex = int
@@ -49,6 +48,7 @@ def get_t_from_args[T](t: type[T], hint: type | None) -> T | None:
     for arg in get_args(hint):
         if isinstance(arg, t):
             return arg
+    return None
 
 
 def get_serializer(hint: type | None):

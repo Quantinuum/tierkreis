@@ -11,7 +11,6 @@ from tierkreis.controller.storage.in_memory import (
 )
 from tierkreis.exceptions import TierkreisError
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,13 +38,13 @@ class InMemoryWorkerStorage:
         self.controller_storage.files[path] = InMemoryFileData(value)
 
     def glob(self, path_string: str) -> list[str]:
-        files = [str(x) for x in self.controller_storage.files.keys()]
-        matching = fnmatch.filter(files, path_string)
-        return matching
+        files = [str(x) for x in self.controller_storage.files]
+        return fnmatch.filter(files, path_string)
 
     def mark_done(self, path: Path) -> None:
         self.controller_storage.touch(path)
 
     def write_error(self, path: Path, error_logs: str) -> None:
         logger.error(error_logs)
-        raise TierkreisError("Error occured when running graph in-memory.")
+        msg = "Error occured when running graph in-memory."
+        raise TierkreisError(msg)

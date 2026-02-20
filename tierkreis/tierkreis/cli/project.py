@@ -1,13 +1,12 @@
 import argparse
 import os
-from pathlib import Path
-import subprocess
 import shutil
-
+import subprocess
+from pathlib import Path
 
 from tierkreis.cli.templates import (
-    external_worker_idl,
     default_graph,
+    external_worker_idl,
     python_worker_main,
     python_worker_pyproject,
     python_worker_workspace_pyproject,
@@ -42,7 +41,7 @@ def parse_args(
         "--project-directory",
         help="Sets the default project directory. ",
         type=Path,
-        default=Path("."),
+        default=Path(),
     )
     project.add_argument(
         "--worker-directory",
@@ -72,7 +71,11 @@ def parse_args(
         action="store_true",
     )
     worker.add_argument(
-        "-n", "--name", required=True, help="The name of the new worker", type=str
+        "-n",
+        "--name",
+        required=True,
+        help="The name of the new worker",
+        type=str,
     )
     stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with UV.")
     stubs.add_argument(
@@ -120,7 +123,8 @@ def _gen_worker(worker_name: str, worker_dir: Path, external: bool = False) -> N
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
-        raise TierkreisError("uv is required to use this feature.")
+        msg = "uv is required to use this feature."
+        raise TierkreisError(msg)
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
@@ -129,7 +133,8 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             namespace.write_stubs(idl.parent / stubs_name)
         else:
             subprocess.run(
-                [uv_path, "run", "src/main.py", "--stubs-path", stubs_name], cwd=worker
+                [uv_path, "run", "src/main.py", "--stubs-path", stubs_name],
+                cwd=worker,
             )
 
 
@@ -149,16 +154,6 @@ def run_args(args: argparse.Namespace) -> None:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
         _gen_stubs(worker_dir, "./api/api.py")
-        print(f"""Successfully generated project in '{args.project_directory}'.
-              
-To run the sample graph use "python -m tkr.graphs.main".
-Or import the function into a top level script with:
-              
-from tkr.graphs.main import main
-main()
-              
-It is highly recommended to add this to your project definition e.g. pyproject.toml.
-""")
     elif args.init_type == "worker":
         Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
         _gen_worker(args.name, Path(args.worker_directory), args.external)

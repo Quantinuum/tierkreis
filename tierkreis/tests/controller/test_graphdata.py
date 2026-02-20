@@ -1,9 +1,10 @@
 import pytest
-from tierkreis.exceptions import TierkreisError
+
 from tierkreis.controller.data.graph import GraphData
+from tierkreis.exceptions import TierkreisError
 
 
-def test_only_one_output():
+def test_only_one_output() -> None:
     with pytest.raises(TierkreisError):
         g = GraphData()
         g.output({"one": g.const(1)})

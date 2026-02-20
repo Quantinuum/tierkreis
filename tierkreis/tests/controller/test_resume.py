@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Type
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -169,15 +169,15 @@ storage_ids = ["FileStorage", "In-memory"]
 
 
 @pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
-@pytest.mark.parametrize("graph,output,name,id,inputs", params, ids=ids)
+@pytest.mark.parametrize(("graph", "output", "name", "id", "inputs"), params, ids=ids)
 def test_resume(
-    storage_class: Type[ControllerFileStorage | ControllerInMemoryStorage],
+    storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
     graph: GraphData,
     output: Any,
     name: str,
     id: int,
     inputs: dict[str, PType] | PType,
-):
+) -> None:
     g = graph
     storage = storage_class(UUID(int=id), name=name)
     test_workers_path = Path(__file__).parent.parent / "test_workers"
@@ -206,11 +206,17 @@ with_worker_ids = ["eval_body_is_from_worker"]
 
 
 @pytest.mark.parametrize(
-    "graph,output,name,id,inputs", with_worker_params, ids=with_worker_ids
+    ("graph", "output", "name", "id", "inputs"),
+    with_worker_params,
+    ids=with_worker_ids,
 )
 def test_resume_with_worker(
-    graph: GraphData, output: Any, name: str, id: int, inputs: dict[str, PType] | PType
-):
+    graph: GraphData,
+    output: Any,
+    name: str,
+    id: int,
+    inputs: dict[str, PType] | PType,
+) -> None:
     g = graph
     storage = ControllerFileStorage(UUID(int=id), name=name)
     test_workers_path = Path(__file__).parent.parent / "workers"

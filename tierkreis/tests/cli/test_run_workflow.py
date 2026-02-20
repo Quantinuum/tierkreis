@@ -1,17 +1,17 @@
-import pytest
 import json
 from pathlib import Path
-from uuid import UUID
 from unittest import mock
+from uuid import UUID
 
+import pytest
 
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.cli.run_workflow import run_workflow
 from tests.controller.sample_graphdata import simple_eval
+from tierkreis.cli.run_workflow import run_workflow
+from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import ptype_from_bytes
 
 
-@pytest.fixture()
+@pytest.fixture
 def graph() -> GraphData:
     return simple_eval()
 
@@ -62,5 +62,5 @@ def test_run_workflow_uv_executor(graph: GraphData) -> None:
         graph=graph,
         run_id=31415,
         use_uv_worker=True,
-        registry_path=Path("."),
+        registry_path=Path(),
     )

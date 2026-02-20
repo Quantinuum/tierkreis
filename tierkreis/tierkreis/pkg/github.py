@@ -1,6 +1,7 @@
+import subprocess
 from os import symlink
 from pathlib import Path
-import subprocess
+
 from tierkreis.consts import WORKER_CACHE
 from tierkreis.pkg.base import TKRDependency
 
@@ -18,8 +19,11 @@ class GitHubDependency(TKRDependency):
         return worker_cache / "github" / self.account / self.repo / self.branch
 
     def install(
-        self, worker_name: str, target_dir: Path, worker_cache: Path = WORKER_CACHE
-    ):
+        self,
+        worker_name: str,
+        target_dir: Path,
+        worker_cache: Path = WORKER_CACHE,
+    ) -> None:
         cache_dir = self.cache_subdir(worker_cache)
         cache_dir.mkdir(exist_ok=True, parents=True)
 

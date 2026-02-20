@@ -1,7 +1,9 @@
-import pytest
 from pathlib import Path
 from uuid import UUID
 
+import pytest
+
+from tests.errors.failing_worker.stubs import exit_code_1, fail, wont_fail
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.core import EmptyModel
@@ -9,7 +11,6 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tests.errors.failing_worker.stubs import fail, wont_fail, exit_code_1
 from tierkreis.exceptions import TierkreisError
 
 

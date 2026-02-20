@@ -7,17 +7,16 @@ from pytket.passes import (
     BasePass,
     CliffordSimp,
     DecomposeBoxes,
+    FullMappingPass,
     FullPeepholeOptimise,
     GreedyPauliSimp,
     KAKDecomposition,
-    FullMappingPass,
     RemoveBarriers,
     RemoveRedundancies,
     SequencePass,
     SynthesiseTket,
 )
 from pytket.placement import GraphPlacement
-
 
 IBMQ_GATE_SET: set[OpType] = {
     OpType.Rx,
@@ -100,11 +99,11 @@ def default_compilation_pass(
                     OpType.XXPhase,
                     OpType.YYPhase,
                     OpType.PhasedX,
-                }
+                },
             ),
         )
         passlist.append(
-            GreedyPauliSimp(thread_timeout=300, only_reduce=True, trials=10)
+            GreedyPauliSimp(thread_timeout=300, only_reduce=True, trials=10),
         )
     assert arch is not None
     if not isinstance(arch, FullyConnected):
@@ -115,7 +114,7 @@ def default_compilation_pass(
                 arch,
                 GraphPlacement(arch),
                 [LexiLabellingMethod(), LexiRouteRoutingMethod(10)],
-            )
+            ),
         )
     if optimization_level == 1:
         passlist.append(SynthesiseTket())
@@ -125,7 +124,7 @@ def default_compilation_pass(
                 KAKDecomposition(allow_swaps=False),
                 CliffordSimp(False),
                 SynthesiseTket(),
-            ]
+            ],
         )
     if optimization_level == 3:  # noqa: PLR2004
         passlist.append(SynthesiseTket())
@@ -134,6 +133,6 @@ def default_compilation_pass(
             AutoRebase(primitive_gates),
             AutoSquash(primitive_1q_gates),
             RemoveRedundancies(),
-        ]
+        ],
     )
     return SequencePass(passlist)

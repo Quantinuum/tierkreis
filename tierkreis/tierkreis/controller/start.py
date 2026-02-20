@@ -3,8 +3,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-from typing_extensions import assert_never
+from typing import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller.data.core import PortID
@@ -68,7 +67,8 @@ def start(
 
     parent = node_location.parent()
     if parent is None:
-        raise TierkreisError(f"{node.type} node must have parent Loc.")
+        msg = f"{node.type} node must have parent Loc."
+        raise TierkreisError(msg)
 
     ins = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
 
@@ -78,12 +78,16 @@ def start(
         launcher_name = ".".join(name.split(".")[:-1])
         name = name.split(".")[-1]
         call_args_path = storage.write_worker_call_args(
-            node_location, name, ins, output_list
+            node_location,
+            name,
+            ins,
+            output_list,
         )
         logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
 
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
-            executor, InMemoryExecutor
+            executor,
+            InMemoryExecutor,
         ):
             executor.run(launcher_name, call_args_path)
         elif launcher_name == "builtins":
@@ -150,7 +154,9 @@ def start(
                 else:
                     eval_inputs[k] = (i, port)
             pipe_inputs_to_output_location(
-                storage, node_location.M(idx).N(-1), eval_inputs
+                storage,
+                node_location.M(idx).N(-1),
+                eval_inputs,
             )
             # Necessary in the node visualization
             storage.write_node_def(
@@ -158,10 +164,7 @@ def start(
                 Eval((-1, "body"), node.inputs, outputs=node.outputs),
             )
 
-    elif node.type == "ifelse":
-        pass
-
-    elif node.type == "eifelse":
+    elif node.type in {"ifelse", "eifelse"}:
         pass
     else:
         assert_never(node)

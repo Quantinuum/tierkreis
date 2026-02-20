@@ -63,7 +63,8 @@ members = [{'\n    "src",' if not external else ""}
 
 
 def python_worker_pyproject(
-    worker_name: str, kind: Literal["api", "src"] = "api"
+    worker_name: str,
+    kind: Literal["api", "src"] = "api",
 ) -> str:
     worker_name = worker_name.replace("_", "-")
     template = f"""[project]
@@ -97,7 +98,7 @@ def external_worker_idl(worker_name: str) -> str:
     return f"""model YourModel {{
         value: int
 }}
-    
+
 interface {worker_name} {{
     your_function(value: int): YourModel;
 }}
@@ -110,7 +111,7 @@ def default_graph(worker_name: str) -> str:
     return f"""from typing import NamedTuple
 from pathlib import Path
 from uuid import UUID
-    
+
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.models import TKR, OpaqueType
@@ -126,13 +127,13 @@ class GraphInputs(NamedTuple):
 class GraphOutputs(NamedTuple):
     value: TKR[int]
 
-    
+
 def your_graph() -> GraphBuilder[GraphInputs, GraphOutputs]:
     g = GraphBuilder(GraphInputs, GraphOutputs)
     out = g.task(your_worker_task(g.inputs.value))
     g.outputs(GraphOutputs(value=out))
     return g
-    
+
 def main() -> None:
     graph = your_graph()
     storage = FileStorage(workflow_id=UUID(int=12345), name="your_graph")

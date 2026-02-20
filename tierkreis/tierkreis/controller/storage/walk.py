@@ -47,7 +47,10 @@ def unfinished_results(
 
 
 def walk_node(
-    storage: ControllerStorage, parent: Loc, idx: NodeIndex, graph: GraphData
+    storage: ControllerStorage,
+    parent: Loc,
+    idx: NodeIndex,
+    graph: GraphData,
 ) -> WalkResult:
     """Should only be called when a node has not finished."""
     loc = parent.N(idx)
@@ -92,8 +95,7 @@ def walk_node(
                 storage.link_outputs(loc, Labels.VALUE, next_loc, next_node[1])
                 storage.mark_node_finished(loc)
                 return WalkResult([], [])
-            else:
-                return walk_node(storage, parent, next_node[0], graph)
+            return walk_node(storage, parent, next_node[0], graph)
 
         case "eifelse":
             return walk_eifelse(storage, parent, idx, node)
@@ -108,7 +110,10 @@ def walk_node(
 
 
 def walk_loop(
-    storage: ControllerStorage, parent: Loc, idx: NodeIndex, loop: Loop
+    storage: ControllerStorage,
+    parent: Loc,
+    idx: NodeIndex,
+    loop: Loop,
 ) -> WalkResult:
     loc = parent.N(idx)
     if storage.is_node_finished(loc):
@@ -125,7 +130,8 @@ def walk_loop(
 
     # Latest iteration is finished. Do we BREAK or CONTINUE?
     should_continue = ptype_from_bytes(
-        storage.read_output(new_location, loop.continue_port), bool
+        storage.read_output(new_location, loop.continue_port),
+        bool,
     )
     if should_continue is False:
         for k in loop_outputs:
@@ -133,7 +139,7 @@ def walk_loop(
         storage.mark_node_finished(loc)
         return WalkResult([], [])
 
-    ins = {k: (-1, k) for k in loop.inputs.keys()}
+    ins = {k: (-1, k) for k in loop.inputs}
     ins.update(loop_outputs)
     node_run_data = NodeRunData(
         loc.L(new_location.peek_index() + 1),
@@ -144,7 +150,10 @@ def walk_loop(
 
 
 def walk_map(
-    storage: ControllerStorage, parent: Loc, idx: NodeIndex, map: Map
+    storage: ControllerStorage,
+    parent: Loc,
+    idx: NodeIndex,
+    map: Map,
 ) -> WalkResult:
     loc = parent.N(idx)
     result = WalkResult([], [])
@@ -163,7 +172,7 @@ def walk_map(
 
     map_outputs = g.nodes[g.output_idx()].inputs
     for i, j in map_eles:
-        for output in map_outputs.keys():
+        for output in map_outputs:
             storage.link_outputs(loc, f"{output}-{j}", loc.M(i), output)
 
     storage.mark_node_finished(loc)

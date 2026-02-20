@@ -7,10 +7,8 @@ as well as an extra decorator @portmapping.
 """
 
 from tierkreis.idl.models import Interface, Method, Model, TypedArg
-
 from tierkreis.idl.parser import lit, seq
 from tierkreis.idl.type_symbols import generic_t, ident, type_symbol
-
 
 type_decl = ((ident << lit(":")) & type_symbol).map(lambda x: TypedArg(*x))
 model = seq(

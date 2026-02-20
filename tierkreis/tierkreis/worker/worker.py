@@ -1,7 +1,8 @@
-from inspect import Signature, signature
 import logging
+from collections.abc import Callable
+from inspect import Signature, signature
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
@@ -74,7 +75,9 @@ class Worker:
             self.storage = storage
 
     def _load_args(
-        self, f: WorkerFunction, inputs: dict[str, Path]
+        self,
+        f: WorkerFunction,
+        inputs: dict[str, Path],
     ) -> dict[str, PType]:
         bs: dict[str, bytes] = {}
         for k, p in inputs.items():
@@ -82,18 +85,23 @@ class Worker:
                 bs[k] = self.storage.read_input(p)
             except EntryNotFound:
                 if not has_default(self.types[f.__name__].parameters[k]):
-                    raise TierkreisError(f"Input {k} not found at {p}.")
+                    msg = f"Input {k} not found at {p}."
+                    raise TierkreisError(msg)
 
         args = {}
         for k, b in bs.items():
             args[k] = ptype_from_bytes(
-                b, self.types[f.__name__].parameters[k].annotation
+                b,
+                self.types[f.__name__].parameters[k].annotation,
             )
         return args
 
     def _save_results(
-        self, f: WorkerFunction, outputs: dict[PortID, Path], results: PModel
-    ):
+        self,
+        f: WorkerFunction,
+        outputs: dict[PortID, Path],
+        results: PModel,
+    ) -> None:
         d = dict_from_pmodel(results)
         ret = annotations_from_pmodel(signature(f).return_annotation)
         for result_name, path in outputs.items():
@@ -109,7 +117,7 @@ class Worker:
         """Registers a python function as a primitive task with the worker."""
 
         def function_decorator(func: PrimitiveTask) -> None:
-            def wrapper(args: WorkerCallArgs):
+            def wrapper(args: WorkerCallArgs) -> None:
                 func(args, self.storage)
 
             self.functions[func.__name__] = wrapper
@@ -123,7 +131,7 @@ class Worker:
             self.namespace.add_function(func)
             self.add_types(func)
 
-            def wrapper(node_definition: WorkerCallArgs):
+            def wrapper(node_definition: WorkerCallArgs) -> None:
                 kwargs = self._load_args(func, node_definition.inputs)
                 results = func(**kwargs)
                 self._save_results(func, node_definition.outputs, results)
@@ -146,8 +154,9 @@ class Worker:
         try:
             function = self.functions.get(node_definition.function_name, None)
             if function is None:
+                msg = f"{self.name}: function name {node_definition.function_name} not found"
                 raise TierkreisError(
-                    f"{self.name}: function name {node_definition.function_name} not found"
+                    msg,
                 )
             logger.info(f"running: {node_definition.function_name} in {self.name}")
 
@@ -156,10 +165,11 @@ class Worker:
             self.storage.mark_done(node_definition.done_path)
 
         except Exception as err:
-            logger.error("encountered error", exc_info=err)
+            logger.exception("encountered error", exc_info=err)
             self.storage.write_error(node_definition.error_path, str(err))
+            msg = f"Worker {self.name} encountered error when executing {node_definition.function_name}."
             raise TierkreisWorkerError(
-                f"Worker {self.name} encountered error when executing {node_definition.function_name}."
+                msg,
             ) from err
 
     def app(self, argv: list[str]) -> None:

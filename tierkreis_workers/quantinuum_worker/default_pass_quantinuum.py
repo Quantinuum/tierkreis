@@ -1,19 +1,19 @@
+from pytket.circuit import OpType
 from pytket.passes import (
-    BasePass,
     AutoRebase,
     AutoSquash,
+    BasePass,
     DecomposeBoxes,
     DecomposeTK2,
     FlattenRelabelRegistersPass,
+    GreedyPauliSimp,
     NormaliseTK2,
+    RemoveBarriers,
     RemovePhaseOps,
     RemoveRedundancies,
     SequencePass,
-    RemoveBarriers,
-    GreedyPauliSimp,
 )
 from pytket.passes.resizeregpass import scratch_reg_resize_pass
-from pytket.circuit import OpType
 
 
 def _gate_set() -> set[OpType]:
@@ -66,7 +66,7 @@ def default_compilation_pass() -> BasePass:
                     OpType.XXPhase,
                     OpType.YYPhase,
                     OpType.PhasedX,
-                }
+                },
             ),
             GreedyPauliSimp(
                 allow_zzphase=True,
@@ -74,7 +74,7 @@ def default_compilation_pass() -> BasePass:
                 thread_timeout=300,
                 trials=10,
             ),
-        ]
+        ],
     )
     passlist.extend(decomposition_passes)
     rebase_pass = AutoRebase(
@@ -87,7 +87,7 @@ def default_compilation_pass() -> BasePass:
             RemoveRedundancies(),
             squash,
             RemoveRedundancies(),
-        ]
+        ],
     )
     passlist.append(RemovePhaseOps())
     passlist.append(FlattenRelabelRegistersPass("q"))

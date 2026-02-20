@@ -1,17 +1,17 @@
 import json
-import pytest
 import sys
 from pathlib import Path
 from unittest import mock
 from uuid import UUID
 
-from tierkreis.cli.run import load_graph, _load_inputs
+import pytest
+
+from tests.controller.sample_graphdata import simple_eval
+from tierkreis.cli.run import _load_inputs, load_graph
 from tierkreis.cli.tkr import main
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.exceptions import TierkreisError
-
-from tests.controller.sample_graphdata import simple_eval
 
 simple_eval_graph = simple_eval()
 
@@ -21,7 +21,7 @@ graph_params = [
 ]
 
 
-@pytest.mark.parametrize("input,graph", graph_params, ids=["load_module", "load_file"])
+@pytest.mark.parametrize(("input", "graph"), graph_params, ids=["load_module", "load_file"])
 def test_load_graph(input: str, graph: GraphData) -> None:
     assert load_graph(input) == graph
 
@@ -56,7 +56,9 @@ input_params = [
 
 
 @pytest.mark.parametrize(
-    "input,result", input_params, ids=["json_input", "binary_input"]
+    ("input", "result"),
+    input_params,
+    ids=["json_input", "binary_input"],
 )
 def test_load_inputs(input: list[str], result: dict[str, PType]) -> None:
     assert _load_inputs(input) == result
@@ -92,25 +94,20 @@ default_args = [
 
 cli_params = [
     (
-        default_args + ["-f", "tierkreis/tests/cli/data/sample_graph"],
+        [*default_args, "-f", "tierkreis/tests/cli/data/sample_graph"],
         {"simple_eval_output": 12},
     ),
     (
-        default_args
-        + [
-            "-g",
-            "tests.controller.sample_graphdata:factorial",
-            "-i",
-            "n:tierkreis/tests/cli/data/n",
-            "factorial:tierkreis/tests/cli/data/factorial",
-        ],
+        [*default_args, "-g", "tests.controller.sample_graphdata:factorial", "-i", "n:tierkreis/tests/cli/data/n", "factorial:tierkreis/tests/cli/data/factorial"],
         {"factorial_output": 120},
     ),
 ]
 
 
 @pytest.mark.parametrize(
-    "args,result", cli_params, ids=["simple_eval_cli", "factorial_cli"]
+    ("args", "result"),
+    cli_params,
+    ids=["simple_eval_cli", "factorial_cli"],
 )
 def test_end_to_end(args: list[str], result: dict[str, bytes]) -> None:
     with mock.patch.object(sys, "argv", args):

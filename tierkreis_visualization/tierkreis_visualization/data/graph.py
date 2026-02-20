@@ -1,5 +1,7 @@
 from typing import assert_never
+
 from fastapi import HTTPException
+
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.data.eval import get_eval_node
@@ -40,7 +42,7 @@ def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
 
         case "function" | "const" | "ifelse" | "eifelse" | "input" | "output":
             raise HTTPException(
-                400, detail="Only eval, loop and map nodes return a graph."
+                400, detail="Only eval, loop and map nodes return a graph.",
             )
 
         case _:

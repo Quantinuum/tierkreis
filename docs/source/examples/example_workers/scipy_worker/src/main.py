@@ -3,6 +3,7 @@ import os
 import pickle
 from sys import argv
 from typing import Annotated, NamedTuple
+
 import numpy as np
 
 from tierkreis.controller.data.core import Deserializer, Serializer

@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def unfinished_inputs(
-    storage: ControllerStorage, loc: Loc, node: NodeDef
+    storage: ControllerStorage,
+    loc: Loc,
+    node: NodeDef,
 ) -> list[ValueRef]:
     # ifelse is lazy: only wait for pred before starting
     ins = [node.pred] if node.type == "ifelse" else in_edges(node).values()

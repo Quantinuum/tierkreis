@@ -8,20 +8,23 @@ logger = logging.getLogger(__name__)
 
 
 def check_and_set_launcher(
-    launcher_path: Path, launcher_name: str, suffix: Literal[".sh", ".py"]
+    launcher_path: Path,
+    launcher_name: str,
+    suffix: Literal[".sh", ".py"],
 ) -> Path:
     try:
         path = _exists(launcher_path, launcher_name, suffix)
         logger.warning(
-            "Placing the launcher in the root directory is deprecated.\n Please move it to a 'src' subdirectory."
+            "Placing the launcher in the root directory is deprecated.\n Please move it to a 'src' subdirectory.",
         )
         return path
     except TierkreisError as e:
         try:
             return _exists(launcher_path, launcher_name, suffix, add_src=True)
         except TierkreisError as ef:
+            msg = f"Launcher '{launcher_name}' not found in '{launcher_path}' or '{launcher_path}/src'."
             raise ExceptionGroup(
-                f"Launcher '{launcher_name}' not found in '{launcher_path}' or '{launcher_path}/src'.",
+                msg,
                 [e, ef],
             ) from ef
 
@@ -36,14 +39,17 @@ def _exists(
     if add_src:
         launcher_path = launcher_path / "src"
     if not launcher_path.exists():
-        raise TierkreisError(f"Launcher not found: {launcher_name}.")
+        msg = f"Launcher not found: {launcher_name}."
+        raise TierkreisError(msg)
 
     if launcher_path.is_dir() and not (launcher_path / f"main{suffix}").exists():
-        raise TierkreisError(f"Expected launcher file. Got {launcher_path}.")
+        msg = f"Expected launcher file. Got {launcher_path}."
+        raise TierkreisError(msg)
 
     if launcher_path.is_dir() and not (launcher_path / f"main{suffix}").is_file():
+        msg = f"Expected launcher file. Got {launcher_path}/main{suffix}"
         raise TierkreisError(
-            f"Expected launcher file. Got {launcher_path}/main{suffix}"
+            msg,
         )
     if launcher_path.is_dir() and (launcher_path / f"main{suffix}").is_file():
         launcher_path = launcher_path / f"main{suffix}"

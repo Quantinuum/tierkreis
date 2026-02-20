@@ -1,6 +1,9 @@
 from pathlib import Path
 from uuid import UUID
+
 import pytest
+
+from tests.executor.stubs import mpi_rank_info
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
@@ -12,8 +15,6 @@ from tierkreis.controller.executor.hpc.job_spec import (
 )
 from tierkreis.controller.executor.hpc.slurm import SLURMExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
-
-from tests.executor.stubs import mpi_rank_info
 from tierkreis.storage import read_outputs
 
 
@@ -47,7 +48,7 @@ def test_slurm_with_mpi() -> None:
         do_cleanup=True,
     )
     sbatch = str(
-        Path(__file__).parent.parent.parent.parent / "infra/slurm_local/sbatch"
+        Path(__file__).parent.parent.parent.parent / "infra/slurm_local/sbatch",
     )
     executor = SLURMExecutor(
         spec=job_spec(),

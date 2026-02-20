@@ -1,8 +1,8 @@
 from typing import NamedTuple
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.controller.data.models import TKR
 from tierkreis.builtins.stubs import tkr_range
+from tierkreis.controller.data.models import TKR
 
 
 class Inputs(NamedTuple):

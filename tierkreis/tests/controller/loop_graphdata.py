@@ -1,7 +1,8 @@
 from typing import NamedTuple
+
 import tierkreis.builtins.stubs as tkr_builtins
-from tierkreis.controller.data.core import EmptyModel
 from tierkreis.builder import GraphBuilder
+from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import TKR
 
@@ -30,7 +31,7 @@ def _loop_body_multiple_acc_untyped() -> GraphData:
             "acc1": new_acc,
             "acc2": new_acc2,
             "acc3": new_acc3,
-        }
+        },
     )
 
     return g

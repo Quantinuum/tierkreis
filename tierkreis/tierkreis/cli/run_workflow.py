@@ -1,13 +1,13 @@
-from pathlib import Path
-import uuid
 import logging
+import uuid
+from pathlib import Path
 
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
+from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.storage import read_outputs
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,7 @@ def run_workflow(
 ) -> None:
     """Run a workflow."""
     logger.setLevel(log_level)
-    if run_id is None:
-        workflow_id = uuid.uuid4()
-    else:
-        workflow_id = uuid.UUID(int=run_id)
+    workflow_id = uuid.uuid4() if run_id is None else uuid.UUID(int=run_id)
     logger.info("Workflow ID is %s", workflow_id)
     storage = ControllerFileStorage(workflow_id, name=name, do_cleanup=True)
     if registry_path is None:
@@ -51,5 +48,4 @@ def run_workflow(
         polling_interval_seconds,
     )
     if print_output:
-        res = read_outputs(graph, storage)
-        print(res)
+        read_outputs(graph, storage)

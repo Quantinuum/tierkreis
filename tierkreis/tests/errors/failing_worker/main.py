@@ -1,5 +1,6 @@
 import logging
-from sys import argv
+from sys import argv, exit
+
 from tierkreis import Worker
 
 logger = logging.getLogger(__name__)
@@ -9,7 +10,8 @@ worker = Worker("failing_worker")
 @worker.task()
 def fail() -> int:
     logger.error("Raising an error now...")
-    raise ValueError("Worker failed!")
+    msg = "Worker failed!"
+    raise ValueError(msg)
 
 
 @worker.task()

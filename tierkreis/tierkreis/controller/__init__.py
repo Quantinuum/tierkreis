@@ -1,5 +1,6 @@
 import logging
 from time import sleep
+from typing import TYPE_CHECKING
 
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import Eval, GraphData
@@ -8,11 +9,13 @@ from tierkreis.controller.data.models import TModel
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
-from tierkreis.logger_setup import set_tkr_logger
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
-from tierkreis.controller.data.core import PortID, ValueRef
 from tierkreis.exceptions import TierkreisError
+from tierkreis.logger_setup import set_tkr_logger
+
+if TYPE_CHECKING:
+    from tierkreis.controller.data.core import PortID, ValueRef
 
 root_loc = Loc("")
 logger = logging.getLogger(__name__)
@@ -32,11 +35,11 @@ def run_graph[A: TModel, B: TModel](
 
     if not isinstance(graph_inputs, dict):
         graph_inputs = {"value": graph_inputs}
-    remaining_inputs = g.remaining_inputs({k for k in graph_inputs.keys()})
+    remaining_inputs = g.remaining_inputs(set(graph_inputs.keys()))
     if len(remaining_inputs) > 0:
         logger.warning(
             f"Some inputs were not provided: {remaining_inputs}. "
-            "Tasks will use default values if available."
+            "Tasks will use default values if available.",
         )
 
     storage.write_metadata(Loc(""))
@@ -73,18 +76,12 @@ def resume_graph(
             node_errors = "\n".join(x for x in walk_results.errored)
             storage.write_node_errors(Loc(), node_errors)
 
-            print("\n\nGraph finished with errors.\n\n")
 
-            for error_loc in walk_results.errored:
-                print(storage.read_errors(error_loc))
-                print(f"Node: '{error_loc}' encountered an error.")
-                print(
-                    f"Stderr information is available at {storage._worker_logs_path(error_loc)}."
-                )
-                print("\n\n")
+            for _error_loc in walk_results.errored:
+                pass
 
-            print("--- Tierkreis graph errors above this line. ---\n\n")
-            raise TierkreisError("Graph encountered errors")
+            msg = "Graph encountered errors"
+            raise TierkreisError(msg)
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):

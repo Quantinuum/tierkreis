@@ -1,5 +1,7 @@
 from inspect import isclass
+
 from pydantic import BaseModel
+
 from tierkreis.controller.data.types import (
     DictConvertible,
     ListConvertible,
@@ -16,7 +18,8 @@ def format_ptype(ptype: type | str) -> str:
         return ptype
 
     if isclass(ptype) and issubclass(
-        ptype, (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel)
+        ptype,
+        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel),
     ):
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
 
@@ -27,7 +30,9 @@ def format_ptype(ptype: type | str) -> str:
 
 
 def format_generic_type(
-    generictype: GenericType | str, include_bound: bool, is_tkr: bool
+    generictype: GenericType | str,
+    include_bound: bool,
+    is_tkr: bool,
 ) -> str:
     bound_str = ": PType" if include_bound else ""
     if isinstance(generictype, str):
@@ -69,7 +74,9 @@ def format_method(namespace_name: str, fn: Method) -> str:
     ins = [format_typed_arg(x, False) for x in fn.args]
     ins_str = "\n    ".join(ins)
     class_name = format_generic_type(
-        fn.return_type, False, not fn.return_type_is_portmapping
+        fn.return_type,
+        False,
+        not fn.return_type_is_portmapping,
     )
 
     bases = ["NamedTuple"]

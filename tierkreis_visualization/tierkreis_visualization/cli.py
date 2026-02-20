@@ -1,7 +1,6 @@
 import argparse
 
-
-from tierkreis_visualization.main import start, dev, graph
+from tierkreis_visualization.main import dev, graph, start
 
 
 def parse_args(

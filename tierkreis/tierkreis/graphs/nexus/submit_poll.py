@@ -1,13 +1,14 @@
 # ruff: noqa: F821
 from typing import NamedTuple
+
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins.stubs import tkr_sleep
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.nexus_worker import (
-    upload_circuit,
-    start_execute_job,
-    is_running,
     get_results,
+    is_running,
+    start_execute_job,
+    upload_circuit,
 )
 
 type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]
@@ -55,7 +56,8 @@ def polling_loop_body(polling_interval: float):
 def nexus_submit_and_poll(polling_interval: float = 30.0):
     g = GraphBuilder(JobInputs, TKR[list[BackendResult]])
     upload_inputs = g.map(
-        lambda x: UploadCircuitInputs(g.inputs.project_name, x), g.inputs.circuits
+        lambda x: UploadCircuitInputs(g.inputs.project_name, x),
+        g.inputs.circuits,
     )
     programmes = g.map(upload_circuit_graph(), upload_inputs)
 
@@ -66,7 +68,7 @@ def nexus_submit_and_poll(polling_interval: float = 30.0):
             programmes,  # type: ignore
             g.inputs.n_shots,
             g.inputs.backend_config,  # type: ignore
-        )
+        ),
     )
 
     res = g.loop(polling_loop_body(polling_interval), ref)

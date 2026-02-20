@@ -1,20 +1,13 @@
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import NoneType
-from typing import Annotated, Mapping, Self, Sequence, get_args, get_origin
+from typing import Annotated, Self, get_args, get_origin
 
 from tierkreis.controller.data.core import RestrictedNamedTuple
 from tierkreis.controller.data.types import _is_generic
 
-
 type ElementaryType = (
-    type[int]
-    | type[float]
-    | type[bytes]
-    | type[str]
-    | type[bool]
-    | type[NoneType]
-    | type[Mapping]
-    | type[Sequence]
+    type[int | float | bytes | str | bool | NoneType | Mapping | Sequence]
     | str  # Custom type e.g. forward reference
 )
 
@@ -52,7 +45,7 @@ class GenericType:
     def __eq__(self, value: object) -> bool:
         if not hasattr(value, "origin"):
             return False
-        return self.origin == getattr(value, "origin")
+        return self.origin == value.origin
 
 
 @dataclass

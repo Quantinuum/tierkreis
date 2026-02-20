@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 class StorageEntryMetadata:
     """Collection of commonly found metadata.
 
-    Storage implementations should decide which are applicable."""
+    Storage implementations should decide which are applicable.
+    """
 
     st_mtime: float | None = None
 
@@ -30,7 +31,8 @@ class StorageDebugData:
     """Collection of commonly found debugdata.
 
     Currently only used for loop_nodes
-    Storage implementations should decide which are applicable."""
+    Storage implementations should decide which are applicable.
+    """
 
     loop_loc: str | None = None
 
@@ -42,9 +44,10 @@ class ControllerStorage(ABC):
 
     @abstractmethod
     def delete(self, path: Path) -> None:
-        """Delete the storage entry at the specified path.
+        r"""Delete the storage entry at the specified path.
 
-        Also delete any related data of the form \"{path}/**/*\"."""
+        Also delete any related data of the form \"{path}/**/*\".
+        """
 
     @abstractmethod
     def exists(self, path: Path) -> bool:
@@ -59,13 +62,15 @@ class ControllerStorage(ABC):
         """List all the paths starting with the specified path.
 
         This is used when the number of entries can only be determined at runtime.
-        For example in a map node."""
+        For example in a map node.
+        """
 
     @abstractmethod
     def mkdir(self, path: Path) -> None:
         """Create an empty directory (and parents) at this path.
 
-        Probably only required for file-based storage."""
+        Probably only required for file-based storage.
+        """
 
     @abstractmethod
     def read(self, path: Path) -> bytes:
@@ -122,7 +127,7 @@ class ControllerStorage(ABC):
     def clean_graph_files(self) -> None:
         self.delete(self.workflow_dir)
 
-    def write_node_def(self, node_location: Loc, node: NodeDef):
+    def write_node_def(self, node_location: Loc, node: NodeDef) -> None:
         bs = NodeDefModel(root=node).model_dump_json().encode()
         self.write(self._nodedef_path(node_location), bs)
 
@@ -178,15 +183,19 @@ class ControllerStorage(ABC):
         except EntryNotFound:
             logger.info(
                 f"Could not find {old_location}. "
-                "Tasks using this location will try to use a default value if specified."
+                "Tasks using this location will try to use a default value if specified.",
             )
         except OSError as e:
+            msg = "Workflow already exists. Try running with a different ID or do_cleanup."
             raise TierkreisError(
-                "Workflow already exists. Try running with a different ID or do_cleanup."
+                msg,
             ) from e
 
     def write_output(
-        self, node_location: Loc, output_name: PortID, value: bytes
+        self,
+        node_location: Loc,
+        output_name: PortID,
+        value: bytes,
     ) -> Path:
         output_path = self._output_path(node_location, output_name)
         self.write(output_path, bytes(value))
@@ -259,7 +268,8 @@ class ControllerStorage(ABC):
     def read_loop_trace(self, node_location: Loc, output_name: PortID) -> list[bytes]:
         definition = self.read_node_def(node_location)
         if definition.type != "loop":
-            raise TierkreisError("Can only read traces from loop nodes.")
+            msg = "Can only read traces from loop nodes."
+            raise TierkreisError(msg)
         result = []
 
         i = 0
@@ -272,6 +282,7 @@ class ControllerStorage(ABC):
         debug_data = StorageDebugData(**self.read_debug_data(node_name))
         if debug_data.loop_loc is not None:
             return Loc(debug_data.loop_loc)
+        return None
 
     def write_debug_data(self, name: str, loc: Loc) -> None:
         self.mkdir(self.debug_path)
@@ -316,11 +327,12 @@ class ControllerStorage(ABC):
         Fully dependent nodes will be removed from the storage.
         The parent locs will be partially invalidated.
 
-        Returns the invalidated nodes."""
-
+        Returns the invalidated nodes.
+        """
         nodedef = self.read_node_def(loc)
         if nodedef.type != "function":
-            raise TierkreisError("Can only restart task/function nodes.")
+            msg = "Can only restart task/function nodes."
+            raise TierkreisError(msg)
 
         # Remove fully invalidated nodes.
         deps = self.dependents(loc)

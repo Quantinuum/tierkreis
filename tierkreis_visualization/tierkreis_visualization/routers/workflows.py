@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
+from watchfiles import awatch  # type: ignore
 
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.graphdata import GraphDataStorage
@@ -15,9 +16,6 @@ from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from tierkreis_visualization.data.outputs import outputs_from_loc
-
-from watchfiles import awatch  # type: ignore
-
 from tierkreis_visualization.data.workflows import WorkflowDisplay, get_workflows
 from tierkreis_visualization.routers.models import GraphsResponse, PyGraph
 
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @router.websocket("/{workflow_id}/nodes/{node_location_str}")
 async def websocket_endpoint(
-    websocket: WebSocket, workflow_id: UUID, node_location_str: str
+    websocket: WebSocket, workflow_id: UUID, node_location_str: str,
 ) -> None:
     if workflow_id.int == 0:
         return
@@ -72,9 +70,9 @@ def list_workflows(request: Request) -> list[WorkflowDisplay]:
         )
 
 
-@router.get("/{workflow_id}/graphs", response_model=GraphsResponse)
+@router.get("/{workflow_id}/graphs")
 def list_nodes(
-    request: Request, workflow_id: UUID, locs: Annotated[list[Loc], Query()]
+    request: Request, workflow_id: UUID, locs: Annotated[list[Loc], Query()],
 ) -> GraphsResponse:
     storage = request.app.state.get_storage_fn(workflow_id)
     return GraphsResponse(graphs={loc: get_node_data(storage, loc) for loc in locs})
