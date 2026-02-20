@@ -23,8 +23,10 @@ def _read_output(
     port_name: str,
     annotation: type | None,
 ) -> PType:
-    """Tries to get the output `port_name` from the root graph.
-    If `annotation` indicates that the value is optional then do not raise on EntryNotFound.
+    """Try to get the output `port_name` from the root graph.
+
+    If `annotation` indicates that the value is optional
+    then do not raise on EntryNotFound.
     """
     try:
         return ptype_from_bytes(storage.read_output(Loc(), port_name))
@@ -41,7 +43,6 @@ def read_outputs[A: TModel, B: TModel](
 ) -> dict[str, PType] | PType:
     """Read the outputs of a workflow graph.
 
-
     The bytes are parsed into Python types if possible.
 
     :param graph: The graph to read.
@@ -53,7 +54,6 @@ def read_outputs[A: TModel, B: TModel](
         values is returned.
     :rtype: dict[str, PType] | PType
     """
-
     output_annotation = None
     if isinstance(graph, GraphBuilder):
         output_annotation = graph.outputs_type
