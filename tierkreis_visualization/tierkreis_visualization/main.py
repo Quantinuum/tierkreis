@@ -1,9 +1,16 @@
+import os
 import sys
 
 import uvicorn
 
-from tierkreis_visualization.app import get_graph_specifier
+from tierkreis_visualization.config import CONFIG, TKR_GRAPH_SPECIFIER_KEY
 from tierkreis_visualization.storage import graph_data_storage_fn
+
+
+def get_graph_specifier() -> str | None:
+    if TKR_GRAPH_SPECIFIER_KEY in os.environ:
+        return os.environ[TKR_GRAPH_SPECIFIER_KEY]
+    return sys.argv[1] if len(sys.argv) > 1 else CONFIG.graph_specifier
 
 
 def start() -> None:
