@@ -7,7 +7,7 @@ from time import time_ns
 from typing import override
 from uuid import UUID
 
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import (
     ControllerStorage,
     StorageEntryMetadata,
@@ -62,7 +62,7 @@ class ControllerFileStorage(ControllerStorage):
         try:
             os.link(src, dst)
         except (FileNotFoundError, FileExistsError) as exc:
-            raise EntryNotFound(src) from exc
+            raise EntryNotFoundError(src) from exc
 
     @override
     def mkdir(self, path: Path) -> None:
@@ -74,7 +74,7 @@ class ControllerFileStorage(ControllerStorage):
             with Path.open(path, "rb") as fh:
                 return fh.read()
         except FileNotFoundError as exc:
-            raise EntryNotFound(path) from exc
+            raise EntryNotFoundError(path) from exc
 
     @override
     def touch(self, path: Path, *, is_dir: bool = False) -> None:

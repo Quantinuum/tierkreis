@@ -19,7 +19,7 @@ from tierkreis.controller.data.types import (
     has_default,
     ptype_from_bytes,
 )
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.exceptions import TierkreisError
 from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
@@ -90,7 +90,7 @@ class Worker:
         for k, p in inputs.items():
             try:
                 bs[k] = self.storage.read_input(p)
-            except EntryNotFound as e:
+            except EntryNotFoundError as e:
                 if not has_default(self.types[f.__name__].parameters[k]):
                     msg = f"Input {k} not found at {p}."
                     raise TierkreisError(msg) from e

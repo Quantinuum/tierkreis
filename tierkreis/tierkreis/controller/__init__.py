@@ -39,7 +39,7 @@ def run_graph[A: TModel, B: TModel](
     remaining_inputs = g.remaining_inputs(set(graph_inputs.keys()))
     if len(remaining_inputs) > 0:
         logger.warning(
-            "Some inputs were not provided: %s",
+            "Some inputs were not provided: %s"
             "Tasks will use default values if available.",
             remaining_inputs,
         )

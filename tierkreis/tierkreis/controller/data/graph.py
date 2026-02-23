@@ -26,8 +26,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NodeDefBase:
-    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=dict, kw_only=True)
     """Map each out-port to the list of nodes that use it."""
+
+    outputs: dict[PortID, list[NodeIndex]] = field(default_factory=dict, kw_only=True)
 
 
 @dataclass
@@ -208,6 +209,18 @@ NodeDefModel = RootModel[NodeDef]
 
 
 def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
+    """Find the incoming edges of a node.
+
+    Finds all the defined inputs and adds the special constructions:
+    - Graph body for map, loop, eval
+    - Prediction for ifelse
+    - All nodes for eager if else
+
+    :param node: The node to evaluate.
+    :type node: NodeDef
+    :return: MApping of port names to value references.
+    :rtype: dict[PortID, ValueRef]
+    """
     parents = dict(node.inputs.items())
 
     match node.type:

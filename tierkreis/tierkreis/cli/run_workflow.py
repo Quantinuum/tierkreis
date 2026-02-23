@@ -22,11 +22,11 @@ def run_workflow(  # noqa: PLR0913
     run_id: int | None = None,
     log_level: int | str = logging.INFO,
     registry_path: Path | None = None,
+    n_iterations: int = 10000,
+    polling_interval_seconds: float = 0.1,
     *,
     print_output: bool = False,
     use_uv_executor: bool = False,
-    n_iterations: int = 10000,
-    polling_interval_seconds: float = 0.1,
 ) -> None:
     """Run a workflow.
 

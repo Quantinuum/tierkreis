@@ -162,18 +162,26 @@ def run_args(args: argparse.Namespace) -> None:
 
 
 class TierkreisInitCli:
+    """Tierkeirs cli for the `init` subcommand.
+
+    Used to initialize tkr projects..
+    """
+
     @staticmethod
     def add_subcommand(
         main_parser: argparse._SubParsersAction,
     ) -> None:
+        """Add the init subcommand."""
         parser = main_parser.add_parser(
             "init",
             description="Initializes the tierkreis project resources",
-            help="Initializes the tierkreis project resources. Run `tkr init --help` for more information.",
+            help="Initializes the tierkreis project resources. Run `tkr init --help`"
+            " for more information.",
         )
         parser = parse_args(parser)
         parser.set_defaults(func=TierkreisInitCli.execute)
 
     @staticmethod
     def execute(args: argparse.Namespace) -> None:
+        """Execute the init subcommand."""
         run_args(args)

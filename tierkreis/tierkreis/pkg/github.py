@@ -15,7 +15,7 @@ class GitHubDependency(TKRDependency):
 
     branch: str = "main"
 
-    def cache_subdir(self, worker_cache: Path):
+    def cache_subdir(self, worker_cache: Path) -> Path:
         return worker_cache / "github" / self.account / self.repo / self.branch
 
     def install(

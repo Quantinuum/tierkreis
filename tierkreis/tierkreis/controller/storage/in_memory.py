@@ -5,7 +5,7 @@ from time import time
 from typing import override
 from uuid import UUID
 
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import (
     ControllerStorage,
     StorageEntryMetadata,
@@ -60,11 +60,10 @@ class ControllerInMemoryStorage(ControllerStorage):
     def list_subpaths(self, path: Path) -> list[Path]:
         if path == self.workflow_dir:
             nodes = {
-
-                    Path("/".join(str(x).split("/")[:2]))
-                    for x in self.files
-                    if str(x).startswith(str(path) + "/")
-                }
+                Path("/".join(str(x).split("/")[:2]))
+                for x in self.files
+                if str(x).startswith(str(path) + "/")
+            }
             return list(nodes)
         return [x for x in self.files if str(x).startswith(str(path) + "/")]
 
@@ -73,7 +72,7 @@ class ControllerInMemoryStorage(ControllerStorage):
         try:
             self.files[dst] = self.files[src]
         except KeyError as exc:
-            raise EntryNotFound(src) from exc
+            raise EntryNotFoundError(src) from exc
 
     @override
     def mkdir(self, path: Path) -> None:
@@ -84,7 +83,7 @@ class ControllerInMemoryStorage(ControllerStorage):
         try:
             return self.files[path].value
         except KeyError as exc:
-            raise EntryNotFound(path) from exc
+            raise EntryNotFoundError(path) from exc
 
     @override
     def touch(self, path: Path) -> None:

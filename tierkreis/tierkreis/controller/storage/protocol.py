@@ -12,7 +12,7 @@ from uuid import UUID
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -309,10 +309,10 @@ class ControllerStorage(ABC):
         new_dir = self._output_path(new_location, new_port)
         try:
             self.link(self._output_path(old_location, old_port), new_dir)
-        except EntryNotFound as e:
+        except EntryNotFoundError:
             logger.warning(
-                "Could not find %s."
-                " Tasks using this location will try to use a default value if specified.",
+                "Could not find %s. Tasks using this"
+                " location will try to use a default value if specified.",
                 old_location,
             )
         except OSError as e:
@@ -355,16 +355,18 @@ class ControllerStorage(ABC):
         """
         return self.read(self._output_path(node_location, output_name))
 
-    def read_errors(self, node_location: Loc = Loc()) -> str:
+    def read_errors(self, node_location: Loc | None = None) -> str:
         """Read the errors that occurred at the node location.
 
         Only valid for function nodes (tasks) and the top level node ("-").
 
-        :param node_location: The location to read from, defaults to Loc()
-        :type node_location: Loc
+        :param node_location: The location to read from, defaults to None
+        :type node_location: Loc | None, optional
         :return: The error message that occurred. "" if nothing was logged.
         :rtype: str
         """
+        if node_location is None:
+            node_location = Loc()
         if self.exists(self._worker_logs_path(node_location)):
             return self.read(self._worker_logs_path(node_location)).decode()
         if self.exists(self._error_path(node_location)):
@@ -381,6 +383,12 @@ class ControllerStorage(ABC):
         :param error_logs: The error message to write.
         :type error_logs: str
         """
+        if node_location == Loc():
+            self.write(
+                self._worker_logs_path(node_location).parent / "errors",
+                error_logs.encode(),
+            )
+            return
         self.write(self._worker_logs_path(node_location), error_logs.encode())
 
     def read_output_ports(self, node_location: Loc) -> list[PortID]:

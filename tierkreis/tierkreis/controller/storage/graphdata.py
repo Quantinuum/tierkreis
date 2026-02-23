@@ -1,6 +1,5 @@
 """Virtual GraphStorage for visualization."""
 
-# ruff: noqa: ARG002 (methods to fulfill interface contract but not possible in storage)
 import json
 from pathlib import Path
 from typing import Any, override
@@ -136,7 +135,7 @@ class GraphDataStorage(ControllerStorage):
         )
 
     @override
-    def read_errors(self, node_location: Loc = Loc()) -> str:
+    def read_errors(self, node_location: Loc | None = None) -> str:
         return ""
 
     @override

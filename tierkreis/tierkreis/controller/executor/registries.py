@@ -1,3 +1,5 @@
+"""Utility for executors to resolve worker paths."""
+
 from pathlib import Path
 
 from tierkreis.exceptions import TierkreisError
@@ -10,6 +12,14 @@ def find_registry_for_worker(
     """Return the first registry path containing a worker named `worker_name`.
 
     Assumes that the worker is a directory.
+
+    :param worker_name: The worker to search for.
+    :type worker_name: str
+    :param registry_paths: List of all possible paths.
+    :type registry_paths: Path | list[Path]
+    :raises TierkreisError: If the worker is not found.
+    :return: First match to the worker
+    :rtype: Path
     """
     if isinstance(registry_paths, Path):
         registry_paths = [registry_paths]

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 _COMMAND_PREFIX = "#PJM"
 
 
-def generate_pjsub_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity to cover options
+def generate_pjsub_script(spec: JobSpec) -> str:  # noqa: C901 complexity to cover options
     """Generate a job submission script according to PJSUB.
 
     This uses the "PJM"/pjsub syntax and represents a mapping from JobSpec
@@ -57,7 +57,8 @@ def generate_pjsub_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
         lines.append(f"{_COMMAND_PREFIX} -m e")  # end only
         lines.append(f"{_COMMAND_PREFIX} --mail-list {spec.user.mail}")
 
-    # 5. Output and Error handling uses Bash because pjsub always overwrites instead of appends.
+    # 5. Output and Error handling
+    # uses bash because pjsub always overwrites instead of appends.
     # So redirect to temporary files.
     lines.append("\n# --- Output and Error Handling ---")
     lines.append(f"{_COMMAND_PREFIX} -j")

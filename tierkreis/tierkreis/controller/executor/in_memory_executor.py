@@ -44,7 +44,9 @@ class InMemoryExecutor:
         launcher_path = check_and_set_launcher(self.registry_path, launcher_name, ".py")
         spec = importlib.util.spec_from_file_location("in_memory", launcher_path)
         if spec is None or spec.loader is None:
-            msg = f"Couldn't load module main.py in {self.registry_path / launcher_name}"
+            msg = (
+                f"Couldn't load module main.py in {self.registry_path / launcher_name}"
+            )
             raise TierkreisError(
                 msg,
             )
