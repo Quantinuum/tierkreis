@@ -384,10 +384,7 @@ class ControllerStorage(ABC):
         :type error_logs: str
         """
         if node_location == Loc():
-            self.write(
-                self._worker_logs_path(node_location).parent / "errors",
-                error_logs.encode(),
-            )
+            self.write(self._error_path(node_location), error_logs.encode())
             return
         self.write(self._worker_logs_path(node_location), error_logs.encode())
 
