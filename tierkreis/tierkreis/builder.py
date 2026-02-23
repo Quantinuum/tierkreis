@@ -1,8 +1,18 @@
+from copy import copy
 from dataclasses import dataclass
 from inspect import isclass
-from typing import Any, Callable, NamedTuple, Protocol, overload, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    Mapping,
+    NamedTuple,
+    Protocol,
+    assert_never,
+    overload,
+    runtime_checkable,
+)
 
-from tierkreis.controller.data.core import EmptyModel
+from tierkreis.controller.data.core import EmptyModel, PortID
 from tierkreis.controller.data.models import (
     TKR,
     TModel,
@@ -79,6 +89,61 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
     def outputs(self, outputs: Outputs):
         self.data.output(inputs=dict_from_tmodel(outputs))
+
+    def embed[A: TModel, B: TModel](self, other: "GraphBuilder[A, B]", inputs: A) -> B:
+        if other.data.graph_output_idx is None:
+            raise ValueError("Can only embed graphs with an output node defined.")
+        ins: Mapping[str, ValueRef] = dict_from_tmodel(inputs)
+
+        node_map: dict[int, int] = {}  # other node idx -> self node idx
+        port_map: dict[int, Mapping[str, ValueRef]] = {}
+
+        def outport(vr: ValueRef) -> ValueRef:
+            idx, port = vr
+            if idx in node_map:
+                return (node_map[idx], port)
+            return port_map[idx][port]
+
+        for idx, node in enumerate(other.data.nodes):
+            if node.type == "input":
+                port_map[idx] = {node.name: ins[node.name]}
+            elif node.type != "output":
+                # Add nodes now/first, to set up indices; fix up refs later
+                new_idx = len(self.data.nodes)
+                self.data.nodes.append(copy(node))
+                node_map[idx] = new_idx
+        for new_node in node_map.values():
+            new_node_def = self.data.nodes[new_node]
+            # Update inputs
+            new_node_def.inputs = {
+                p: outport(vr) for p, vr in new_node_def.inputs.items()
+            }
+            match new_node_def.type:
+                case "eval":
+                    new_node_def.graph = outport(new_node_def.graph)
+                case "loop" | "map":
+                    new_node_def.body = outport(new_node_def.body)
+                case "ifelse" | "eifelse":
+                    new_node_def.pred = outport(new_node_def.pred)
+                    new_node_def.if_true = outport(new_node_def.if_true)
+                    new_node_def.if_false = outport(new_node_def.if_false)
+                case "input" | "output" | "const" | "function":
+                    pass
+                case _:
+                    assert_never(new_node_def)
+            # Update outputs, and remove any pointing to the removed Output node
+            new_outputs = {
+                p: [node_map[n] for n in ns if n in node_map]
+                for p, ns in new_node_def.outputs.items()
+            }
+            new_node_def.outputs = {
+                p: ns for p, ns in new_outputs.items() if len(ns) > 0
+            }
+        outputs: Mapping[PortID, ValueRef] = other.data.nodes[
+            other.data.graph_output_idx
+        ].inputs
+        print("Embedding graph with outputs", outputs)
+        return init_tmodel_fields(other.outputs_type, lambda p: outport(outputs[p]))
 
     def const[T: PType](self, value: T) -> TKR[T]:
         idx, port = self.data.const(value)
