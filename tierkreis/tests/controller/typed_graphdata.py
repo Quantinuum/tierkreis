@@ -4,12 +4,15 @@ from tests.workers.graph.stubs import doubler_plus_graph
 from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins.stubs import (
     conjugate,
+    eq,
     iadd,
+    idivide,
     igt,
     itimes,
     mod,
     tkr_tuple,
     untuple,
+    tkr_str,
 )
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.models import TKR
@@ -161,4 +164,34 @@ def eval_body_is_from_worker():
     graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
     out = g.eval(graph_ref, g.inputs)
     g.outputs(out)
+    return g
+
+
+def embed_graph():
+    class InnerOutput(NamedTuple):
+        log: TKR[str]
+        nxt: TKR[int]
+
+    class OuterOutput(NamedTuple):
+        s1: TKR[str]
+        s2: TKR[str]
+        final: TKR[int]
+
+    def inner():
+        g = GraphBuilder(TKR[int], InnerOutput)
+        s = g.task(tkr_str(g.inputs))
+        div2 = g.task(idivide(a=g.inputs, b=g.const(2)))
+        add3plus1 = g.task(
+            iadd(a=g.task(itimes(a=g.inputs, b=g.const(3))), b=g.const(1))
+        )
+        even = g.task(eq(g.task(mod(a=g.inputs, b=g.const(2))), g.const(0)))
+        n = g.ifelse(even, div2, add3plus1)
+        g.outputs(InnerOutput(log=s, nxt=n))
+        return g
+
+    g = GraphBuilder(TKR[int], OuterOutput)
+    inner_g = inner()
+    first = g.embed(inner_g, g.inputs)
+    second = g.embed(inner_g, first.nxt)
+    g.outputs(OuterOutput(first.log, second.log, second.nxt))
     return g
