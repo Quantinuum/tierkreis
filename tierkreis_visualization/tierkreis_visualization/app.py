@@ -9,6 +9,7 @@ from tierkreis_visualization.app_config import (
     graph_data_lifespan,
 )
 from tierkreis_visualization.config import CONFIG
+from tierkreis_visualization.main import get_graph_specifier
 from tierkreis_visualization.routers.frontend import assets
 from tierkreis_visualization.routers.frontend import router as frontend_router
 from tierkreis_visualization.routers.workflows import router as workflows_router
@@ -17,7 +18,6 @@ from tierkreis_visualization.storage import (
     from_graph_data_storage_fn,
     graph_data_storage_fn,
 )
-from tierkreis_visualization.tierkreis_visualization.main import get_graph_specifier
 
 
 def transform_to_sigkill(signum, frame):
