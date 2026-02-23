@@ -1,7 +1,8 @@
 import argparse
+import os
 
-
-from tierkreis_visualization.main import start, dev, graph
+from tierkreis_visualization.config import TKR_GRAPH_SPECIFIER_KEY
+from tierkreis_visualization.main import dev, graph, start
 
 
 def parse_args(
@@ -25,7 +26,8 @@ def run_args(args: argparse.Namespace) -> None:
     if args.dev:
         dev()
     elif args.graph:
-        graph(3)
+        os.environ[TKR_GRAPH_SPECIFIER_KEY] = args.graph
+        graph()
     else:
         start()
 

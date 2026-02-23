@@ -10,3 +10,4 @@ class Settings(BaseSettings):
 
 CONFIG = Settings()
 CONFIG.tierkreis_path.mkdir(parents=True, exist_ok=True)
+TKR_GRAPH_SPECIFIER_KEY = "TIERKREIS_VIS_GRAPH_SPECIFIER"
