@@ -8,8 +8,7 @@ from tierkreis.controller.data.models import (
     TModel,
     TNamedModel,
     dict_from_tmodel,
-    model_fields,
-    init_tmodel,
+    init_tmodel_fields,
 )
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.data.graph import GraphData, ValueRef
@@ -70,8 +69,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
-        inputs = [self.data.input(x) for x in model_fields(inputs_type)]
-        self.inputs = init_tmodel(self.inputs_type, inputs)
+        self.inputs = init_tmodel_fields(self.inputs_type, self.data.input)
 
     def get_data(self) -> GraphData:
         return self.data
@@ -117,8 +115,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         ins = dict_from_tmodel(f)
         idx, _ = self.data.func(name, ins)("dummy")
         OutModel = f.out()
-        outputs = [(idx, x) for x in model_fields(OutModel)]
-        return init_tmodel(OutModel, outputs)
+        return init_tmodel_fields(OutModel, lambda p: (idx, p))
 
     @overload
     def eval[A: TModel, B: TModel](self, body: TypedGraphRef[A, B], a: A) -> B: ...
@@ -131,8 +128,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             body = self._graph_const(body)
 
         idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(a))("dummy")
-        outputs = [(idx, x) for x in model_fields(body.outputs_type)]
-        return init_tmodel(body.outputs_type, outputs)
+        return init_tmodel_fields(body.outputs_type, lambda p: (idx, p))
 
     @overload
     def loop[A: TModel, B: LoopOutput](
@@ -155,8 +151,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.loop(g, dict_from_tmodel(a), "should_continue", name)(
             "dummy"
         )
-        outputs = [(idx, x) for x in model_fields(body.outputs_type)]
-        return init_tmodel(body.outputs_type, outputs)
+        return init_tmodel_fields(body.outputs_type, lambda p: (idx, p))
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
         ins = (ref.node_index, ref.port_id)
@@ -187,8 +182,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         ins = dict_from_tmodel(aes._value)
         idx, _ = self.data.map(body.graph_ref, ins)("x")
 
-        refs = [(idx, s + "-*") for s in model_fields(body.outputs_type)]
-        return TList(init_tmodel(body.outputs_type, refs))
+        return TList(init_tmodel_fields(body.outputs_type, lambda s: (idx, s + "-*")))
 
     @overload
     def map[A: PType, B: TNamedModel](
