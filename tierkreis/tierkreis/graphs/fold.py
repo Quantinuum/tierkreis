@@ -1,4 +1,7 @@
-from typing import Generic, NamedTuple, TypeVar
+"""Preconstructed graph for folding operations."""
+
+from typing import NamedTuple, TypeVar
+
 from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins.stubs import head, igt, tkr_len
 from tierkreis.controller.data.graph import GraphData
@@ -6,25 +9,28 @@ from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
 
 
-class FoldGraphOuterInputs[A: PType, B: PType](NamedTuple):
+class _FoldGraphOuterInputs[A: PType, B: PType](NamedTuple):
     func: TKR[GraphData]
     accum: TKR[B]
     values: TKR[list[A]]
 
 
-class FoldGraphOuterOutputs[A: PType, B: PType](NamedTuple):
+class _FoldGraphOuterOutputs[A: PType, B: PType](NamedTuple):
     accum: TKR[B]
     values: TKR[list[A]]
     should_continue: TKR[bool]
 
 
-class InnerFuncInput[A: PType, B: PType](NamedTuple):
+class _InnerFuncInput[A: PType, B: PType](NamedTuple):
     accum: TKR[B]
     value: TKR[A]
 
 
-def _fold_graph_outer[A: PType, B: PType]():
-    g = GraphBuilder(FoldGraphOuterInputs[A, B], FoldGraphOuterOutputs[A, B])
+def _fold_graph_outer[A: PType, B: PType]() -> GraphBuilder[
+    _FoldGraphOuterInputs[A, B],
+    _FoldGraphOuterOutputs[A, B],
+]:
+    g = GraphBuilder(_FoldGraphOuterInputs[A, B], _FoldGraphOuterOutputs[A, B])
 
     func = g.inputs.func
     accum = g.inputs.accum
@@ -38,41 +44,67 @@ def _fold_graph_outer[A: PType, B: PType]():
     headed = g.task(head(values))
 
     # Apply the function if we were able to pop off a value.
-    tgd = TypedGraphRef[InnerFuncInput, TKR[B]](
-        func.value_ref(), TKR[B], InnerFuncInput
+    tgd = TypedGraphRef[_InnerFuncInput, TKR[B]](
+        func.value_ref(),
+        TKR[B],
+        _InnerFuncInput,
     )
-    applied_next = g.eval(tgd, InnerFuncInput(accum, headed.head))
+    applied_next = g.eval(tgd, _InnerFuncInput(accum, headed.head))
 
     next_accum = g.ifelse(non_empty, applied_next, accum)
     next_values = g.ifelse(non_empty, headed.rest, values)
-    g.outputs(FoldGraphOuterOutputs(next_accum, next_values, non_empty))
+    g.outputs(_FoldGraphOuterOutputs(next_accum, next_values, non_empty))
     return g
 
 
-A = TypeVar("A", bound=PType, covariant=True)
-B = TypeVar("B", bound=PType, covariant=True)
+A_co = TypeVar("A_co", bound=PType, covariant=True)
+B_co = TypeVar("B_co", bound=PType, covariant=True)
 
 
-class FoldGraphInputs(NamedTuple, Generic[A, B]):
+class FoldGraphInputs[A: PType, B: PType](NamedTuple):
+    """Inputs to a fold graph.
+
+    :fields:
+        initial (B): The initial value.
+        values (list[A]): The list of values to fold over.
+    """
+
     initial: TKR[B]
     values: TKR[list[A]]
 
 
-class FoldFunctionInput(NamedTuple, Generic[A, B]):
+class FoldFunctionInput[A: PType, B: PType](NamedTuple):
+    """Input type of a fold function.
+
+    :fields:
+        accum (B): The accumulator.
+        value (A): The current value.
+    """
+
     accum: TKR[B]
     value: TKR[A]
 
 
-# fold : {func: (b -> a -> b)} -> {initial: b} -> {values: list[a]} -> {value: b}
-# fold : { A x B -> B } -> { list[A] x B -> B }
-def fold_graph(
-    func: GraphBuilder[FoldFunctionInput[A, B], TKR[B]],
-) -> GraphBuilder[FoldGraphInputs[A, B], TKR[B]]:
-    g = GraphBuilder(FoldGraphInputs[A, B], TKR[B])
-    foldfunc = g._graph_const(func)
-    # TODO: include the computation inside the fold
-    ins = FoldGraphOuterInputs(
-        TKR(*foldfunc.graph_ref), g.inputs.initial, g.inputs.values
+def fold_graph[A_co: PType, B_co: PType](
+    func: GraphBuilder[FoldFunctionInput[A_co, B_co], TKR[B_co]],
+) -> GraphBuilder[FoldGraphInputs[A_co, B_co], TKR[B_co]]:
+    """Construct a fold graph.
+
+    fold : {func: (b -> a -> b)} -> {initial: b} -> {values: list[a]} -> {value: b}
+    fold : { A x B -> B } -> { list[A] x B -> B }
+
+    :param func: The function to fold over.
+    :type func: GraphBuilder[FoldFunctionInput[A_co, B_co], TKR[B_co]]
+    :return: A graph implementing the fold function.
+    :rtype: GraphBuilder[FoldGraphInputs[A_co, B_co], TKR[B_co]]
+    """
+    g = GraphBuilder(FoldGraphInputs[A_co, B_co], TKR[B_co])
+    foldfunc = g._graph_const(func)  # noqa: SLF001
+    # TODO @mwpb: include the computation inside the fold
+    ins = _FoldGraphOuterInputs(
+        TKR(*foldfunc.graph_ref),
+        g.inputs.initial,
+        g.inputs.values,
     )
     loop = g.loop(_fold_graph_outer(), ins)
     g.outputs(loop.accum)

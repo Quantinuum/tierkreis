@@ -38,10 +38,10 @@ def loop_body() -> GraphData:
     g = GraphData()
     a = g.input("loop_acc")
     one = g.const(1)
-    N = g.const(10)
+    n_val: tuple[int, str] = g.const(10)
 
     a_plus = g.func("builtins.iadd", {"a": a, "b": one})("value")
-    pred = g.func("builtins.igt", {"a": N, "b": a_plus})("value")
+    pred = g.func("builtins.igt", {"a": n_val, "b": a_plus})("value")
     g.output({"loop_acc": a_plus, "should_continue": pred})
     return g
 
@@ -58,11 +58,11 @@ def simple_loop() -> GraphData:
 def simple_map() -> GraphData:
     g = GraphData()
     six = g.const(6)
-    Ns_const = g.const(list(range(21)))
-    Ns = g.func("builtins.unfold_values", {Labels.VALUE: Ns_const})
+    n_consts = g.const(list(range(21)))
+    n_vals = g.func("builtins.unfold_values", {Labels.VALUE: n_consts})
     doubler_const = g.const(doubler_plus())
 
-    m = g.map(doubler_const, {"doubler_input": Ns("*"), "intercept": six})
+    m = g.map(doubler_const, {"doubler_input": n_vals("*"), "intercept": six})
     folded = g.func("builtins.fold_values", {"values_glob": m("*")})
     g.output({"value": folded(Labels.VALUE)})
     return g
@@ -82,11 +82,11 @@ def maps_in_series() -> GraphData:
     g = GraphData()
     zero = g.const(0)
 
-    Ns_const = g.const(list(range(21)))
-    Ns = g.func("builtins.unfold_values", {Labels.VALUE: Ns_const})
+    n_consts = g.const(list(range(21)))
+    n_vals = g.func("builtins.unfold_values", {Labels.VALUE: n_consts})
     doubler_const = g.const(doubler_plus())
 
-    m = g.map(doubler_const, {"doubler_input": Ns("*"), "intercept": zero})
+    m = g.map(doubler_const, {"doubler_input": n_vals("*"), "intercept": zero})
 
     m2 = g.map(doubler_const, {"doubler_input": m("*"), "intercept": zero})
     folded = g.func("builtins.fold_values", {"values_glob": m2("*")})
@@ -97,11 +97,11 @@ def maps_in_series() -> GraphData:
 def map_with_str_keys() -> GraphData:
     g = GraphData()
     zero = g.const(0)
-    Ns_const = g.const({"one": 1, "two": 2, "three": 3})
-    Ns = g.func("builtins.unfold_dict", {Labels.VALUE: Ns_const})
+    n_consts = g.const({"one": 1, "two": 2, "three": 3})
+    n_vals = g.func("builtins.unfold_dict", {Labels.VALUE: n_consts})
     doubler_const = g.const(doubler_plus())
 
-    m = g.map(doubler_const, {"doubler_input": Ns("*"), "intercept": zero})
+    m = g.map(doubler_const, {"doubler_input": n_vals("*"), "intercept": zero})
     folded = g.func("builtins.fold_dict", {"values_glob": m("*")})
     g.output({"value": folded(Labels.VALUE)})
     return g

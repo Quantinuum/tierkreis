@@ -1,10 +1,12 @@
+"""Virtual GraphStorage for visualization."""
+
 import json
 from pathlib import Path
+from typing import Any, override
 from uuid import UUID
-from typing import Any
-
 
 from pydantic import BaseModel, Field
+
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import (
     Eval,
@@ -14,8 +16,8 @@ from tierkreis.controller.data.graph import (
 )
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
     ControllerStorage,
+    StorageEntryMetadata,
 )
 from tierkreis.exceptions import TierkreisError
 
@@ -35,6 +37,13 @@ class NodeData(BaseModel):
 
 
 class GraphDataStorage(ControllerStorage):
+    """Storage backend using in-memory GraphData for workflow execution.
+
+    This storage implementation operates read-only on a GraphData object without
+    writing to disk.
+    Used for visualization without running the workflow.
+    """
+
     def __init__(
         self,
         workflow_id: UUID,
@@ -47,36 +56,57 @@ class GraphDataStorage(ControllerStorage):
         self.graph = graph
         self.tkr_dir = Path.home() / ".tierkreis"
 
+    @override
     def delete(self, path: Path) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def exists(self, path: Path) -> bool:
-        raise NotImplementedError("GraphDataStorage is only for graph construction.")
+        msg = "GraphDataStorage is only for graph construction."
+        raise NotImplementedError(msg)
 
+    @override
     def list_subpaths(self, path: Path) -> list[Path]:
-        raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
+        msg = "GraphDataStorage uses GraphData not paths."
+        raise NotImplementedError(msg)
 
+    @override
     def link(self, src: Path, dst: Path) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def mkdir(self, path: Path) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def read(self, path: Path) -> bytes:
-        raise NotImplementedError("GraphDataStorage uses GraphData not paths.")
+        msg = "GraphDataStorage uses GraphData not paths."
+        raise NotImplementedError(msg)
 
+    @override
     def stat(self, path: Path) -> StorageEntryMetadata:
-        raise NotImplementedError("GraphDataStorage is only for graph construction.")
+        msg = "GraphDataStorage is only for graph construction."
+        raise NotImplementedError(msg)
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+    @override
+    def touch(self, path: Path) -> None:
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def write(self, path: Path, value: bytes) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def write_node_def(self, node_location: Loc, node: NodeDef) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def read_node_def(self, node_location: Loc) -> NodeDef:
         try:
             if node_location.pop_last()[0][0] in ["M", "L"]:
@@ -86,6 +116,7 @@ class GraphDataStorage(ControllerStorage):
         node, _ = graph_node_from_loc(node_location, self.graph)
         return node
 
+    @override
     def write_worker_call_args(
         self,
         node_location: Loc,
@@ -93,28 +124,39 @@ class GraphDataStorage(ControllerStorage):
         inputs: dict[PortID, OutputLoc],
         output_list: list[PortID],
     ) -> Path:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def read_worker_call_args(self, node_location: Loc) -> WorkerCallArgs:
+        msg = f"Node location {node_location} doesn't have a associate call args."
         raise TierkreisError(
-            f"Node location {node_location} doesn't have a associate call args."
+            msg,
         )
 
-    def read_errors(self, node_location: Loc = Loc()) -> str:
+    @override
+    def read_errors(self, node_location: Loc | None = None) -> str:
         return ""
 
+    @override
     def node_has_error(self, node_location: Loc) -> bool:
         return False
 
+    @override
     def write_node_errors(self, node_location: Loc, error_logs: str) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def mark_node_finished(self, node_location: Loc) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def is_node_finished(self, node_location: Loc) -> bool:
         return False
 
+    @override
     def link_outputs(
         self,
         new_location: Loc,
@@ -122,16 +164,23 @@ class GraphDataStorage(ControllerStorage):
         old_location: Loc,
         old_port: PortID,
     ) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def write_output(
-        self, node_location: Loc, output_name: PortID, value: bytes
+        self,
+        node_location: Loc,
+        output_name: PortID,
+        value: bytes,
     ) -> Path:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def read_output(self, node_location: Loc, output_name: PortID) -> bytes:
         node, graph = graph_node_from_loc(node_location, self.graph)
-        if -1 == node_location.peek_index() and output_name == "body":
+        if node_location.peek_index() == -1 and output_name == "body":
             return graph.model_dump_json().encode()
 
         outputs = _build_node_outputs(node)
@@ -139,25 +188,33 @@ class GraphDataStorage(ControllerStorage):
             if output := outputs[output_name]:
                 return output
             return b"null"
-        raise TierkreisError(f"No output named {output_name} in node {node_location}")
+        msg = f"No output named {output_name} in node {node_location}"
+        raise TierkreisError(msg)
 
+    @override
     def read_output_ports(self, node_location: Loc) -> list[PortID]:
         node, _ = graph_node_from_loc(node_location, self.graph)
         outputs = _build_node_outputs(node)
         return list(filter(lambda k: k != "*", outputs.keys()))
 
+    @override
     def is_node_started(self, node_location: Loc) -> bool:
         return False
 
+    @override
     def read_metadata(self, node_location: Loc) -> dict[str, Any]:
         return self.nodes[node_location].metadata
 
+    @override
     def write_metadata(self, node_location: Loc) -> None:
-        raise NotImplementedError("GraphDataStorage is read only storage.")
+        msg = "GraphDataStorage is read only storage."
+        raise NotImplementedError(msg)
 
+    @override
     def read_started_time(self, node_location: Loc) -> str | None:
         return None
 
+    @override
     def read_finished_time(self, node_location: Loc) -> str | None:
         return None
 
@@ -167,13 +224,11 @@ def _build_node_outputs(node: NodeDef) -> dict[PortID, None | bytes]:
         if isinstance(node.value, dict):
             if "nodes" not in node.value:
                 return {"value": json.dumps(node.value).encode()}
-            else:
-                return {"value": b"Graph"}
-        elif isinstance(node.value, GraphData):
             return {"value": b"Graph"}
-        else:
-            return {"value": json.dumps(node.value).encode()}
-    outputs: dict[PortID, None | bytes] = {val: None for val in node.outputs}
+        if isinstance(node.value, GraphData):
+            return {"value": b"Graph"}
+        return {"value": json.dumps(node.value).encode()}
+    outputs: dict[PortID, None | bytes] = dict.fromkeys(node.outputs)
     if "*" in outputs:
         outputs["0"] = None
     return outputs

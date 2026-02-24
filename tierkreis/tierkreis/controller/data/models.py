@@ -1,3 +1,5 @@
+"""Models for type structures used in the graphbuilder."""
+
 from dataclasses import dataclass
 from inspect import isclass
 from itertools import chain
@@ -13,7 +15,9 @@ from typing import (
     overload,
     runtime_checkable,
 )
+
 from typing_extensions import TypeIs
+
 from tierkreis.controller.data.core import (
     NodeIndex,
     PortID,
@@ -56,7 +60,8 @@ class TKR[T: PModel]:
 class TNamedModel(RestrictedNamedTuple[TKR[PType] | None], Protocol):
     """A struct whose members are restricted to being references to PTypes.
 
-    E.g. in graph builder code these are outputs of tasks."""
+    E.g. in graph builder code these are outputs of tasks.
+    """
 
 
 TModel = TNamedModel | TKR
@@ -84,7 +89,7 @@ def is_portmapping(
     return hasattr(o, TKR_PORTMAPPING_FLAG)
 
 
-def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:
+def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:  # noqa: ANN001 inherited from get_origin
     origin = get_origin(o)
     if origin is not None:
         return is_tnamedmodel(origin)
@@ -115,10 +120,10 @@ def dict_from_tmodel(tmodel: TModel) -> dict[PortID, ValueRef]:
 
 def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
     if is_portmapping(model):
-        return getattr(model, "_fields")
+        return model._fields
 
     if is_tnamedmodel(model):
-        return getattr(model, "_fields")
+        return model._fields
 
     return ["value"]
 
@@ -134,7 +139,7 @@ def init_tmodel[T: TModel](tmodel: type[T], refs: list[ValueRef]) -> T:
             if get_origin(param) == Union:
                 param = next(x for x in get_args(param) if x)
             args.append(param(ref[0], ref[1]))
-        return cast(T, model(*args))
+        return cast("T", model(*args))
     return tmodel(refs[0][0], refs[0][1])
 
 

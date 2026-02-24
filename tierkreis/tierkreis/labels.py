@@ -4,8 +4,9 @@
 class Labels:
     """Special port labels used by builtin functions."""
 
-    def __init__(self):
-        raise RuntimeError("Do not instantiate")
+    def __init__(self) -> None:
+        msg = "Do not instantiate"
+        raise RuntimeError(msg)
 
     THUNK = "thunk"
     VALUE = "value"

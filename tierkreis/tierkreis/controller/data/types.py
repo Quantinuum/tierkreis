@@ -1,19 +1,21 @@
-from collections import defaultdict
-import logging
-from base64 import b64decode, b64encode
+"""Valid Python types for annotating worker functions and their serialisation."""
+
+# ruff: noqa: ANN001 ANN003 ANN401 due to serialization and inheritance from json
 import collections.abc
+import json
+import logging
+import pickle
+from base64 import b64decode, b64encode
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from inspect import Parameter, _empty, isclass
 from itertools import chain
-import json
-import pickle
 from types import NoneType, UnionType
 from typing import (
     Annotated,
     Any,
-    Mapping,
     Protocol,
     Self,
-    Sequence,
     TypeVar,
     Union,
     assert_never,
@@ -25,6 +27,8 @@ from typing import (
 
 from pydantic import BaseModel, ValidationError
 from pydantic._internal._generics import get_args as pydantic_get_args
+from typing_extensions import TypeIs
+
 from tierkreis.controller.data.core import (
     RestrictedNamedTuple,
     SerializationFormat,
@@ -32,7 +36,6 @@ from tierkreis.controller.data.core import (
     get_serializer,
 )
 from tierkreis.exceptions import TierkreisError
-from typing_extensions import TypeIs
 
 
 @runtime_checkable
@@ -40,25 +43,50 @@ class NdarraySurrogate(Protocol):
     """A protocol to enable use of numpy.ndarray.
 
     By default the serialisation will be done using dumps
-    and the deserialisation using `pickle.loads`."""
+    and the deserialisation using `pickle.loads`.
 
-    def dumps(self) -> bytes: ...
-    def tobytes(self) -> bytes: ...
-    def tolist(self) -> list: ...
+    The semantics are left to the implementor.
+    """
+
+    def dumps(self) -> bytes:
+        """Dump self to bytes."""
+        ...
+
+    def tobytes(self) -> bytes:
+        """Transform self to bytes."""
+        ...
+
+    def tolist(self) -> list:
+        """Convert self to a list."""
+        ...
 
 
 @runtime_checkable
 class DictConvertible(Protocol):
-    def to_dict(self) -> dict: ...
+    """A protocol for types that can be converted to and from dicts."""
+
+    def to_dict(self) -> dict:
+        """Convert self to a dict."""
+        ...
+
     @classmethod
-    def from_dict(cls, arg: dict, /) -> "Self": ...
+    def from_dict(cls, arg: dict, /) -> "Self":
+        """Construct self from a dict."""
+        ...
 
 
 @runtime_checkable
 class ListConvertible(Protocol):
-    def to_list(self) -> list: ...
+    """A protocol for types that can be converted to and from lists."""
+
+    def to_list(self) -> list:
+        """Convert self to a list."""
+        ...
+
     @classmethod
-    def from_list(cls, arg: list, /) -> "Self": ...
+    def from_list(cls, arg: list, /) -> "Self":
+        """Construct self from a list."""
+        ...
 
 
 type Container[T] = (
@@ -87,7 +115,8 @@ logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
-class Struct(RestrictedNamedTuple[JsonType], Protocol): ...
+class Struct(RestrictedNamedTuple[JsonType], Protocol):
+    """Supertype for structs, which are named tuples with JSON-serialisable fields."""
 
 
 _StructPType = JsonType | Struct
@@ -99,7 +128,14 @@ worker functions for automatic codegen of graph builder stubs."""
 class TierkreisEncoder(json.JSONEncoder):
     """Encode bytes also."""
 
-    def default(self, o):
+    def default(self, o) -> dict[str, Any] | dict[str, list[float]] | Any:
+        """Call the default tierkreis serializer.
+
+        :param o: The object to serialize.
+        :type o: _type_
+        :return: The serialized object.
+        :rtype: dict[str, Any] | dict[str, list[float]] | Any
+        """
         if isinstance(o, bytes):
             return {"__tkr_bytes__": True, "bytes": b64encode(o).decode()}
 
@@ -112,11 +148,11 @@ class TierkreisEncoder(json.JSONEncoder):
 class TierkreisDecoder(json.JSONDecoder):
     """Decode bytes also."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         kwargs.setdefault("object_hook", self._object_hook)
         super().__init__(**kwargs)
 
-    def _object_hook(self, d):
+    def _object_hook(self, d) -> bytes | complex | Any:
         """Try to decode an object containing bytes."""
         if "__tkr_bytes__" in d and "bytes" in d:
             return b64decode(d["bytes"])
@@ -129,25 +165,18 @@ class TierkreisDecoder(json.JSONDecoder):
 
 def _is_union(o: object) -> bool:
     return (
-        get_origin(o) == UnionType
-        or get_origin(o) == Union
-        or o == Union
-        or o == UnionType
+        o in (Union, UnionType) or get_origin(o) == UnionType or get_origin(o) == Union
     )
 
 
 def is_optional(t: type) -> bool:
-    """Check that the origin of `t` is a Union
-    and the args of `t` contains NoneType."""
+    """Check that the origin of `t` is a Union and the args of `t` contains NoneType."""
     origin = get_origin(t)
     if origin is None:
         return False
 
     is_union = origin == Union or (isclass(origin) and issubclass(origin, UnionType))
-    if is_union and NoneType in get_args(t):
-        return True
-
-    return False
+    return bool(is_union and NoneType in get_args(t))
 
 
 def _is_generic(o) -> TypeIs[type[TypeVar]]:
@@ -167,6 +196,13 @@ def _is_tuple(o: object) -> TypeIs[type[tuple[Any, ...]]]:
 
 
 def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
+    """Check if a type annotation is a PType.
+
+    :param annotation: The annotation to check.
+    :type annotation: Any
+    :return: The according TypeIs if the annotation is a PType, otherwise False.
+    :rtype: TypeIs[type[PType]]
+    """
     if get_origin(annotation) is Annotated:
         return is_ptype(get_args(annotation)[0])
 
@@ -181,24 +217,34 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     ):
         return all(is_ptype(x) for x in get_args(annotation))
 
-    elif isclass(annotation) and issubclass(
-        annotation,
-        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
-    ):
-        return True
-
-    elif annotation in get_args(ElementaryType.__value__):
+    if (
+        isclass(annotation)
+        and issubclass(
+            annotation,
+            (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
+        )
+    ) or annotation in get_args(ElementaryType.__value__):
         return True
 
     origin = get_origin(annotation)
     if origin is not None:
         return is_ptype(origin) and all(is_ptype(x) for x in get_args(annotation))
 
-    else:
-        return False
+    return False
 
 
-def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> Any:
+def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
+    """Get the json serializable type of a ptype value.
+
+    Potentially uses a custom serializer if the annotation has one.
+
+    :param ptype: The type to serialize.
+    :type ptype: PType
+    :param annotation: The annotation of the ptype, if available.
+    :type annotation: type[PType] | None
+    :return: The serialized ptype.
+    :rtype: JsonType
+    """
     if sr := get_serializer(annotation):
         return sr.serializer(ptype)
 
@@ -232,6 +278,15 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> Any:
 
 
 def bytes_from_ptype(ptype: PType, annotation: type[PType] | None = None) -> bytes:
+    """Get the bytes representation of a ptype value.
+
+    :param ptype: The ptype value to convert to bytes.
+    :type ptype: PType
+    :param annotation: The annotation of the ptype, if available.
+    :type annotation: type[PType] | None, optional
+    :return: The bytes representation of the ptype value.
+    :rtype: bytes
+    """
     ser = ser_from_ptype(ptype, annotation)
     match ser:
         case bytes():
@@ -241,6 +296,18 @@ def bytes_from_ptype(ptype: PType, annotation: type[PType] | None = None) -> byt
 
 
 def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
+    """Find the value of type T from a serialized form.
+
+    Uses the annotation to find the correct deserialization method, if available.
+
+    :param ser: The value to coerce.
+    :type ser: Any
+    :param annotation: The annotation to coerce to, if available.
+    :type annotation: type[T] | None, optional
+    :raises TierkreisError: If the value cannot be coerced to the annotation.
+    :return: The coerced value.
+    :rtype: T
+    """
     if annotation is None:
         return ser
 
@@ -255,8 +322,9 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             try:
                 return coerce_from_annotation(ser, t)
             except (AssertionError, ValidationError):
-                logger.debug(f"Tried deserialising as {t}")
-        raise TierkreisError(f"Could not deserialise {ser} as {annotation}")
+                logger.debug("Tried deserialising as %s", t)
+        msg = f"Could not deserialise {ser} as {annotation}"
+        raise TierkreisError(msg)
 
     origin = get_origin(annotation)
     if origin is None:
@@ -276,18 +344,24 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
         return ser
 
     if issubclass(origin, DictConvertible):
-        assert issubclass(annotation, origin)
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
         return annotation.from_dict(ser)
 
     if issubclass(origin, ListConvertible):
-        assert issubclass(annotation, origin)
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
         return annotation.from_list(ser)
 
     if issubclass(origin, NdarraySurrogate):
         return pickle.loads(ser)
 
     if issubclass(origin, BaseModel):
-        assert issubclass(annotation, origin)
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
         return annotation(**ser)
 
     if issubclass(origin, Struct):
@@ -295,21 +369,24 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             k: coerce_from_annotation(ser[k], v)
             for k, v in origin.__annotations__.items()
         }
-        return cast(T, origin(**d))
+        return cast("T", origin(**d))
 
     if issubclass(origin, collections.abc.Sequence):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
 
-        return cast(T, [coerce_from_annotation(x, args[0]) for x in ser])
+        return cast("T", [coerce_from_annotation(x, args[0]) for x in ser])
 
     if issubclass(origin, collections.abc.Mapping):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
 
-        return cast(T, {k: coerce_from_annotation(v, args[1]) for k, v in ser.items()})
+        return cast(
+            "T",
+            {k: coerce_from_annotation(v, args[1]) for k, v in ser.items()},
+        )
 
     assert_never(ser)
 
@@ -317,6 +394,15 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
 def get_serialization_format[T: PType](
     hint: type[T] | None = None,
 ) -> SerializationFormat:
+    """Find the serializaiton format to a type hint.
+
+    Returns 'unknown' for None.
+
+    :param hint: The type hint to find the serialization format for.
+    :type hint: type[T] | None, optional
+    :return: The serialization format for the given type hint.
+    :rtype: SerializationFormat
+    """
     if hint is None:
         return "unknown"
 
@@ -331,6 +417,15 @@ def get_serialization_format[T: PType](
 
 
 def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> T:
+    """Get the value with the correct type from its bytes.
+
+    :param bs: The bytes to deserialize.
+    :type bs: bytes
+    :param annotation: The annotation to use for deserialization, if available.
+    :type annotation: type[T] | None, optional
+    :return: The deserialized value of type T.
+    :rtype: T
+    """
     method = get_serialization_format(annotation)
     match method:
         case "bytes":
@@ -343,12 +438,19 @@ def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> 
                 j = json.loads(bs, cls=TierkreisDecoder)
                 return coerce_from_annotation(j, annotation)
             except (json.JSONDecodeError, UnicodeDecodeError):
-                return cast(T, bs)
+                return cast("T", bs)
         case _:
             assert_never(method)
 
 
 def generics_in_ptype(ptype: type[PType]) -> set[str]:
+    """Get the generics in a type annotation.
+
+    :param ptype: The ptype to extract generics from.
+    :type ptype: type[PType]
+    :return: The set of generic names in the ptype.
+    :rtype: set[str]
+    """
     if _is_generic(ptype):
         return {str(ptype)}
 
@@ -366,10 +468,17 @@ def generics_in_ptype(ptype: type[PType]) -> set[str]:
         return set()
 
     if issubclass(ptype, BaseModel):
-        return set((str(x) for x in pydantic_get_args(ptype)))
+        return {str(x) for x in pydantic_get_args(ptype)}
 
     assert_never(ptype)
 
 
 def has_default(t: Parameter) -> bool:
+    """Check if a parameter has a default value.
+
+    :param t: The parameter to check.
+    :type t: Parameter
+    :return: True if the parameter has a default value, False otherwise.
+    :rtype: bool
+    """
     return not (isclass(t.default) and issubclass(t.default, _empty))
