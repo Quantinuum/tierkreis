@@ -2947,7 +2947,7 @@ dev = [
 
 [[package]]
 name = "tierkreis-visualization"
-version = "0.1.7"
+version = "0.1.8"
 source = { editable = "tierkreis_visualization" }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
