@@ -8,8 +8,9 @@ import logging
 import socket
 from sys import argv
 
-from tierkreis import Worker
 from mpi4py import MPI  # type: ignore
+
+from tierkreis import Worker
 
 logger = logging.getLogger(__name__)
 worker = Worker("slurm_mpi_worker")
@@ -32,7 +33,6 @@ def mpi_rank_info() -> str | None:
     size = comm.Get_size()
     info = _proc_info()
     all_processes_info = comm.gather(info, root=0)
-    print(all_processes_info)
     if rank == 0:
         return "\n".join(
             f"Rank {info['rank']} out of {size} on {info['hostname']}."

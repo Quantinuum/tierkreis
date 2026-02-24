@@ -1,19 +1,18 @@
-from sys import argv
 import time
+from sys import argv
 
 import qnexus as qnx
-from qnexus.models import IssuerEnum
-from qnexus.models.references import ExecutionResultRef
+from default_pass_quantinuum import default_compilation_pass
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
 from pytket.passes import BasePass
+from qnexus.models import IssuerEnum
+from qnexus.models.references import ExecutionResultRef
 
 from tierkreis import Worker
 from tierkreis.exceptions import TierkreisError
-
-from default_pass_quantinuum import default_compilation_pass
 
 worker = Worker("quantinuum_worker")
 
@@ -31,18 +30,19 @@ def get_backend_info(device_name: str) -> BackendInfo:
     all_devices = qnx.devices.get_all([IssuerEnum.QUANTINUUM])
     info = next(filter(lambda x: x.device_name == device_name, all_devices), None)
     if info is None:
+        msg = f"Device {device_name} is not in the list of available Quantinuum devices"
         raise TierkreisError(
-            f"Device {device_name} is not in the list of available Quantinuum devices"
+            msg,
         )
     return info.backend_info
 
 
 @worker.task()
 def compile_using_info(
-    circuit: Circuit, backend_info: BackendInfo, optimisation_level: int = 2
+    circuit: Circuit, backend_info: BackendInfo, optimisation_level: int = 2,
 ) -> Circuit:
     base_pass = QuantinuumBackend.pass_from_info(
-        backend_info, optimisation_level=optimisation_level
+        backend_info, optimisation_level=optimisation_level,
     )
     base_pass.apply(circuit)
     return circuit
@@ -50,7 +50,7 @@ def compile_using_info(
 
 @worker.task()
 def backend_pass_from_info(
-    backend_info: BackendInfo, optimisation_level: int = 2
+    backend_info: BackendInfo, optimisation_level: int = 2,
 ) -> BasePass:
     """Returns a compilation pass according to the backend info.
 
@@ -62,7 +62,7 @@ def backend_pass_from_info(
     :rtype: BasePass
     """
     return QuantinuumBackend.pass_from_info(
-        backend_info, optimisation_level=optimisation_level
+        backend_info, optimisation_level=optimisation_level,
     )
 
 
@@ -132,14 +132,16 @@ def run_circuit(circuit: Circuit, n_shots: int, device_name: str) -> BackendResu
     qnx.jobs.wait_for(job_ref)
     ref_result = qnx.jobs.results(job_ref)[0]
     if not isinstance(ref_result, ExecutionResultRef):
-        raise TierkreisError(f"Result incomplete: {ref_result}")
+        msg = f"Result incomplete: {ref_result}"
+        raise TierkreisError(msg)
     backend_result = ref_result.download_result()
     if not isinstance(backend_result, BackendResult):
-        raise TierkreisError(f"Result was not a backend result: {backend_result}")
+        msg = f"Result was not a backend result: {backend_result}"
+        raise TierkreisError(msg)
     return backend_result
 
 
-def main():
+def main() -> None:
     worker.app(argv)
 
 

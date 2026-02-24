@@ -7,6 +7,7 @@ from pytket._tket.circuit import Circuit
 from pytket.circuit import PauliExpBox
 from pytket.pauli import Pauli
 from pytket.utils.operators import QubitPauliOperator
+
 from .active_space import get_n_active, get_n_core, get_n_virtual
 
 
@@ -32,7 +33,7 @@ def get_configs(
     for pj in lsp:
         for pi in lsp:
             p = []
-            for i, j in zip(pi, pj):
+            for i, j in zip(pi, pj, strict=False):
                 p += [i, j]
             p = tuple(p)
             if p not in ls:
@@ -61,8 +62,7 @@ def get_config_from_cas_init(
     n_virt -= get_n_virtual(mo_occ, n_cas_hsim, n_elecas_hsim)
     lsdoc = [1 for _ in range(2 * n_core)]
     lsvir = [0 for _ in range(2 * n_virt)]
-    phis_init_orig = [tuple(lsdoc + list(i) + lsvir) for i in phis_init]
-    return phis_init_orig
+    return [tuple(lsdoc + list(i) + lsvir) for i in phis_init]
 
 
 def make_time_evolution_circuits(
@@ -88,7 +88,7 @@ def make_time_evolution_circuits(
     n_trotter = 1
 
     H_for_time_evolution = QubitPauliOperator(
-        {qps: h_hsim[qps] - h_init.get(qps, 0.0) for qps in h_hsim._dict.keys()}
+        {qps: h_hsim[qps] - h_init.get(qps, 0.0) for qps in h_hsim._dict},
     )
     H_for_time_evolution.compress()
     items = sorted(
@@ -111,10 +111,10 @@ def make_time_evolution_circuits(
                 ls = [Pauli.I for _ in range(len(circ.qubits))]
                 for q, p in pauli_string.map.items():
                     ls[q.index[0]] = p
-                if any([p != Pauli.I for p in ls]):
+                if any(p != Pauli.I for p in ls):
                     circ.add_pauliexpbox(
                         PauliExpBox(ls, coeff * 2 * time_step / np.pi),
-                        [j for j in range(len(circ.qubits))],
+                        list(range(len(circ.qubits))),
                     )
         circ.measure_all()
         list_circ.append(circ)
@@ -137,9 +137,9 @@ def rhf2ghf(
         Integrals in the GHF basis.
     """
     nmo = h1e0.shape[0]
-    h1e = cast(NDArray[np.float64], np.kron(np.eye(2), h1e0))
+    h1e = cast("NDArray[np.float64]", np.kron(np.eye(2), h1e0))
     h2e = np.kron(np.eye(2), np.kron(np.eye(2), h2e0).T)
-    mask = list(itertools.chain(*zip(range(nmo), range(nmo, nmo * 2))))
+    mask = list(itertools.chain(*zip(range(nmo), range(nmo, nmo * 2), strict=False)))
     h1e = h1e[mask][:, mask]
     h2e = h2e[mask][:, mask][:, :, mask][:, :, :, mask]
     h2e = h2e.transpose(0, 2, 1, 3) - h2e.transpose(0, 2, 3, 1)

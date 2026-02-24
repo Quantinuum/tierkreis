@@ -3,7 +3,6 @@ import warnings
 from datetime import datetime
 from sys import argv
 from time import sleep
-from qnexus.models.references import ExecutionResultRef
 
 import qnexus as qnx
 from pytket._tket.circuit import Circuit
@@ -12,10 +11,10 @@ from pytket.backends.status import StatusEnum
 from qnexus import BackendConfig
 from qnexus.exceptions import ResourceFetchFailed
 from qnexus.models import QuantinuumConfig
-from qnexus.models.references import ExecuteJobRef, ExecutionProgram
-from tierkreis.exceptions import TierkreisError
+from qnexus.models.references import ExecuteJobRef, ExecutionProgram, ExecutionResultRef
 
 from tierkreis import Worker
+from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
 worker = Worker("nexus_worker")
@@ -32,9 +31,8 @@ def upload_circuit(project_name: str, circ: Circuit) -> ExecutionProgram:
     :return: A reference to the uploaded circuit.
     :rtype: ExecutionProgram
     """
-
     my_project_ref = qnx.projects.get_or_create(name=project_name)
-    circuit_name = circ.name if circ.name else f"circuit_{datetime.now()}"
+    circuit_name = circ.name or f"circuit_{datetime.now()}"
     qnx.context.set_active_project(my_project_ref)
     return qnx.circuits.upload(name=circuit_name, circuit=circ, project=my_project_ref)
 
@@ -62,7 +60,6 @@ def start_execute_job(
     :return: A reference to the started execution job.
     :rtype: ExecuteJobRef
     """
-
     my_project_ref = qnx.projects.get_or_create(name=project_name)
     qnx.context.set_active_project(my_project_ref)
     return qnx.start_execute_job(circuits, n_shots, backend_config, job_name)
@@ -78,15 +75,14 @@ def is_running(execute_ref: ExecuteJobRef) -> bool:
     :return: True if the job is still running, False otherwise.
     :rtype: bool
     """
-
     try:
         st = qnx.jobs.status(execute_ref).status
-    except ResourceFetchFailed as exc:
-        print(exc)
+    except ResourceFetchFailed:
         return True
 
     if st in [StatusEnum.CANCELLING, StatusEnum.CANCELLED, StatusEnum.ERROR]:
-        raise TierkreisError(f"Job status was {st}")
+        msg = f"Job status was {st}"
+        raise TierkreisError(msg)
 
     return st != StatusEnum.COMPLETED
 
@@ -100,13 +96,13 @@ def get_results(execute_ref: ExecuteJobRef) -> list[BackendResult]:
     :return: A list of backend results for each circuit in the job.
     :rtype: list[BackendResult]
     """
-
     execute_job_result_refs = qnx.jobs.results(execute_ref)
     backend_results: list[BackendResult] = []
     for i in range(len(execute_job_result_refs)):
         ref_result = execute_job_result_refs[i]
         if not isinstance(ref_result, ExecutionResultRef):
-            raise TierkreisError(f"Result incomplete: {ref_result}")
+            msg = f"Result incomplete: {ref_result}"
+            raise TierkreisError(msg)
         result = ref_result.download_result()
         assert isinstance(result, BackendResult)
         backend_results.append(result)
@@ -118,19 +114,18 @@ def get_results(execute_ref: ExecuteJobRef) -> list[BackendResult]:
 
 @worker.task()
 def check_status(execute_ref: ExecuteJobRef) -> str:
-    warnings.warn("check_status is deprecated, use is_running instead")
+    warnings.warn("check_status is deprecated, use is_running instead", stacklevel=2)
     sleep(30)
     try:
         return str(qnx.jobs.status(execute_ref).status)
-    except ResourceFetchFailed as exc:
-        print(exc)
+    except ResourceFetchFailed:
         return str(StatusEnum.SUBMITTED)
 
 
 @worker.task()
 def submit(circuits: list[Circuit], n_shots: int) -> ExecuteJobRef:
     warnings.warn(
-        "submit is deprecated, use upload_circuit and start_execute_job instead"
+        "submit is deprecated, use upload_circuit and start_execute_job instead", stacklevel=2,
     )
     my_project_ref = qnx.projects.get_or_create(name="Riken-Test")
     qnx.context.set_active_project(my_project_ref)
@@ -142,20 +137,19 @@ def submit(circuits: list[Circuit], n_shots: int) -> ExecuteJobRef:
                 name=f"My Circuit from {datetime.now()}",
                 circuit=circ,
                 project=my_project_ref,
-            )
+            ),
         )
 
-    execute_job_ref = qnx.start_execute_job(
+    return qnx.start_execute_job(
         programs=my_circuit_refs,
         name=f"My Execute Job from {datetime.now()}",
         n_shots=[n_shots] * len(my_circuit_refs),
         backend_config=QuantinuumConfig(device_name="reimei-E"),
         project=my_project_ref,
     )
-    return execute_job_ref
 
 
-def main():
+def main() -> None:
     worker.app(argv)
 
 

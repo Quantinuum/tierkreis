@@ -1,6 +1,7 @@
+from collections.abc import Sequence
 from sys import argv
-from typing import Sequence
 
+from default_pass import IBMQ_GATE_SET, default_compilation_pass
 from pytket._tket.circuit import Circuit
 from pytket.architecture import Architecture
 from pytket.backends.backendinfo import BackendInfo
@@ -8,11 +9,8 @@ from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.ibm import IBMQBackend
 from pytket.passes import BasePass
 
-
 from tierkreis import Worker
 from tierkreis.exceptions import TierkreisError
-
-from default_pass import default_compilation_pass, IBMQ_GATE_SET
 
 worker = Worker("ibmq_worker")
 
@@ -35,15 +33,16 @@ def get_backend_info(device_name: str) -> BackendInfo:
         None,
     )
     if info is None:
+        msg = f"Device {device_name} is not in the list of available IBMQ devices"
         raise TierkreisError(
-            f"Device {device_name} is not in the list of available IBMQ devices"
+            msg,
         )
     return info
 
 
 @worker.task()
 def backend_pass_from_info(
-    backend_info: BackendInfo, optimisation_level: int = 2
+    backend_info: BackendInfo, optimisation_level: int = 2,
 ) -> BasePass:
     """Returns a compilation pass according to the backend info.
 
@@ -55,13 +54,13 @@ def backend_pass_from_info(
     :rtype: BasePass
     """
     return IBMQBackend.pass_from_info(
-        backend_info, optimisation_level=optimisation_level
+        backend_info, optimisation_level=optimisation_level,
     )
 
 
 @worker.task()
 def backend_default_compilation_pass(
-    device_name: str, optimisation_level: int = 2
+    device_name: str, optimisation_level: int = 2,
 ) -> BasePass:
     """Returns the default compilation pass for a given device name.
 
@@ -119,7 +118,7 @@ def compile(
 
 @worker.task()
 def compile_circuit_ibmq(
-    circuit: Circuit, device_name: str, optimisation_level: int = 2
+    circuit: Circuit, device_name: str, optimisation_level: int = 2,
 ) -> Circuit:
     """Applies a predefined optimization pass for IBMQ devices.
 
@@ -137,7 +136,7 @@ def compile_circuit_ibmq(
 
 @worker.task()
 def compile_circuits_ibmq(
-    circuits: list[Circuit], device_name: str, optimisation_level: int = 2
+    circuits: list[Circuit], device_name: str, optimisation_level: int = 2,
 ) -> list[Circuit]:
     """Applies a predefined optimization pass for IBMQ devices.
 
@@ -167,7 +166,7 @@ def run_circuit(circuit: Circuit, n_shots: int, device_name: str) -> BackendResu
     return backend.run_circuit(circuit, n_shots)
 
 
-def main():
+def main() -> None:
     worker.app(argv)
 
 

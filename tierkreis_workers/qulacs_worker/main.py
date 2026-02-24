@@ -1,11 +1,12 @@
 from sys import argv
 from typing import Any
 
-from tierkreis import Worker
 from pytket._tket.circuit import Circuit
 from pytket.backends.backend import Backend
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qulacs.backends.qulacs_backend import QulacsBackend
+
+from tierkreis import Worker
 
 worker = Worker("qulacs_worker")
 
@@ -15,8 +16,7 @@ def get_backend(result_type: str = "state_vector", gpu_sim: bool = False) -> Bac
         from pytket.extensions.qulacs.backends.qulacs_backend import QulacsGPUBackend
 
         return QulacsGPUBackend()
-    else:
-        return QulacsBackend(result_type)
+    return QulacsBackend(result_type)
 
 
 def get_config(seed: int | None = None) -> dict[str, Any]:
