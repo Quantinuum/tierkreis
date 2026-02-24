@@ -1005,7 +1005,7 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "2.0.10"
+version = "2.0.11"
 source = { editable = "../../../../../tierkreis" }
 dependencies = [
     { name = "pydantic" },

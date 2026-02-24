@@ -243,7 +243,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/c6/56/51603b5714d221b78
 
 [[package]]
 name = "tierkreis"
-version = "2.0.10"
+version = "2.0.11"
 source = { editable = "../../../../../tierkreis" }
 dependencies = [
     { name = "pydantic" },
