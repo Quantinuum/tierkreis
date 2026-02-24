@@ -100,7 +100,7 @@ def get_ci_matrix(
     enuc: float,
     atol: float = 1e-10,
 ) -> csr_array:
-    """Get the CI matrix for the given SD bais."""
+    """Get the CI matrix for the given SD basis."""
     raw: list[int] = []
     col: list[int] = []
     data: list[float] = []

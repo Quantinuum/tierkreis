@@ -104,7 +104,7 @@ def state_preparation(
 
     Args:
         reference: Reference circuit from which ADAPT starts.
-        pool: List of excitation oeprators.
+        pool: List of excitation operators.
         target: Target state-vector to be approximated.
         max_iteration: Maximum number of iteration.
         atol: Absolute tolerance.

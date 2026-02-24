@@ -42,5 +42,5 @@ def remove_dependencies(deps: list[str], target_dir: Path):
 
 
 def clear_cache(worker_cache: Path = WORKER_CACHE):
-    """Remove all cached files used to install external worker depenencies."""
+    """Remove all cached files used to install external worker dependencies."""
     rmtree(worker_cache)

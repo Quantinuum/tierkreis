@@ -242,7 +242,7 @@ def compile_generic_with_fixed_pass(
     :type gate_set: list[str] | None, optional
     :param coupling_map: Connectivity constraint, fidelities are not regarded , defaults to None
     :type coupling_map: list[tuple[int, int]] | None, optional
-    :param output_format: The desired output formt, defaults to "TKET"
+    :param output_format: The desired output format, defaults to "TKET"
     :type output_format: str in ["TKET", "QASM2", "QIR"], optional
     :param optimisation_pass: A custom optimization pass to be applied, defaults to None
     :type optimisation_pass: BasePass | None, optional
@@ -356,7 +356,7 @@ def n_qubits(circuit: Circuit) -> int:
 
 @worker.task()
 def backend_result_to_dict(backend_result: BackendResult) -> dict[str, list[str]]:
-    """Converst a pytket BackendResults to a mapping register_name -> list of bitstrings.
+    """Convert a pytket BackendResults to a mapping register_name -> list of bitstrings.
 
     :param backend_result: The backend results.
     :type backend_result: BackendResult

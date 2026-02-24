@@ -48,4 +48,4 @@ class InMemoryWorkerStorage:
 
     def write_error(self, path: Path, error_logs: str) -> None:
         logger.error(error_logs)
-        raise TierkreisError("Error occured when running graph in-memory.")
+        raise TierkreisError("Error occurred when running graph in-memory.")

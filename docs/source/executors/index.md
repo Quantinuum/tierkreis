@@ -79,7 +79,7 @@ graph = GraphBuilder(TKR[NoneType], TKR[NoneType])
 graph.task(some_task)
 ```
 
-Using the `UvExecutor` in the controlle:
+Using the `UvExecutor` in the controller:
 
 ```py
 executor = UvExecutor(

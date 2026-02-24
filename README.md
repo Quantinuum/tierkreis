@@ -10,7 +10,7 @@ This is the top level repository containing the python packages.
 - **Tierkreis Workers**: A collection of commonly used workers `pip install tkr-<name>-worker`
   - Qiskit Aer
   - Quantinuum Nexus
-  - Quantinuum PyTKet
+  - Quantinuum Pytket
 
 ## CLI
 

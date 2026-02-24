@@ -1,20 +1,31 @@
+[default]
+extend-ignore-identifiers-re = [
+  # 8 character hex identifiers in jupyter metadata
+  "[a-g0-9]{8}"
+]
+
+
 [default.extend-identifiers]
-# Environment variable used in the docs
+# Internal identifiers
+## Environment variable used in the docs
 SER_METHOD = "SER_METHOD"
 
-# Identifier used for serialization variable
+## Identifiers used for serialization
 ser = "ser"
+ser_from_ptype = "ser_from_ptype"
 
-# Numpy ndarray type
+## Identifier used for map elements
+map_eles = "map_eles"
+eles = "eles"
+
+# Third party identifiers
+## Numpy ndarray type
 NDArray = "NDArray"
 
-# Aer related terms
-aer = "aer"
-Aer = "Aer"
-AerBackend = "AerBackend"
-aer_worker = "aer_worker"
-tkr-aer-worker = "tkr-aer-worker"
-tkr_aer_worker = "tkr_aer_worker"
-
-# commandline flag
+## commandline flag
 passin = "passin"
+
+[default.extend-words]
+Aer = "Aer"
+Braket = "Braket"
+
