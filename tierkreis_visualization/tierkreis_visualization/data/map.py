@@ -1,8 +1,9 @@
 from pydantic import BaseModel
+
+from tierkreis.controller.data.graph import Map
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis.controller.data.graph import Map
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyEdge, PyNode
@@ -14,11 +15,15 @@ class MapNodeData(BaseModel):
 
 
 def get_map_node(
-    storage: ControllerStorage, loc: Loc, map: Map, errored_nodes: list[Loc]
+    storage: ControllerStorage,
+    loc: Loc,
+    map: Map,
+    errored_nodes: list[Loc],
 ) -> MapNodeData:
     parent = loc.parent()
     if parent is None:
-        raise TierkreisError("MAP node must have parent.")
+        msg = "MAP node must have parent."
+        raise TierkreisError(msg)
 
     node_ref = next(n for n, port in map.inputs.values() if port == "*")
     map_eles = outputs_iter(storage, parent.N(node_ref))

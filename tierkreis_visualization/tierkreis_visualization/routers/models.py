@@ -1,6 +1,7 @@
 from pydantic import BaseModel
+
 from tierkreis.controller.data.location import Loc
-from tierkreis_visualization.data.models import PyNode, PyEdge
+from tierkreis_visualization.data.models import PyEdge, PyNode
 
 
 class PyGraph(BaseModel):

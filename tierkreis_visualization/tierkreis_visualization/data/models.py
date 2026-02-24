@@ -1,10 +1,20 @@
 from typing import Literal
+
 from pydantic import BaseModel
+
 from tierkreis.controller.data.location import Loc
 
 NodeStatus = Literal["Not started", "Started", "Error", "Finished"]
 NodeType = Literal[
-    "function", "ifelse", "map", "eval", "loop", "eifelse", "const", "output", "input"
+    "function",
+    "ifelse",
+    "map",
+    "eval",
+    "loop",
+    "eifelse",
+    "const",
+    "output",
+    "input",
 ]
 
 

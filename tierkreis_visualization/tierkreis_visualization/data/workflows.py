@@ -27,7 +27,7 @@ def get_workflows(storage_type: StorageType) -> list[WorkflowDisplay]:
                 name="tmp",
                 start_time=datetime.now().isoformat(),
                 errors=[],
-            )
+            ),
         ]
     return get_workflows_from_disk()
 
@@ -47,8 +47,12 @@ def get_workflows_from_disk() -> list[WorkflowDisplay]:
             errors = list(set(errors))
             workflows.append(
                 WorkflowDisplay(
-                    id=id, id_int=int(id), name=name, start_time=start, errors=errors
-                )
+                    id=id,
+                    id_int=int(id),
+                    name=name,
+                    start_time=start,
+                    errors=errors,
+                ),
             )
         except (TypeError, ValueError):
             continue

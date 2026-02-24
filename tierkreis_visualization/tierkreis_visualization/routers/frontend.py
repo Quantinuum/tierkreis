@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,7 +10,8 @@ router = APIRouter()
 
 
 @router.get("/{path:path}")
-def read_root():
+def read_root(path):
     return FileResponse(
-        PACKAGE_DIR / "static" / "dist" / "index.html", media_type="text/html"
+        PACKAGE_DIR / "static" / "dist" / "index.html",
+        media_type="text/html",
     )

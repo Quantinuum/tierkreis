@@ -2,20 +2,21 @@ import json
 from typing import assert_never
 
 from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.graph import GraphData, IfElse
+from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import in_edges
 from tierkreis.controller.storage.protocol import ControllerStorage
-
 from tierkreis.exceptions import TierkreisError
-from tierkreis_visualization.data.models import PyNode, NodeStatus, PyEdge
+from tierkreis_visualization.data.models import NodeStatus, PyEdge, PyNode
 from tierkreis_visualization.data.outputs import outputs_from_loc
 from tierkreis_visualization.routers.models import PyGraph
 
 
 def node_status(
-    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
+    storage: ControllerStorage,
+    node_location: Loc,
+    errored_nodes: list[Loc],
 ) -> NodeStatus:
     if storage.is_node_finished(node_location):
         return "Finished"
@@ -38,7 +39,7 @@ def add_conditional_edges(
     i: NodeIndex,
     node: IfElse,
     py_edges: list[PyEdge],
-):
+) -> None:
     try:
         pred = json.loads(storage.read_output(loc.N(node.pred[0]), node.pred[1]))
     except (FileNotFoundError, TierkreisError):
@@ -63,7 +64,9 @@ def add_conditional_edges(
 
 
 def get_eval_node(
-    storage: ControllerStorage, node_location: Loc, errored_nodes: list[Loc]
+    storage: ControllerStorage,
+    node_location: Loc,
+    errored_nodes: list[Loc],
 ) -> PyGraph:
     thunk = storage.read_output(node_location.N(-1), "body")
     graph = ptype_from_bytes(thunk, GraphData)

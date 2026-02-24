@@ -1,5 +1,6 @@
 import signal
 
+
 from tierkreis.controller.data.graph import GraphData
 
 from tierkreis_visualization.app_config import (
@@ -20,7 +21,7 @@ from tierkreis_visualization.storage import (
 )
 
 
-def transform_to_sigkill(signum, frame):
+def transform_to_sigkill(signum, frame) -> None:
     signal.raise_signal(signal.SIGKILL)
 
 
