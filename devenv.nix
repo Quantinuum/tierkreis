@@ -13,6 +13,7 @@
     ruff.enable = true;
     ruff-format.enable = true;
     git-hooks.package = pkgs.prek;
+    typos.enable = true;
   };
 
   # https://devenv.sh/languages/
