@@ -1,0 +1,20 @@
+[default.extend-identifiers]
+# Environment variable used in the docs
+SER_METHOD = "SER_METHOD"
+
+# Identifier used for serialization variable
+ser = "ser"
+
+# Numpy ndarray type
+NDArray = "NDArray"
+
+# Aer related terms
+aer = "aer"
+Aer = "Aer"
+AerBackend = "AerBackend"
+aer_worker = "aer_worker"
+tkr-aer-worker = "tkr-aer-worker"
+tkr_aer_worker = "tkr_aer_worker"
+
+# commandline flag
+passin = "passin"
