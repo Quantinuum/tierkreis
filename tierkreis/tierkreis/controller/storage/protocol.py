@@ -1,15 +1,22 @@
+import getpass
 import json
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
+from importlib.metadata import version
 from pathlib import Path
-from typing import Any, assert_never
+from typing import Any, assert_never, overload
 from uuid import UUID
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import NodeDef, NodeDefModel
 from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
+from tierkreis.controller.storage.data import (
+    ExecutorDebugData,
+    NodeDebugData,
+    WorkflowMetaData,
+)
 from tierkreis.controller.storage.exceptions import EntryNotFound
 from tierkreis.exceptions import TierkreisError
 
@@ -23,16 +30,6 @@ class StorageEntryMetadata:
     Storage implementations should decide which are applicable."""
 
     st_mtime: float | None = None
-
-
-@dataclass
-class StorageDebugData:
-    """Collection of commonly found debugdata.
-
-    Currently only used for loop_nodes
-    Storage implementations should decide which are applicable."""
-
-    loop_loc: str | None = None
 
 
 class ControllerStorage(ABC):
@@ -94,6 +91,12 @@ class ControllerStorage(ABC):
     @property
     def debug_path(self) -> Path:
         return self.workflow_dir / "debug"
+
+    def _exec_data_path(self, node_location: Loc) -> Path:
+        return self.debug_path / "executors" / str(node_location)
+
+    def _node_debug_path(self) -> Path:
+        return self.debug_path / "nodes"
 
     def _nodedef_path(self, node_location: Loc) -> Path:
         return self.workflow_dir / str(node_location) / "nodedef"
@@ -232,11 +235,39 @@ class ControllerStorage(ABC):
             self.touch(self._metadata_path(parent))
 
     def write_metadata(self, node_location: Loc) -> None:
+        if node_location == Loc(""):
+            self.write_workflow_metadata()
+            return
         j = json.dumps({"name": self.name, "start_time": datetime.now().isoformat()})
         self.write(self._metadata_path(node_location), j.encode())
 
     def read_metadata(self, node_location: Loc) -> dict[str, Any]:
         return json.loads(self.read(self._metadata_path(node_location)))
+
+    def write_workflow_metadata(
+        self,
+    ) -> None:
+        wf_data = WorkflowMetaData(
+            workflow_id=str(self.workflow_id),
+            name=self.name,
+            user_id=getpass.getuser(),
+            tierkreis_version=version("tierkreis"),
+            start_time=datetime.now().isoformat(),
+            execution_count=1,
+        )
+        self.write(self._metadata_path(Loc("")), wf_data.model_dump_json().encode())
+
+    def write_workflow_completion_time(self) -> None:
+        try:
+            data = self.read_metadata(Loc(""))
+        except json.JSONDecodeError as e:
+            # Only in memory should trigger this
+            logger.error(
+                "Invalid json found. Dumping completion time anyway.\n Error: %s", e.msg
+            )
+            data = {}
+        data["completion_time"] = datetime.now().isoformat()
+        self.write(self._metadata_path(Loc()), json.dumps(data).encode())
 
     def read_started_time(self, node_location: Loc) -> str | None:
         node_def = Path(self._nodedef_path(node_location))
@@ -269,17 +300,54 @@ class ControllerStorage(ABC):
         return result
 
     def loc_from_node_name(self, node_name: str) -> Loc | None:
-        debug_data = StorageDebugData(**self.read_debug_data(node_name))
+        debug_data = NodeDebugData(**self.read_debug_data(node_name))
         if debug_data.loop_loc is not None:
             return Loc(debug_data.loop_loc)
 
     def write_debug_data(self, name: str, loc: Loc) -> None:
-        self.mkdir(self.debug_path)
-        data = StorageDebugData(loop_loc=loc)
-        self.write(self.debug_path / name, json.dumps(asdict(data)).encode())
+        data = {name: NodeDebugData(loop_loc=loc).model_dump()}
+        if not self.exists(self._node_debug_path()):
+            self.write(self._node_debug_path(), json.dumps(data).encode())
+            return
+
+        existing_data = json.loads(self.read(self._node_debug_path()))
+        if not isinstance(existing_data, dict):
+            msg = f"Expecting executor data to be dict, found {type(existing_data)} instead."
+            raise TierkreisError(msg)
+        existing_data.update(data)
+        self.write(
+            self._node_debug_path(),
+            json.dumps(existing_data).encode(),
+        )
 
     def read_debug_data(self, name: str) -> dict[str, Any]:
-        return json.loads(self.read(self.debug_path / name))
+        existing_data = json.loads(self.read(self._node_debug_path()))
+        if not isinstance(existing_data, dict):
+            msg = f"Expecting executor data to be dict, found {type(existing_data)} instead."
+            raise TierkreisError(msg)
+        return existing_data[name]
+
+    def write_executor_data(self, loc: Loc, data: ExecutorDebugData) -> None:
+        self.write(self._exec_data_path(loc), data.model_dump_json().encode())
+
+    @overload
+    def read_executor_data(self) -> dict[Loc, ExecutorDebugData]: ...
+
+    @overload
+    def read_executor_data(self, loc: Loc) -> ExecutorDebugData: ...
+
+    def read_executor_data(
+        self, loc: Loc | None = None
+    ) -> dict[Loc, ExecutorDebugData] | ExecutorDebugData:
+        if loc is None:
+            result = {}
+            for path in self.list_subpaths(self._exec_data_path(Loc()).parent):
+                data = json.loads(self.read(path))
+                result[Loc(path.parts[-1])] = ExecutorDebugData(**data)
+            return result
+        else:
+            data = json.loads(self.read(self._exec_data_path(loc)))
+            return ExecutorDebugData(**data)
 
     def dependents(self, loc: Loc) -> set[Loc]:
         """Nodes that are fully invalidated if the node at the given loc is invalidated.

@@ -104,6 +104,19 @@ Currently, workflows will immediately terminate on an error.
 Tasks running in the background might still complete.
 Once the error has been analyzed and resolved, you should delete the temporary data e.g. in the example above `rm -rf <checkpoints_dir>/<workflow_id>/-.N0/ ` or use the [`clean_graph_files`](#tierkreis.controller.storage.protocol.ControllerStorage.clean_graph_files) function before rerunning the graph.
 
+## Debug execution information
+
+Currently there is only a limited amount of debugging information available.
+It is stored under `<checkpoints_dir>/<workflow_id>/debug/executors` in json format.
+The file contains json data mapping node locations (of task nodes) to data concerning their tierkreis executor.
+The data contains the following information:
+
+- The executor class string(s) (nested executors are separated by `:`)
+- The command used to launch the task
+- `job_id` a field for submission system. Only used in HPC executors.
+- `env` the current user environment when launching the task.
+- `packages` a list of installed python packages. Only used for the [`UvExecutor`](#tierkreis.controller.executor.uv_executor.UvExecutor)
+
 ## Visualizer
 
 If you're using the visualize to debug workflow, error information will be immediately visible to you.

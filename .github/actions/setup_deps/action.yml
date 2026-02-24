@@ -23,7 +23,7 @@ runs:
     - name: Set up uv & venv
       uses: astral-sh/setup-uv@v5
       with:
-        version: "0.6.6"
+        version: "0.9.11"
         enable-cache: true
         cache-suffix: ${{ inputs.python_version }}
         python-version: ${{ inputs.python_version }}
@@ -39,10 +39,3 @@ runs:
       with:
         node-version: "24.8.0"
         package-manager-cache: false
-
-    - name: Set up bun
-      uses: oven-sh/setup-bun@v2
-      if: inputs.include_node == 'yes'
-      with:
-        bun-version: "1.2.13"
-        no-cache: true

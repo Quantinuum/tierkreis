@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from tierkreis.controller.executor.protocol import ControllerExecutor
+from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.exceptions import TierkreisError
 
 
@@ -24,16 +25,19 @@ class MultipleExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        enable_logging: bool = True,
-    ) -> None:
+    ) -> ExecutorDebugData:
         executor_name = self.assignments.get(launcher_name, None)
         # If there is no assignment for the worker, use the default.
         if executor_name is None:
-            return self.default.run(launcher_name, worker_call_args_path)
+            data = self.default.run(launcher_name, worker_call_args_path)
+            data.executor = f"{__class__}:" + data.executor
+            return data
         executor = self.executors.get(executor_name)
         if executor is None:
             raise TierkreisError(
                 f"{launcher_name} is assigned to non-existent executor name: {executor_name}."
             )
 
-        return executor.run(launcher_name, worker_call_args_path)
+        data = executor.run(launcher_name, worker_call_args_path)
+        data.executor = f"{__class__}:" + data.executor
+        return data

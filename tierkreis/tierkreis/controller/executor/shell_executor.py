@@ -6,6 +6,7 @@ from pathlib import Path
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
+from tierkreis.controller.storage.data import ExecutorDebugData
 
 
 class ShellExecutor:
@@ -21,6 +22,7 @@ class ShellExecutor:
         timeout: int = 10,
         env: dict[str, str] | None = None,
         export_values: bool = False,
+        log_env_in_debug: bool = True,
     ) -> None:
         self.launchers_path = registry_path
         self.logs_path = workflow_dir / "logs"
@@ -29,12 +31,14 @@ class ShellExecutor:
         self.export_values = export_values
         self.timeout = timeout
         self.env = env or {}
+        self.log_env_in_debug = log_env_in_debug
 
     def run(
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-    ) -> None:
+        export_values: bool = False,
+    ) -> ExecutorDebugData:
         launcher_path = self.launchers_path / launcher_name
 
         launcher_path = check_and_set_launcher(
@@ -62,10 +66,12 @@ class ShellExecutor:
             stdin=subprocess.PIPE,
             env=env,
         )
+        command = f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&"
         proc.communicate(
-            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&".encode(),
+            command.encode(),
             timeout=self.timeout,
         )
+        return self._generate_debug_data(command, env)
 
     def _create_env(
         self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool
@@ -94,3 +100,15 @@ class ShellExecutor:
             with open(v) as fh:
                 values[f"input_{k}_value"] = fh.read()
         return env
+
+    def _generate_debug_data(
+        self, command: str, env: dict[str, str]
+    ) -> ExecutorDebugData:
+        if not self.log_env_in_debug:
+            env = {}
+        # What is the equivalent to the pip freeze here?
+        return ExecutorDebugData(
+            executor=str(self.__class__),
+            launch_command=command,
+            env=env,
+        )
