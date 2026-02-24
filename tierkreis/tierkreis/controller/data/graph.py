@@ -292,7 +292,7 @@ class GraphData(BaseModel):
         function_name: str,
         inputs: dict[PortID, ValueRef],
     ) -> Callable[[PortID], ValueRef]:
-        """Add a funciton node (task).
+        """Add a function node (task).
 
         :param function_name: The name of the function.
         :type function_name: str

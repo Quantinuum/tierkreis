@@ -1,3 +1,5 @@
+"""Models for type structures used in the graphbuilder."""
+
 from dataclasses import dataclass
 from inspect import isclass
 from itertools import chain
