@@ -1,3 +1,10 @@
+"""The workflow controller for Tierkreis.
+
+This is the main functionality controlling the execution of Tierkreis graphs.
+It provides the main entry point for running a graph,
+ and the main loop for resuming a graph until completion.
+"""
+
 import logging
 from time import sleep
 from typing import TYPE_CHECKING
@@ -31,6 +38,29 @@ def run_graph[A: TModel, B: TModel](
     *,
     enable_logging: bool = True,
 ) -> None:
+    """Start a graph execution.
+
+    Kicks of the execution by writing the graph inputs to storage.
+    Also marks the top-level eval wrapping the graph asa ready.
+
+    :param storage: The storage backend for the controller.
+    :type storage: ControllerStorage
+    :param executor: The executor backend for the controller.
+    :type executor: ControllerExecutor
+    :param g: The graph to run.
+    :type g: GraphData | GraphBuilder[A, B]
+    :param graph_inputs: The inputs to the graph.
+     If a single PType is provided, it will be provided as the input "value".
+    :type graph_inputs: dict[str, PType] | PType
+    :param n_iterations: The maximum number of iterations to run the graph,
+        defaults to 10000
+    :type n_iterations: int, optional
+    :param polling_interval_seconds: The polling interval in seconds, defaults to 0.01
+    :type polling_interval_seconds: float, optional
+    :param enable_logging: Whether to enable logging, defaults to True
+    :type enable_logging: bool, optional
+    :raises TierkreisError: If the graph encounters errors during execution.
+    """
     if isinstance(g, GraphBuilder):
         g = g.get_data()
 
@@ -67,6 +97,24 @@ def resume_graph(
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
 ) -> None:
+    """Resume a graph after initial start.
+
+    This iteratively walks the graph to find new nodes to start.
+    A node is ready to start once all its inputs are available.
+    Starts from constructing the dependencies by starting from the output node
+     and walking backwards.
+
+    :param storage: The storage backend for the controller.
+    :type storage: ControllerStorage
+    :param executor: The executor backend for the controller.
+    :type executor: ControllerExecutor
+    :param n_iterations: The maximum number of iterations to run the graph,
+        defaults to 10000
+    :type n_iterations: int, optional
+    :param polling_interval_seconds: The polling interval in seconds, defaults to 0.01
+    :type polling_interval_seconds: float, optional
+    :raises TierkreisError: If the graph encounters errors during execution.
+    """
     message = storage.read_output(Loc().N(-1), "body")
     graph = ptype_from_bytes(message, GraphData)
 

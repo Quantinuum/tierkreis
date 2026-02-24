@@ -1,3 +1,5 @@
+"""CLI for project related operations."""
+
 import argparse
 import os
 import shutil
@@ -18,6 +20,7 @@ from tierkreis.namespace import Namespace
 def parse_args(
     parser: argparse.ArgumentParser,
 ) -> argparse.ArgumentParser:
+    """Parse the arguments for the init subcommand."""
     init_subparsers = parser.add_subparsers(
         dest="init_type",
         help="Initialize tierkreis related structures",
@@ -25,15 +28,16 @@ def parse_args(
     )
     project = init_subparsers.add_parser(
         "project",
-        description="Initialize and manages project wide options."
-        " Please make sure to set up a python project first, e.g. by executing `uv init`.",
+        description="Initialize and manages project wide options. "
+        "Make sure to set up a python project first, e.g. by executing `uv init`.",
         help="Initializes a new tierkreis project and manages project wide options.",
     )
 
     project.add_argument(
         "--default-checkpoint-directory",
-        help="Overwrites the default checkpoint directory and sets the environment variable TKR_DIR for the current shell."
-        "If you want to persist this behavior add it to your systems environment. e.g. export TKR_DIR=... ",
+        help="""Overwrites the default checkpoint directory and sets the environment
+        variable TKR_DIR for the current shell. If you want to persist this behavior
+        add it to your systems environment. e.g. export TKR_DIR=... """,
         type=Path,
         default=Path.home() / ".tierkreis/checkpoints",
     )
@@ -45,7 +49,8 @@ def parse_args(
     )
     project.add_argument(
         "--worker-directory",
-        help="Overwrites the default worker directory. Defaults to <project_directory>/workers.",
+        help="Overwrites the default worker directory."
+        "Defaults to <project_directory>/workers.",
         type=Path,
         default=Path("./tkr") / "workers",
     )
@@ -61,13 +66,15 @@ def parse_args(
     )
     worker.add_argument(
         "--worker-directory",
-        help="Overwrites the default worker directory. Defaults to <project_directory>/workers.",
+        help="Overwrites the default worker directory."
+        "Defaults to <project_directory>/workers.",
         type=str,
         default=Path("./tkr") / "workers",
     )
     worker.add_argument(
         "--external",
-        help="Set this flag for non-python workers. This will generate an IDL file instead of python related files.",
+        help="Set this flag for non-python workers."
+        " This will generate an IDL file instead of python related files.",
         action="store_true",
     )
     worker.add_argument(
@@ -93,30 +100,30 @@ def parse_args(
     return parser
 
 
-def _gen_worker(worker_name: str, worker_dir: Path, external: bool = False) -> None:
+def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -> None:
     base_dir = worker_dir / worker_name
     base_dir.mkdir(exist_ok=True)
-    with open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
+    with Path.open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(f"# {worker_name} \n")
-    with open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_workspace_pyproject(worker_name))
+    with Path.open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_workspace_pyproject(worker_name, external=external))
     api_dir = base_dir / "api"
     src_dir = base_dir / "src"
     api_dir.mkdir(exist_ok=True)
-    with open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
+    with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_pyproject(worker_name, kind="api"))
-    with open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
+    with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(f"# {worker_name}-api \n")
     src_dir.mkdir(exist_ok=True)
     if external:
-        with open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
+        with Path.open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
             fh.write(external_worker_idl(worker_name))
         return
-    with open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
+    with Path.open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_main(worker_name))
-    with open(src_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
+    with Path.open(src_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_pyproject(worker_name, kind="src"))
-    with open(src_dir / "README.md", "w+", encoding="utf-8") as fh:
+    with Path.open(src_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(f"# {worker_name}-src \n")
 
 
@@ -135,10 +142,12 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             subprocess.run(
                 [uv_path, "run", "src/main.py", "--stubs-path", stubs_name],
                 cwd=worker,
+                check=True,
             )
 
 
 def run_args(args: argparse.Namespace) -> None:
+    """Run the project initialization according to the args."""
     if args.init_type == "project":
         worker_name = "example_worker"
         worker_dir = Path(args.worker_directory)
@@ -150,13 +159,13 @@ def run_args(args: argparse.Namespace) -> None:
         worker_dir.mkdir(exist_ok=True, parents=True)
         _gen_worker(worker_name, worker_dir)
         graphs_dir.mkdir(exist_ok=True, parents=True)
-        with open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
+        with Path.open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
         _gen_stubs(worker_dir, "./api/api.py")
     elif args.init_type == "worker":
         Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
-        _gen_worker(args.name, Path(args.worker_directory), args.external)
+        _gen_worker(args.name, Path(args.worker_directory), external=args.external)
     elif args.init_type == "stubs":
         _gen_stubs(Path(args.worker_directory), args.api_file_name)
 

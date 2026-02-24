@@ -1,3 +1,5 @@
+"""Main functionality to start nodes in a graph."""
+
 import logging
 import subprocess
 import sys
@@ -23,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NodeRunData:
+    """Data required to run a node.
+
+    :fields:
+        node_location (Loc): The location of the node to run.
+        node (NodeDef): The node definition to run.
+        output_list (list[PortID]): The list of output port ids for the node.
+    """
+
     node_location: Loc
     node: NodeDef
     output_list: list[PortID]
@@ -33,6 +43,15 @@ def start_nodes(
     executor: ControllerExecutor,
     node_run_data: list[NodeRunData],
 ) -> None:
+    """Start multiple nodes at once.
+
+    :param storage: The storage backend for the controller.
+    :type storage: ControllerStorage
+    :param executor: The executor backend for the controller.
+    :type executor: ControllerExecutor
+    :param node_run_data: The list of nodes to start (by their data).
+    :type node_run_data: list[NodeRunData]
+    """
     started_locs: set[Loc] = set()
     for node_run_datum in node_run_data:
         if node_run_datum.node_location in started_locs:
@@ -41,11 +60,20 @@ def start_nodes(
         started_locs.add(node_run_datum.node_location)
 
 
-def run_builtin(def_path: Path, logs_path: Path) -> None:
-    logger.info("START builtin %s", def_path)
+def run_builtin(call_args_path: Path, logs_path: Path) -> None:
+    """Run a builtin task.
+
+    This is run directly by the controller.
+
+    :param call_args_path: The path to the call arguments file.
+    :type call_args_path: Path
+    :param logs_path: The main controller log.
+    :type logs_path: Path
+    """
+    logger.info("START builtin %s", call_args_path)
     with Path.open(logs_path, "a") as fh:
         subprocess.Popen(
-            [sys.executable, "main.py", def_path],
+            [sys.executable, "main.py", call_args_path],
             start_new_session=True,
             cwd=PACKAGE_PATH / "tierkreis" / "builtins",
             stderr=fh,
@@ -58,6 +86,24 @@ def start(
     executor: ControllerExecutor,
     node_run_data: NodeRunData,
 ) -> None:
+    """Start the execution of a node.
+
+    Identiefies the node type and starts it accordingly.
+    - For function nodes, it uses the executor to run the worker.
+    - Recursively starts higher order nodes (eval, loop, map)
+    - Routes the inputs and outputs for the nodes to the correct locations in storage.
+
+    To start its node it must have its inputs available.
+    Inputs can be provided by the parent node (in the case of higher order nodes).
+
+    :param storage: The storage backend for the controller.
+    :type storage: ControllerStorage
+    :param executor: The executor backend for the controller.
+    :type executor: ControllerExecutor
+    :param node_run_data: The data required to run a node.
+    :type node_run_data: NodeRunData
+    :raises TierkreisError: If the node is an orphan.
+    """
     node_location = node_run_data.node_location
     node = node_run_data.node
     output_list = node_run_data.output_list
@@ -102,7 +148,7 @@ def start(
     elif node.type == "output":
         storage.mark_node_finished(node_location)
 
-        pipe_inputs_to_output_location(storage, parent, ins)
+        _pipe_inputs_to_output_location(storage, parent, ins)
         storage.mark_node_finished(parent)
 
     elif node.type == "const":
@@ -116,11 +162,11 @@ def start(
         ins["body"] = (parent.N(node.graph[0]), node.graph[1])
         ins.update(g.fixed_inputs)
 
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        _pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
 
     elif node.type == "loop":
         ins["body"] = (parent.N(node.body[0]), node.body[1])
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        _pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
         if node.name is not None:
             storage.write_debug_data(node.name, node_location)
         start(
@@ -139,10 +185,10 @@ def start(
 
     elif node.type == "map":
         first_ref = next(x for x in ins.values() if x[1] == "*")
-        map_eles = outputs_iter(storage, first_ref[0])
-        if not map_eles:
+        map_elements = outputs_iter(storage, first_ref[0])
+        if not map_elements:
             storage.mark_node_finished(node_location)
-        for idx, p in map_eles:
+        for idx, p in map_elements:
             eval_inputs: dict[PortID, tuple[Loc, PortID]] = {}
             eval_inputs["body"] = (parent.N(node.body[0]), node.body[1])
             for k, (i, port) in ins.items():
@@ -150,7 +196,7 @@ def start(
                     eval_inputs[k] = (i, p)
                 else:
                     eval_inputs[k] = (i, port)
-            pipe_inputs_to_output_location(
+            _pipe_inputs_to_output_location(
                 storage,
                 node_location.M(idx).N(-1),
                 eval_inputs,
@@ -167,7 +213,7 @@ def start(
         assert_never(node)
 
 
-def pipe_inputs_to_output_location(
+def _pipe_inputs_to_output_location(
     storage: ControllerStorage,
     output_loc: Loc,
     inputs: dict[PortID, OutputLoc],

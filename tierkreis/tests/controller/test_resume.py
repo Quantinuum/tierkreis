@@ -221,13 +221,13 @@ with_worker_ids = ["eval_body_is_from_worker"]
 )
 def test_resume_with_worker(
     graph: GraphData,
-    output: Any,
+    output: dict[str, PType] | PType,
     name: str,
-    id: int,
+    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
     g = graph
-    storage = ControllerFileStorage(UUID(int=id), name=name)
+    storage = ControllerFileStorage(UUID(int=workflow_id), name=name)
     test_workers_path = Path(__file__).parent.parent / "workers"
     executor = UvExecutor(test_workers_path, storage.logs_path)
     storage.clean_graph_files()

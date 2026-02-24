@@ -69,7 +69,7 @@ def run_hpc_executor(
 
     :param executor: The executor to use for running
     :type executor: HPCExecutor
-    :param launcher_name: Module description fo the worker to run
+    :param launcher_name: Module description for the worker to run
     :type launcher_name: str
     :param worker_call_args_path: Location of the worker call args.
     :type worker_call_args_path: Path
@@ -109,12 +109,13 @@ def run_hpc_executor(
             start_new_session=True,
             capture_output=True,
             text=True,
+            check=False,
         )
 
-    with open(executor.logs_path, "a+") as fh:
+    with Path.open(executor.logs_path, "a+") as fh:
         fh.write(process.stdout)
 
-    with open(executor.errors_path, "a+") as fh:
+    with Path.open(executor.errors_path, "a+") as fh:
         fh.write(process.stdout)
 
     if process.returncode != 0:

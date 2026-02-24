@@ -155,7 +155,7 @@ def tkr_list_conj() -> GraphBuilder[TKR[list[complex]], TKR[list[complex]]]:
     return g
 
 
-def eval_body_is_from_worker():
+def eval_body_is_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
     graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])

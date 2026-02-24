@@ -1,13 +1,13 @@
 """Manage dependencies for a Tierkreis project in the standard directory layout.
 
 Usually the target directory is the `workers_external` directory of the project.
-Each `TKRDependency` adds a folder to the target directory containing the worker code/executable.
-(Alternatively on systems where copying/moving large numbers of inodes is slow the TKRDependency can add a symlink.)
-Each `TKRDependency` has at its disposal a directory `worker_cache / TKRDependency.type` for any caching it needs.
+Each `TKRDependency` adds a folder to the target directory containing the worker
+ code/executable. (Alternatively on systems where copying/moving large numbers of inodes
+ is slow the TKRDependency can add a symlink.) Each `TKRDependency` has at its disposal
+ a directory `worker_cache / TKRDependency.type` for any caching it needs.
 """
 
 import logging
-from os import unlink
 from pathlib import Path
 from shutil import rmtree
 
@@ -35,15 +35,16 @@ def remove_dependencies(deps: list[str], target_dir: Path) -> None:
     for dep in deps:
         worker_dir = target_dir / dep
         if worker_dir.is_symlink():
-            unlink(worker_dir)
+            Path.unlink(worker_dir)
         elif worker_dir.is_dir():
             rmtree(worker_dir)
         else:
             logger.warning(
-                f"Expected {worker_dir} to be a symlink or directory. Taking no action.",
+                "Expected %s to be a symlink or directory. Taking no action.",
+                worker_dir,
             )
 
 
 def clear_cache(worker_cache: Path = WORKER_CACHE) -> None:
-    """Remove all cached files used to install external worker depenencies."""
+    """Remove all cached files used to install external worker dependencies."""
     rmtree(worker_cache)

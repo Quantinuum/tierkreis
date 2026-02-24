@@ -568,6 +568,19 @@ def mod(a: int, b: int) -> int:
 
 @worker.task()
 def tkr_range(start: int, stop: int, step: int = 1) -> list[int]:
+    """Return a list of ints in the range.
+
+    As pythons range().
+
+    :param start: Start of the range (inclusive).
+    :type start: int
+    :param stop: End of the range (exclusive).
+    :type stop: int
+    :param step: Step size, defaults to 1.
+    :type step: int, optional
+    :return: A list of integers in the specified range.
+    :rtype: list[int]
+    """
     return list(range(start, stop, step))
 
 
