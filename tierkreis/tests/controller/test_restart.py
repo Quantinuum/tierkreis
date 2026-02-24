@@ -10,7 +10,7 @@ from tierkreis.executor import UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
 
-def test_restart():
+def test_restart() -> None:
     storage = FileStorage(UUID(int=300), "test_restart")
     storage.clean_graph_files()
     executor = UvExecutor(Path(__file__).parent.parent / "workers", storage.logs_path)

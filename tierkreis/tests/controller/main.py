@@ -6,8 +6,8 @@
 # tierkreis = { path = "../../../tierkreis", editable = true }
 # ///
 from pathlib import Path
-from time import sleep
 from sys import argv
+from time import sleep
 
 from tierkreis import Worker
 

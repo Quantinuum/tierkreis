@@ -1,6 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 
+from tests.workers.hello_world_worker.stubs import greet
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins.stubs import neg
 from tierkreis.consts import PACKAGE_PATH
@@ -16,8 +17,6 @@ from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.storage import read_outputs
-
-from tests.workers.hello_world_worker.stubs import greet
 
 WORKER_PATH = Path(__file__).parent.parent / "workers"
 
@@ -202,7 +201,8 @@ def test_task_executor():
         env={"TEST_FLAG": "Goodbye"},
     )
     executor = TaskExecutor(
-        {"shell_worker.meet": first, "shell_worker.greet": second}, storage
+        {"shell_worker.meet": first, "shell_worker.greet": second},
+        storage,
     )
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
@@ -214,12 +214,12 @@ def test_task_executor():
     assert node_loc in data
     exec_data = data[node_loc]
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "cruel"
-    assert exec_data.executor == f"{executor.__class__}:{str(first.__class__)}"
+    assert exec_data.executor == f"{executor.__class__}:{first.__class__!s}"
     assert "main.sh" in exec_data.launch_command
     node_loc = Loc("-.N2")
     exec_data = storage.read_executor_data(node_loc)
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "Goodbye"
-    assert exec_data.executor == f"{executor.__class__}:{str(second.__class__)}"
+    assert exec_data.executor == f"{executor.__class__}:{second.__class__!s}"
     assert "main.sh" in exec_data.launch_command
 
 
@@ -253,7 +253,9 @@ def test_multiple_executor():
         workflow_dir=storage.workflow_dir,
     )
     executor = MultipleExecutor(
-        first, {"second": second}, {"stdinout_worker": "second"}
+        first,
+        {"second": second},
+        {"stdinout_worker": "second"},
     )
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
@@ -265,12 +267,12 @@ def test_multiple_executor():
     assert node_loc in data
     exec_data = data[node_loc]
     assert "TEST_FLAG" in exec_data.env and exec_data.env["TEST_FLAG"] == "beautiful"
-    assert exec_data.executor == f"{executor.__class__}:{str(first.__class__)}"
+    assert exec_data.executor == f"{executor.__class__}:{first.__class__!s}"
     assert "main.sh" in exec_data.launch_command
     node_loc = Loc("-.N2")
     exec_data = data[node_loc]
     assert "TEST_FLAG" not in exec_data.env
-    assert exec_data.executor == f"{executor.__class__}:{str(second.__class__)}"
+    assert exec_data.executor == f"{executor.__class__}:{second.__class__!s}"
     assert "main.sh" in exec_data.launch_command
 
 
@@ -283,7 +285,7 @@ def test_inmemory_executor():
     actual_output = read_outputs(g, storage)
     assert not actual_output
     assert not storage._exec_data_path(
-        Loc()
+        Loc(),
     ).parent.exists()  # in memory doesn't produce files
     node_loc = Loc("-.N1")
     data = storage.read_executor_data()
