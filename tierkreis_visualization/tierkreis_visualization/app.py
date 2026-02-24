@@ -1,21 +1,23 @@
 import signal
-from sys import argv
+
 from tierkreis.controller.data.graph import GraphData
+
 from tierkreis_visualization.app_config import (
     App,
     StorageType,
-    graph_data_lifespan,
     dev_lifespan,
+    graph_data_lifespan,
 )
 from tierkreis_visualization.config import CONFIG
+from tierkreis_visualization.main import get_graph_specifier
+from tierkreis_visualization.routers.frontend import assets
+from tierkreis_visualization.routers.frontend import router as frontend_router
+from tierkreis_visualization.routers.workflows import router as workflows_router
 from tierkreis_visualization.storage import (
     file_storage_fn,
     from_graph_data_storage_fn,
     graph_data_storage_fn,
 )
-from tierkreis_visualization.routers.frontend import assets
-from tierkreis_visualization.routers.workflows import router as workflows_router
-from tierkreis_visualization.routers.frontend import router as frontend_router
 
 
 def transform_to_sigkill(signum, frame):
@@ -46,13 +48,14 @@ def get_dev_app():
 
 
 def get_graph_data_app():
-    app = get_app(graph_data_lifespan)
-    graph_specifier = argv[1] if len(argv) > 1 else CONFIG.graph_specifier
+    graph_specifier = get_graph_specifier()
 
     if graph_specifier is None:
-        return app
+        return get_app(graph_data_lifespan)
+    storage_fn = graph_data_storage_fn(graph_specifier)[0]
 
-    app.state.get_storage_fn = graph_data_storage_fn(graph_specifier)[0]
+    app = get_app(graph_data_lifespan)
+    app.state.get_storage_fn = storage_fn
     app.state.storage_type = StorageType.GRAPHDATA
     return app
 
