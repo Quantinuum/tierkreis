@@ -40,7 +40,7 @@ This takes care of the difference in architecture between the login and compute 
 from tierkreis.hpc import JobSpec, ResourceSpec
 from tierkreis.executor import PJSUBExecutor
 pjsub_uv_spec = JobSpec(
-    job_name="tkr_symbolic_ciruits",
+    job_name="tkr_symbolic_circuits",
     account="<Fugaku group name here>",
     command="env UV_PROJECT_ENVIRONMENT=compute_venv uv run main.py",
     resource=ResourceSpec(nodes=1, memory_gb=None, gpus_per_node=None),

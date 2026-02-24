@@ -78,7 +78,7 @@ I refuse!
 This tells us the following information:
 
 1. A list of nodes that have encountered an error in this case `-.NO` from `Node: -.N0 encountered an error`
-2. Where to find error information, typically in a fille called `errors` in the node: `Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/errors`
+2. Where to find error information, typically in a file called `errors` in the node: `Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/errors`
 3. The reason for the error: `I refuse!` typically this would include a stack trace, but here we just raised a simple python `Exception`
 
 Further information can be found in the workflows log file, typically located at `<checkpoints_dir>/<workflow_id>/logs`.
