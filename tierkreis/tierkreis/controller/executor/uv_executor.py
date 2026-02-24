@@ -1,3 +1,6 @@
+"""Default python executor based on uv."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import logging
 import os
 import shutil
@@ -16,7 +19,19 @@ logger = logging.getLogger(__name__)
 class UvExecutor:
     """Executes workers in an UV python environment.
 
+    Depends on uv to run, hence the worker needs a pyproject.toml / a respective script.
+    Works out of the box with the cli worker definitions.
+    The env field can be used to provide additional variables; for example
+    controlling the python / uv version through $VIRTUAL_ENVIRONMENT.
+    Also to resolve paths, the $TKR_DIR will be set to the workflow directory.
+
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        launchers_path (Path): The locations to search for python workers.
+        logs_path (Path): The controller log file.
+        errors_path (Path): The controller error file for the function node.
+        env: (dict[str,str]): Additional environments to hand to the spawned subprocess.
     """
 
     def __init__(
@@ -41,14 +56,15 @@ class UvExecutor:
         self.errors_path = (
             self.logs_path.parent.parent
             / worker_call_args_path.parent
-            / "logs"  # made we should change this
+            / "logs"  # maybe we should change this
         )
         logger.info("START %s %s", launcher_name, worker_call_args_path)
 
         if uv_path is None:
             uv_path = shutil.which("uv")
         if uv_path is None:
-            raise TierkreisError("uv is required to use the uv_executor")
+            msg = "uv is required to use the uv_executor"
+            raise TierkreisError(msg)
 
         registry_path = find_registry_for_worker(launcher_name, self.registries)
         worker_path = check_and_set_launcher(registry_path, launcher_name, ".py").parent
@@ -58,7 +74,7 @@ class UvExecutor:
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         _error_path = self.errors_path.parent / "_error"
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,
@@ -72,11 +88,18 @@ class UvExecutor:
             timeout=10,
         )
         return self._generate_debug_data(
-            command, env, registry_path / launcher_name, uv_path
+            command,
+            env,
+            registry_path / launcher_name,
+            uv_path,
         )  # TODO update this when docs are merged
 
     def _generate_debug_data(
-        self, command: str, env: dict[str, str], cwd: Path, uv_path: str
+        self,
+        command: str,
+        env: dict[str, str],
+        cwd: Path,
+        uv_path: str,
     ) -> ExecutorDebugData:
         if not self.log_env_in_debug:
             env = {}

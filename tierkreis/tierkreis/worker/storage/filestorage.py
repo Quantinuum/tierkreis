@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.data.location import WorkerCallArgs
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 
 
 class WorkerFileStorage:
@@ -26,14 +26,14 @@ class WorkerFileStorage:
             with open(self.resolve(path), "r") as fh:
                 return WorkerCallArgs(**json.loads(fh.read()))
         except FileNotFoundError as exc:
-            raise EntryNotFound(path) from exc
+            raise EntryNotFoundError(path) from exc
 
     def read_input(self, path: Path) -> bytes:
         try:
             with open(self.resolve(path), "rb") as fh:
                 return fh.read()
         except FileNotFoundError as exc:
-            raise EntryNotFound(path) from exc
+            raise EntryNotFoundError(path) from exc
 
     def write_output(self, path: Path, value: bytes) -> None:
         with open(self.resolve(path), "wb+") as fh:

@@ -1,3 +1,6 @@
+"""A meta executor consisting of multiple single executors."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 from pathlib import Path
 
 from tierkreis.controller.executor.protocol import ControllerExecutor
@@ -8,7 +11,15 @@ from tierkreis.exceptions import TierkreisError
 class MultipleExecutor:
     """Composes multiple executors into a single object.
 
+    Will execute all worker tasks on the assigned executor or default.
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        default (ControllerExecutor): The default executor to use for all unspecified
+            tasks.
+        executors (dict[str, ControllerExecutor]): A mapping of name -> executor.
+        assignments (dict[str, string]): A mapping of worker to executor name
+
     """
 
     def __init__(
@@ -34,8 +45,12 @@ class MultipleExecutor:
             return data
         executor = self.executors.get(executor_name)
         if executor is None:
+            msg = (
+                f"{launcher_name} is assigned to non-existent"
+                f" executor name: {executor_name}."
+            )
             raise TierkreisError(
-                f"{launcher_name} is assigned to non-existent executor name: {executor_name}."
+                msg,
             )
 
         data = executor.run(launcher_name, worker_call_args_path)

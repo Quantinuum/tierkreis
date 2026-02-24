@@ -1,3 +1,6 @@
+"""In memory implementation."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import importlib.util
 import json
 import logging
@@ -14,9 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryExecutor:
-    """Executes workers in the same process as the controller.
+    """Execute workers in the same process as the controller.
 
+    Loads the worker as python module if possible.
+    Cannot only run python workers in conjunction with ControllerInMemoryStorage.
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        registry_path (Path): The locations to search for worker modules.
+        storage (ControllerInMemoryStorage):
+            Storage reference to access in memory values.
     """
 
     def __init__(self, registry_path: Path, storage: ControllerInMemoryStorage) -> None:
@@ -30,13 +40,16 @@ class InMemoryExecutor:
     ) -> ExecutorDebugData:
         logger.info("START %s %s", launcher_name, worker_call_args_path)
         call_args = WorkerCallArgs(
-            **json.loads(self.storage.read(worker_call_args_path))
+            **json.loads(self.storage.read(worker_call_args_path)),
         )
         launcher_path = check_and_set_launcher(self.registry_path, launcher_name, ".py")
         spec = importlib.util.spec_from_file_location("in_memory", launcher_path)
         if spec is None or spec.loader is None:
-            raise TierkreisError(
+            msg = (
                 f"Couldn't load module main.py in {self.registry_path / launcher_name}"
+            )
+            raise TierkreisError(
+                msg,
             )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -48,5 +61,6 @@ class InMemoryExecutor:
 
     def _generate_debug_data(self, launcher_path: Path) -> ExecutorDebugData:
         return ExecutorDebugData(
-            executor=str(__class__), launch_command=str(launcher_path)
+            executor=str(__class__),
+            launch_command=str(launcher_path),
         )

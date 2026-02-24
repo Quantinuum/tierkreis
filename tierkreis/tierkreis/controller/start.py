@@ -1,10 +1,11 @@
+"""Main functionality to start nodes in a graph."""
+
 import logging
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-from typing_extensions import assert_never
+from typing import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller.data.core import PortID
@@ -25,6 +26,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NodeRunData:
+    """Data required to run a node.
+
+    :fields:
+        node_location (Loc): The location of the node to run.
+        node (NodeDef): The node definition to run.
+        output_list (list[PortID]): The list of output port ids for the node.
+    """
+
     node_location: Loc
     node: NodeDef
     output_list: list[PortID]
@@ -35,6 +44,15 @@ def start_nodes(
     executor: ControllerExecutor,
     node_run_data: list[NodeRunData],
 ) -> None:
+    """Start multiple nodes at once.
+
+    :param storage: The storage backend for the controller.
+    :type storage: ControllerStorage
+    :param executor: The executor backend for the controller.
+    :type executor: ControllerExecutor
+    :param node_run_data: The list of nodes to start (by their data).
+    :type node_run_data: list[NodeRunData]
+    """
     started_locs: set[Loc] = set()
     for node_run_datum in node_run_data:
         if node_run_datum.node_location in started_locs:
@@ -43,11 +61,20 @@ def start_nodes(
         started_locs.add(node_run_datum.node_location)
 
 
-def run_builtin(def_path: Path, logs_path: Path) -> ExecutorDebugData:
-    logger.info("START builtin %s", def_path)
-    with open(logs_path, "a") as fh:
+def run_builtin(call_args_path: Path, logs_path: Path) -> ExecutorDebugData:
+    """Run a builtin task.
+
+    This is run directly by the controller.
+
+    :param call_args_path: The path to the call arguments file.
+    :type call_args_path: Path
+    :param logs_path: The main controller log.
+    :type logs_path: Path
+    """
+    logger.info("START builtin %s", call_args_path)
+    with Path.open(logs_path, "a") as fh:
         subprocess.Popen(
-            [sys.executable, "main.py", def_path],
+            [sys.executable, "main.py", call_args_path],
             start_new_session=True,
             cwd=PACKAGE_PATH / "tierkreis" / "builtins",
             stderr=fh,
@@ -55,7 +82,7 @@ def run_builtin(def_path: Path, logs_path: Path) -> ExecutorDebugData:
         )
     return ExecutorDebugData(
         executor="builtin",
-        launch_command=f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {def_path}",
+        launch_command=f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {call_args_path}",
     )
 
 
@@ -63,8 +90,25 @@ def start(
     storage: ControllerStorage,
     executor: ControllerExecutor,
     node_run_data: NodeRunData,
-    enable_logging: bool = True,
 ) -> None:
+    """Start the execution of a node.
+
+    Identiefies the node type and starts it accordingly.
+    - For function nodes, it uses the executor to run the worker.
+    - Recursively starts higher order nodes (eval, loop, map)
+    - Routes the inputs and outputs for the nodes to the correct locations in storage.
+
+    To start its node it must have its inputs available.
+    Inputs can be provided by the parent node (in the case of higher order nodes).
+
+    :param storage: The storage backend for the controller.
+    :type storage: ControllerStorage
+    :param executor: The executor backend for the controller.
+    :type executor: ControllerExecutor
+    :param node_run_data: The data required to run a node.
+    :type node_run_data: NodeRunData
+    :raises TierkreisError: If the node is an orphan.
+    """
     node_location = node_run_data.node_location
     node = node_run_data.node
     output_list = node_run_data.output_list
@@ -73,22 +117,27 @@ def start(
 
     parent = node_location.parent()
     if parent is None:
-        raise TierkreisError(f"{node.type} node must have parent Loc.")
+        msg = f"{node.type} node must have parent Loc."
+        raise TierkreisError(msg)
 
     ins = {k: (parent.N(idx), p) for k, (idx, p) in node.inputs.items()}
 
-    logger.debug(f"start {node_location} {node} {ins} {output_list}")
+    logger.debug("start %s %s %s %s", node_location, node, ins, output_list)
     if node.type == "function":
         name = node.function_name
         launcher_name = ".".join(name.split(".")[:-1])
         name = name.split(".")[-1]
         call_args_path = storage.write_worker_call_args(
-            node_location, name, ins, output_list
+            node_location,
+            name,
+            ins,
+            output_list,
         )
-        logger.debug(f"Executing {(str(node_location), name, ins, output_list)}")
+        logger.debug("Executing %s", (str(node_location), name, ins, output_list))
 
         if isinstance(storage, ControllerInMemoryStorage) and isinstance(
-            executor, InMemoryExecutor
+            executor,
+            InMemoryExecutor,
         ):
             exec_data = executor.run(launcher_name, call_args_path)
         elif launcher_name == "builtins":
@@ -105,7 +154,7 @@ def start(
     elif node.type == "output":
         storage.mark_node_finished(node_location)
 
-        pipe_inputs_to_output_location(storage, parent, ins)
+        _pipe_inputs_to_output_location(storage, parent, ins)
         storage.mark_node_finished(parent)
 
     elif node.type == "const":
@@ -119,14 +168,12 @@ def start(
         ins["body"] = (parent.N(node.graph[0]), node.graph[1])
         ins.update(g.fixed_inputs)
 
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        _pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
 
     elif node.type == "loop":
         ins["body"] = (parent.N(node.body[0]), node.body[1])
-        pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
-        if (
-            node.name is not None
-        ):  # should we do this only in debug mode? -> need to think through how this would work
+        _pipe_inputs_to_output_location(storage, node_location.N(-1), ins)
+        if node.name is not None:
             storage.write_debug_data(node.name, node_location)
         start(
             storage,
@@ -144,10 +191,10 @@ def start(
 
     elif node.type == "map":
         first_ref = next(x for x in ins.values() if x[1] == "*")
-        map_eles = outputs_iter(storage, first_ref[0])
-        if not map_eles:
+        map_elements = outputs_iter(storage, first_ref[0])
+        if not map_elements:
             storage.mark_node_finished(node_location)
-        for idx, p in map_eles:
+        for idx, p in map_elements:
             eval_inputs: dict[PortID, tuple[Loc, PortID]] = {}
             eval_inputs["body"] = (parent.N(node.body[0]), node.body[1])
             for k, (i, port) in ins.items():
@@ -155,8 +202,10 @@ def start(
                     eval_inputs[k] = (i, p)
                 else:
                     eval_inputs[k] = (i, port)
-            pipe_inputs_to_output_location(
-                storage, node_location.M(idx).N(-1), eval_inputs
+            _pipe_inputs_to_output_location(
+                storage,
+                node_location.M(idx).N(-1),
+                eval_inputs,
             )
             # Necessary in the node visualization
             storage.write_node_def(
@@ -164,16 +213,13 @@ def start(
                 Eval((-1, "body"), node.inputs, outputs=node.outputs),
             )
 
-    elif node.type == "ifelse":
-        pass
-
-    elif node.type == "eifelse":
+    elif node.type in {"ifelse", "eifelse"}:
         pass
     else:
         assert_never(node)
 
 
-def pipe_inputs_to_output_location(
+def _pipe_inputs_to_output_location(
     storage: ControllerStorage,
     output_loc: Loc,
     inputs: dict[PortID, OutputLoc],

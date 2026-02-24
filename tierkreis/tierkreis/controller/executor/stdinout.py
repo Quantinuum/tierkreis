@@ -1,3 +1,6 @@
+"""Special case implementation for external workers."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import json
 import os
 import shutil
@@ -12,7 +15,17 @@ from tierkreis.controller.storage.data import ExecutorDebugData
 class StdInOut:
     """Executes workers in an unix shell.
 
+    Assumes the worker takes a single input from stdin and will produce a single output
+    to stdout.
+    Will pipe other outputs to errors / logs.
+    Works by creating a subprocess
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        launchers_path (Path): The locations to search for external workers.
+        logs_path (Path): The controller log file.
+        errors_path (Path): The controller error file for the function node.
+        workflow_dir (Path): The workflow dir to resolve relative paths.
     """
 
     def __init__(
@@ -35,19 +48,21 @@ class StdInOut:
         launcher_path = _check_bin(launcher_name)
         if launcher_path is None:
             launcher_path = check_and_set_launcher(
-                self.launchers_path, launcher_name, ".sh"
+                self.launchers_path,
+                launcher_name,
+                ".sh",
             )
 
-        with open(self.workflow_dir.parent / worker_call_args_path) as fh:
+        with Path.open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
-        input_file = self.workflow_dir.parent / list(call_args.inputs.values())[0]
-        output_file = self.workflow_dir.parent / list(call_args.outputs.values())[0]
+        input_file = self.workflow_dir.parent / next(iter(call_args.inputs.values()))
+        output_file = self.workflow_dir.parent / next(iter(call_args.outputs.values()))
         done_path = self.workflow_dir.parent / call_args.done_path
         self.errors_path = done_path.parent / "logs"
         _error_path = self.errors_path.parent / "_error"
 
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         _error_path = done_path.parent / "_error"
         proc = subprocess.Popen(
             ["bash"],
@@ -56,7 +71,8 @@ class StdInOut:
         )
         command = f"({launcher_path} <{input_file}  > {output_file} 2> {tee_str} && touch {done_path}|| touch {_error_path})&"
         proc.communicate(
-            command.encode(),
+            f"({launcher_path} <{input_file}  > {output_file} 2> {tee_str}"
+            f" && touch {done_path}|| touch {_error_path})&".encode(),
             timeout=10,
         )
         return self._generate_debug_data(command)
