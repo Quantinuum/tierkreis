@@ -31,7 +31,7 @@ class ResourceSpec(BaseModel):
 
     :fields:
         nodes (int): Number of compute nodes, defaults to 1.
-        cores_per_node (int | None): Number of cores to ues per node, defaults to 1.
+        cores_per_node (int | None): Number of cores to use per node, defaults to 1.
         memory_gb (int | None): Memory per node in GB, defaults to 4.
         gpus_per_nod (int | None): Physical GPUs to reserve on the node, defaults to 0.
     """
