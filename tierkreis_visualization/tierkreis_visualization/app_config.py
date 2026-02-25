@@ -1,11 +1,14 @@
+import webbrowser
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Callable, cast
+from typing import cast
 from uuid import UUID
-import webbrowser
-from fastapi import FastAPI
+
 import fastapi
 import starlette.datastructures
+from fastapi import FastAPI
+
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.graphdata import GraphDataStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -35,7 +38,7 @@ class Request(fastapi.Request):
 
     @property
     def app(self) -> App:
-        return cast(App, super().app)
+        return cast("App", super().app)
 
 
 @asynccontextmanager

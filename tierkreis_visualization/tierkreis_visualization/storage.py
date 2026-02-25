@@ -14,7 +14,8 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 def file_storage_fn(tkr_dir: Path) -> Callable[[UUID], ControllerStorage]:
     def inner(workflow_id: UUID):
         return ControllerFileStorage(
-            workflow_id=workflow_id, tierkreis_directory=tkr_dir
+            workflow_id=workflow_id,
+            tierkreis_directory=tkr_dir,
         )
 
     return inner
@@ -37,14 +38,16 @@ def graph_data_storage_fn(
         "tkr_tmp.graph", mod_path, submodule_search_locations=[os.getcwd()]
     )
     if spec is None:
-        raise ValueError(f"File is not a Python module: {mod_path}")
+        msg = f"File is not a Python module: {mod_path}"
+        raise ValueError(msg)
 
     module = module_from_spec(spec)
     sys.modules["tkr_tmp.graph"] = module
     loader = spec.loader
 
     if loader is None:
-        raise ValueError("Could not get loader from module.")
+        msg = "Could not get loader from module."
+        raise ValueError(msg)
 
     loader.exec_module(module)
     graph = getattr(module, var).data

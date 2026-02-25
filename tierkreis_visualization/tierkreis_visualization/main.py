@@ -15,7 +15,8 @@ def get_graph_specifier() -> str | None:
 
 def start() -> None:
     uvicorn.run(
-        "tierkreis_visualization.app:get_filestorage_app", timeout_graceful_shutdown=10
+        "tierkreis_visualization.app:get_filestorage_app",
+        timeout_graceful_shutdown=10,
     )
 
 

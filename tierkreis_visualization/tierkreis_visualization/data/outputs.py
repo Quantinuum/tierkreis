@@ -1,11 +1,14 @@
 import array
-from tierkreis.controller.storage.protocol import ControllerStorage
+
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 
 
 def outputs_from_loc(
-    storage: ControllerStorage, loc: Loc, port_name: str
+    storage: ControllerStorage,
+    loc: Loc,
+    port_name: str,
 ) -> str | None:
     try:
         raw_bytes = storage.read_output(loc, port_name)
