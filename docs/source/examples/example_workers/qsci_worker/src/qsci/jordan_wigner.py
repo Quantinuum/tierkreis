@@ -98,7 +98,7 @@ def jordan_wigner_two_body(
 
             if c:
                 (ip, op_i), (jp, op_j), (kp, op_k), (lp, op_l) = sorted(
-                    zip((i, j, k, l), ops, strict=False),
+                    zip((i, j, k, l), ops, strict=True),
                 )
                 parity_string_ij = [(Qubit(p), Pauli.Z) for p in range(ip + 1, jp)]
                 parity_string_kl = [(Qubit(p), Pauli.Z) for p in range(kp + 1, lp)]

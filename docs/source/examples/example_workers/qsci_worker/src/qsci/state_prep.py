@@ -49,21 +49,21 @@ def make_pool(qubit_number: int) -> list[QubitPauliOperator]:
             qps = QubitPauliString(
                 {
                     Qubit(x): getattr(Pauli, p)
-                    for x, p in zip([i, j, k, l], paulis, strict=False)
+                    for x, p in zip([i, j, k, l], paulis, strict=True)
                 },
             )
             terms1[qps] = factor
             qps = QubitPauliString(
                 {
                     Qubit(x): getattr(Pauli, p)
-                    for x, p in zip([i, k, j, l], paulis, strict=False)
+                    for x, p in zip([i, k, j, l], paulis, strict=True)
                 },
             )
             terms2[qps] = factor
             qps = QubitPauliString(
                 {
                     Qubit(x): getattr(Pauli, p)
-                    for x, p in zip([i, l, j, k], paulis, strict=False)
+                    for x, p in zip([i, l, j, k], paulis, strict=True)
                 },
             )
             terms3[qps] = factor
@@ -91,7 +91,7 @@ def costfunc(
     circ_copy = ansatz.copy()
     symbols = circ_copy.free_symbols()
     ls = list(symbols)
-    mapping = dict(zip(ls, params, strict=False))
+    mapping = dict(zip(ls, params, strict=True))
     circ_copy.symbol_substitution(mapping)
     backend = AerStateBackend()
     compiled_circ = backend.get_compiled_circuit(circ_copy, optimisation_level=0)
@@ -157,7 +157,7 @@ def state_preparation(
         opt_res = minimize(costfunc, x0_array, args=(adapt_circ, target))
         # Update the reference state-vector and repeat the ADAPT procedure.
         x0 = opt_res.x.tolist()
-        mapping = dict(zip(adapt_circ.free_symbols(), opt_res.x, strict=False))
+        mapping = dict(zip(adapt_circ.free_symbols(), opt_res.x, strict=True))
         circ = adapt_circ.copy()
         circ.symbol_substitution(mapping)
         ref_statevector = circ.get_statevector()
@@ -167,7 +167,7 @@ def state_preparation(
             msg = "Not converge"
             raise RuntimeError(msg)
     symbols = adapt_circ.free_symbols()
-    mapping = dict(zip(symbols, x0, strict=False))
+    mapping = dict(zip(symbols, x0, strict=True))
     adapt_circ.symbol_substitution(mapping)
     return adapt_circ
 

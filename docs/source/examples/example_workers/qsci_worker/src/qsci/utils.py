@@ -33,7 +33,7 @@ def get_configs(
     for pj in lsp:
         for pi in lsp:
             p = []
-            for i, j in zip(pi, pj, strict=False):
+            for i, j in zip(pi, pj, strict=True):
                 p += [i, j]
             p = tuple(p)
             if p not in ls:
@@ -139,7 +139,7 @@ def rhf2ghf(
     nmo = h1e0.shape[0]
     h1e = cast("NDArray[np.float64]", np.kron(np.eye(2), h1e0))
     h2e = np.kron(np.eye(2), np.kron(np.eye(2), h2e0).T)
-    mask = list(itertools.chain(*zip(range(nmo), range(nmo, nmo * 2), strict=False)))
+    mask = list(itertools.chain(*zip(range(nmo), range(nmo, nmo * 2), strict=True)))
     h1e = h1e[mask][:, mask]
     h2e = h2e[mask][:, mask][:, :, mask][:, :, :, mask]
     h2e = h2e.transpose(0, 2, 1, 3) - h2e.transpose(0, 2, 3, 1)

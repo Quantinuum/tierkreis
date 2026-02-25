@@ -10,7 +10,7 @@ def get_phase(phi_i, phi_j) -> int:
     Note:
         See section 18.8 of the pink book.
     """
-    diff = [(j - i) for i, j in zip(phi_i, phi_j, strict=False)]
+    diff = [(j - i) for i, j in zip(phi_i, phi_j, strict=True)]
     phase = 1
     for i, p in enumerate(diff):
         if p == -1:
@@ -50,7 +50,7 @@ def eval_hele(
     if sum(phi_i) != sum(phi_j):
         return 0.0
     # Identify the excitation type.
-    config_diff = np.array([(j - i) for i, j in zip(phi_i, phi_j, strict=False)])
+    config_diff = np.array([(j - i) for i, j in zip(phi_i, phi_j, strict=True)])
     n_excitation = np.sum(np.abs(config_diff)) // 2
     # Triple or higher excitation returns zero.
     if n_excitation > 2:
@@ -128,7 +128,7 @@ def postprocess_configs(
     # new_configs: list[tuple[int, ...]] = []
     new_configs: set[tuple[int, ...]] = set()
     for config in configs:
-        occ = [i + j for i, j in zip(config[0::2], config[1::2], strict=False)]
+        occ = [i + j for i, j in zip(config[0::2], config[1::2], strict=True)]
         ls: list[list[int]] = [[]]
         # print("occ", occ)
         for on in occ:
