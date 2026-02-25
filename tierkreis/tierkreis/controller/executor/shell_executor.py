@@ -53,7 +53,6 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        export_values: bool = False,
     ) -> ExecutorDebugData:
         self.errors_path = worker_call_args_path.parent / "logs"
         launcher_path = check_and_set_launcher(
@@ -87,8 +86,10 @@ class ShellExecutor:
             stdin=subprocess.PIPE,
             env=env,
         )
-        command = f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} "
-        f"&& touch {done_path}|| touch {_error_path})&"
+        command = (
+            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} "
+            f"&& touch {done_path}|| touch {_error_path})&"
+        )
 
         proc.communicate(
             command.encode(),
