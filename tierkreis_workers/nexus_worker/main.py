@@ -125,7 +125,8 @@ def check_status(execute_ref: ExecuteJobRef) -> str:
 @worker.task()
 def submit(circuits: list[Circuit], n_shots: int) -> ExecuteJobRef:
     warnings.warn(
-        "submit is deprecated, use upload_circuit and start_execute_job instead", stacklevel=2,
+        "submit is deprecated, use upload_circuit and start_execute_job instead",
+        stacklevel=2,
     )
     my_project_ref = qnx.projects.get_or_create(name="Riken-Test")
     qnx.context.set_active_project(my_project_ref)

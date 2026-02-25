@@ -83,7 +83,6 @@ def state_prep(
     )
 
 
-
 @worker.task()
 def circuits_from_hamiltonians(
     ham_init: Hamiltonian,
@@ -165,7 +164,11 @@ def energy_from_results(
             counts[k] += v
     phis = list(counts.keys())
     phis_init_orig = get_config_from_cas_init(
-        mo_occ, cas_init.n, cas_init.n_ele, cas_hsim.n, cas_hsim.n_ele,
+        mo_occ,
+        cas_init.n,
+        cas_init.n_ele,
+        cas_hsim.n,
+        cas_hsim.n_ele,
     )
     for p in phis_init_orig:
         if p not in phis:

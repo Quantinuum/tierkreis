@@ -197,7 +197,10 @@ def _apply_threshold(hamiltonian: QubitHamiltonian, tol: float) -> QubitHamilton
 
 
 def qubit_mapping_jordan_wigner(
-    h0: float, h1: NDArray[np.inexact], h2: NDArray[np.inexact], tol: float = 1e-12,
+    h0: float,
+    h1: NDArray[np.inexact],
+    h2: NDArray[np.inexact],
+    tol: float = 1e-12,
 ) -> QubitHamiltonian:
     """Map the Hamiltonian to qubits using Jordan--Wigner mapping.
 
@@ -225,7 +228,8 @@ def qubit_mapping_jordan_wigner(
 
     # Two-body terms
     for (i, j), (k, l) in itertools.combinations_with_replacement(  # noqa: E741
-        itertools.combinations_with_replacement(range(norb), r=2), r=2,
+        itertools.combinations_with_replacement(range(norb), r=2),
+        r=2,
     ):
         _update_hamiltonian(jordan_wigner_two_body(i, j, l, k, h2[i, j, k, l]))
 

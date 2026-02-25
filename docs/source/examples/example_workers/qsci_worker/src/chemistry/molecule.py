@@ -8,7 +8,8 @@ if TYPE_CHECKING:
 
 
 def _extract_hamiltonian_rhf(
-    mol: gto.Mole, frozen: list[int] | None = None,
+    mol: gto.Mole,
+    frozen: list[int] | None = None,
 ) -> tuple[float, np.ndarray, np.ndarray]:
     """Extract the fermionic Hamiltonian from a mean-field calculation.
 

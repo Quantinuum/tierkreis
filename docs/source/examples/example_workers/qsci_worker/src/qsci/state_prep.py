@@ -47,15 +47,24 @@ def make_pool(qubit_number: int) -> list[QubitPauliOperator]:
             ("YXYY", -0.125j),
         ]:
             qps = QubitPauliString(
-                {Qubit(x): getattr(Pauli, p) for x, p in zip([i, j, k, l], paulis, strict=False)},
+                {
+                    Qubit(x): getattr(Pauli, p)
+                    for x, p in zip([i, j, k, l], paulis, strict=False)
+                },
             )
             terms1[qps] = factor
             qps = QubitPauliString(
-                {Qubit(x): getattr(Pauli, p) for x, p in zip([i, k, j, l], paulis, strict=False)},
+                {
+                    Qubit(x): getattr(Pauli, p)
+                    for x, p in zip([i, k, j, l], paulis, strict=False)
+                },
             )
             terms2[qps] = factor
             qps = QubitPauliString(
-                {Qubit(x): getattr(Pauli, p) for x, p in zip([i, l, j, k], paulis, strict=False)},
+                {
+                    Qubit(x): getattr(Pauli, p)
+                    for x, p in zip([i, l, j, k], paulis, strict=False)
+                },
             )
             terms3[qps] = factor
         pool.append(QubitPauliOperator(terms1))

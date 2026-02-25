@@ -40,7 +40,12 @@ def encrypt(plaintext: str, work_factor: int) -> EncryptionResult:
     start_time = time()
     salt = secrets.token_bytes(32)
     ciphertext = pyscrypt.hash(  # type:ignore
-        password=plaintext.encode(), salt=salt, N=work_factor, r=1, p=1, dkLen=32,
+        password=plaintext.encode(),
+        salt=salt,
+        N=work_factor,
+        r=1,
+        p=1,
+        dkLen=32,
     )
     time_taken = time() - start_time
 
@@ -57,7 +62,8 @@ def sign(private_key: bytes, passphrase: bytes, message: str) -> SigningResult:
     signature = key.sign(
         message.encode(),
         padding=padding.PSS(
-            mgf=padding.MGF1(SHA256()), salt_length=padding.PSS.MAX_LENGTH,
+            mgf=padding.MGF1(SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH,
         ),
         algorithm=SHA256(),
     ).hex()
@@ -74,7 +80,8 @@ def verify(public_key: bytes, signature: str, message: str) -> bool:
             bytes.fromhex(signature),
             message.encode(),
             padding=padding.PSS(
-                mgf=padding.MGF1(SHA256()), salt_length=padding.PSS.MAX_LENGTH,
+                mgf=padding.MGF1(SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
             ),
             algorithm=SHA256(),
         )

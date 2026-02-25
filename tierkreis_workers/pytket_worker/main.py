@@ -112,7 +112,9 @@ def compile_using_info(
                     msg,
                 ) from e
             compilation_pass = IBMQBackend.pass_from_info(
-                backend_info, optimisation_level, timeout,
+                backend_info,
+                optimisation_level,
+                timeout,
             )
         case QuantinuumConfig():
             try:
@@ -128,7 +130,9 @@ def compile_using_info(
                     msg,
                 ) from e
             compilation_pass = QuantinuumBackend.pass_from_info(
-                backend_info, optimisation_level=optimisation_level, timeout=timeout,
+                backend_info,
+                optimisation_level=optimisation_level,
+                timeout=timeout,
             )
         case _:
             raise NotImplementedError
@@ -151,7 +155,8 @@ def add_measure_all(circuit: Circuit) -> Circuit:
 
 @worker.task()
 def append_pauli_measurement_impl(
-    circuit: Circuit, pauli_string: QubitPauliString,
+    circuit: Circuit,
+    pauli_string: QubitPauliString,
 ) -> Circuit:
     """Appends pauli measurements according to the pauli string to the circuit.
 
@@ -408,10 +413,12 @@ def backend_result_from_dict(data: dict[str, list[str]]) -> BackendResult:
         bit_register += [Bit(key, i) for i in range(len(values[0]))]
         bits.append([[int(b) for b in shot] for shot in values])
     bit_strings = [
-        [item for sublist in group for item in sublist] for group in zip(*bits, strict=False)
+        [item for sublist in group for item in sublist]
+        for group in zip(*bits, strict=False)
     ]
     return BackendResult(
-        shots=OutcomeArray.from_readouts(bit_strings), c_bits=bit_register,
+        shots=OutcomeArray.from_readouts(bit_strings),
+        c_bits=bit_register,
     )
 
 

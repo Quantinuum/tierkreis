@@ -42,7 +42,8 @@ def get_backend_info(device_name: str) -> BackendInfo:
 
 @worker.task()
 def backend_pass_from_info(
-    backend_info: BackendInfo, optimisation_level: int = 2,
+    backend_info: BackendInfo,
+    optimisation_level: int = 2,
 ) -> BasePass:
     """Returns a compilation pass according to the backend info.
 
@@ -54,13 +55,15 @@ def backend_pass_from_info(
     :rtype: BasePass
     """
     return IBMQBackend.pass_from_info(
-        backend_info, optimisation_level=optimisation_level,
+        backend_info,
+        optimisation_level=optimisation_level,
     )
 
 
 @worker.task()
 def backend_default_compilation_pass(
-    device_name: str, optimisation_level: int = 2,
+    device_name: str,
+    optimisation_level: int = 2,
 ) -> BasePass:
     """Returns the default compilation pass for a given device name.
 
@@ -118,7 +121,9 @@ def compile(
 
 @worker.task()
 def compile_circuit_ibmq(
-    circuit: Circuit, device_name: str, optimisation_level: int = 2,
+    circuit: Circuit,
+    device_name: str,
+    optimisation_level: int = 2,
 ) -> Circuit:
     """Applies a predefined optimization pass for IBMQ devices.
 
@@ -136,7 +141,9 @@ def compile_circuit_ibmq(
 
 @worker.task()
 def compile_circuits_ibmq(
-    circuits: list[Circuit], device_name: str, optimisation_level: int = 2,
+    circuits: list[Circuit],
+    device_name: str,
+    optimisation_level: int = 2,
 ) -> list[Circuit]:
     """Applies a predefined optimization pass for IBMQ devices.
 

@@ -39,10 +39,13 @@ def get_backend_info(device_name: str) -> BackendInfo:
 
 @worker.task()
 def compile_using_info(
-    circuit: Circuit, backend_info: BackendInfo, optimisation_level: int = 2,
+    circuit: Circuit,
+    backend_info: BackendInfo,
+    optimisation_level: int = 2,
 ) -> Circuit:
     base_pass = QuantinuumBackend.pass_from_info(
-        backend_info, optimisation_level=optimisation_level,
+        backend_info,
+        optimisation_level=optimisation_level,
     )
     base_pass.apply(circuit)
     return circuit
@@ -50,7 +53,8 @@ def compile_using_info(
 
 @worker.task()
 def backend_pass_from_info(
-    backend_info: BackendInfo, optimisation_level: int = 2,
+    backend_info: BackendInfo,
+    optimisation_level: int = 2,
 ) -> BasePass:
     """Returns a compilation pass according to the backend info.
 
@@ -62,7 +66,8 @@ def backend_pass_from_info(
     :rtype: BasePass
     """
     return QuantinuumBackend.pass_from_info(
-        backend_info, optimisation_level=optimisation_level,
+        backend_info,
+        optimisation_level=optimisation_level,
     )
 
 
