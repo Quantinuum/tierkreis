@@ -74,7 +74,7 @@ def jordan_wigner_two_body(
     if (i == j) or (k == l):
         return terms
 
-    elif len({i, j, k, l}) == 4:
+    if len({i, j, k, l}) == 4:
         if (i > j) ^ (k > l):
             coeff *= -1
 
@@ -98,7 +98,7 @@ def jordan_wigner_two_body(
 
             if c:
                 (ip, op_i), (jp, op_j), (kp, op_k), (lp, op_l) = sorted(
-                    zip((i, j, k, l), ops)
+                    zip((i, j, k, l), ops, strict=True),
                 )
                 parity_string_ij = [(Qubit(p), Pauli.Z) for p in range(ip + 1, jp)]
                 parity_string_kl = [(Qubit(p), Pauli.Z) for p in range(kp + 1, lp)]
@@ -170,10 +170,7 @@ def jordan_wigner_two_body(
                 terms[QubitPauliString(strings)] += c * -0.25
 
     elif len({i, j, k, l}) == 2:
-        if i == l:
-            c = coeff * -0.25
-        else:
-            c = coeff * 0.25
+        c = coeff * -0.25 if i == l else coeff * 0.25
         ip, jp = sorted([i, j])
 
         terms[QubitPauliString({})] += -c
@@ -200,7 +197,10 @@ def _apply_threshold(hamiltonian: QubitHamiltonian, tol: float) -> QubitHamilton
 
 
 def qubit_mapping_jordan_wigner(
-    h0: float, h1: NDArray[np.inexact], h2: NDArray[np.inexact], tol: float = 1e-12
+    h0: float,
+    h1: NDArray[np.inexact],
+    h2: NDArray[np.inexact],
+    tol: float = 1e-12,
 ) -> QubitHamiltonian:
     """Map the Hamiltonian to qubits using Jordan--Wigner mapping.
 
@@ -228,7 +228,8 @@ def qubit_mapping_jordan_wigner(
 
     # Two-body terms
     for (i, j), (k, l) in itertools.combinations_with_replacement(  # noqa: E741
-        itertools.combinations_with_replacement(range(norb), r=2), r=2
+        itertools.combinations_with_replacement(range(norb), r=2),
+        r=2,
     ):
         _update_hamiltonian(jordan_wigner_two_body(i, j, l, k, h2[i, j, k, l]))
 

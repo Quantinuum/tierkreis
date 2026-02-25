@@ -47,15 +47,24 @@ def make_pool(qubit_number: int) -> list[QubitPauliOperator]:
             ("YXYY", -0.125j),
         ]:
             qps = QubitPauliString(
-                {Qubit(x): getattr(Pauli, p) for x, p in zip([i, j, k, l], paulis)}
+                {
+                    Qubit(x): getattr(Pauli, p)
+                    for x, p in zip([i, j, k, l], paulis, strict=True)
+                },
             )
             terms1[qps] = factor
             qps = QubitPauliString(
-                {Qubit(x): getattr(Pauli, p) for x, p in zip([i, k, j, l], paulis)}
+                {
+                    Qubit(x): getattr(Pauli, p)
+                    for x, p in zip([i, k, j, l], paulis, strict=True)
+                },
             )
             terms2[qps] = factor
             qps = QubitPauliString(
-                {Qubit(x): getattr(Pauli, p) for x, p in zip([i, l, j, k], paulis)}
+                {
+                    Qubit(x): getattr(Pauli, p)
+                    for x, p in zip([i, l, j, k], paulis, strict=True)
+                },
             )
             terms3[qps] = factor
         pool.append(QubitPauliOperator(terms1))
@@ -69,7 +78,7 @@ def costfunc(
     ansatz: Circuit,
     target: np.ndarray,
 ) -> float:
-    """Cost function for ADAPTive state preparation
+    """Cost function for ADAPTive state preparation.
 
     Args:
         params: Circuit parameters
@@ -82,7 +91,7 @@ def costfunc(
     circ_copy = ansatz.copy()
     symbols = circ_copy.free_symbols()
     ls = list(symbols)
-    mapping = dict(zip(ls, params))
+    mapping = dict(zip(ls, params, strict=True))
     circ_copy.symbol_substitution(mapping)
     backend = AerStateBackend()
     compiled_circ = backend.get_compiled_circuit(circ_copy, optimisation_level=0)
@@ -136,31 +145,29 @@ def state_preparation(
             ls = [Pauli.I for _ in range(reference.n_qubits)]
             for q, p in pauli_string.map.items():
                 ls[q.index[0]] = p
-            if any([p != Pauli.I for p in ls]):
+            if any(p != Pauli.I for p in ls):
                 adapt_circ.add_pauliexpbox(
                     PauliExpBox(
                         ls,
                         complex(coeff).imag * np.real(Symbol(s)) * 2.0 / np.pi,  # type: ignore
                     ),
-                    [j for j in range(reference.n_qubits)],
+                    list(range(reference.n_qubits)),
                 )
         x0_array = 1 - 2 * np.random.random(size=iteration + 1)
         opt_res = minimize(costfunc, x0_array, args=(adapt_circ, target))
         # Update the reference state-vector and repeat the ADAPT procedure.
         x0 = opt_res.x.tolist()
-        mapping = dict(zip(adapt_circ.free_symbols(), opt_res.x))
+        mapping = dict(zip(adapt_circ.free_symbols(), opt_res.x, strict=True))
         circ = adapt_circ.copy()
         circ.symbol_substitution(mapping)
         ref_statevector = circ.get_statevector()
         cost = opt_res.fun
-        print("error after iteration=" + str(iteration) + ":", opt_res.fun, opt_res.x)
     else:
         if strict:
-            raise RuntimeError("Not converge")
-        else:
-            print("Not converge")
+            msg = "Not converge"
+            raise RuntimeError(msg)
     symbols = adapt_circ.free_symbols()
-    mapping = dict(zip(symbols, x0))
+    mapping = dict(zip(symbols, x0, strict=True))
     adapt_circ.symbol_substitution(mapping)
     return adapt_circ
 
@@ -175,7 +182,7 @@ def perform_state_preparation(
     """State preparation or load in the saved one."""
     adapt_circuit = Circuit(len(reference_state))
     target_vector: NDArray[np.complex128] = np.linalg.eigh(
-        ham_init.to_sparse_matrix().todense()
+        ham_init.to_sparse_matrix().todense(),
     )[1][:, 0]
     target_vector_reshaped = np.array(target_vector).reshape(-1).real
 

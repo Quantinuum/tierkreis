@@ -2,12 +2,13 @@ import logging
 from sys import argv
 from typing import Any
 
-from tierkreis import Worker
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
-from pytket.extensions.qiskit.qiskit_convert import tk_to_qiskit
 from pytket.extensions.qiskit.backends.aer import AerBackend
+from pytket.extensions.qiskit.qiskit_convert import tk_to_qiskit
 from qiskit import qasm3
+
+from tierkreis import Worker
 
 worker = Worker("aer_worker")
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ def submit_single(circuit: Circuit, n_shots: int) -> BackendResult:
     return AerBackend().run_circuit(circuit, n_shots=n_shots)
 
 
-def main():
+def main() -> None:
     worker.app(argv)
 
 

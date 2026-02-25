@@ -1,8 +1,11 @@
 import logging
+from collections import Counter
 from sys import argv
-from typing import Counter, NamedTuple, cast
+from typing import NamedTuple, cast
 
 import numpy as np
+from chemistry.active_space import get_frozen
+from chemistry.molecule import extract_hamiltonian_rhf
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.circuit import Qubit
@@ -13,9 +16,6 @@ from qsci.jordan_wigner import qubit_mapping_jordan_wigner
 from qsci.postprocess import get_ci_matrix, postprocess_configs
 from qsci.state_prep import perform_state_preparation
 from qsci.utils import get_config_from_cas_init, make_time_evolution_circuits, rhf2ghf
-from chemistry.active_space import get_frozen
-from chemistry.molecule import extract_hamiltonian_rhf
-
 
 from tierkreis import Worker
 
@@ -53,36 +53,34 @@ def state_prep(
 ) -> Circuit:
     ham_init_operator = QubitPauliOperator(
         cast(
-            dict[QubitPauliString, CoeffTypeAccepted],
+            "dict[QubitPauliString, CoeffTypeAccepted]",
             qubit_mapping_jordan_wigner(
                 *rhf2ghf(
                     ham_init.h0,
                     np.array(ham_init.h1),
                     np.array(ham_init.h2),
-                )
+                ),
             ),
-        )
+        ),
     )
     # time-evolve CASCI ground state.
     n_core_init = get_n_core(mo_occ, cas_init.n_ele)
     n_core_hsim = get_n_core(mo_occ, cas_hsim.n_ele)
     n_core = n_core_init - n_core_hsim
     logging.info(
-        f"mo_occ={mo_occ} n_cas_hsim={cas_hsim.n} n_elecas_hsim={cas_hsim.n_ele}"
+        f"mo_occ={mo_occ} n_cas_hsim={cas_hsim.n} n_elecas_hsim={cas_hsim.n_ele}",
     )
     n_active_hsim = get_n_active(mo_occ, cas_hsim.n, cas_hsim.n_ele)
     prepared_circ = Circuit(n_active_hsim * 2)
     for i in range(n_core * 2):
         prepared_circ.X(i)
-    adapt_circ = perform_state_preparation(
+    return perform_state_preparation(
         reference_state=reference_state,
         ham_init=ham_init_operator,
         n_cas_init=cas_init.n,
         max_iteration=max_iteration_prep,
         atol=atol,
     )
-
-    return adapt_circ
 
 
 @worker.task()
@@ -98,27 +96,27 @@ def circuits_from_hamiltonians(
 ) -> list[Circuit]:
     ham_init_operator = QubitPauliOperator(
         cast(
-            dict[QubitPauliString, CoeffTypeAccepted],
+            "dict[QubitPauliString, CoeffTypeAccepted]",
             qubit_mapping_jordan_wigner(
                 *rhf2ghf(
                     ham_init.h0,
                     np.array(ham_init.h1),
                     np.array(ham_init.h2),
-                )
+                ),
             ),
-        )
+        ),
     )
     ham_hsim_operator = QubitPauliOperator(
         cast(
-            dict[QubitPauliString, CoeffTypeAccepted],
+            "dict[QubitPauliString, CoeffTypeAccepted]",
             qubit_mapping_jordan_wigner(
                 *rhf2ghf(
                     ham_hsim.h0,
                     np.array(ham_hsim.h1),
                     np.array(ham_hsim.h2),
-                )
+                ),
             ),
-        )
+        ),
     )
     # Load the input data.
     n_core_init = get_n_core(mo_occ, cas_init.n_ele)
@@ -138,19 +136,18 @@ def circuits_from_hamiltonians(
                 {
                     Qubit(qubit.index[0] + 2 * n_core): pauli
                     for qubit, pauli in qps.map.items()
-                }
+                },
             ): coeff
             for qps, coeff in ham_init_operator._dict.items()
-        }
+        },
     )
-    circuits = make_time_evolution_circuits(
+    return make_time_evolution_circuits(
         t_step_list,
         prepared_circ,
         h_hsim=ham_hsim_operator,
         h_init=ham_init_shifted,
         max_cx_gates=max_cx_gates,
     )
-    return circuits
 
 
 @worker.task()
@@ -167,7 +164,11 @@ def energy_from_results(
             counts[k] += v
     phis = list(counts.keys())
     phis_init_orig = get_config_from_cas_init(
-        mo_occ, cas_init.n, cas_init.n_ele, cas_hsim.n, cas_hsim.n_ele
+        mo_occ,
+        cas_init.n,
+        cas_init.n_ele,
+        cas_hsim.n,
+        cas_hsim.n_ele,
     )
     for p in phis_init_orig:
         if p not in phis:

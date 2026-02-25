@@ -2,7 +2,12 @@ from collections import Counter
 from sys import argv
 
 import qnexus as qnx
-
+from compile_circuit import (
+    MINIMAL_GATE_SET,
+    CircuitFormat,
+    OptimizationLevel,
+    compile_circuit,
+)
 from pytket._tket.circuit import Circuit
 from pytket._tket.unit_id import Bit
 from pytket.backends.backendinfo import BackendInfo
@@ -19,13 +24,6 @@ from qnexus import BackendConfig, IBMQConfig, QuantinuumConfig
 
 from tierkreis import Worker
 from tierkreis.exceptions import TierkreisError
-
-from compile_circuit import (
-    MINIMAL_GATE_SET,
-    CircuitFormat,
-    OptimizationLevel,
-    compile_circuit,
-)
 
 worker = Worker("pytket_worker")
 
@@ -46,7 +44,7 @@ def get_backend_info(config: BackendConfig) -> BackendInfo:
     :rtype: BackendInfo
     """
     if not isinstance(config, IBMQConfig) or not isinstance(config, QuantinuumConfig):
-        raise NotImplementedError()
+        raise NotImplementedError
     device = next(
         filter(
             lambda x: x.device_name == config.backend_name,
@@ -55,8 +53,9 @@ def get_backend_info(config: BackendConfig) -> BackendInfo:
         None,
     )
     if device is None:
+        msg = f"Device {config.backend_name} is not in the list of available devices"
         raise TierkreisError(
-            f"Device {config.backend_name} is not in the list of available devices"
+            msg,
         )
     return device.backend_info
 
@@ -105,12 +104,17 @@ def compile_using_info(
             try:
                 from pytket.extensions.qiskit.backends.ibm import IBMQBackend
             except ModuleNotFoundError as e:
-                raise TierkreisError(
+                msg = (
                     "Pytket worker could not import IBMQBackend."
                     "Please mnake sure to install the extras to use this task."
+                )
+                raise TierkreisError(
+                    msg,
                 ) from e
             compilation_pass = IBMQBackend.pass_from_info(
-                backend_info, optimisation_level, timeout
+                backend_info,
+                optimisation_level,
+                timeout,
             )
         case QuantinuumConfig():
             try:
@@ -118,15 +122,20 @@ def compile_using_info(
                     QuantinuumBackend,
                 )
             except ModuleNotFoundError as e:
-                raise TierkreisError(
+                msg = (
                     "Pytket worker could not import QuantinuumBackend."
                     "Please mnake sure to install the extras to use this task."
+                )
+                raise TierkreisError(
+                    msg,
                 ) from e
             compilation_pass = QuantinuumBackend.pass_from_info(
-                backend_info, optimisation_level=optimisation_level, timeout=timeout
+                backend_info,
+                optimisation_level=optimisation_level,
+                timeout=timeout,
             )
         case _:
-            raise NotImplementedError()
+            raise NotImplementedError
     compilation_pass.apply(circuit)
     return circuit
 
@@ -146,7 +155,8 @@ def add_measure_all(circuit: Circuit) -> Circuit:
 
 @worker.task()
 def append_pauli_measurement_impl(
-    circuit: Circuit, pauli_string: QubitPauliString
+    circuit: Circuit,
+    pauli_string: QubitPauliString,
 ) -> Circuit:
     """Appends pauli measurements according to the pauli string to the circuit.
 
@@ -179,7 +189,7 @@ def optimise_phase_gadgets(circuit: Circuit) -> Circuit:
 
 @worker.task()
 def apply_pass(circuit: Circuit, compiler_pass: BasePass) -> Circuit:
-    """Applies an arbitrary optimization pass to the circuit
+    """Applies an arbitrary optimization pass to the circuit.
 
     :param circuit: The original circuit.
     :type circuit: Circuit
@@ -255,7 +265,7 @@ def compile_generic_with_fixed_pass(
         gate_set_op = MINIMAL_GATE_SET
     else:
         op_types = {op_type.name: op_type for op_type in OpType}
-        gate_set_op = set(op_types[gate] for gate in gate_set)
+        gate_set_op = {op_types[gate] for gate in gate_set}
 
     return compile_circuit(
         circuit,
@@ -306,10 +316,12 @@ def to_qir_bytes(circuit: Circuit) -> bytes:
     try:
         from pytket.qir.conversion.api import pytket_to_qir
     except ModuleNotFoundError:
-        raise TierkreisError("Could not resolve pytket.qir")
+        msg = "Could not resolve pytket.qir"
+        raise TierkreisError(msg)
     ret = pytket_to_qir(circuit)
     if not isinstance(ret, bytes):
-        raise TierkreisError("Error when converting Circuit to QIR.")
+        msg = "Error when converting Circuit to QIR."
+        raise TierkreisError(msg)
     return ret
 
 
@@ -325,7 +337,8 @@ def from_qir_bytes(qir: bytes) -> Circuit:
     try:
         from pytket_qirpass import qir_to_pytket
     except ModuleNotFoundError:
-        raise TierkreisError("Could not resolve pytket_qirpass")
+        msg = "Could not resolve pytket_qirpass"
+        raise TierkreisError(msg)
     return qir_to_pytket(qir)
 
 
@@ -338,8 +351,7 @@ def expectation(backend_result: BackendResult) -> float:
     :return: The estimated expectation value.
     :rtype: float
     """
-    expectation = expectation_from_counts(backend_result.get_counts())
-    return expectation
+    return expectation_from_counts(backend_result.get_counts())
 
 
 @worker.task()
@@ -401,14 +413,16 @@ def backend_result_from_dict(data: dict[str, list[str]]) -> BackendResult:
         bit_register += [Bit(key, i) for i in range(len(values[0]))]
         bits.append([[int(b) for b in shot] for shot in values])
     bit_strings = [
-        [item for sublist in group for item in sublist] for group in zip(*bits)
+        [item for sublist in group for item in sublist]
+        for group in zip(*bits, strict=False)
     ]
     return BackendResult(
-        shots=OutcomeArray.from_readouts(bit_strings), c_bits=bit_register
+        shots=OutcomeArray.from_readouts(bit_strings),
+        c_bits=bit_register,
     )
 
 
-def main():
+def main() -> None:
     worker.app(argv)
 
 
