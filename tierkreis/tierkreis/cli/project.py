@@ -140,22 +140,35 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             namespace.write_stubs(idl.parent / stubs_name)
         else:
             subprocess.run(
-                [uv_path, "run", "src/main.py", "--stubs-path", stubs_name],
+                [uv_path, "run", "--active", "src/main.py", "--stubs-path", stubs_name],
                 cwd=worker,
-                check=True,
             )
 
 
 def run_args(args: argparse.Namespace) -> None:
     """Run the project initialization according to the args."""
     if args.init_type == "project":
+        project_dir = Path(args.project_directory)
+        if (project_dir / "tkr").exists():
+            if not (project_dir / "tkr").is_dir():
+                msg = f"Project directory {project_dir / 'tkr'} already exists and is not a directory."
+                raise TierkreisError(msg)
+            if (
+                not input(
+                    f"Project directory {project_dir / 'tkr'} already exists. Continue? (y/n): "
+                )
+                .lower()
+                .strip()[:1]
+                == "y"
+            ):
+                return
         worker_name = "example_worker"
         worker_dir = Path(args.worker_directory)
         if not worker_dir.is_absolute():
-            worker_dir = Path(args.project_directory) / worker_dir
+            worker_dir = project_dir / worker_dir
         graphs_dir = Path(args.graphs_directory)
         if not graphs_dir.is_absolute():
-            graphs_dir = Path(args.project_directory) / graphs_dir
+            graphs_dir = project_dir / graphs_dir
         worker_dir.mkdir(exist_ok=True, parents=True)
         _gen_worker(worker_name, worker_dir)
         graphs_dir.mkdir(exist_ok=True, parents=True)
@@ -163,6 +176,18 @@ def run_args(args: argparse.Namespace) -> None:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
         _gen_stubs(worker_dir, "./api/api.py")
+        print(f"""Successfully generated project in '{project_dir / "tkr"}'.
+              
+To run the sample graph use "python -m tkr.graphs.main".
+Or import the function into a top level script with:
+              
+from tkr.graphs.main import main
+main()
+              
+It is highly recommended to include the newly created structure
+to your project definition e.g. pyproject.toml.
+Keep in mind that workers are independent of your graph code.
+""")
     elif args.init_type == "worker":
         Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
         _gen_worker(args.name, Path(args.worker_directory), external=args.external)

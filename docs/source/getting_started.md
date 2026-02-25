@@ -8,7 +8,7 @@ You can set up a project using `uv` and the tierkreis cli called `tkr`.
 ```bash
 uv init
 uv add tierkreis
-tkr init project
+uv run tkr init project
 ```
 
 This will set up the following project structure for you:
