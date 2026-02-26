@@ -79,7 +79,7 @@ def parse_args(
     )
     worker.add_argument(
         "-n",
-        "--name",
+        "--worker-name",
         required=True,
         help="The name of the new worker",
         type=str,
