@@ -28,7 +28,7 @@ class SimulateJobInputs(NamedTuple):
 
     :fields:
         simulator_name (Literal): either 'aer' or 'qulacs'.
-        circuits (list[Ciruit]): The list of circuits to run.
+        circuits (list[Circuit]): The list of circuits to run.
         n_shots (int): The number of shots (repetitions) of each circuit.
         compilation_optimisation_level (int): tket optimisation level in [0,1,2,3].
     """
@@ -44,7 +44,7 @@ class SimulateJobInputsSingle(NamedTuple):
 
     :fields:
         simulator_name (Literal): either 'aer' or 'qulacs'.
-        circuit_shots (tuple[Ciruit, int]): The circuits to run and the number of shots.
+        circuit_shots (tuple[Circuit, int]): The circuits to run and the number of shots.
         compilation_optimisation_level (int): tket optimisation level in [0,1,2,3].
     """
 
