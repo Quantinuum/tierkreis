@@ -5,11 +5,9 @@ We use https://typespec.io/docs/language-basics/built-in-types/ as a guide.
 
 from types import NoneType
 from typing import ForwardRef
+
 from tierkreis.idl.models import GenericType
 from tierkreis.idl.parser import Parser, lit, reg, seq
-
-type _TypeT = type | ForwardRef
-
 
 signed_int = lit("integer", "int64", "int32", "int16", "int8", "safeint")
 unsigned_int = lit("uint64", "uint32", "uint16", "uint8")
@@ -30,19 +28,40 @@ generics = (lit("<") >> ident.rep(lit(",")) << lit(">")).opt().map(lambda x: x o
 
 
 def array_t(ins: str) -> tuple[GenericType, str]:
+    """Parse a array generic type.
+
+    :param ins: The string to parse.
+    :type ins: str
+    :return: The parsed type and its string representation.
+    :rtype: tuple[GenericType, str]
+    """
     return (lit("Array<") >> type_symbol << lit(">")).map(
-        lambda x: GenericType(list, [x])
+        lambda x: GenericType(list, [x]),
     )(ins)
 
 
 def record_t(ins: str) -> tuple[GenericType, str]:
+    """Parse a record generic type.
+
+    :param ins: The string to parse.
+    :type ins: str
+    :return: The parsed type and its string representation.
+    :rtype: tuple[GenericType, str]
+    """
     return (lit("Record<") >> type_symbol << lit(">")).map(
-        lambda x: GenericType(dict, [GenericType(str, []), x])
+        lambda x: GenericType(dict, [GenericType(str, []), x]),
     )(ins)
 
 
 @Parser
 def generic_t(ins: str) -> tuple[GenericType, str]:
+    """Parse a generic type.
+
+    :param ins: The string to parse.
+    :type ins: str
+    :return: The parsed type and its string representation.
+    :rtype: tuple[GenericType, str]
+    """
     return seq(
         ident,
         (lit("<") >> ident.rep(lit(",")) << lit(">")).opt().map(lambda x: x or []),
@@ -51,6 +70,15 @@ def generic_t(ins: str) -> tuple[GenericType, str]:
 
 @Parser
 def type_symbol(ins: str) -> tuple[GenericType, str]:
+    """Parse a regular type symbol.
+
+    E.g. int, float, ...
+
+    :param ins: The string to parse.
+    :type ins: str
+    :return: The parsed type and its string representation.
+    :rtype: tuple[GenericType, str]
+    """
     return (
         integer_t
         | float_t

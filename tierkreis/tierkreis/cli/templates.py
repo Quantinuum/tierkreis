@@ -1,7 +1,16 @@
+"""String template for the project initialization."""
+
 from typing import Literal
 
 
 def python_worker_main(worker_name: str) -> str:
+    """Generate a python morker main.py.
+
+    :param worker_name: The name of the worker.
+    :type worker_name: str
+    :return: The generated main.py content.
+    :rtype: str
+    """
     worker_name = worker_name.replace("-", "_")
     return f"""from sys import argv
 
@@ -25,7 +34,21 @@ if __name__ == "__main__":
 """
 
 
-def python_worker_workspace_pyproject(worker_name: str, external: bool = False) -> str:
+def python_worker_workspace_pyproject(
+    worker_name: str,
+    *,
+    external: bool = False,
+) -> str:
+    """Generate the pyproject.toml for the worker workspace.
+
+    :param worker_name: Name of the worker.
+    :type worker_name: str
+    :param external: Whether the worker is external (not-python worker),
+        defaults to False
+    :type external: bool, optional
+    :return: The generated pyproject.toml content.
+    :rtype: str
+    """
     worker_name = worker_name.replace("_", "-")
     template = f"""[project]
 name = "tkr-{worker_name}"
@@ -63,8 +86,20 @@ members = [{'\n    "src",' if not external else ""}
 
 
 def python_worker_pyproject(
-    worker_name: str, kind: Literal["api", "src"] = "api"
+    worker_name: str,
+    kind: Literal["api", "src"] = "api",
 ) -> str:
+    """Generate the pyproject.toml for the worker.
+
+    Either for the api directory (only stubs) used during build time or
+    the src directory (the actual worker implementation) used during runtime.
+
+    :param worker_name: Name of the worker.
+    :type worker_name: str
+    :param kind: Either "api" or "src", defaults to "api"
+    :type kind: Literal['api', 'src'], optional,
+    :rtype: str
+    """
     worker_name = worker_name.replace("_", "-")
     template = f"""[project]
 name = "tkr-{worker_name}-{kind}"
@@ -94,10 +129,17 @@ tkr_{worker_name} = "main:main"
 
 
 def external_worker_idl(worker_name: str) -> str:
+    """Generate a typespec file for a worker.
+
+    :param worker_name: The name of the worker.
+    :type worker_name: str
+    :return: The generated typespec content.
+    :rtype: str
+    """
     return f"""model YourModel {{
         value: int
 }}
-    
+
 interface {worker_name} {{
     your_function(value: int): YourModel;
 }}
@@ -106,11 +148,18 @@ interface {worker_name} {{
 
 
 def default_graph(worker_name: str) -> str:
+    """Generate a default graph example using a worker.
+
+    :param worker_name: The name of the worker.
+    :type worker_name: str
+    :return: The generated main graph content.
+    :rtype: str
+    """
     worker_name = worker_name.replace("-", "_")
     return f"""from typing import NamedTuple
 from pathlib import Path
 from uuid import UUID
-    
+
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.models import TKR, OpaqueType
@@ -126,13 +175,13 @@ class GraphInputs(NamedTuple):
 class GraphOutputs(NamedTuple):
     value: TKR[int]
 
-    
+
 def your_graph() -> GraphBuilder[GraphInputs, GraphOutputs]:
     g = GraphBuilder(GraphInputs, GraphOutputs)
     out = g.task(your_worker_task(g.inputs.value))
     g.outputs(GraphOutputs(value=out))
     return g
-    
+
 def main() -> None:
     graph = your_graph()
     storage = FileStorage(workflow_id=UUID(int=12345), name="your_graph")

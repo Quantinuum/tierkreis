@@ -67,6 +67,6 @@ def test_run_workflow_uv_executor(graph: GraphData) -> None:
         inputs=inputs,
         graph=graph,
         run_id=31415,
-        use_uv_worker=True,
+        use_uv_executor=True,
         registry_path=Path(),
     )
