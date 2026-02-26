@@ -7,12 +7,11 @@ from typing import (
     Mapping,
     NamedTuple,
     Protocol,
-    assert_never,
     overload,
     runtime_checkable,
 )
 
-from tierkreis.controller.data.core import EmptyModel, PortID
+from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.models import (
     TKR,
     TModel,
@@ -21,7 +20,7 @@ from tierkreis.controller.data.models import (
     init_tmodel_fields,
 )
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.data.graph import GraphData, ValueRef
+from tierkreis.controller.data.graph import GraphData, ValueRef, reindex_inputs
 
 
 @dataclass
@@ -107,9 +106,6 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             add_node(idx)
             return (node_map[idx], port) if idx in node_map else port_map[idx][port]
 
-        def reindex_all(vrs: Mapping[PortID, ValueRef]) -> Mapping[PortID, ValueRef]:
-            return {p: reindex(vr) for p, vr in vrs.items()}
-
         def add_node(idx: int):
             node = other.data.nodes[idx]
             if node.type == "input":
@@ -117,31 +113,16 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
                 port_map[idx] = {node.name: ins[node.name]}
                 return
             assert idx not in node_map
+            assert node.type != "output"
             new_node_def = copy(node)
-            new_node_def.inputs = reindex_all(new_node_def.inputs)
+            reindex_inputs(new_node_def, reindex)
             new_node_def.outputs = {}
-            match new_node_def.type:
-                case "eval":
-                    new_node_def.graph = reindex(new_node_def.graph)
-                case "loop" | "map":
-                    new_node_def.body = reindex(new_node_def.body)
-                case "ifelse" | "eifelse":
-                    new_node_def.pred = reindex(new_node_def.pred)
-                    new_node_def.if_true = reindex(new_node_def.if_true)
-                    new_node_def.if_false = reindex(new_node_def.if_false)
-                case "output":
-                    assert False, (
-                        "Output nodes should not be reachable from inputs of other nodes"
-                    )
-                case "input" | "const" | "function":
-                    pass
-                case _:
-                    assert_never(new_node_def)
+
             func = self.data.add(new_node_def)
             node_map[idx] = func("dummy_port")[0]
 
-        outputs = reindex_all(other.data.nodes[other.data.graph_output_idx].inputs)
-        return init_tmodel_fields(other.outputs_type, lambda p: outputs[p])
+        outputs = other.data.nodes[other.data.graph_output_idx].inputs
+        return init_tmodel_fields(other.outputs_type, lambda p: reindex(outputs[p]))
 
     def const[T: PType](self, value: T) -> TKR[T]:
         idx, port = self.data.const(value)
