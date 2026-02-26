@@ -5,7 +5,6 @@ from typing import (
     Any,
     Callable,
     Literal,
-    Mapping,
     Protocol,
     Union,
     cast,
@@ -125,13 +124,8 @@ def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
     return ["value"]
 
 
-def init_tmodel_fields[T: TModel](
-    tmodel: type[T], input_fn: Callable[[str], ValueRef]
-) -> T:
-    return init_tmodel(tmodel, {k: input_fn(k) for k in model_fields(tmodel)})
-
-
-def init_tmodel[T: TModel](tmodel: type[T], fields: Mapping[str, ValueRef]) -> T:
+def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef]) -> T:
+    fields = {k: input_fn(k) for k in model_fields(tmodel)}
     if is_tnamedmodel(tmodel):
         o = get_origin(tmodel)
         model = tmodel if not is_tnamedmodel(o) else o
