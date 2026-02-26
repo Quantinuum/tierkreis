@@ -213,7 +213,7 @@ def start(
                 Eval((-1, "body"), node.inputs, outputs=node.outputs),
             )
 
-    elif node.type in {"ifelse", "eifelse"}:
+    elif node.type == "ifelse" or node.type == "eifelse":
         pass
     else:
         assert_never(node)

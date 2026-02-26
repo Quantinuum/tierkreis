@@ -37,3 +37,4 @@ class ControllerExecutor(Protocol):
         :return: Debug data for the executor.
         :rtype: ExecutorData
         """
+        ...

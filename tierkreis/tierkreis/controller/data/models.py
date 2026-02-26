@@ -121,10 +121,10 @@ def dict_from_tmodel(tmodel: TModel) -> dict[PortID, ValueRef]:
 
 def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
     if is_portmapping(model):
-        return model._fields
+        return getattr(model, "_fields")
 
     if is_tnamedmodel(model):
-        return model._fields
+        return getattr(model, "_fields")
 
     return ["value"]
 
