@@ -34,8 +34,8 @@ class iadd(NamedTuple):
 
 
 class add(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[Union[int, float]]]:  # noqa: F821 # fmt: skip
@@ -60,8 +60,8 @@ class isubtract(NamedTuple):
 
 
 class subtract(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[Union[int, float]]]:  # noqa: F821 # fmt: skip
@@ -86,8 +86,8 @@ class itimes(NamedTuple):
 
 
 class times(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[Union[int, float]]]:  # noqa: F821 # fmt: skip
@@ -99,8 +99,8 @@ class times(NamedTuple):
 
 
 class divide(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[float]]:  # noqa: F821 # fmt: skip
@@ -138,8 +138,21 @@ class igt(NamedTuple):
 
 
 class gt(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[bool]]:  # noqa: F821 # fmt: skip
+        return TKR[bool]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class lt(NamedTuple):
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[bool]]:  # noqa: F821 # fmt: skip
@@ -163,8 +176,8 @@ class conjugate(NamedTuple):
 
 
 class eq(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[bool]]:  # noqa: F821 # fmt: skip
@@ -176,8 +189,8 @@ class eq(NamedTuple):
 
 
 class neq(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[bool]]:  # noqa: F821 # fmt: skip
@@ -201,9 +214,9 @@ class ipow(NamedTuple):
         return "builtins"
 
 
-class pow(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
-    b: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+class tkr_pow(NamedTuple):
+    a: TKR[float]  # noqa: F821 # fmt: skip
+    b: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[Union[int, float]]]:  # noqa: F821 # fmt: skip
@@ -215,7 +228,7 @@ class pow(NamedTuple):
 
 
 class tkr_abs(NamedTuple):
-    a: TKR[Union[int, float]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[Union[int, float]]]:  # noqa: F821 # fmt: skip
@@ -227,7 +240,7 @@ class tkr_abs(NamedTuple):
 
 
 class tkr_round(NamedTuple):
-    a: TKR[Union[float, int]]  # noqa: F821 # fmt: skip
+    a: TKR[float]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[int]]:  # noqa: F821 # fmt: skip
@@ -250,7 +263,7 @@ class neg(NamedTuple):
         return "builtins"
 
 
-class trk_and(NamedTuple):
+class tkr_and(NamedTuple):
     a: TKR[bool]  # noqa: F821 # fmt: skip
     b: TKR[bool]  # noqa: F821 # fmt: skip
 
@@ -263,7 +276,7 @@ class trk_and(NamedTuple):
         return "builtins"
 
 
-class trk_or(NamedTuple):
+class tkr_or(NamedTuple):
     a: TKR[bool]  # noqa: F821 # fmt: skip
     b: TKR[bool]  # noqa: F821 # fmt: skip
 
@@ -491,7 +504,7 @@ class tkr_encode(NamedTuple):
 
 
 class tkr_decode(NamedTuple):
-    bytes: TKR[bytes]  # noqa: F821 # fmt: skip
+    value_bytes: TKR[bytes]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[str]]:  # noqa: F821 # fmt: skip
@@ -565,7 +578,7 @@ class concat_lists[U: PType, V: PType](NamedTuple):
 
 
 class tkr_str(NamedTuple):
-    value: TKR[Union[int, float, bool]]  # noqa: F821 # fmt: skip
+    value: TKR[Union[float, bool]]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[str]]:  # noqa: F821 # fmt: skip
@@ -577,7 +590,7 @@ class tkr_str(NamedTuple):
 
 
 class tkr_int(NamedTuple):
-    value: TKR[Union[int, float, bool, str]]  # noqa: F821 # fmt: skip
+    value: TKR[Union[float, bool, str]]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[int]]:  # noqa: F821 # fmt: skip

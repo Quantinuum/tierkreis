@@ -2,8 +2,8 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
 
+from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.core import EmptyModel
@@ -12,7 +12,6 @@ from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.exceptions import TierkreisError
-
 
 WORKER_PATH = Path(__file__).parent.parent / "workers"
 
