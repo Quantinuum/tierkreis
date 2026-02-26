@@ -77,7 +77,7 @@ def format_typed_arg(typed_arg: TypedArg, *, is_portmapping: bool) -> str:
 
     :param typed_arg: The typed argument.
     :type typed_arg: TypedArg
-    :param is_portmapping: Wheter the argument is a portmapping.
+    :param is_portmapping: Whether the argument is a portmapping.
     :type is_portmapping: bool
     :return: The formatted string representation of the typed argument.
     :rtype: str

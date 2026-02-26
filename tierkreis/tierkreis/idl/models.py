@@ -80,7 +80,7 @@ class GenericType:
 
         :param other: The object  to compare to.
         :type other: object
-        :return: If bothe object have the same origin.
+        :return: If both object have the same origin.
         :rtype: bool
         """
         if not hasattr(value, "origin"):
