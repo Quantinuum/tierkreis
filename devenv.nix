@@ -4,6 +4,7 @@
 
   packages = [
     pkgs.just
+    pkgs.zlib
   ] ++ lib.optionals pkgs.stdenv.isDarwin [
     pkgs.apple-sdk
   ];
