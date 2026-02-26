@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Literal, assert_never
+from typing import Any, Callable, Literal, assert_never
 
 from pydantic import BaseModel, RootModel
 
@@ -138,24 +138,6 @@ class GraphData(BaseModel):
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
     named_nodes: dict[str, NodeIndex] = {}
-
-    def topsort_nodes(self) -> Iterable[NodeIndex]:
-        """Returns in topological order the nodes reaching the Output,
-        ending with the Output node. Raises an error if there is no Output node."""
-        if self.graph_output_idx is None:
-            raise TierkreisError("Graph has no output node.")
-        visited: set[NodeIndex] = set()
-
-        def visit(idx: NodeIndex):
-            if idx in visited:
-                return
-            visited.add(idx)
-            node = self.nodes[idx]
-            for pred, _port in in_edges(node).values():
-                yield from visit(pred)
-            yield idx
-
-        yield from visit(self.graph_output_idx)
 
     def input(self, name: str) -> ValueRef:
         return self.add(Input(name))(name)

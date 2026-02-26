@@ -90,6 +90,8 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self.data.output(inputs=dict_from_tmodel(outputs))
 
     def embed[A: TModel, B: TModel](self, other: "GraphBuilder[A, B]", inputs: A) -> B:
+        if other.data.graph_output_idx is None:
+            raise ValueError("Can only embed graphs with an output node defined.")
         ins: Mapping[str, ValueRef] = dict_from_tmodel(inputs)
 
         node_map: dict[int, int] = {}  # other node idx -> self node idx
@@ -99,23 +101,26 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             idx, port = vr
             if idx in port_map:
                 return port_map[idx][port]
-            return (node_map[idx], port)
+            if idx in node_map:
+                return (node_map[idx], port)
+            add_node(idx)
+            return (node_map[idx], port) if idx in node_map else port_map[idx][port]
 
-        for idx in other.data.topsort_nodes():
+        def add_node(idx: int):
             node = other.data.nodes[idx]
             if node.type == "input":
                 assert idx not in port_map
                 port_map[idx] = {node.name: ins[node.name]}
-            elif node.type != "output":
-                assert idx not in node_map
-                new_node_def = copy(node)
-                reindex_inputs(new_node_def, reindex)
-                new_node_def.outputs = {}
+                return
+            assert idx not in node_map
+            assert node.type != "output"
+            new_node_def = copy(node)
+            reindex_inputs(new_node_def, reindex)
+            new_node_def.outputs = {}
 
-                func = self.data.add(new_node_def)
-                node_map[idx], _ = func("dummy_port")
+            func = self.data.add(new_node_def)
+            node_map[idx] = func("dummy_port")[0]
 
-        assert other.data.graph_output_idx is not None
         outputs = other.data.nodes[other.data.graph_output_idx].inputs
         return init_tmodel_fields(other.outputs_type, lambda p: reindex(outputs[p]))
 
