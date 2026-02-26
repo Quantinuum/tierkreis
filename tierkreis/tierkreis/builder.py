@@ -1,6 +1,15 @@
+from copy import copy
 from dataclasses import dataclass
 from inspect import isclass
-from typing import Any, Callable, NamedTuple, Protocol, overload, runtime_checkable
+from typing import (
+    Any,
+    Callable,
+    Mapping,
+    NamedTuple,
+    Protocol,
+    overload,
+    runtime_checkable,
+)
 
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.models import (
@@ -8,11 +17,10 @@ from tierkreis.controller.data.models import (
     TModel,
     TNamedModel,
     dict_from_tmodel,
-    model_fields,
     init_tmodel,
 )
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.data.graph import GraphData, ValueRef
+from tierkreis.controller.data.graph import GraphData, ValueRef, reindex_inputs
 
 
 @dataclass
@@ -70,8 +78,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
-        inputs = [self.data.input(x) for x in model_fields(inputs_type)]
-        self.inputs = init_tmodel(self.inputs_type, inputs)
+        self.inputs = init_tmodel(self.inputs_type, self.data.input)
 
     def get_data(self) -> GraphData:
         return self.data
@@ -81,6 +88,35 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
     def outputs(self, outputs: Outputs):
         self.data.output(inputs=dict_from_tmodel(outputs))
+
+    def embed[A: TModel, B: TModel](self, other: "GraphBuilder[A, B]", inputs: A) -> B:
+        if other.data.graph_output_idx is None:
+            raise ValueError("Can only embed graphs with an output node defined.")
+        ins: Mapping[str, ValueRef] = dict_from_tmodel(inputs)
+
+        node_map: dict[int, int] = {}  # other node idx -> self node idx
+        port_map: dict[int, Mapping[str, ValueRef]] = {}
+
+        def reindex(vr: ValueRef) -> ValueRef:
+            idx, port = vr
+            if idx in port_map:
+                return port_map[idx][port]
+            if idx not in node_map:
+                node = other.data.nodes[idx]
+                if node.type == "input":
+                    port_map[idx] = {node.name: ins[node.name]}
+                    return port_map[idx][port]
+                assert node.type != "output"
+                new_node_def = copy(node)
+                reindex_inputs(new_node_def, reindex)
+                new_node_def.outputs = {}
+
+                func = self.data.add(new_node_def)
+                node_map[idx] = func("dummy_port")[0]
+            return (node_map[idx], port)
+
+        outputs = other.data.nodes[other.data.graph_output_idx].inputs
+        return init_tmodel(other.outputs_type, lambda p: reindex(outputs[p]))
 
     def const[T: PType](self, value: T) -> TKR[T]:
         idx, port = self.data.const(value)
@@ -117,8 +153,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         ins = dict_from_tmodel(f)
         idx, _ = self.data.func(name, ins)("dummy")
         OutModel = f.out()
-        outputs = [(idx, x) for x in model_fields(OutModel)]
-        return init_tmodel(OutModel, outputs)
+        return init_tmodel(OutModel, lambda p: (idx, p))
 
     @overload
     def eval[A: TModel, B: TModel](self, body: TypedGraphRef[A, B], a: A) -> B: ...
@@ -131,8 +166,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             body = self._graph_const(body)
 
         idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(a))("dummy")
-        outputs = [(idx, x) for x in model_fields(body.outputs_type)]
-        return init_tmodel(body.outputs_type, outputs)
+        return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
     @overload
     def loop[A: TModel, B: LoopOutput](
@@ -155,8 +189,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.loop(g, dict_from_tmodel(a), "should_continue", name)(
             "dummy"
         )
-        outputs = [(idx, x) for x in model_fields(body.outputs_type)]
-        return init_tmodel(body.outputs_type, outputs)
+        return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
         ins = (ref.node_index, ref.port_id)
@@ -187,8 +220,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         ins = dict_from_tmodel(aes._value)
         idx, _ = self.data.map(body.graph_ref, ins)("x")
 
-        refs = [(idx, s + "-*") for s in model_fields(body.outputs_type)]
-        return TList(init_tmodel(body.outputs_type, refs))
+        return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
 
     @overload
     def map[A: PType, B: TNamedModel](

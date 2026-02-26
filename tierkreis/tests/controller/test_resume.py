@@ -34,6 +34,7 @@ from tests.controller.typed_graphdata import (
     typed_loop,
     typed_map,
     typed_map_simple,
+    embed_graph,
 )
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
@@ -130,6 +131,7 @@ param_data: list[
         "defaults_not_none",
         {"start": 1, "stop": 10},
     ),
+    (embed_graph(), {"s1": "1", "s2": "4", "final": 2}, "embed_graph", 1),
 ]
 params: list[
     tuple[GraphData | GraphBuilder, Any, str, int, dict[str, PType] | PType]
@@ -169,6 +171,7 @@ ids = [
     "defaults_omit",
     "defaults_passthru",
     "defaults_not_none",
+    "embed_graph",
 ]
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]

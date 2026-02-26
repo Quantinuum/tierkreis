@@ -91,6 +91,25 @@ NodeDef = Func | Eval | Loop | Map | Const | IfElse | EagerIfElse | Input | Outp
 NodeDefModel = RootModel[NodeDef]
 
 
+def reindex_inputs(node: NodeDef, reindex: Callable[[ValueRef], ValueRef]) -> None:
+    """Updates all the nodes inputs with the provided function.
+    Mutates the node in place, but - note - leaves outputs unchanged."""
+    node.inputs = {k: reindex(v) for k, v in node.inputs.items()}
+    match node.type:
+        case "eval":
+            node.graph = reindex(node.graph)
+        case "loop" | "map":
+            node.body = reindex(node.body)
+        case "ifelse" | "eifelse":
+            node.pred = reindex(node.pred)
+            node.if_true = reindex(node.if_true)
+            node.if_false = reindex(node.if_false)
+        case "const" | "function" | "input" | "output":
+            pass
+        case _:
+            assert_never(node)
+
+
 def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
     parents = {k: v for k, v in node.inputs.items()}
 

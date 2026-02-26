@@ -3,6 +3,7 @@ from inspect import isclass
 from itertools import chain
 from typing import (
     Any,
+    Callable,
     Literal,
     Protocol,
     Union,
@@ -123,19 +124,20 @@ def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
     return ["value"]
 
 
-def init_tmodel[T: TModel](tmodel: type[T], refs: list[ValueRef]) -> T:
+def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef]) -> T:
+    fields = {k: input_fn(k) for k in model_fields(tmodel)}
     if is_tnamedmodel(tmodel):
         o = get_origin(tmodel)
         model = tmodel if not is_tnamedmodel(o) else o
         args: list[TKR] = []
-        for ref in refs:
-            key = ref[1].replace("-*", "")
-            param = model.__annotations__[key]
+        for field, val in fields.items():
+            param = model.__annotations__[field.replace("-*", "")]
             if get_origin(param) == Union:
                 param = next(x for x in get_args(param) if x)
-            args.append(param(ref[0], ref[1]))
+            args.append(param(*val))
         return cast(T, model(*args))
-    return tmodel(refs[0][0], refs[0][1])
+    (ref,) = fields.values()
+    return tmodel(*ref)
 
 
 def generics_in_pmodel(pmodel: type[PModel]) -> set[str]:
