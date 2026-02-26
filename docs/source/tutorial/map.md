@@ -41,7 +41,7 @@ I.e. a reference to an `int` has the type `TKR[int]`.
 from typing import NamedTuple
 from tierkreis.models import EmptyModel, TKR
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import mean
+from tierkreis.builtins import mean
 
 from auth_stubs import encrypt, EncryptionResult
 

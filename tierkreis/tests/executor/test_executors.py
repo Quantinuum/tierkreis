@@ -3,7 +3,7 @@ from uuid import UUID
 
 from tests.workers.hello_world_worker.stubs import greet
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import neg
+from tierkreis.builtins import neg
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.location import Loc

@@ -32,7 +32,7 @@ f = GraphBuilder(TKR[int], TKR[int])
 The implementation of this graph can be done entirely using Tierkreis built-in functions:
 
 ```{code-cell} ipython3
-from tierkreis.builtins.stubs import iadd, itimes
+from tierkreis.builtins import iadd, itimes
 
 double = f.task(itimes(f.const(2), f.inputs))
 f_out = f.task(iadd(double, f.const(1)))
@@ -86,7 +86,7 @@ This way Tierkreis will interpret the different attributes of the `NamedTuple` a
 
 ```{code-cell} ipython3
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd
+from tierkreis.builtins import iadd
 from tierkreis.models import TKR
 
 fib_step = GraphBuilder(FibData, FibData)

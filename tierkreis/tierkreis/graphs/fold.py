@@ -3,7 +3,7 @@
 from typing import NamedTuple, TypeVar
 
 from tierkreis.builder import GraphBuilder, TypedGraphRef
-from tierkreis.builtins.stubs import head, igt, tkr_len
+from tierkreis.builtins import head, igt, tkr_len
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType

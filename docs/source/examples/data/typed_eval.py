@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd, itimes
+from tierkreis.builtins import iadd, itimes
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.models import TKR
 

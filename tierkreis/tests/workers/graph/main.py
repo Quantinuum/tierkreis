@@ -2,7 +2,7 @@ from sys import argv
 
 from tierkreis import Worker
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd, itimes
+from tierkreis.builtins import iadd, itimes
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import TKR
 
