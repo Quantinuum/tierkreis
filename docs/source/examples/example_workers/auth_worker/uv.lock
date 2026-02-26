@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "auth-worker",
+    "auth-worker-api",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -14,8 +20,9 @@ wheels = [
 [[package]]
 name = "auth-worker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
+    { name = "auth-worker-api" },
     { name = "cryptography" },
     { name = "pydantic" },
     { name = "pyscrypt" },
@@ -24,11 +31,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "auth-worker-api", editable = "src/api" },
     { name = "cryptography", specifier = ">=45.0.7" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pyscrypt", specifier = ">=1.6.2" },
     { name = "tierkreis", editable = "../../../../../tierkreis" },
 ]
+
+[[package]]
+name = "auth-worker-api"
+version = "0.1.0"
+source = { editable = "src/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "../../../../../tierkreis" }]
 
 [[package]]
 name = "cffi"
