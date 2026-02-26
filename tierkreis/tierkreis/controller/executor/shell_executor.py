@@ -1,3 +1,6 @@
+"""Default executor for arbitrary scripts."""
+
+# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import json
 import os
 import subprocess
@@ -12,7 +15,19 @@ from tierkreis.controller.storage.data import ExecutorDebugData
 class ShellExecutor:
     """Executes workers in an unix shell.
 
+    Simply runs any shell script as a worker, if certain conditions on input/output
+    conditions are met, namely the paths/values are provided through the process
+    environment and the script is responsible for reading/writing them.
+
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+
+    :fields:
+        launchers_path (Path): The locations to search for external workers.
+        logs_path (Path): The controller log file.
+        errors_path (Path): The controller error file for the function node.
+        workflow_dir (Path): The workflow dir to resolve relative paths.
+        timeout (int): Timeout for the process communication, defaults to 10 seconds.
+        env: (dict[str,str]): Additional environments to hand to the spawned subprocess.
     """
 
     def __init__(
@@ -21,6 +36,7 @@ class ShellExecutor:
         workflow_dir: Path,
         timeout: int = 10,
         env: dict[str, str] | None = None,
+        *,
         export_values: bool = False,
         log_env_in_debug: bool = True,
     ) -> None:
@@ -37,36 +53,44 @@ class ShellExecutor:
         self,
         launcher_name: str,
         worker_call_args_path: Path,
-        export_values: bool = False,
     ) -> ExecutorDebugData:
-        launcher_path = self.launchers_path / launcher_name
-
+        self.errors_path = worker_call_args_path.parent / "logs"
         launcher_path = check_and_set_launcher(
-            self.launchers_path, launcher_name, ".sh"
+            self.launchers_path,
+            launcher_name,
+            ".sh",
         )
 
-        with open(self.workflow_dir.parent / worker_call_args_path) as fh:
+        with Path.open(self.workflow_dir.parent / worker_call_args_path) as fh:
             call_args = WorkerCallArgs(**json.load(fh))
 
         env = os.environ.copy() | self.env.copy()
         env.update(
-            self._create_env(call_args, self.workflow_dir.parent, self.export_values)
+            self._create_env(
+                call_args,
+                self.workflow_dir.parent,
+                export_values=self.export_values,
+            ),
         )
         env["worker_call_args_file"] = str(
-            self.workflow_dir.parent / worker_call_args_path
+            self.workflow_dir.parent / worker_call_args_path,
         )
         done_path = self.workflow_dir.parent / call_args.done_path
         _error_path = done_path.parent / "_error"
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
-        tee_str = f">(tee -a {str(self.errors_path)} {str(self.logs_path)} >/dev/null)"
+        tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"
         proc = subprocess.Popen(
             ["bash"],
             start_new_session=True,
             stdin=subprocess.PIPE,
             env=env,
         )
-        command = f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} && touch {done_path}|| touch {_error_path})&"
+        command = (
+            f"({launcher_path} {worker_call_args_path} > {tee_str} 2> {tee_str} "
+            f"&& touch {done_path}|| touch {_error_path})&"
+        )
+
         proc.communicate(
             command.encode(),
             timeout=self.timeout,
@@ -74,8 +98,17 @@ class ShellExecutor:
         return self._generate_debug_data(command, env)
 
     def _create_env(
-        self, call_args: WorkerCallArgs, base_dir: Path, export_values: bool
+        self,
+        call_args: WorkerCallArgs,
+        base_dir: Path,
+        *,
+        export_values: bool,
     ) -> dict[str, str]:
+        """Set up an environment as interface between controller and worker function.
+
+        If export_values is set, will also write the values of ports to the env.
+        This is useful if you don't want / can't read the files directly.
+        """
         env = {
             "checkpoints_directory": str(base_dir),
             "function_name": str(base_dir / call_args.function_name),
@@ -97,12 +130,14 @@ class ShellExecutor:
             return env
         values = {}
         for k, v in call_args.inputs.items():
-            with open(v) as fh:
+            with Path.open(v) as fh:
                 values[f"input_{k}_value"] = fh.read()
         return env
 
     def _generate_debug_data(
-        self, command: str, env: dict[str, str]
+        self,
+        command: str,
+        env: dict[str, str],
     ) -> ExecutorDebugData:
         if not self.log_env_in_debug:
             env = {}

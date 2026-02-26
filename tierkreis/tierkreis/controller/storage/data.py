@@ -35,6 +35,7 @@ class NodeDebugData(BaseModel):
     """Debug data for graph nodes.
 
     Currently only used for loop_nodes
-    Storage implementations should decide which are applicable."""
+    Storage implementations should decide which are applicable.
+    """
 
     loop_loc: str | None = None

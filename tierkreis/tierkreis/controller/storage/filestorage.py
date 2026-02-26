@@ -1,22 +1,34 @@
+"""Default file storage implementation."""
+
 import os
 import shutil
 from pathlib import Path
 from time import time_ns
+from typing import override
 from uuid import UUID
 
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import (
     ControllerStorage,
     StorageEntryMetadata,
 )
 
+DEFAULT_DIRECTORY = Path.home() / ".tierkreis" / "checkpoints"
+
 
 class ControllerFileStorage(ControllerStorage):
+    """Storage backend using the filesystem.
+
+    This storage implementation operates by relegating calls to the os filesystem.
+    Calling with `do_cleanup` will ensure that previous runs are deleted.
+    """
+
     def __init__(
         self,
         workflow_id: UUID,
         name: str | None = None,
-        tierkreis_directory: Path = Path.home() / ".tierkreis" / "checkpoints",
+        tierkreis_directory: Path = DEFAULT_DIRECTORY,
+        *,
         do_cleanup: bool = False,
     ) -> None:
         self.tkr_dir = tierkreis_directory
@@ -25,6 +37,7 @@ class ControllerFileStorage(ControllerStorage):
         if do_cleanup:
             self.delete(self.workflow_dir)
 
+    @override
     def delete(self, path: Path) -> None:
         uid = os.getuid()
         tmp_dir = Path(f"/tmp/{uid}/tierkreis/archive/{self.workflow_id}/{time_ns()}")
@@ -32,12 +45,15 @@ class ControllerFileStorage(ControllerStorage):
         if self.exists(path):
             shutil.move(path, tmp_dir)
 
+    @override
     def exists(self, path: Path) -> bool:
         return path.exists()
 
+    @override
     def list_subpaths(self, path: Path) -> list[Path]:
-        return [sub_path for sub_path in path.iterdir()]
+        return list(path.iterdir())
 
+    @override
     def link(self, src: Path, dst: Path) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists() and dst.resolve() == src:
@@ -46,19 +62,22 @@ class ControllerFileStorage(ControllerStorage):
         try:
             os.link(src, dst)
         except (FileNotFoundError, FileExistsError) as exc:
-            raise EntryNotFound(src) from exc
+            raise EntryNotFoundError(src) from exc
 
+    @override
     def mkdir(self, path: Path) -> None:
         return path.mkdir(parents=True, exist_ok=True)
 
+    @override
     def read(self, path: Path) -> bytes:
         try:
-            with open(path, "rb") as fh:
+            with Path.open(path, "rb") as fh:
                 return fh.read()
         except FileNotFoundError as exc:
-            raise EntryNotFound(path) from exc
+            raise EntryNotFoundError(path) from exc
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    @override
+    def touch(self, path: Path, *, is_dir: bool = False) -> None:
         if is_dir:
             path.mkdir(parents=True, exist_ok=True)
             return
@@ -66,10 +85,12 @@ class ControllerFileStorage(ControllerStorage):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
+    @override
     def stat(self, path: Path) -> StorageEntryMetadata:
         return StorageEntryMetadata(path.stat().st_mtime)
 
+    @override
     def write(self, path: Path, value: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb+") as fh:
+        with Path.open(path, "wb+") as fh:
             fh.write(value)

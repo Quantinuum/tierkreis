@@ -1,15 +1,25 @@
-from pathlib import Path
-from uuid import UUID
-from time import time
+"""In memory implementation of a storage layer."""
 
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from pathlib import Path
+from time import time
+from typing import override
+from uuid import UUID
+
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import (
-    StorageEntryMetadata,
     ControllerStorage,
+    StorageEntryMetadata,
 )
 
 
 class InMemoryFileData:
+    """Class to emulate the file system behaviour in memory.
+
+    :fields:
+        value (bytes): The content of a file, typically used for outputs or empty.
+        stats (StorageEntryMetadata): A metadata entry.
+    """
+
     value: bytes
     stats: StorageEntryMetadata
 
@@ -19,6 +29,13 @@ class InMemoryFileData:
 
 
 class ControllerInMemoryStorage(ControllerStorage):
+    """In-memory implementation of ControllerStorage.
+
+    Stores workflow files in memory using a dictionary instead of the filesystem.
+    Uses a mapping Path -> FileData to emulate the required filesystem structure.
+    Useful when debugging applications in conjunction with the InMemoryExecutor.
+    """
+
     def __init__(
         self,
         workflow_id: UUID,
@@ -31,44 +48,51 @@ class ControllerInMemoryStorage(ControllerStorage):
 
         self.files: dict[Path, InMemoryFileData] = {}
 
+    @override
     def delete(self, path: Path) -> None:
         self.files = {}
 
+    @override
     def exists(self, path: Path) -> bool:
         return path in list(self.files.keys())
 
+    @override
     def list_subpaths(self, path: Path) -> list[Path]:
         if path == self.workflow_dir:
-            nodes = set(
-                [
-                    Path("/".join(str(x).split("/")[:2]))
-                    for x in self.files.keys()
-                    if str(x).startswith(str(path) + "/")
-                ]
-            )
+            nodes = {
+                Path("/".join(str(x).split("/")[:2]))
+                for x in self.files
+                if str(x).startswith(str(path) + "/")
+            }
             return list(nodes)
-        return [x for x in self.files.keys() if str(x).startswith(str(path) + "/")]
+        return [x for x in self.files if str(x).startswith(str(path) + "/")]
 
+    @override
     def link(self, src: Path, dst: Path) -> None:
         try:
             self.files[dst] = self.files[src]
         except KeyError as exc:
-            raise EntryNotFound(src) from exc
+            raise EntryNotFoundError(src) from exc
 
+    @override
     def mkdir(self, path: Path) -> None:
         return
 
+    @override
     def read(self, path: Path) -> bytes:
         try:
             return self.files[path].value
         except KeyError as exc:
-            raise EntryNotFound(path) from exc
+            raise EntryNotFoundError(path) from exc
 
-    def touch(self, path: Path, is_dir: bool = False) -> None:
+    @override
+    def touch(self, path: Path) -> None:
         self.files[path] = InMemoryFileData(b"")
 
+    @override
     def stat(self, path: Path) -> StorageEntryMetadata:
         return self.files[path].stats
 
+    @override
     def write(self, path: Path, value: bytes) -> None:
         self.files[path] = InMemoryFileData(value)

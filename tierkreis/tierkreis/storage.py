@@ -2,7 +2,7 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType, ptype_from_bytes
-from tierkreis.controller.storage.exceptions import EntryNotFound
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
@@ -26,7 +26,7 @@ def _read_output(
 
     try:
         return ptype_from_bytes(storage.read_output(Loc(), port_name))
-    except EntryNotFound as exc:
+    except EntryNotFoundError as exc:
         if annotation and is_optional(annotation):
             return None
         raise TierkreisError(f"Output {port_name} not found.") from exc
