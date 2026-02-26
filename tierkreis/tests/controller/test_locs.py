@@ -27,7 +27,7 @@ node_location_4 = Loc()
 
 
 @pytest.mark.parametrize(
-    ["node_location", "loc_str"],
+    ("node_location", "loc_str"),
     [
         (node_location_1, "-.N1.L0.N3.L2.N0.M7.N10"),
         (node_location_2, "-.N0.L0.N3.N8.N0"),
@@ -35,7 +35,7 @@ node_location_4 = Loc()
         (node_location_4, "-"),
     ],
 )
-def test_to_from_str(node_location: Loc, loc_str: str):
+def test_to_from_str(node_location: Loc, loc_str: str) -> None:
     node_location_str = str(node_location)
     assert node_location_str == loc_str
 
@@ -44,7 +44,7 @@ def test_to_from_str(node_location: Loc, loc_str: str):
 
 
 @pytest.mark.parametrize(
-    ["node_location", "loc_str"],
+    ("node_location", "loc_str"),
     [
         (node_location_1, "-.N1.L0.N3.L2.N0.M7"),
         (node_location_2, "-.N0.L0.N3.N8"),
@@ -61,7 +61,7 @@ def test_parent(node_location: Loc, loc_str: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ["node_location", "node_step", "loc_str"],
+    ("node_location", "node_step", "loc_str"),
     [
         (node_location_1, ("N", 1), "-.L0.N3.L2.N0.M7.N10"),
         (node_location_2, ("N", 0), "-.L0.N3.N8.N0"),
@@ -77,7 +77,7 @@ def test_pop_first(node_location: Loc, node_step: NodeStep, loc_str: str) -> Non
 
 
 @pytest.mark.parametrize(
-    ["node_location", "node_step", "loc_str"],
+    ("node_location", "node_step", "loc_str"),
     [
         (node_location_1, ("N", 10), "-.N1.L0.N3.L2.N0.M7"),
         (node_location_2, ("N", 0), "-.N0.L0.N3.N8"),
@@ -157,7 +157,7 @@ def test_pop_last_multiple() -> None:
 
 
 @pytest.mark.parametrize(
-    ["node_location", "index"],
+    ("node_location", "index"),
     [
         (node_location_1, 10),
         (node_location_2, 0),
@@ -171,7 +171,7 @@ def test_get_last_index(node_location: Loc, index: int) -> None:
 
 
 @pytest.mark.parametrize(
-    ["node_location", "expected"],
+    ("node_location", "expected"),
     [
         (
             node_location_1,
@@ -201,5 +201,5 @@ def test_get_last_index(node_location: Loc, index: int) -> None:
         (node_location_4, [Loc()]),
     ],
 )
-def test_partial_paths(node_location: Loc, expected: list[Loc]):
+def test_partial_paths(node_location: Loc, expected: list[Loc]) -> None:
     assert expected == node_location.partial_locs()

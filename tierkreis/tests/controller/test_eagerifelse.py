@@ -1,20 +1,20 @@
 import json
-import pytest
 from pathlib import Path
 from uuid import UUID
+
+import pytest
 
 from tests.controller.sample_graphdata import (
     simple_eagerifelse,
     simple_ifelse,
 )
-
 from tierkreis.controller import run_graph
+from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.controller.data.graph import GraphData
 
 
 def eagerifelse_long_running() -> GraphData:
@@ -34,8 +34,8 @@ def eagerifelse_long_running() -> GraphData:
 params = [({"pred": True}, 1), ({"pred": False}, 2)]
 
 
-@pytest.mark.parametrize("input, output", params)
-def test_eagerifelse_long_running(input: dict[str, PType], output: int) -> None:
+@pytest.mark.parametrize(("inputs", "output"), params)
+def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -> None:
     g = eagerifelse_long_running()
     storage = ControllerFileStorage(UUID(int=150), name="eagerifelse_long_running")
 
@@ -43,7 +43,7 @@ def test_eagerifelse_long_running(input: dict[str, PType], output: int) -> None:
     executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
 
     storage.clean_graph_files()
-    run_graph(storage, executor, g, input, n_iterations=20000)
+    run_graph(storage, executor, g, inputs, n_iterations=20000)
     actual_output = json.loads(storage.read_output(Loc(), "simple_eagerifelse_output"))
     assert actual_output == output
 
@@ -58,7 +58,7 @@ def test_eagerifelse_nodes() -> None:
     assert storage.is_node_finished(Loc("-.N4"))
 
 
-def test_ifelse_nodes():
+def test_ifelse_nodes() -> None:
     g = simple_ifelse()
     storage = ControllerFileStorage(UUID(int=152), name="simple_if_else")
     executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
