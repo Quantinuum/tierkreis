@@ -98,52 +98,50 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         node_map: dict[int, int] = {}  # other node idx -> self node idx
         port_map: dict[int, Mapping[str, ValueRef]] = {}
 
-        def outport(vr: ValueRef) -> ValueRef:
+        def reindex(vr: ValueRef) -> ValueRef:
             idx, port = vr
+            if idx in port_map:
+                return port_map[idx][port]
             if idx in node_map:
                 return (node_map[idx], port)
-            return port_map[idx][port]
+            add_node(idx)
+            return (node_map[idx], port) if idx in node_map else port_map[idx][port]
 
-        for idx, node in enumerate(other.data.nodes):
+        def reindex_all(vrs: Mapping[PortID, ValueRef]) -> Mapping[PortID, ValueRef]:
+            return {p: reindex(vr) for p, vr in vrs.items()}
+
+        def add_node(idx: int):
+            node = other.data.nodes[idx]
             if node.type == "input":
+                assert idx not in port_map
                 port_map[idx] = {node.name: ins[node.name]}
-            elif node.type != "output":
-                # Add nodes now/first, to set up indices; fix up refs later
-                new_idx = len(self.data.nodes)
-                self.data.nodes.append(copy(node))
-                node_map[idx] = new_idx
-        for new_node in node_map.values():
-            new_node_def = self.data.nodes[new_node]
-            # Update inputs
-            new_node_def.inputs = {
-                p: outport(vr) for p, vr in new_node_def.inputs.items()
-            }
+                return
+            assert idx not in node_map
+            new_node_def = copy(node)
+            new_node_def.inputs = reindex_all(new_node_def.inputs)
+            new_node_def.outputs = {}
             match new_node_def.type:
                 case "eval":
-                    new_node_def.graph = outport(new_node_def.graph)
+                    new_node_def.graph = reindex(new_node_def.graph)
                 case "loop" | "map":
-                    new_node_def.body = outport(new_node_def.body)
+                    new_node_def.body = reindex(new_node_def.body)
                 case "ifelse" | "eifelse":
-                    new_node_def.pred = outport(new_node_def.pred)
-                    new_node_def.if_true = outport(new_node_def.if_true)
-                    new_node_def.if_false = outport(new_node_def.if_false)
-                case "input" | "output" | "const" | "function":
+                    new_node_def.pred = reindex(new_node_def.pred)
+                    new_node_def.if_true = reindex(new_node_def.if_true)
+                    new_node_def.if_false = reindex(new_node_def.if_false)
+                case "output":
+                    assert False, (
+                        "Output nodes should not be reachable from inputs of other nodes"
+                    )
+                case "input" | "const" | "function":
                     pass
                 case _:
                     assert_never(new_node_def)
-            # Update outputs, and remove any pointing to the removed Output node
-            new_outputs = {
-                p: [node_map[n] for n in ns if n in node_map]
-                for p, ns in new_node_def.outputs.items()
-            }
-            new_node_def.outputs = {
-                p: ns for p, ns in new_outputs.items() if len(ns) > 0
-            }
-        outputs: Mapping[PortID, ValueRef] = other.data.nodes[
-            other.data.graph_output_idx
-        ].inputs
-        print("Embedding graph with outputs", outputs)
-        return init_tmodel_fields(other.outputs_type, lambda p: outport(outputs[p]))
+            func = self.data.add(new_node_def)
+            node_map[idx] = func("dummy_port")[0]
+
+        outputs = reindex_all(other.data.nodes[other.data.graph_output_idx].inputs)
+        return init_tmodel_fields(other.outputs_type, lambda p: outputs[p])
 
     def const[T: PType](self, value: T) -> TKR[T]:
         idx, port = self.data.const(value)
