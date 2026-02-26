@@ -237,7 +237,7 @@ def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
 
     :param node: The node to evaluate.
     :type node: NodeDef
-    :return: MApping of port names to value references.
+    :return: Mapping of port names to value references.
     :rtype: dict[PortID, ValueRef]
     """
     parents = dict(node.inputs.items())
@@ -249,10 +249,12 @@ def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
             parents["body"] = node.body
         case "map":
             parents["body"] = node.body
-        case "ifelse" | "eifelse":
+        case "ifelse":
             parents["pred"] = node.pred
-            parents["if_true"] = node.if_true
-            parents["if_false"] = node.if_false
+        case "eifelse":
+            parents["pred"] = node.pred
+            parents["body_true"] = node.if_true
+            parents["body_false"] = node.if_false
         case "const" | "function" | "input" | "output":
             pass
         case _:

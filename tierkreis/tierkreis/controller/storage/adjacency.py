@@ -10,42 +10,6 @@ from tierkreis.controller.storage.protocol import ControllerStorage
 logger = logging.getLogger(__name__)
 
 
-def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
-    """Find the incoming edges of a node.
-
-    Finds all the defined inputs and adds the special constructions:
-    - Graph body for map, loop, eval
-    - Prediction for ifelse
-    - All nodes for eager if else
-
-    :param node: The node to evaluate.
-    :type node: NodeDef
-    :return: MApping of port names to value references.
-    :rtype: dict[PortID, ValueRef]
-    """
-    parents = dict(node.inputs.items())
-
-    match node.type:
-        case "eval":
-            parents["body"] = node.graph
-        case "loop":
-            parents["body"] = node.body
-        case "map":
-            parents["body"] = node.body
-        case "ifelse":
-            parents["pred"] = node.pred
-        case "eifelse":
-            parents["pred"] = node.pred
-            parents["body_true"] = node.if_true
-            parents["body_false"] = node.if_false
-        case "const" | "function" | "input" | "output":
-            pass
-        case _:
-            assert_never(node)
-
-    return parents
-
-
 def unfinished_inputs(
     storage: ControllerStorage,
     loc: Loc,
