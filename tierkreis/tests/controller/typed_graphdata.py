@@ -181,11 +181,11 @@ def embed_graph():
         g = GraphBuilder(TKR[int], InnerOutput)
         s = g.task(tkr_str(g.inputs))
         div2 = g.task(idivide(a=g.inputs, b=g.const(2)))
-        add3plus1 = g.task(
+        times3plus1 = g.task(
             iadd(a=g.task(itimes(a=g.inputs, b=g.const(3))), b=g.const(1))
         )
         even = g.task(eq(g.task(mod(a=g.inputs, b=g.const(2))), g.const(0)))
-        n = g.ifelse(even, div2, add3plus1)
+        n = g.ifelse(even, div2, times3plus1)
         g.outputs(InnerOutput(log=s, nxt=n))
         return g
 
