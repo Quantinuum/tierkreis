@@ -14,7 +14,7 @@ from tierkreis.storage import read_loop_trace
 
 return_value = [
     {"acc1": x, "acc2": y, "acc3": z}
-    for x, y, z in zip(range(1, 7), range(2, 13, 2), range(3, 19, 3), strict=False)
+    for x, y, z in zip(range(1, 7), range(2, 13, 2), range(3, 19, 3), strict=True)
 ]
 
 params: list[tuple[GraphData, list[dict[str, int]], str, int]] = [
