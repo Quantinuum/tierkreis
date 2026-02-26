@@ -1,9 +1,13 @@
+"""Typed graph builder for Tierkreis workflows."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
 from copy import copy
 from dataclasses import dataclass
 from inspect import isclass
 from typing import (
     Any,
-    Callable,
     Mapping,
     NamedTuple,
     Protocol,
@@ -12,6 +16,7 @@ from typing import (
 )
 
 from tierkreis.controller.data.core import EmptyModel
+from tierkreis.controller.data.graph import GraphData, ValueRef, reindex_inputs
 from tierkreis.controller.data.models import (
     TKR,
     TModel,
@@ -20,7 +25,6 @@ from tierkreis.controller.data.models import (
     init_tmodel,
 )
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.data.graph import GraphData, ValueRef, reindex_inputs
 
 
 @dataclass
@@ -32,27 +36,72 @@ class TList[T: TModel]:
 
 @runtime_checkable
 class Function[Out](TNamedModel, Protocol):
+    """A worker function type.
+
+    :abstract:
+    """
+
     @property
-    def namespace(self) -> str: ...
+    def namespace(self) -> str:
+        """The namespace name.
+
+        :return: The namespace name.
+        :rtype: str
+        """
+        ...
 
     @staticmethod
-    def out() -> type[Out]: ...
+    def out() -> type[Out]:
+        """Return the output type of the function.
+
+        :return: The output type.
+        :rtype: type[Out]
+        """
+        ...
 
 
 @dataclass
 class TypedGraphRef[Ins: TModel, Outs: TModel]:
+    """A typed tierkreis graph.
+
+    :attr graph_ref: The graph reference.
+    :attr outputs_type: The output type of the graph.
+    :attr inputs_type: The input type of the graph.
+    """
+
     graph_ref: ValueRef
     outputs_type: type[Outs]
     inputs_type: type[Ins]
 
 
 class LoopOutput(TNamedModel, Protocol):
+    """Protocol for loop output models to ensure should continue."""
+
     @property
-    def should_continue(self) -> TKR[bool]: ...
+    def should_continue(self) -> TKR[bool]:
+        """The loop continuation port.
+
+        :return: The continuation port value.
+        :rtype: TKR[bool]
+        """
+        ...
 
 
-def script(script_name: str, input: TKR[bytes]) -> Function[TKR[bytes]]:
-    class exec_script(NamedTuple):
+def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
+    """Add a script to the graph.
+
+    A shell script or binary with a single input and output.
+    Inputs are provided from the standard input and outputs to the standard output.
+
+    :param script_name: The name of the script.
+    :type script_name: str
+    :param script_input: The input to the script.
+    :type script_input: TKR[bytes]
+    :return: The output of the script.
+    :rtype: Function[TKR[bytes]]
+    """
+
+    class exec_script(NamedTuple):  # noqa: N801
         input: TKR[bytes]
 
         @staticmethod
@@ -63,10 +112,18 @@ def script(script_name: str, input: TKR[bytes]) -> Function[TKR[bytes]]:
         def namespace(self) -> str:
             return script_name
 
-    return exec_script(input=input)
+    return exec_script(input=script_input)
 
 
 class GraphBuilder[Inputs: TModel, Outputs: TModel]:
+    """Class to construct typed workflow graphs.
+
+    :attr data: The underlying graph data.
+    :attr inputs_type: The input type of the graph.
+    :attr inputs: The inputs to the graph.
+    :attr outputs_type: The output type of the graph.
+    """
+
     outputs_type: type
     inputs: Inputs
 
@@ -74,19 +131,34 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self,
         inputs_type: type[Inputs] = EmptyModel,
         outputs_type: type[Outputs] = EmptyModel,
-    ):
+    ) -> None:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
         self.inputs = init_tmodel(self.inputs_type, self.data.input)
 
     def get_data(self) -> GraphData:
+        """Return the underlying graph from the builder.
+
+        :return: The graph.
+        :rtype: GraphData
+        """
         return self.data
 
     def ref(self) -> TypedGraphRef[Inputs, Outputs]:
+        """Return a reference of the typed graph.
+
+        :return: The ref of the typed graph.
+        :rtype: TypedGraphRef[Inputs, Outputs]
+        """
         return TypedGraphRef((-1, "body"), self.outputs_type, self.inputs_type)
 
-    def outputs(self, outputs: Outputs):
+    def outputs(self, outputs: Outputs) -> None:
+        """Set output nodes of a graph.
+
+        :param outputs: The output nodes.
+        :type outputs: Outputs
+        """
         self.data.output(inputs=dict_from_tmodel(outputs))
 
     def embed[A: TModel, B: TModel](self, other: "GraphBuilder[A, B]", inputs: A) -> B:
@@ -119,28 +191,73 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         return init_tmodel(other.outputs_type, lambda p: reindex(outputs[p]))
 
     def const[T: PType](self, value: T) -> TKR[T]:
+        """Add a constant node to the graph.
+
+        :return: The constant value.
+        :rtype: TKR[T]
+        """
         idx, port = self.data.const(value)
         return TKR[T](idx, port)
 
     def ifelse[A: PType, B: PType](
-        self, pred: TKR[bool], if_true: TKR[A], if_false: TKR[B]
+        self,
+        pred: TKR[bool],
+        if_true: TKR[A],
+        if_false: TKR[B],
     ) -> TKR[A] | TKR[B]:
+        """Add an if-else node to the graph.
+
+        This will be evaluated lazily.
+        The values can be returned from an eval node or another graph.
+
+        :param pred: The predicate value.
+        :type pred: TKR[bool]
+        :param if_true: The value if the predicate is true.
+        :type if_true: TKR[A]
+        :param if_false: The value if the predicate is false.
+        :type if_false: TKR[B]
+        :return: The outputs of the if-else expression.
+        :rtype: TKR[A] | TKR[B]
+        """
         idx, port = self.data.if_else(
-            pred.value_ref(), if_true.value_ref(), if_false.value_ref()
+            pred.value_ref(),
+            if_true.value_ref(),
+            if_false.value_ref(),
         )("value")
         return TKR(idx, port)
 
     def eifelse[A: PType, B: PType](
-        self, pred: TKR[bool], if_true: TKR[A], if_false: TKR[B]
+        self,
+        pred: TKR[bool],
+        if_true: TKR[A],
+        if_false: TKR[B],
     ) -> TKR[A] | TKR[B]:
+        """Add an eager if-else node to the graph.
+
+        This will be evaluated eagerly.
+        The values can be returned from an eval node or another graph.
+
+        :param pred: The predicate value.
+        :type pred: TKR[bool]
+        :param if_true: The value if the predicate is true.
+        :type if_true: TKR[A]
+        :param if_false: The value if the predicate is false.
+        :type if_false: TKR[B]
+        :return: The outputs of the if-else expression.
+        :rtype: TKR[A] | TKR[B]
+        """
         idx, port = self.data.eager_if_else(
-            pred.value_ref(), if_true.value_ref(), if_false.value_ref()
+            pred.value_ref(),
+            if_true.value_ref(),
+            if_false.value_ref(),
         )("value")
         return TKR(idx, port)
 
     def _graph_const[A: TModel, B: TModel](
-        self, graph: "GraphBuilder[A, B]"
+        self,
+        graph: GraphBuilder[A, B],
     ) -> TypedGraphRef[A, B]:
+        # TODO @philipp-seitz: Turn this into a public method?
         idx, port = self.data.const(graph.data.model_dump())
         return TypedGraphRef[A, B](
             graph_ref=(idx, port),
@@ -148,46 +265,102 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             inputs_type=graph.inputs_type,
         )
 
-    def task[Out: TModel](self, f: Function[Out]) -> Out:
-        name = f"{f.namespace}.{f.__class__.__name__}"
-        ins = dict_from_tmodel(f)
-        idx, _ = self.data.func(name, ins)("dummy")
-        OutModel = f.out()
+    def task[Out: TModel](self, func: Function[Out]) -> Out:
+        """Add a worker task node to the graph.
+
+        :param func: The worker function.
+        :type func: Function[Out]
+        :return: The outputs of the task.
+        :rtype: Out
+        """
+        name = f"{func.namespace}.{func.__class__.__name__}"
+        inputs = dict_from_tmodel(func)
+        idx, _ = self.data.func(name, inputs)("dummy")
+        OutModel = func.out()  # noqa: N806
         return init_tmodel(OutModel, lambda p: (idx, p))
 
     @overload
-    def eval[A: TModel, B: TModel](self, body: TypedGraphRef[A, B], a: A) -> B: ...
-    @overload
-    def eval[A: TModel, B: TModel](self, body: "GraphBuilder[A, B]", a: A) -> B: ...
     def eval[A: TModel, B: TModel](
-        self, body: "GraphBuilder[A,B] | TypedGraphRef", a: Any
+        self,
+        body: TypedGraphRef[A, B],
+        eval_inputs: A,
+    ) -> B: ...
+    @overload
+    def eval[A: TModel, B: TModel](
+        self,
+        body: GraphBuilder[A, B],
+        eval_inputs: A,
+    ) -> B: ...
+    def eval[A: TModel, B: TModel](
+        self,
+        body: GraphBuilder[A, B] | TypedGraphRef,
+        eval_inputs: Any,
     ) -> Any:
+        """Add a evaluation node to the graph.
+
+        This will evaluate a nested graph with the given inputs.
+
+        :param body: The graph to evaluate.
+        :type body: TypedGraphRef[A, B] | GraphBuilder[A, B],
+            where A are the input type and B the output type of the graph.
+        :param eval_inputs: The inputs to the graph.
+        :type eval_inputs: A
+        :return: The outputs of the evaluation.
+        :rtype: B
+        """
         if isinstance(body, GraphBuilder):
             body = self._graph_const(body)
 
-        idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(a))("dummy")
+        idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(eval_inputs))("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
     @overload
     def loop[A: TModel, B: LoopOutput](
-        self, body: TypedGraphRef[A, B], a: A, name: str | None = None
+        self,
+        body: TypedGraphRef[A, B],
+        loop_inputs: A,
+        name: str | None = None,
     ) -> B: ...
     @overload
     def loop[A: TModel, B: LoopOutput](
-        self, body: "GraphBuilder[A, B]", a: A, name: str | None = None
+        self,
+        body: GraphBuilder[A, B],
+        loop_inputs: A,
+        name: str | None = None,
     ) -> B: ...
     def loop[A: TModel, B: LoopOutput](
         self,
-        body: "TypedGraphRef[A, B] |GraphBuilder[A, B]",
-        a: A,
+        body: TypedGraphRef[A, B] | GraphBuilder[A, B],
+        loop_inputs: A,
         name: str | None = None,
     ) -> B:
+        """Add a loop node to the graph.
+
+        This will loop over the given graph until the `should_continue` output is false.
+        To trace intermediate values, use the name attribute in conjunction with
+        read_loop_trace.
+
+        :param body: The graph to loop.
+        :type body: TypedGraphRef[A, B] | GraphBuilder[A, B],
+            where A are the input type and B the output type of the graph.
+        :param loop_inputs: The inputs to the loop graph.
+        :type loop_inputs: A
+        :param name: An optional name for the loop.
+        :type name: str | None
+        :return: The outputs of the loop.
+        :rtype: B
+        """
         if isinstance(body, GraphBuilder):
             body = self._graph_const(body)
 
-        g = body.graph_ref
-        idx, _ = self.data.loop(g, dict_from_tmodel(a), "should_continue", name)(
-            "dummy"
+        graph = body.graph_ref
+        idx, _ = self.data.loop(
+            graph,
+            dict_from_tmodel(loop_inputs),
+            "should_continue",
+            name,
+        )(
+            "dummy",
         )
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
@@ -197,27 +370,33 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
-        value_ref = (refs._value.node_index, refs._value.port_id)
+        value_ref = (refs._value.node_index, refs._value.port_id)  # noqa: SLF001
         idx, _ = self.data.func("builtins.fold_values", {"values_glob": value_ref})(
-            "dummy"
+            "dummy",
         )
         return TKR[list[T]](idx, "value")
 
     def _map_fn_single_in[A: PType, B: TModel](
-        self, aes: TKR[list[A]], body: Callable[[TKR[A]], B]
-    ) -> "TList[B]":
-        tlist = self._unfold_list(aes)
-        return TList(body(TKR(tlist._value.node_index, "*")))
+        self,
+        map_inputs: TKR[list[A]],
+        body: Callable[[TKR[A]], B],
+    ) -> TList[B]:
+        tlist = self._unfold_list(map_inputs)
+        return TList(body(TKR(tlist._value.node_index, "*")))  # noqa: SLF001
 
     def _map_fn_single_out[A: TModel, B: PType](
-        self, aes: TList[A], body: Callable[[A], TKR[B]]
+        self,
+        map_inputs: TList[A],
+        body: Callable[[A], TKR[B]],
     ) -> TKR[list[B]]:
-        return self._fold_list(TList(body(aes._value)))
+        return self._fold_list(TList(body(map_inputs._value)))  # noqa: SLF001
 
     def _map_graph_full[A: TModel, B: TModel](
-        self, aes: TList[A], body: TypedGraphRef[A, B]
+        self,
+        map_inputs: TList[A],
+        body: TypedGraphRef[A, B],
     ) -> TList[B]:
-        ins = dict_from_tmodel(aes._value)
+        ins = dict_from_tmodel(map_inputs._value)  # noqa: SLF001
         idx, _ = self.data.map(body.graph_ref, ins)("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
@@ -226,23 +405,25 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     def map[A: PType, B: TNamedModel](
         self,
         body: (
-            Callable[[TKR[A]], B] | TypedGraphRef[TKR[A], B] | "GraphBuilder[TKR[A], B]"
+            Callable[[TKR[A]], B] | TypedGraphRef[TKR[A], B] | GraphBuilder[TKR[A], B]
         ),
-        aes: TKR[list[A]],
+        map_inputs: TKR[list[A]],
     ) -> TList[B]: ...
 
     @overload
     def map[A: TNamedModel, B: PType](
         self,
         body: (
-            Callable[[A], TKR[B]] | TypedGraphRef[A, TKR[B]] | "GraphBuilder[A, TKR[B]]"
+            Callable[[A], TKR[B]] | TypedGraphRef[A, TKR[B]] | GraphBuilder[A, TKR[B]]
         ),
-        aes: TList[A],
+        map_inputs: TList[A],
     ) -> TKR[list[B]]: ...
 
     @overload
     def map[A: TNamedModel, B: TNamedModel](
-        self, body: TypedGraphRef[A, B] | "GraphBuilder[A, B]", aes: TList[A]
+        self,
+        body: TypedGraphRef[A, B] | GraphBuilder[A, B],
+        map_inputs: TList[A],
     ) -> TList[B]: ...
 
     @overload
@@ -251,30 +432,42 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         body: (
             Callable[[TKR[A]], TKR[B]]
             | TypedGraphRef[TKR[A], TKR[B]]
-            | "GraphBuilder[TKR[A], TKR[B]]"
+            | GraphBuilder[TKR[A], TKR[B]]
         ),
-        aes: TKR[list[A]],
+        map_inputs: TKR[list[A]],
     ) -> TKR[list[B]]: ...
 
     def map(
-        self, body: TypedGraphRef | Callable | "GraphBuilder", aes: TKR | TList
+        self,
+        body: TypedGraphRef | Callable | GraphBuilder,
+        map_inputs: TKR | TList,
     ) -> Any:
+        """Add a map node to the graph.
+
+        :param body: The graph to map over.
+        :type body: TypedGraphRef | Callable | GraphBuilder
+        :param map_inputs: The values to map over.
+        :type map_inputs: TKR | TList
+        :return: The outputs of the map.
+        :rtype: Any
+        """
         if isinstance(body, GraphBuilder):
             body = self._graph_const(body)
 
         if isinstance(body, Callable):
-            if isinstance(aes, TList):
-                return self._map_fn_single_out(aes, body)
-            elif isinstance(aes, TKR):
-                return self._map_fn_single_in(aes, body)
+            if isinstance(map_inputs, TList):
+                return self._map_fn_single_out(map_inputs, body)
+            if isinstance(map_inputs, TKR):
+                return self._map_fn_single_in(map_inputs, body)
 
-        if isinstance(aes, TKR):
-            aes = self._unfold_list(aes)
+        if isinstance(map_inputs, TKR):
+            map_inputs = self._unfold_list(map_inputs)
 
-        out = self._map_graph_full(aes, body)
+        out = self._map_graph_full(map_inputs, body)
 
         if not isclass(body.outputs_type) or not issubclass(
-            body.outputs_type, TNamedModel
+            body.outputs_type,
+            TNamedModel,
         ):
             out = self._fold_list(out)
 

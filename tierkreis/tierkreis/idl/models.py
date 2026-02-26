@@ -1,31 +1,43 @@
+"""Tierkreis IDL models representation used for TSP parsing."""
+
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import NoneType
-from typing import Annotated, Mapping, Self, Sequence, get_args, get_origin
+from typing import Annotated, Self, get_args, get_origin
 
 from tierkreis.controller.data.core import RestrictedNamedTuple
 from tierkreis.controller.data.types import _is_generic
 
-
 type ElementaryType = (
-    type[int]
-    | type[float]
-    | type[bytes]
-    | type[str]
-    | type[bool]
-    | type[NoneType]
-    | type[Mapping]
-    | type[Sequence]
+    type[int | float | bytes | str | bool | NoneType | Mapping | Sequence]
     | str  # Custom type e.g. forward reference
 )
 
 
 @dataclass
 class GenericType:
+    """A Tierkreis worker generic type.
+
+    Represents a single (composed) type in worker definitions.
+
+    :fields:
+        origin (ElementaryType): The base type, e.g., str in list[str].
+        args:  (Sequence[GenericType | str]) The nested types.
+            e.g., list[str] in set[list[str]]
+    """
+
     origin: ElementaryType
     args: "Sequence[GenericType | str]"
 
     @classmethod
     def from_type(cls, t: type) -> "Self":
+        """Construct a generic type from a python type.
+
+        :param t: The python type.
+        :type t: type
+        :return: The Tierkreis type.
+        :rtype: Self
+        """
         if get_origin(t) is Annotated:
             return cls.from_type(get_args(t)[0])
 
@@ -44,12 +56,33 @@ class GenericType:
         return outs
 
     def included_structs(self) -> "set[GenericType]":
+        """Find the included structs of this type.
+
+        A struct is an instance of RestrictedNamedTuple or opaque strings.
+        :return: The list of structs
+        :rtype: set[GenericType]
+        """
         return GenericType._included_structs(self)
 
     def __hash__(self) -> int:
+        """Produce a hash of the generic type.
+
+        :return: The hash.
+        :rtype: int
+        """
         return hash(self.origin)
 
     def __eq__(self, value: object) -> bool:
+        """Check the equality of self with an object.
+
+        self == value <==> self.origin == value.origin
+
+
+        :param other: The object  to compare to.
+        :type other: object
+        :return: If bothe object have the same origin.
+        :rtype: bool
+        """
         if not hasattr(value, "origin"):
             return False
         return self.origin == getattr(value, "origin")
@@ -57,6 +90,15 @@ class GenericType:
 
 @dataclass
 class TypedArg:
+    """A Tierkreis worker method argument.
+
+    Represents a single argument to a tasks in a worker.
+    :fields:
+        name (str): The argument name.
+        t (GenericType): The argument type.
+        has_default(bool): Whether the argument has a default value.
+    """
+
     name: str
     t: GenericType
     has_default: bool = False
@@ -64,6 +106,17 @@ class TypedArg:
 
 @dataclass
 class Method:
+    """A Tierkreis worker method.
+
+    Represents a tasks in a worker.
+
+    :fields:
+        name (str): The method name.
+        args (list[TypedArg]): The list of method arguments.
+        return_type (GenericType): The method return type.
+        return_type_is_portmapping (bool): Whether the return_type is a portmapping.
+    """
+
     name: GenericType
     args: list[TypedArg]
     return_type: GenericType
@@ -72,18 +125,51 @@ class Method:
 
 @dataclass
 class Interface:
+    """A Tierkreis worker interface.
+
+    Represents a list of tasks contained in the worker.
+
+    :fields:
+        name (str): The worker name.
+        methods (list[Method]): The available tasks in the worker.
+    """
+
     name: str
     methods: list[Method]
 
 
 @dataclass
 class Model:
+    """A Tierkreis worker model.
+
+    Represents a type in a worker.
+
+    :fields:
+        is_portmapping (bool): Whether the model is a portmapping.
+        t (GenericType): The type of the model.
+        decl (list[TypedArg]) The list of its typed arguments.
+    """
+
     is_portmapping: bool
     t: GenericType
     decls: list[TypedArg]
 
     def __hash__(self) -> int:
+        """Produce a hash of the model.
+
+        :return: The hash.
+        :rtype: int
+        """
         return hash(self.t.origin)
 
-    def __lt__(self, other: "Model"):
+    def __lt__(self, other: "Model") -> bool:
+        """Check order of two models.
+
+        Uses lexicographical ordering of the origin of the models (generic) types.
+
+        :param other: The model to compare to.
+        :type other: Model
+        :return: If self comes before other.
+        :rtype: bool
+        """
         return str(self.t.origin) < str(other.t.origin)

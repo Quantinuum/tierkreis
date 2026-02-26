@@ -1,3 +1,5 @@
-from tierkreis.controller.executor.hpc.job_spec import JobSpec, ResourceSpec, MpiSpec
+"""Tierkreis HPC utilities."""
 
-__all__ = ["JobSpec", "ResourceSpec", "MpiSpec"]
+from tierkreis.controller.executor.hpc.job_spec import JobSpec, MpiSpec, ResourceSpec
+
+__all__ = ["JobSpec", "MpiSpec", "ResourceSpec"]
