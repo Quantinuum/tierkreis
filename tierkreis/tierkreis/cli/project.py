@@ -9,9 +9,9 @@ from pathlib import Path
 from tierkreis.cli.templates import (
     default_graph,
     external_worker_idl,
+    python_worker_api_pyproject,
     python_worker_main,
     python_worker_pyproject,
-    python_worker_workspace_pyproject,
 )
 from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace
@@ -106,25 +106,22 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
     with Path.open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(f"# {worker_name} \n")
     with Path.open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_workspace_pyproject(worker_name, external=external))
-    api_dir = base_dir / "api"
+        fh.write(python_worker_pyproject(worker_name))
+
     src_dir = base_dir / "src"
+    src_dir.mkdir(exist_ok=True)
+    api_dir = src_dir / "api"
     api_dir.mkdir(exist_ok=True)
     with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_pyproject(worker_name, kind="api"))
+        fh.write(python_worker_api_pyproject(worker_name))
     with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(f"# {worker_name}-api \n")
-    src_dir.mkdir(exist_ok=True)
     if external:
         with Path.open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
             fh.write(external_worker_idl(worker_name))
         return
     with Path.open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_main(worker_name))
-    with Path.open(src_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_pyproject(worker_name, kind="src"))
-    with Path.open(src_dir / "README.md", "w+", encoding="utf-8") as fh:
-        fh.write(f"# {worker_name}-src \n")
 
 
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
@@ -142,6 +139,33 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             subprocess.run(
                 [uv_path, "run", "--active", "src/main.py", "--stubs-path", stubs_name],
                 cwd=worker,
+            )
+
+
+def _gen_example_stubs(
+    worker_directory: Path, worker_name: str, stubs_name: str
+) -> None:
+    uv_path = shutil.which("uv")
+    if uv_path is None:
+        raise TierkreisError("uv is required to use this feature.")
+    for worker in worker_directory.iterdir():
+        if not worker.is_dir():
+            continue
+        else:
+            subprocess.run(
+                [uv_path, "run", "--active", "src/main.py", "--stubs-path", stubs_name],
+                cwd=worker,
+                check=True,
+            )
+            print(f"tkr-{worker_name}-api")
+            subprocess.run(
+                [uv_path, "add", f"tkr-{worker_name}-api"],
+                cwd=worker,
+                check=True,
+            )
+            subprocess.run(
+                [uv_path, "add", "--editable", f"{worker}/src/api"],
+                check=True,
             )
 
 
@@ -175,7 +199,7 @@ def run_args(args: argparse.Namespace) -> None:
         with Path.open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_stubs(worker_dir, "./src/api/api.py")
+        _gen_example_stubs(worker_dir, worker_name, "./src/api/api.py")
         print(f"""Successfully generated project in '{project_dir / "tkr"}'.
               
 To run the sample graph use "python -m tkr.graphs.main".

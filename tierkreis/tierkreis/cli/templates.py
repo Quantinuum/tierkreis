@@ -1,7 +1,5 @@
 """String template for the project initialization."""
 
-from typing import Literal
-
 
 def python_worker_main(worker_name: str) -> str:
     """Generate a python morker main.py.
@@ -34,18 +32,11 @@ if __name__ == "__main__":
 """
 
 
-def python_worker_workspace_pyproject(
-    worker_name: str,
-    *,
-    external: bool = False,
-) -> str:
+def python_worker_pyproject(worker_name: str) -> str:
     """Generate the pyproject.toml for the worker workspace.
 
     :param worker_name: Name of the worker.
     :type worker_name: str
-    :param external: Whether the worker is external (not-python worker),
-        defaults to False
-    :type external: bool, optional
     :return: The generated pyproject.toml content.
     :rtype: str
     """
@@ -53,42 +44,37 @@ def python_worker_workspace_pyproject(
     template = f"""[project]
 name = "tkr-{worker_name}"
 version = "0.1.0"
-description = "A tierkreis worker."
+description = "A tierkreis worker implementation."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [ {{name = "Your Name", email = "you@example.com"}} ]
 dependencies = [
     "tierkreis",
 ]
-[project.optional-dependencies]
-"""
-    if not external:
-        template += f"""src = [
-    "tkr-{worker_name}-src",
-]
-"""
-    template += f"""api = [
-    "tkr-{worker_name}-api",
+
+[tool.uv.workspace]
+members = [
+    "src/api",
 ]
 
 [tool.uv.sources]
-"""
-    if not external:
-        template += f"tkr-{worker_name}-src = {{ workspace = true }}\n"
-    template += f"""tkr-{worker_name}-api = {{ workspace = true }}
+tkr-{worker_name}-api = {{ workspace = true }}
 
-[tool.uv.workspace]
-members = [{'\n    "src",' if not external else ""}
-    "api",
-]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+tkr_{worker_name} = "src.main:main"
+
 """
     return template
 
 
-def python_worker_pyproject(
-    worker_name: str,
-    kind: Literal["api", "src"] = "api",
-) -> str:
+def python_worker_api_pyproject(worker_name: str) -> str:
     """Generate the pyproject.toml for the worker.
 
     Either for the api directory (only stubs) used during build time or
@@ -96,13 +82,11 @@ def python_worker_pyproject(
 
     :param worker_name: Name of the worker.
     :type worker_name: str
-    :param kind: Either "api" or "src", defaults to "api"
-    :type kind: Literal['api', 'src'], optional,
     :rtype: str
     """
-    worker_name = worker_name.replace("_", "-")
+    package_name = worker_name.replace("_", "-")
     template = f"""[project]
-name = "tkr-{worker_name}-{kind}"
+name = "tkr-{package_name}-api"
 version = "0.1.0"
 description = "A tierkreis worker implementation."
 readme = "README.md"
@@ -116,13 +100,8 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["./{"api" if kind == "api" else "main"}.py"]
-
-"""
-    if kind == "src":
-        template += f"""[project.scripts]
-tkr_{worker_name} = "main:main"
+[tool.hatch.build.targets.wheel.force-include]
+"api.py" = "{worker_name}.py"
 
 """
     return template
@@ -166,7 +145,7 @@ from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.executor import UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
-from tkr.workers.{worker_name}.api.api import your_worker_task
+from {worker_name} import your_worker_task
 
 class GraphInputs(NamedTuple):
     value: TKR[int]
