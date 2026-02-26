@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "substitution-worker",
+    "substitution-worker-api",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -402,11 +408,12 @@ wheels = [
 [[package]]
 name = "substitution-worker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
     { name = "pytket" },
     { name = "ruff" },
+    { name = "substitution-worker-api" },
     { name = "tierkreis" },
 ]
 
@@ -415,8 +422,20 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pytket", specifier = ">=2.9.3" },
     { name = "ruff" },
+    { name = "substitution-worker-api", editable = "src/api" },
     { name = "tierkreis", editable = "../../../../../tierkreis" },
 ]
+
+[[package]]
+name = "substitution-worker-api"
+version = "0.1.0"
+source = { editable = "src/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "../../../../../tierkreis" }]
 
 [[package]]
 name = "sympy"

@@ -45,7 +45,7 @@ interface TestNamespace {
 ```
 
 From which you could generate stubs.
-This is currently only available through a python script:
+This is currently available through a python script or by running the cli `tkr init stubs` with the correct worker directory.
 
 ```py
 # /// script

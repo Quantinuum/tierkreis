@@ -95,7 +95,7 @@ def parse_args(
         "--api-file-name",
         help="File location where to generate api to. Relative to the worker directory",
         type=str,
-        default=Path("./api/api.py"),
+        default=Path("./src/api/api.py"),
     )
     return parser
 
@@ -175,7 +175,7 @@ def run_args(args: argparse.Namespace) -> None:
         with Path.open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_stubs(worker_dir, "./api/api.py")
+        _gen_stubs(worker_dir, "./src/api/api.py")
         print(f"""Successfully generated project in '{project_dir / "tkr"}'.
               
 To run the sample graph use "python -m tkr.graphs.main".

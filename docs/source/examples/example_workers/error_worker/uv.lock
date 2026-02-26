@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "error-worker",
+    "error-worker-api",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -14,8 +20,9 @@ wheels = [
 [[package]]
 name = "error-worker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
+    { name = "error-worker-api" },
     { name = "pydantic" },
     { name = "ruff" },
     { name = "tierkreis" },
@@ -23,10 +30,22 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "error-worker-api", editable = "src/api" },
     { name = "pydantic" },
     { name = "ruff" },
     { name = "tierkreis", editable = "../../../../../tierkreis" },
 ]
+
+[[package]]
+name = "error-worker-api"
+version = "0.1.0"
+source = { editable = "src/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "../../../../../tierkreis" }]
 
 [[package]]
 name = "pydantic"

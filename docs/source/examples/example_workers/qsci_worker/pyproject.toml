@@ -10,7 +10,24 @@ dependencies = [
     "tierkreis",
     "ruff",
     "pyscf",
+    "qsci-worker-api",
 ]
 
 [tool.uv.sources]
 tierkreis = { path = "../../../../../tierkreis", editable = true }
+qsci-worker-api = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "src/api",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+tkr-qsci-worker = "src.main:main"

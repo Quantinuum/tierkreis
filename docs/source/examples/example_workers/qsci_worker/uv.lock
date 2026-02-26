@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "qsci-worker",
+    "qsci-worker-api",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -742,13 +748,14 @@ wheels = [
 [[package]]
 name = "qsci-worker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
     { name = "pyscf" },
     { name = "pytket" },
     { name = "pytket-qiskit" },
     { name = "qiskit-ibm-runtime" },
+    { name = "qsci-worker-api" },
     { name = "ruff" },
     { name = "tierkreis" },
 ]
@@ -760,9 +767,21 @@ requires-dist = [
     { name = "pytket", specifier = ">=2.9.3" },
     { name = "pytket-qiskit", specifier = ">=0.71.0" },
     { name = "qiskit-ibm-runtime", specifier = "==0.41.1" },
+    { name = "qsci-worker-api", editable = "src/api" },
     { name = "ruff" },
     { name = "tierkreis", editable = "../../../../../tierkreis" },
 ]
+
+[[package]]
+name = "qsci-worker-api"
+version = "0.1.0"
+source = { editable = "src/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "../../../../../tierkreis" }]
 
 [[package]]
 name = "qwasm"

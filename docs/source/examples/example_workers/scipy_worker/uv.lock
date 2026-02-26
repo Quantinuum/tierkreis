@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 
+[manifest]
+members = [
+    "scipy-worker",
+    "scipy-worker-api",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -247,10 +253,11 @@ wheels = [
 [[package]]
 name = "scipy-worker"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "ruff" },
     { name = "scipy" },
+    { name = "scipy-worker-api" },
     { name = "tierkreis" },
 ]
 
@@ -258,8 +265,20 @@ dependencies = [
 requires-dist = [
     { name = "ruff" },
     { name = "scipy", specifier = ">=1.16.3" },
+    { name = "scipy-worker-api", editable = "src/api" },
     { name = "tierkreis", editable = "../../../../../tierkreis" },
 ]
+
+[[package]]
+name = "scipy-worker-api"
+version = "0.1.0"
+source = { editable = "src/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "../../../../../tierkreis" }]
 
 [[package]]
 name = "tierkreis"
