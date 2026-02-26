@@ -101,25 +101,19 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             idx, port = vr
             if idx in port_map:
                 return port_map[idx][port]
-            if idx in node_map:
-                return (node_map[idx], port)
-            add_node(idx)
-            return (node_map[idx], port) if idx in node_map else port_map[idx][port]
+            if idx not in node_map:
+                node = other.data.nodes[idx]
+                if node.type == "input":
+                    port_map[idx] = {node.name: ins[node.name]}
+                    return port_map[idx][port]
+                assert node.type != "output"
+                new_node_def = copy(node)
+                reindex_inputs(new_node_def, reindex)
+                new_node_def.outputs = {}
 
-        def add_node(idx: int):
-            node = other.data.nodes[idx]
-            if node.type == "input":
-                assert idx not in port_map
-                port_map[idx] = {node.name: ins[node.name]}
-                return
-            assert idx not in node_map
-            assert node.type != "output"
-            new_node_def = copy(node)
-            reindex_inputs(new_node_def, reindex)
-            new_node_def.outputs = {}
-
-            func = self.data.add(new_node_def)
-            node_map[idx] = func("dummy_port")[0]
+                func = self.data.add(new_node_def)
+                node_map[idx] = func("dummy_port")[0]
+            return (node_map[idx], port)
 
         outputs = other.data.nodes[other.data.graph_output_idx].inputs
         return init_tmodel(other.outputs_type, lambda p: reindex(outputs[p]))
