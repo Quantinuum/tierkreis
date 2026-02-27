@@ -1,5 +1,3 @@
-from example_workers.hello_world_worker.api.stubs import greet
-
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.models import TKR
 
