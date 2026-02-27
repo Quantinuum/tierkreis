@@ -180,3 +180,15 @@ if __name__ == "__main__":
     main()
 
 """
+
+
+def worker_init() -> str:
+    """Generate a toplevel init for the worker.
+
+    :return: An init template
+    :rtype: str
+    """
+    return """
+from .src.api.api import *
+
+"""

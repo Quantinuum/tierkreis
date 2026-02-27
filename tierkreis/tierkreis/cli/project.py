@@ -12,6 +12,7 @@ from tierkreis.cli.templates import (
     python_worker_api_pyproject,
     python_worker_main,
     python_worker_pyproject,
+    worker_init,
 )
 from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace
@@ -107,7 +108,8 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
         fh.write(f"# {worker_name} \n")
     with Path.open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_pyproject(worker_name))
-
+    with Path.open(base_dir / "__init__.py", "w+", encoding="utf-8") as fh:
+        fh.write(worker_init())
     src_dir = base_dir / "src"
     src_dir.mkdir(exist_ok=True)
     api_dir = src_dir / "api"
