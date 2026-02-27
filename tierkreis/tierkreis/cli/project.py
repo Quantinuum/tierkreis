@@ -69,7 +69,7 @@ def parse_args(
         help="Overwrites the default worker directory."
         "Defaults to <project_directory>/workers.",
         type=str,
-        default=Path("./tkr") / "workers",
+        default=None,
     )
     worker.add_argument(
         "--external",
@@ -81,7 +81,7 @@ def parse_args(
         "-n",
         "--worker-name",
         required=True,
-        help="The name of the new worker",
+        help="The name of the new worker.",
         type=str,
     )
     stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with UV.")
@@ -93,7 +93,7 @@ def parse_args(
     )
     stubs.add_argument(
         "--api-file-name",
-        help="File location where to generate api to. Relative to the worker directory",
+        help="File location where to generate api to. Relative to the worker directory.",
         type=str,
         default=Path("./src/api/api.py"),
     )
@@ -213,10 +213,40 @@ to your project definition e.g. pyproject.toml.
 Keep in mind that workers are independent of your graph code.
 """)
     elif args.init_type == "worker":
-        Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
-        _gen_worker(args.name, Path(args.worker_directory), external=args.external)
+        worker_dir = args.worker_directory
+        if worker_dir is None:
+            worker_dir = _find_worker_dir()
+            if worker_dir is None:
+                print(
+                    "Could not find sutiable worker directory **/tkr/workers/ "
+                    "Please specify it with --worker-directory or create a 'workers' directory in your project."
+                )
+                return
+        else:
+            worker_dir = Path(worker_dir)
+            worker_dir.mkdir(exist_ok=True, parents=True)
+        _gen_worker(args.worker_name, worker_dir, external=args.external)
     elif args.init_type == "stubs":
         _gen_stubs(Path(args.worker_directory), args.api_file_name)
+
+
+def _find_worker_dir() -> Path | None:
+    project_dir = _get_project_root()
+    print(f"Searching for worker directory in {project_dir}...")
+    for worker_dir in project_dir.glob("**/tkr/workers"):
+        print(f"checking: {worker_dir}")
+        if worker_dir.is_dir():
+            print(f"Found worker directory: {worker_dir}")
+            return worker_dir
+    return None
+
+
+def _get_project_root() -> Path:
+    current_path = Path(__file__).resolve().parent
+    for path in [current_path] + list(current_path.parents):
+        if (path / ".git").exists():
+            return path
+    return Path.cwd()
 
 
 class TierkreisInitCli:
