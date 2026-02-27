@@ -20,14 +20,16 @@ project_root/
 │   │   └── main.py
 │   └── workers/
 │       └── example_worker/
-│           ├── api/
-│           │   ├── api.py (stubs for the worker)
-│           │   ├── pyproject.toml
-│           │   └── README.md
-│           ├── main.py
-│           ├── pyproject.toml
-│           ├── README.md
-│           └── uv.lock
+│             ├── src/
+│             │   ├── api/
+│             │   │   ├── api.py (stubs for the worker)
+│             │   │   ├── pyproject.toml
+│             │   │   └── README.md
+│             │   └── main.py
+│             ├── __init__.py
+│             ├── pyproject.toml
+│             ├── README.md
+│             └── uv.lock
 ├── .gitignore
 ├── .python-version
 ├── main.py
@@ -47,7 +49,7 @@ uv run python -m tkr.graphs.main
 
 From here you can continue with the other tutorials.
 
-## Step by step tutorials
+## Tutorials for writing workflows
 
 A sequence of tutorials that cover the fundamentals of writing and operating Tierkreis workflows.
 
@@ -61,10 +63,11 @@ A sequence of tutorials that cover the fundamentals of writing and operating Tie
 
 [Parallel computation using Map](tutorial/map.md)
 
-## Worker examples
+## Tutorials for writing workers
 
 Tutorials on writing workers that provide additional tasks.
-For worker libraries see [this document](workers.md)
+For a general oveview look at the [worker documentation](worker/index.md)
+For worker libraries see [this document](worker/native_workers/index.md)
 
 ### Tierkreis Python library
 
@@ -78,7 +81,7 @@ For worker libraries see [this document](workers.md)
 
 ## Executors
 
-[Overview](executors/overview.md)
+[Overview](executors/index.md)
 
 [Shell Executors](executors/shell.md)
 

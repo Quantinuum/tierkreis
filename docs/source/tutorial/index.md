@@ -7,5 +7,5 @@ builtins.md
 eval.md
 inputs.md
 loop.md
-map.mdjus
+map.md
 ```
