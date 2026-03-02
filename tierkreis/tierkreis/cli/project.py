@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import sys
 
 from tierkreis.cli.templates import (
     default_graph,
@@ -71,7 +72,7 @@ def parse_args(
         "--worker-directory",
         help="Overwrites the default worker directory."
         "Defaults to <project_directory>/workers.",
-        type=str,
+        type=Path,
         default=None,
     )
     worker.add_argument(
@@ -91,13 +92,13 @@ def parse_args(
     stubs.add_argument(
         "--worker-directory",
         help="Directory where to search for workers.",
-        type=str,
+        type=Path,
         default=None,
     )
     stubs.add_argument(
         "--api-file-name",
         help="File location where to generate api to. Relative to the worker directory.",
-        type=str,
+        type=Path,
         default=Path("./src/api/api.py"),
     )
     return parser
@@ -132,8 +133,21 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
-        msg = "uv is required to use this feature."
-        raise TierkreisError(msg)
+        command = [
+            sys.executable,
+            "src/main.py",
+            "--stubs-path",
+            stubs_name,
+        ]
+    else:
+        command = [
+            uv_path,
+            "run",
+            "--active",
+            "src/main.py",
+            "--stubs-path",
+            stubs_name,
+        ]
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
@@ -141,10 +155,7 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             namespace = Namespace.from_spec_file(idl)
             namespace.write_stubs(idl.parent / stubs_name)
         else:
-            subprocess.run(
-                [uv_path, "run", "--active", "src/main.py", "--stubs-path", stubs_name],
-                cwd=worker,
-            )
+            subprocess.run(command, cwd=worker, check=True)
 
 
 def _gen_example_stubs(
@@ -152,7 +163,8 @@ def _gen_example_stubs(
 ) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
-        raise TierkreisError("uv is required to use this feature.")
+        msg = "uv is required to use this feature."
+        raise TierkreisError(msg)
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
@@ -164,12 +176,12 @@ def _gen_example_stubs(
             )
             print(f"tkr-{worker_name}-api")
             subprocess.run(
-                [uv_path, "add", f"tkr-{worker_name}-api"],
+                [uv_path, "add", "--active", f"tkr-{worker_name}-api"],
                 cwd=worker,
                 check=True,
             )
             subprocess.run(
-                [uv_path, "add", "--editable", f"{worker}/src/api"],
+                [uv_path, "add", "--active", "--editable", f"{worker}/src/api"],
                 check=True,
             )
 
