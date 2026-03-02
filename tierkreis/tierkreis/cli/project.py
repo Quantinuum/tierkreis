@@ -273,6 +273,7 @@ def _find_worker_dir() -> Path | None:
 def _get_project_root() -> Path | None:
     git_command = shutil.which("git")
     if git_command is None:
+        print("git was not found. Some commands might not work as expected.")
         return None
     try:
         result = subprocess.run(
