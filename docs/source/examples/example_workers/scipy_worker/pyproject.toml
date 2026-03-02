@@ -10,13 +10,8 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-tierkreis = { path = "../../../../../tierkreis", editable = true }
+tierkreis = { workspace = true }
 scipy-worker-api = { workspace = true }
-
-[tool.uv.workspace]
-members = [
-    "src/api",
-]
 
 [build-system]
 requires = ["hatchling"]

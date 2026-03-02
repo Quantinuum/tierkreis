@@ -3,7 +3,8 @@ members = [
     "tierkreis",
     "tierkreis_visualization",
     "tierkreis_workers/*worker",
-    "docs/source/examples/example_workers/*/src/api",
+    "docs/source/examples/example_workers/[!openssl]*_worker",
+    "docs/source/examples/example_workers/*_worker/src/api",
 ]
 
 

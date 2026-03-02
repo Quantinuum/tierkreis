@@ -5,13 +5,8 @@ requires-python = ">=3.12"
 dependencies = ["pydantic", "tierkreis", "ruff", "error-worker-api"]
 
 [tool.uv.sources]
-tierkreis = { path = "../../../../../tierkreis", editable = true }
+tierkreis = { workspace = true }
 error-worker-api = { workspace = true }
-
-[tool.uv.workspace]
-members = [
-    "src/api",
-]
 
 [build-system]
 requires = ["hatchling"]

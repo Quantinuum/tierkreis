@@ -6,6 +6,9 @@ dependencies = [
     "tierkreis",
 ]
 
+[tool.uv.sources]
+tierkreis = { path = "../../../../../../../tierkreis", editable = true }
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

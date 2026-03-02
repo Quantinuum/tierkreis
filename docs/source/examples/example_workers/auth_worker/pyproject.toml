@@ -9,14 +9,10 @@ dependencies = [
     "tierkreis",
     "auth-worker-api",
 ]
-[tool.uv.sources]
-tierkreis = { path = "../../../../../tierkreis", editable = true }
-auth-worker-api = { workspace = true }
 
-[tool.uv.workspace]
-members = [
-    "src/api",
-]
+[tool.uv.sources]
+tierkreis = { workspace = true }
+auth-worker-api = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
