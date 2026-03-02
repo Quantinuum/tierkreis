@@ -90,7 +90,7 @@ def parse_args(
         "--worker-directory",
         help="Directory where to search for workers.",
         type=str,
-        default=Path("./tkr") / "workers",
+        default=None,
     )
     stubs.add_argument(
         "--api-file-name",
@@ -229,7 +229,17 @@ Keep in mind that workers are independent of your graph code.
             worker_dir.mkdir(exist_ok=True, parents=True)
         _gen_worker(args.worker_name, worker_dir, external=args.external)
     elif args.init_type == "stubs":
-        _gen_stubs(Path(args.worker_directory), args.api_file_name)
+        if args.worker_directory is None:
+            worker_dir = _find_worker_dir()
+            if worker_dir is None:
+                print(
+                    "Could not find sutiable worker directory **/tkr/workers/ "
+                    "Please specify it with --worker-directory or create a 'workers' directory in your project."
+                )
+                return
+        else:
+            worker_dir = Path(args.worker_directory)
+        _gen_stubs(worker_dir, args.api_file_name)
 
 
 def _find_worker_dir() -> Path | None:
