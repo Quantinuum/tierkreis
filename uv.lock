@@ -11,13 +11,16 @@ resolution-markers = [
 members = [
     "auth-worker",
     "auth-worker-api",
+    "error-worker",
     "error-worker-api",
     "hello-world-worker",
     "hello-world-worker-api",
     "openssl-worker-api",
     "qsci-worker",
     "qsci-worker-api",
+    "scipy-worker",
     "scipy-worker-api",
+    "substitution-worker",
     "substitution-worker-api",
     "tierkreis",
     "tierkreis-visualization",
@@ -584,6 +587,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f5/22/900cb125c76b7aaa450ce02fd727f452243f2e91a61af068b40adba60ea9/email_validator-2.3.0.tar.gz", hash = "sha256:9fc05c37f2f6cf439ff414f8fc46d917929974a82244c20eb10231ba60c54426", size = 51238, upload-time = "2025-08-26T13:09:06.831Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/15/545e2b6cf2e3be84bc1ed85613edd75b8aea69807a71c26f4ca6a9258e82/email_validator-2.3.0-py3-none-any.whl", hash = "sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4", size = 35604, upload-time = "2025-08-26T13:09:05.858Z" },
+]
+
+[[package]]
+name = "error-worker"
+version = "0.1.0"
+source = { editable = "docs/source/examples/example_workers/error_worker" }
+dependencies = [
+    { name = "error-worker-api" },
+    { name = "pydantic" },
+    { name = "ruff" },
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "error-worker-api", editable = "docs/source/examples/example_workers/error_worker/src/api" },
+    { name = "pydantic" },
+    { name = "ruff" },
+    { name = "tierkreis", editable = "tierkreis" },
 ]
 
 [[package]]
@@ -2731,6 +2753,25 @@ wheels = [
 ]
 
 [[package]]
+name = "scipy-worker"
+version = "0.1.0"
+source = { editable = "docs/source/examples/example_workers/scipy_worker" }
+dependencies = [
+    { name = "ruff" },
+    { name = "scipy" },
+    { name = "scipy-worker-api" },
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ruff" },
+    { name = "scipy", specifier = ">=1.16.3" },
+    { name = "scipy-worker-api", editable = "docs/source/examples/example_workers/scipy_worker/src/api" },
+    { name = "tierkreis", editable = "tierkreis" },
+]
+
+[[package]]
 name = "scipy-worker-api"
 version = "0.1.0"
 source = { editable = "docs/source/examples/example_workers/scipy_worker/src/api" }
@@ -3009,6 +3050,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/6d/90764092216fa560f6587f83bb70113a8ba510ba436c6476a2b47359057c/stevedore-5.7.0.tar.gz", hash = "sha256:31dd6fe6b3cbe921e21dcefabc9a5f1cf848cf538a1f27543721b8ca09948aa3", size = 516200, upload-time = "2026-02-20T13:27:06.765Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/69/06/36d260a695f383345ab5bbc3fd447249594ae2fa8dfd19c533d5ae23f46b/stevedore-5.7.0-py3-none-any.whl", hash = "sha256:fd25efbb32f1abb4c9e502f385f0018632baac11f9ee5d1b70f88cc5e22ad4ed", size = 54483, upload-time = "2026-02-20T13:27:05.561Z" },
+]
+
+[[package]]
+name = "substitution-worker"
+version = "0.1.0"
+source = { editable = "docs/source/examples/example_workers/substitution_worker" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pytket" },
+    { name = "ruff" },
+    { name = "substitution-worker-api" },
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pytket", specifier = ">=2.9.3" },
+    { name = "ruff" },
+    { name = "substitution-worker-api", editable = "docs/source/examples/example_workers/substitution_worker/src/api" },
+    { name = "tierkreis", editable = "tierkreis" },
 ]
 
 [[package]]
