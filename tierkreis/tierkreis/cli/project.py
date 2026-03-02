@@ -13,6 +13,8 @@ from tierkreis.cli.templates import (
     python_worker_main,
     python_worker_pyproject,
     worker_init,
+    worker_api_readme,
+    worker_readme,
 )
 from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace
@@ -105,7 +107,7 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
     base_dir = worker_dir / worker_name
     base_dir.mkdir(exist_ok=True)
     with Path.open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
-        fh.write(f"# {worker_name} \n")
+        fh.write(worker_readme(worker_name))
     with Path.open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_pyproject(worker_name))
     with Path.open(base_dir / "__init__.py", "w+", encoding="utf-8") as fh:
@@ -117,7 +119,8 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
     with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_api_pyproject(worker_name))
     with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
-        fh.write(f"# {worker_name}-api \n")
+        fh.write(worker_api_readme(worker_name))
+    src_dir.mkdir(exist_ok=True)
     if external:
         with Path.open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
             fh.write(external_worker_idl(worker_name))
