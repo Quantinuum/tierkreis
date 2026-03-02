@@ -2,7 +2,7 @@ from typing import NamedTuple
 
 from tests.workers.graph.stubs import doubler_plus_graph
 from tierkreis.builder import GraphBuilder, TypedGraphRef
-from tierkreis.builtins.stubs import (
+from tierkreis.builtins import (
     conjugate,
     eq,
     iadd,

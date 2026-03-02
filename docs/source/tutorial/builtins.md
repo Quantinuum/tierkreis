@@ -46,7 +46,7 @@ In particular if the graph is serialized then these constants will be hard-coded
 We can add tasks using `GraphBuilder.task`:
 
 ```{code-cell} ipython3
-from tierkreis.builtins.stubs import iadd
+from tierkreis.builtins import iadd
 
 three = g.task(iadd(g.const(1), g.const(2)))
 ```

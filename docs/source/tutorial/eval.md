@@ -21,7 +21,7 @@ Recall the `fib_step` graph that we wrote last time:
 from typing import NamedTuple
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd
+from tierkreis.builtins import iadd
 from tierkreis.models import TKR
 
 

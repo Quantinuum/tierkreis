@@ -5,13 +5,17 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import sys
 
 from tierkreis.cli.templates import (
     default_graph,
     external_worker_idl,
+    python_worker_api_pyproject,
     python_worker_main,
     python_worker_pyproject,
-    python_worker_workspace_pyproject,
+    worker_init,
+    worker_api_readme,
+    worker_readme,
 )
 from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace
@@ -68,8 +72,8 @@ def parse_args(
         "--worker-directory",
         help="Overwrites the default worker directory."
         "Defaults to <project_directory>/workers.",
-        type=str,
-        default=Path("./tkr") / "workers",
+        type=Path,
+        default=None,
     )
     worker.add_argument(
         "--external",
@@ -79,23 +83,23 @@ def parse_args(
     )
     worker.add_argument(
         "-n",
-        "--name",
+        "--worker-name",
         required=True,
-        help="The name of the new worker",
+        help="The name of the new worker.",
         type=str,
     )
     stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with UV.")
     stubs.add_argument(
         "--worker-directory",
         help="Directory where to search for workers.",
-        type=str,
-        default=Path("./tkr") / "workers",
+        type=Path,
+        default=None,
     )
     stubs.add_argument(
         "--api-file-name",
-        help="File location where to generate api to. Relative to the worker directory",
-        type=str,
-        default=Path("./api/api.py"),
+        help="File location where to generate api to. Relative to the worker directory.",
+        type=Path,
+        default=Path("./src/api/api.py"),
     )
     return parser
 
@@ -104,16 +108,19 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
     base_dir = worker_dir / worker_name
     base_dir.mkdir(exist_ok=True)
     with Path.open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
-        fh.write(f"# {worker_name} \n")
+        fh.write(worker_readme(worker_name))
     with Path.open(base_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_workspace_pyproject(worker_name, external=external))
-    api_dir = base_dir / "api"
+        fh.write(python_worker_pyproject(worker_name))
+    with Path.open(base_dir / "__init__.py", "w+", encoding="utf-8") as fh:
+        fh.write(worker_init())
     src_dir = base_dir / "src"
+    src_dir.mkdir(exist_ok=True)
+    api_dir = src_dir / "api"
     api_dir.mkdir(exist_ok=True)
     with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_pyproject(worker_name, kind="api"))
+        fh.write(python_worker_api_pyproject(worker_name))
     with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
-        fh.write(f"# {worker_name}-api \n")
+        fh.write(worker_api_readme(worker_name))
     src_dir.mkdir(exist_ok=True)
     if external:
         with Path.open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
@@ -121,17 +128,26 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
         return
     with Path.open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_main(worker_name))
-    with Path.open(src_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_pyproject(worker_name, kind="src"))
-    with Path.open(src_dir / "README.md", "w+", encoding="utf-8") as fh:
-        fh.write(f"# {worker_name}-src \n")
 
 
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
-        msg = "uv is required to use this feature."
-        raise TierkreisError(msg)
+        command = [
+            sys.executable,
+            "src/main.py",
+            "--stubs-path",
+            stubs_name,
+        ]
+    else:
+        command = [
+            uv_path,
+            "run",
+            "--active",
+            "src/main.py",
+            "--stubs-path",
+            stubs_name,
+        ]
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
@@ -139,9 +155,33 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             namespace = Namespace.from_spec_file(idl)
             namespace.write_stubs(idl.parent / stubs_name)
         else:
+            subprocess.run(command, cwd=worker, check=True)
+
+
+def _gen_example_stubs(
+    worker_directory: Path, worker_name: str, stubs_name: str
+) -> None:
+    uv_path = shutil.which("uv")
+    if uv_path is None:
+        msg = "uv is required to use this feature."
+        raise TierkreisError(msg)
+    for worker in worker_directory.iterdir():
+        if not worker.is_dir():
+            continue
+        else:
             subprocess.run(
-                [uv_path, "run", "src/main.py", "--stubs-path", stubs_name],
+                [uv_path, "run", "--active", "src/main.py", "--stubs-path", stubs_name],
                 cwd=worker,
+                check=True,
+            )
+            print(f"tkr-{worker_name}-api")
+            subprocess.run(
+                [uv_path, "add", "--active", f"tkr-{worker_name}-api"],
+                cwd=worker,
+                check=True,
+            )
+            subprocess.run(
+                [uv_path, "add", "--active", "--editable", f"{worker}/src/api"],
                 check=True,
             )
 
@@ -149,25 +189,102 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
 def run_args(args: argparse.Namespace) -> None:
     """Run the project initialization according to the args."""
     if args.init_type == "project":
+        project_dir = Path(args.project_directory)
+        if (project_dir / "tkr").exists():
+            if not (project_dir / "tkr").is_dir():
+                msg = f"Project directory {project_dir / 'tkr'} already exists and is not a directory."
+                raise TierkreisError(msg)
+            if (
+                not input(
+                    f"Project directory {project_dir / 'tkr'} already exists. Continue? (y/n): "
+                )
+                .lower()
+                .strip()[:1]
+                == "y"
+            ):
+                return
         worker_name = "example_worker"
         worker_dir = Path(args.worker_directory)
         if not worker_dir.is_absolute():
-            worker_dir = Path(args.project_directory) / worker_dir
+            worker_dir = project_dir / worker_dir
         graphs_dir = Path(args.graphs_directory)
         if not graphs_dir.is_absolute():
-            graphs_dir = Path(args.project_directory) / graphs_dir
+            graphs_dir = project_dir / graphs_dir
         worker_dir.mkdir(exist_ok=True, parents=True)
         _gen_worker(worker_name, worker_dir)
         graphs_dir.mkdir(exist_ok=True, parents=True)
         with Path.open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_stubs(worker_dir, "./api/api.py")
+        _gen_example_stubs(worker_dir, worker_name, "./src/api/api.py")
+        print(f"""Successfully generated project in '{project_dir / "tkr"}'.
+              
+To run the sample graph use "python -m tkr.graphs.main".
+Or import the function into a top level script with:
+              
+from tkr.graphs.main import main
+main()
+              
+It is highly recommended to include the newly created structure
+to your project definition e.g. pyproject.toml.
+Keep in mind that workers are independent of your graph code.
+""")
     elif args.init_type == "worker":
-        Path(args.worker_directory).mkdir(exist_ok=True, parents=True)
-        _gen_worker(args.name, Path(args.worker_directory), external=args.external)
+        worker_dir = args.worker_directory
+        if worker_dir is None:
+            worker_dir = _find_worker_dir()
+            if worker_dir is None:
+                print(
+                    "Could not find sutiable worker directory **/tkr/workers/ "
+                    "Please specify it with --worker-directory or create a 'workers' directory in your project."
+                )
+                return
+        else:
+            worker_dir = Path(worker_dir)
+            worker_dir.mkdir(exist_ok=True, parents=True)
+        _gen_worker(args.worker_name, worker_dir, external=args.external)
     elif args.init_type == "stubs":
-        _gen_stubs(Path(args.worker_directory), args.api_file_name)
+        if args.worker_directory is None:
+            worker_dir = _find_worker_dir()
+            if worker_dir is None:
+                print(
+                    "Could not find sutiable worker directory **/tkr/workers/ "
+                    "Please specify it with --worker-directory or create a 'workers' directory in your project."
+                )
+                return
+        else:
+            worker_dir = Path(args.worker_directory)
+        _gen_stubs(worker_dir, args.api_file_name)
+
+
+def _find_worker_dir() -> Path | None:
+    project_dir = _get_project_root()
+    if project_dir is None:
+        return None
+    print(f"Searching for worker directory in {project_dir}...")
+    for worker_dir in project_dir.glob("**/tkr/workers"):
+        print(f"checking: {worker_dir}")
+        if worker_dir.is_dir():
+            print(f"Found worker directory: {worker_dir}")
+            return worker_dir
+    return None
+
+
+def _get_project_root() -> Path | None:
+    git_command = shutil.which("git")
+    if git_command is None:
+        print("git was not found. Some commands might not work as expected.")
+        return None
+    try:
+        result = subprocess.run(
+            [git_command, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return Path(result.stdout.strip())
+    except subprocess.CalledProcessError:
+        return None
 
 
 class TierkreisInitCli:

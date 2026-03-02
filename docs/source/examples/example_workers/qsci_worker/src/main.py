@@ -4,18 +4,22 @@ from sys import argv
 from typing import NamedTuple, cast
 
 import numpy as np
-from chemistry.active_space import get_frozen
-from chemistry.molecule import extract_hamiltonian_rhf
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.circuit import Qubit
 from pytket.pauli import QubitPauliString
 from pytket.utils.operators import CoeffTypeAccepted, QubitPauliOperator
-from qsci.active_space import get_n_active, get_n_core
-from qsci.jordan_wigner import qubit_mapping_jordan_wigner
-from qsci.postprocess import get_ci_matrix, postprocess_configs
-from qsci.state_prep import perform_state_preparation
-from qsci.utils import get_config_from_cas_init, make_time_evolution_circuits, rhf2ghf
+from src.chemistry.active_space import get_frozen
+from src.chemistry.molecule import extract_hamiltonian_rhf
+from src.qsci.active_space import get_n_active, get_n_core
+from src.qsci.jordan_wigner import qubit_mapping_jordan_wigner
+from src.qsci.postprocess import get_ci_matrix, postprocess_configs
+from src.qsci.state_prep import perform_state_preparation
+from src.qsci.utils import (
+    get_config_from_cas_init,
+    make_time_evolution_circuits,
+    rhf2ghf,
+)
 
 from tierkreis import Worker
 

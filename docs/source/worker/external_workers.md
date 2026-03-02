@@ -1,6 +1,6 @@
 # External Workers
 
-Tierkreis does not put any restrictions on workers except the general [contract](../executors/overview.md).
+Tierkreis does not put any restrictions on workers except the general [contract](../executors/index.md).
 This means that you can also write workers in your preferred language and interface it with Tierkreis.
 To incorporate the worker into a Tierkreis graph, you can either describe the interface using a subset of [TypeSpec](https://typespec.io) to generate stubs for your worker or use the untyped functions in the graph builder.
 To run the worker you may use one of the existing executors;
@@ -45,7 +45,7 @@ interface TestNamespace {
 ```
 
 From which you could generate stubs.
-This is currently only available through a python script:
+This is currently available through a python script or by running the cli `tkr init stubs` with the correct worker directory.
 
 ```py
 # /// script
@@ -69,7 +69,7 @@ There are two possible scenarios to parse input and outputs for workers.
 You can either define a custom executor in python; this has the advantage of interacting with the storage from Tierkreis, making it simpler to read inputs.
 But you also have to make sure the outputs are written to the correct places.
 Alternatively you can use an existing executor, which means you have to do the parsing inside the worker.
-Tierkreis typically hands over a single argument to the invoked script: the [`WorkerCallArgs`][#tierkreis.controller.data.location.WorkerCallArgs]
+Tierkreis typically hands over a single argument to the invoked script: the [`WorkerCallArgs`](#tierkreis.controller.data.location.WorkerCallArgs)
 This contains all the information specified in the the contract of a worker.
 Parsing this file will provide the locations of inputs and expected outputs.
 

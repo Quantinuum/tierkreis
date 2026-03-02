@@ -29,7 +29,7 @@ def main() -> None:
     except ImportError:
         logger.warning("Could not import Tierkreis Visualization CLI")
         logger.warning(
-            "To install it, please run 'pip install tierkreis-visualization'",
+            "To install it, please run 'uv add tierkreis-visualization'",
         )
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
     args.func(args)

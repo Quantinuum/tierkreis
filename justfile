@@ -44,7 +44,7 @@ stubs-generate dir:
 stubs-generate-api dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run src/main.py --stubs-path api/stubs.py
+  uv run src/main.py --stubs-path src/api/stubs.py
 
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'

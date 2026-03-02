@@ -47,7 +47,7 @@ adds `step` to the `value`
 and checks if `i` has met the bound.
 
 ```{code-cell} ipython
-from tierkreis.builtins.stubs import iadd, igt, rand_int
+from tierkreis.builtins import iadd, igt, rand_int
 
 i = loop_body.task(iadd(loop_body.const(1), loop_body.inputs.i))
 value = loop_body.task(iadd(loop_body.inputs.step, loop_body.inputs.value))
@@ -94,7 +94,7 @@ As a toy example, we choose a random number between 1 and 10 inclusive and conti
 from typing import NamedTuple
 
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd, igt, rand_int
+from tierkreis.builtins import iadd, igt, rand_int
 from tierkreis.models import TKR
 
 

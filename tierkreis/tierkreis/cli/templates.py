@@ -1,7 +1,5 @@
 """String template for the project initialization."""
 
-from typing import Literal
-
 
 def python_worker_main(worker_name: str) -> str:
     """Generate a python morker main.py.
@@ -34,18 +32,11 @@ if __name__ == "__main__":
 """
 
 
-def python_worker_workspace_pyproject(
-    worker_name: str,
-    *,
-    external: bool = False,
-) -> str:
+def python_worker_pyproject(worker_name: str) -> str:
     """Generate the pyproject.toml for the worker workspace.
 
     :param worker_name: Name of the worker.
     :type worker_name: str
-    :param external: Whether the worker is external (not-python worker),
-        defaults to False
-    :type external: bool, optional
     :return: The generated pyproject.toml content.
     :rtype: str
     """
@@ -53,42 +44,37 @@ def python_worker_workspace_pyproject(
     template = f"""[project]
 name = "tkr-{worker_name}"
 version = "0.1.0"
-description = "A tierkreis worker."
+description = "A tierkreis worker implementation."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [ {{name = "Your Name", email = "you@example.com"}} ]
 dependencies = [
     "tierkreis",
 ]
-[project.optional-dependencies]
-"""
-    if not external:
-        template += f"""src = [
-    "tkr-{worker_name}-src",
-]
-"""
-    template += f"""api = [
-    "tkr-{worker_name}-api",
+
+[tool.uv.workspace]
+members = [
+    "src/api",
 ]
 
 [tool.uv.sources]
-"""
-    if not external:
-        template += f"tkr-{worker_name}-src = {{ workspace = true }}\n"
-    template += f"""tkr-{worker_name}-api = {{ workspace = true }}
+tkr-{worker_name}-api = {{ workspace = true }}
 
-[tool.uv.workspace]
-members = [{'\n    "src",' if not external else ""}
-    "api",
-]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+tkr_{worker_name} = "src.main:main"
+
 """
     return template
 
 
-def python_worker_pyproject(
-    worker_name: str,
-    kind: Literal["api", "src"] = "api",
-) -> str:
+def python_worker_api_pyproject(worker_name: str) -> str:
     """Generate the pyproject.toml for the worker.
 
     Either for the api directory (only stubs) used during build time or
@@ -96,13 +82,11 @@ def python_worker_pyproject(
 
     :param worker_name: Name of the worker.
     :type worker_name: str
-    :param kind: Either "api" or "src", defaults to "api"
-    :type kind: Literal['api', 'src'], optional,
     :rtype: str
     """
-    worker_name = worker_name.replace("_", "-")
+    package_name = worker_name.replace("_", "-")
     template = f"""[project]
-name = "tkr-{worker_name}-{kind}"
+name = "tkr-{package_name}-api"
 version = "0.1.0"
 description = "A tierkreis worker implementation."
 readme = "README.md"
@@ -116,13 +100,8 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["./{"api" if kind == "api" else "main"}.py"]
-
-"""
-    if kind == "src":
-        template += f"""[project.scripts]
-tkr_{worker_name} = "main:main"
+[tool.hatch.build.targets.wheel.force-include]
+"api.py" = "{worker_name}.py"
 
 """
     return template
@@ -163,10 +142,10 @@ from uuid import UUID
 from tierkreis.builder import GraphBuilder
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.models import TKR, OpaqueType
-from tierkreis.executor import UvExecutor
+from tierkreis.executor import ShellExecutor, UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
-from tkr.workers.{worker_name}.api.api import your_worker_task
+from {worker_name} import your_worker_task
 
 class GraphInputs(NamedTuple):
     value: TKR[int]
@@ -188,6 +167,10 @@ def main() -> None:
     executor = UvExecutor(
         Path(__file__).parent.parent / "workers", storage.logs_path
     )
+    # Use the following executor to run installed workers like tkr-*-worker
+    # executor = ShellExecutor(Path(), storage.workflow_dir)
+    # To use both look at the following:
+    # https://quantinuum.github.io/tierkreis/executors/index.html#combining-executors
     storage.clean_graph_files()
     run_graph(storage, executor, graph.get_data(), {{"value": 1}})
     result = read_outputs(graph, storage)
@@ -195,5 +178,160 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+"""
+
+
+def worker_init() -> str:
+    """Generate a toplevel init for the worker.
+
+    :return: An init template
+    :rtype: str
+    """
+    return """
+from .src.api.api import *
+
+"""
+
+
+def worker_readme(worker_name: str) -> str:
+    """Generate a README.md template for a worker.
+
+    :param worker_name: The name of the worker.
+    :type worker_name: str
+    :return: The generated README.md content.
+    :rtype: str
+    """
+    return f"""# {worker_name} Worker
+    
+## Introduction
+
+This is the root for a custom worker you just created.
+Conceptually, a worker is a wrapper around some functionality you want to use in your graphs.
+It can be as simple as a single function or a whole library.
+The only requirement is that it has to be wrapped in a way that tierkreis can understand,
+e.g. using the Worker class for python workers or an IDL file for external workers.
+How to use existing functionality we will cover further down.
+
+Workers act as an independent project, which means they don't need to share dependencies with you graph code.
+This worker is automatically included in your top level project as a dependency so you can immediately use it in your graphs.
+If you want to decouple it from your graph code, you can either define it as a workspace member
+or publish it to a package index and install it as a dependency in your graph project instead of using a path dependency.
+
+## Project structure
+
+The recommend structure for a python worker is as follows:
+```
+{worker_name}/
+├── src/
+│    ├── api/
+│    │   ├── api.py
+│    │   └── pyproject.toml
+│    ├── impl/
+│    └── main.py
+├── README.md (this file)
+└── pyproject.toml
+```
+The `src` directory contains the worker tasks which are used during runtime of a workflow.
+For this the toplevel pyproject.toml defines a script entry point which points to the main.py file./
+
+The `api` directory contains the stubs which are used during construction of a graph.
+They can be generated using the `trk init stubs` command and are not required to be present during runtime.
+They are encapsulated in a separate package `tkr-{worker_name}-api` to avoid unnecessary dependencies during construction of the worker.
+The worker project depends on the api but not the other way around,
+so you can for example use the api in your graph code without having to install the whole worker.
+
+The `impl` directory is a placeholder for your library code.
+If you're using a preexisting codebase we recommend move your code base there and point the worker tasks at it.
+You than can import the functionality in `main.py` with:
+```python
+from src.impl import ...
+```
+
+## Developing your worker
+
+Your new worker consist of three parts which are defined in `main.py`
+
+1. The preabmle, declaring, your worker.
+The name must be the same as the top level worker_directory
+```python
+worker = Worker({worker_name})
+```
+
+2. Task definitions using `@worker.task()`, make sure to use type hints, 
+```python
+@worker.task()
+def your_worker_task(value: int) -> int:
+    return value
+```
+
+3. The main clause, which is invoked at runtime
+```python
+def main():
+    worker.app(argv)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+To add more functionality to your worker, simply declare more `@worker.task()`s.
+For this you can import existing code and wrap it in a function or copy minimal functionality there.
+
+## Using your worker in a graph
+
+Before you can use your worker in a graph you need to update it api with the `tkr init stubs` command.
+This will generate api stubs for all functions annotated with `@worker.task()` into `api.py`.
+To update the project settings make sure to `uv sync`.
+
+You can use them as a task in the graph:
+```python
+def your_graph() -> GraphBuilder[TKR[int], TKR[int]]:
+    g = GraphBuilder(TKR[int], TKR[int])
+    out = g.task(your_worker_task(g.inputs))
+    g.outputs(out)
+    return g
+```
+If you used the `tkr init project` example, you will see a working graph code example in `tkr/graphs/main.py`.
+
+### A note on imports
+
+There are two ways to import your task code:
+1. Using the `tkr-{worker_name}-api` package.
+This is the recommended way, allowing you to import tasks as:
+```python
+from example_worker import your_worker_task
+```
+This will only work if you `uv add` one of the packages.
+By default, the `tkr init project` will do this.
+
+2. Importing the local python module
+```python
+from workers.example_worker import your_worker_task
+```
+This will only work if your code is locally available!
+
+"""
+
+
+def worker_api_readme(worker_name: str) -> str:
+    """Generate a README.md template for a worker API.
+
+    :param worker_name: The name of the worker.
+    :type worker_name: str
+    :return: The generated README.md content.
+    :rtype: str
+    """
+    return f"""# {worker_name} Worker API
+
+This is the api for a custom worker you just created.
+The directory contains the stubs which are used during construction of a graph.
+
+**You don't need to touch this code, it will be automatically generated.**
+
+They can be generated using the `trk init stubs` command and are not required to be present during runtime.
+They are encapsulated in a separate package `tkr-{worker_name}-api` to avoid unnecessary dependencies during construction of the worker.
+The worker project depends on the api but not the other way around,
+so you can for example use the api in your graph code without having to install the whole worker.
 
 """

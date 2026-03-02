@@ -6,11 +6,23 @@ dependencies = [
     "pydantic>=2.11.9",
     "pytket>=2.9.3",
     "pytket-qiskit>=0.71.0",
-    "qiskit-ibm-runtime==0.41.1",
+    "qiskit-ibm-runtime>=0.41.1",
     "tierkreis",
     "ruff",
     "pyscf",
+    "qsci-worker-api",
 ]
 
 [tool.uv.sources]
-tierkreis = { path = "../../../../../tierkreis", editable = true }
+tierkreis = { workspace = true }
+qsci-worker-api = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+tkr-qsci-worker = "src.main:main"

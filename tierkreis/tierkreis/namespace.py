@@ -148,6 +148,8 @@ from tierkreis.controller.data.types import PType, Struct
         :param stubs_path: The location to write to.
         :type stubs_path: Path
         """
+        if not stubs_path.parent.exists():
+            stubs_path.parent.mkdir(parents=True, exist_ok=True)
         with Path.open(stubs_path, "w+") as fh:
             fh.write(self.stubs())
 

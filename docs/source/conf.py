@@ -13,12 +13,16 @@ author = "Quantinuum"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["autodoc2", "myst_nb"]
+extensions = ["autodoc2", "myst_nb", "sphinx.ext.intersphinx"]
 autodoc2_packages = [
     "../../tierkreis/tierkreis",
     {
         "path": "../../tierkreis_workers/aer_worker/main.py",
         "module": "aer_worker",
+    },
+    {
+        "path": "../../tierkreis_workers/ibmq_worker/main.py",
+        "module": "ibmq_worker",
     },
     {
         "path": "../../tierkreis_workers/nexus_worker/main.py",
@@ -27,6 +31,14 @@ autodoc2_packages = [
     {
         "path": "../../tierkreis_workers/pytket_worker/main.py",
         "module": "pytket_worker",
+    },
+    {
+        "path": "../../tierkreis_workers/quantinuum_worker/main.py",
+        "module": "quantinuum_worker",
+    },
+    {
+        "path": "../../tierkreis_workers/qulacs_worker/main.py",
+        "module": "qulacs_worker",
     },
 ]
 autodoc2_hidden_objects = ["private"]
@@ -38,7 +50,15 @@ nb_execution_excludepatterns = [
     "hpc.ipynb",
 ]
 
+nitpicky = True
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "examples/**/.venv/**"]
 
+
+suppress_warnings = ["ref.python", "ref.class"]
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "pydantic": ("https://docs.pydantic.dev/latest/", None),
+}
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 

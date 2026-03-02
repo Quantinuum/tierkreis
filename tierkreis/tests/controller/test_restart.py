@@ -3,7 +3,7 @@ from uuid import UUID
 
 from tierkreis import run_graph
 from tierkreis.builder import GraphBuilder
-from tierkreis.builtins.stubs import iadd, itimes
+from tierkreis.builtins import iadd, itimes
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
 from tierkreis.executor import UvExecutor

@@ -30,7 +30,7 @@ def run_workflow(  # noqa: PLR0913
 ) -> None:
     """Run a workflow.
 
-    Wrapper for :py:func:`tierkreis.controller.run_graph.run_graph` to run a workflow.
+    Wrapper for :py:func:`tierkreis.controller.run_graph` to run a workflow.
     Adds some sensible defaults.
 
     :param graph: The graph to run.
