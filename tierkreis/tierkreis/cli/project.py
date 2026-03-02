@@ -234,6 +234,8 @@ Keep in mind that workers are independent of your graph code.
 
 def _find_worker_dir() -> Path | None:
     project_dir = _get_project_root()
+    if project_dir is None:
+        return None
     print(f"Searching for worker directory in {project_dir}...")
     for worker_dir in project_dir.glob("**/tkr/workers"):
         print(f"checking: {worker_dir}")
@@ -243,12 +245,20 @@ def _find_worker_dir() -> Path | None:
     return None
 
 
-def _get_project_root() -> Path:
-    current_path = Path(__file__).resolve().parent
-    for path in [current_path] + list(current_path.parents):
-        if (path / ".git").exists():
-            return path
-    return Path.cwd()
+def _get_project_root() -> Path | None:
+    git_command = shutil.which("git")
+    if git_command is None:
+        return None
+    try:
+        result = subprocess.run(
+            [git_command, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return Path(result.stdout.strip())
+    except subprocess.CalledProcessError:
+        return None
 
 
 class TierkreisInitCli:
