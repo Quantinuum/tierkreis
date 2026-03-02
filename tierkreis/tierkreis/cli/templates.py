@@ -243,6 +243,10 @@ so you can for example use the api in your graph code without having to install 
 
 The `impl` directory is a placeholder for your library code.
 If you're using a preexisting codebase we recommend move your code base there and point the worker tasks at it.
+You than can import the functionality in `main.py` with:
+```python
+from src.impl import ...
+```
 
 ## Developing your worker
 
