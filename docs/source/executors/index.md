@@ -73,7 +73,7 @@ Where both workers `first_worker` implement the same api but provide different i
 Now as graph definition in `main.py`:
 
 ```py
-from workers.first_worker.api.stubs import some_task
+from first_worker import some_task
 
 graph = GraphBuilder(TKR[NoneType], TKR[NoneType])
 graph.task(some_task)

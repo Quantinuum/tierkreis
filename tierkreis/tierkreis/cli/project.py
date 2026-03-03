@@ -11,8 +11,10 @@ from tierkreis.cli.templates import (
     default_graph,
     external_worker_idl,
     python_worker_api_pyproject,
+    python_worker_impl,
     python_worker_main,
     python_worker_pyproject,
+    worker_impl_init,
     worker_init,
     worker_api_readme,
     worker_readme,
@@ -115,8 +117,10 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
         fh.write(worker_init())
     src_dir = base_dir / "src"
     src_dir.mkdir(exist_ok=True)
-    api_dir = src_dir / "api"
+    api_dir = base_dir / "api"
     api_dir.mkdir(exist_ok=True)
+    impl_dir = src_dir / "impl"
+    impl_dir.mkdir(exist_ok=True)
     with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_api_pyproject(worker_name))
     with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
@@ -127,7 +131,13 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
             fh.write(external_worker_idl(worker_name))
         return
     with Path.open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_main(worker_name))
+        fh.write(python_worker_main())
+    with Path.open(impl_dir / "__init__.py", "w+", encoding="utf-8") as fh:
+        fh.write(worker_impl_init())
+    with Path.open(impl_dir / "worker_impl.py", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_impl(worker_name))
+
+    _gen_worker_stubs(worker_dir, worker_name, "./api/api.py")
 
 
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
@@ -158,7 +168,7 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             subprocess.run(command, cwd=worker, check=True)
 
 
-def _gen_example_stubs(
+def _gen_worker_stubs(
     worker_directory: Path, worker_name: str, stubs_name: str
 ) -> None:
     uv_path = shutil.which("uv")
@@ -174,14 +184,13 @@ def _gen_example_stubs(
                 cwd=worker,
                 check=True,
             )
-            print(f"tkr-{worker_name}-api")
             subprocess.run(
-                [uv_path, "add", "--active", f"tkr-{worker_name}-api"],
+                [uv_path, "add", "--active", f"tkr-{worker_name}"],
                 cwd=worker,
                 check=True,
             )
             subprocess.run(
-                [uv_path, "add", "--active", "--editable", f"{worker}/src/api"],
+                [uv_path, "add", "--active", "--editable", f"{worker}/api"],
                 check=True,
             )
 
@@ -216,7 +225,6 @@ def run_args(args: argparse.Namespace) -> None:
         with Path.open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
-        _gen_example_stubs(worker_dir, worker_name, "./src/api/api.py")
         print(f"""Successfully generated project in '{project_dir / "tkr"}'.
               
 To run the sample graph use "python -m tkr.graphs.main".

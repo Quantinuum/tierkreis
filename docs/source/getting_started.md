@@ -20,11 +20,14 @@ project_root/
 │   │   └── main.py
 │   └── workers/
 │       └── example_worker/
+│             ├── api/
+│             │   ├── api.py (stubs for the worker)
+│             │   ├── pyproject.toml
+│             │   └── README.md
 │             ├── src/
-│             │   ├── api/
-│             │   │   ├── api.py (stubs for the worker)
-│             │   │   ├── pyproject.toml
-│             │   │   └── README.md
+│             │   ├── impl/
+│             │   │   ├── __init__.py
+│             │   │   └── worker_impl.py (task definitions)
 │             │   └── main.py
 │             ├── __init__.py
 │             ├── pyproject.toml
@@ -43,7 +46,7 @@ The repository is structure is intended to separate _graphs_, _workers_ and libr
 From here you can run your first graph by running
 
 ```
-uv run python -m tkr.graphs.main
+uv run tkr/graphs/main.py
 > Value is: 1
 ```
 
@@ -66,7 +69,7 @@ A sequence of tutorials that cover the fundamentals of writing and operating Tie
 ## Tutorials for writing workers
 
 Tutorials on writing workers that provide additional tasks.
-For a general oveview look at the [worker documentation](worker/index.md)
+For a general overview look at the [worker documentation](worker/index.md)
 For worker libraries see [this document](worker/native_workers/index.md)
 
 ### Tierkreis Python library
