@@ -24,7 +24,7 @@ def check_and_set_launcher(
     2. src/main.py (.sh)
 
     If `check_shell` is set or `launcher_path` is None
-    will check if one of the following is in the path through which:
+    will check if one of the following is in $PATH (using which):
     1. launcher_name
     2. tkr_launcher_name_impl
     3. tkr-launcher-name-impl
@@ -35,7 +35,7 @@ def check_and_set_launcher(
     :type launcher_name: str
     :param suffix: External or internal worker (.py or .sh).
     :type suffix: Literal['.sh', '.py']
-    :param check_shell: To extend the search, defaults to false.
+    :param check_shell: To extend the search to check $PATH, defaults to false.
     :type check_shell: bool
     :raises TierkreisError: If neither of the expected paths exist.
     :return: The full path to the worker executable.

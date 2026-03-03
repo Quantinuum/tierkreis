@@ -209,10 +209,13 @@ class Worker:
         :param argv: The cli args.
         :type argv: list[str]
         """
-        if len(argv) <= 1:
-            print(self.name)
-            return
         handler = add_handler_from_environment(logger)
+        if len(argv) <= 1:
+            logger.warning("No arguments provided to invoke worker %s", self.name)
+            logger.warning(
+                "either provide--stubs-path or the path to the node definition"
+            )
+            return
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:

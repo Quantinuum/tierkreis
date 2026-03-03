@@ -275,7 +275,7 @@ so you can for example use the api in your graph code without having to install 
 
 ## Developing your worker
 
-Your new worker consist of two parts which are defined in the `worker_impl.py`;
+Your new worker consist of two parts which are defined in the `worker_impl.py`:
 
 1. The preabmle, declaring, your worker.
 The name must be the same as the top level worker_directory

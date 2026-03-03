@@ -46,7 +46,7 @@ The repository is structure is intended to separate _graphs_, _workers_ and libr
 From here you can run your first graph by running
 
 ```
-uv run python python tkr/graphs/main.py
+uv run tkr/graphs/main.py
 > Value is: 1
 ```
 
