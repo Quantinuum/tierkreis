@@ -62,7 +62,7 @@ def run_graph[A: TModel, B: TModel](
     :raises TierkreisError: If the graph encounters errors during execution.
     """
     if isinstance(g, FinishedGraph):
-        g = g.get_data()
+        g = g.data
 
     if not isinstance(graph_inputs, dict):
         graph_inputs = {"value": graph_inputs}

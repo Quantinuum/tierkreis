@@ -115,13 +115,10 @@ def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
     return exec_script(input=script_input)
 
 
-@dataclass
+@dataclass(frozen=True)
 class FinishedGraph[Inputs: TModel, Outputs: TModel]:
-    _data: GraphData
+    data: GraphData
     outputs_type: type[Outputs]
-
-    def get_data(self) -> GraphData:
-        return self._data
 
 
 class GraphBuilder[Inputs: TModel, Outputs: TModel]:
@@ -175,7 +172,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     def embed[A: TModel, B: TModel](
         self, other_fg: FinishedGraph[A, B], inputs: A, outputs_type: type[B]
     ) -> B:
-        other = other_fg.get_data()
+        other = other_fg.data
         if other.graph_output_idx is None:
             raise ValueError("Can only embed graphs with an output node defined.")
         ins: Mapping[str, ValueRef] = dict_from_tmodel(inputs)
@@ -272,7 +269,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         graph: FinishedGraph[A, B],
     ) -> TypedGraphRef[A, B]:
         # TODO @philipp-seitz: Turn this into a public method?
-        idx, port = self.data.const(graph.get_data().model_dump())
+        idx, port = self.data.const(graph.data.model_dump())
         return TypedGraphRef[A, B](
             graph_ref=(idx, port),
             outputs_type=graph.outputs_type,

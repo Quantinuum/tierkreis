@@ -57,7 +57,7 @@ def read_outputs[A: TModel, B: TModel](
     output_annotation = None
     if isinstance(graph, FinishedGraph):
         output_annotation = graph.outputs_type
-        graph = graph.get_data()
+        graph = graph.data
 
     out_ports = list(graph.nodes[graph.output_idx()].inputs.keys())
 
@@ -102,7 +102,7 @@ def read_loop_trace(
     :rtype: list[PType | dict[str, list[PType]]]
     """
     if isinstance(graph, FinishedGraph):
-        graph = graph.get_data()
+        graph = graph.data
     loc = storage.loc_from_node_name(node_name)
     if loc is None:
         msg = f"Loop name {node_name} not found in debug data."

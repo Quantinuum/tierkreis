@@ -32,7 +32,7 @@ def test_restart() -> None:
         Loc().N(left.node_index),
         Loc().N(right.node_index),
         Loc().N(out.node_index),
-        Loc().N(g.get_data().output_idx()),
+        Loc().N(g.data.output_idx()),
     ]
     assert sorted(invalidated) == sorted(expected)
 

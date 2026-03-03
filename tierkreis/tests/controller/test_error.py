@@ -42,7 +42,7 @@ def test_raise_error() -> None:
     executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
+        run_graph(storage, executor, g.data, {}, n_iterations=1000)
     assert storage.node_has_error(Loc("-.N0"))
 
 
@@ -51,7 +51,7 @@ def test_raises_no_error() -> None:
     storage = ControllerFileStorage(UUID(int=43), name="wont_fail")
     executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
     storage.clean_graph_files()
-    run_graph(storage, executor, g.get_data(), {}, n_iterations=100)
+    run_graph(storage, executor, g.data, {}, n_iterations=100)
     assert not storage.node_has_error(Loc("-.N0"))
 
 
@@ -61,7 +61,7 @@ def test_nested_error() -> None:
     executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
+        run_graph(storage, executor, g.data, {}, n_iterations=1000)
     assert (storage.logs_path.parent / "-/_error").exists()
 
 
@@ -71,5 +71,5 @@ def test_non_zero_exit_code() -> None:
     executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
     storage.clean_graph_files()
     with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.get_data(), {}, n_iterations=1000)
+        run_graph(storage, executor, g.data, {}, n_iterations=1000)
     assert (storage.logs_path.parent / "-/_error").exists()
