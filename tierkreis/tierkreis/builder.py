@@ -133,7 +133,8 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     :attr outputs_type: The output type of the graph.
     """
 
-    outputs_type: type
+    inputs_type: type[Inputs]
+    outputs_type: type[Outputs]
     inputs: Inputs
 
     def __init__(
