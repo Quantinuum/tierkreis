@@ -56,7 +56,7 @@ Each worker is an independent project, with it's own dependencies consisting of 
 The `worker_impl.py` file is the location where you defined your worker task.
 Here you can decorate a python function with `@worker.task()` to declare a worker task.
 At runtime, `main.py` will be called by an executor (more on [executors](../executors/index.md)) and search for the correct task in it.
-See [Running Prepackaged Workers](#running-prepackaged-workers) for details on executing workers.
+See [Running Prepackaged Workers](#running-workers) for details on executing workers.
 
 The inputs and outputs are preserved with the storage layer and be tracked by Tierkreis.
 Other side-effects (e.g., writing a separate file) won't be checked.
@@ -92,6 +92,62 @@ When running you need to specify the correct registry for the executor or add th
 `uv add <path>/<to>/workers/worker_name`
 
 As alternative, you are free to publish the worker packages on pypi and add them as a prepackaged worker.
+
+## Running Workers
+
+In general, running workers is associated with an executor.
+Running workers can happen in two flavors, which have different appropriate executors.
+
+1. Self defined workers
+2. Installed workers (we refer to them as prepackaged)
+
+```Important
+If you used the cli to generate the worker layout described above, both cases apply to your worker.
+This is due to worker being also added as a package to the root project.
+```
+
+### Running self defined workers
+
+For self defined python workers (using `main.py`) we use the `UvExecutor` as follows:
+
+```python
+executor = UvExecutor(
+    Path("<project_root>/tkr/workers/"), storage.logs_path
+)
+```
+
+When running the graph with this executor, tierkreis will search for the directory `<project_root>/tkr/workers/worker_name/src` and inside execute the command
+
+```bash
+uv run main.py ...
+```
+
+As a fallback it will try `<project_root>/tkr/workers/worker_name/`.
+When you want to reuse this worker in a different project (`project_B`) you can use the same executor but need to update the registry path to know point to the correct relative path.
+
+### Running prepackaged workers
+
+Prepackaged workers are locally installed using `uv`.
+You can verify the worker is installed as package by running the `uv tree` command to list all project dependencies.
+
+```Important
+To run the worker the package `tkr-worker-name` alone is not sufficient!
+You will need the `tkr-worker-name-impl` package.
+```
+
+The workers declare an export script running `tkr-worker-name` which is available in your environment if you installed the correct package.
+Running `which tkr-worker-name` will confirm its existence.
+Hence it can be treated as a shell script; therefore we use the `ShellExecutor` for it like so:
+
+```python
+executor = ShellExecutor(Path(), storage.workflow_dir)
+```
+
+This will run through a similar verification process to locate the command and then run:
+
+```bash
+tkr-worker-name ...
+```
 
 ## Prepackaged workers
 
@@ -159,7 +215,3 @@ More detailed docs [here](native_workers/quantinuum_worker.md).
 
 Compile and run quantum circuits locally with Qulacs.
 More detailed docs [here](native_workers/qulacs_worker.md).
-
-### Running Prepackaged Workers
-
-<!-- TODO -->
