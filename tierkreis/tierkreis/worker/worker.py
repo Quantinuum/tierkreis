@@ -178,7 +178,7 @@ class Worker:
             function = self.functions.get(node_definition.function_name, None)
             if function is None:
                 msg = (
-                    f"{self.name}: function name"
+                    f"{self.name}: function name\n"
                     f"{node_definition.function_name} not found"
                 )
                 _check_function(msg)
@@ -203,10 +203,15 @@ class Worker:
         """Run the worker as uv app.
 
         Either generate stubs or run the worker.
+        If no arguments are passed immediately returns.
+        This is used to check the command exists.
 
         :param argv: The cli args.
         :type argv: list[str]
         """
+        if len(argv) <= 1:
+            print(self.name)
+            return
         handler = add_handler_from_environment(logger)
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))

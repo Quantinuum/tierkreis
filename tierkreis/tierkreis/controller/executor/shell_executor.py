@@ -22,7 +22,8 @@ class ShellExecutor:
     Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
 
     :fields:
-        launchers_path (Path): The locations to search for external workers.
+        launchers_path (Path | None): The locations to search for external workers.
+            If None is provided, will only look for shell builtins and binaries in $PATH.
         logs_path (Path): The controller log file.
         errors_path (Path): The controller error file for the function node.
         workflow_dir (Path): The workflow dir to resolve relative paths.
@@ -32,7 +33,7 @@ class ShellExecutor:
 
     def __init__(
         self,
-        registry_path: Path,
+        registry_path: Path | None,
         workflow_dir: Path,
         timeout: int = 10,
         env: dict[str, str] | None = None,
@@ -54,7 +55,6 @@ class ShellExecutor:
         launcher_name: str,
         worker_call_args_path: Path,
     ) -> ExecutorDebugData:
-        self.errors_path = worker_call_args_path.parent / "logs"
         launcher_path = check_and_set_launcher(
             self.launchers_path,
             launcher_name,
@@ -77,6 +77,7 @@ class ShellExecutor:
         )
         done_path = self.workflow_dir.parent / call_args.done_path
         _error_path = done_path.parent / "_error"
+        self.errors_path = done_path.parent / "logs"
         if TKR_DIR_KEY not in env:
             env[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
         tee_str = f">(tee -a {self.errors_path!s} {self.logs_path!s} >/dev/null)"

@@ -1,6 +1,7 @@
 """Utilities to find the correct executable for a worker."""
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Literal
 
@@ -10,9 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 def check_and_set_launcher(
-    launcher_path: Path,
+    launcher_path: Path | None,
     launcher_name: str,
     suffix: Literal[".sh", ".py"],
+    *,
+    check_shell: bool = False,
 ) -> Path:
     """Find the correct executable for a worker.
 
@@ -20,16 +23,32 @@ def check_and_set_launcher(
     1. main.py (.sh)
     2. src/main.py (.sh)
 
+    If `check_shell` is set or `launcher_path` is None
+    will check if one of the following is in the path through which:
+    1. launcher_name
+    2. tkr_launcher_name_impl
+    3. tkr-launcher-name-impl
+
     :param launcher_path: The directory to search.
-    :type launcher_path: Path
+    :type launcher_path: Path | None
     :param launcher_name: The name of the worker to find.
     :type launcher_name: str
     :param suffix: External or internal worker (.py or .sh).
     :type suffix: Literal['.sh', '.py']
+    :param check_shell: To extend the search, defaults to false.
+    :type check_shell: bool
     :raises TierkreisError: If neither of the expected paths exist.
     :return: The full path to the worker executable.
     :rtype: Path
     """
+    if check_shell or launcher_path is None:
+        if (path := shutil.which(launcher_name)) is not None:
+            return Path(path)
+        if (path := _check_tkr_worker_command(launcher_name)) is not None:
+            return Path(path)
+    if launcher_path is None:
+        msg = f"{launcher_name} is not a shell command, but no launcher_path was provided."
+        raise TierkreisError(msg)
     try:
         path = _exists(launcher_path, launcher_name, suffix)
     except TierkreisError as e:
@@ -50,6 +69,18 @@ def check_and_set_launcher(
             "Please move it to a 'src' subdirectory.",
         )
         return path
+
+
+def _check_tkr_worker_command(launcher_name: str) -> str | None:
+    cmd = f"tkr-{launcher_name}-impl".replace("_", "-")
+    path = shutil.which(cmd)
+    if path is not None:
+        return path
+    cmd = f"tkr-{launcher_name}-impl".replace("-", "_")
+    path = shutil.which(cmd)
+    if path is not None:
+        return path
+    return None
 
 
 def _exists(
