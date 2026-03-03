@@ -17,7 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="tkr",
         description="Tierkreis: a workflow engine for quantum HPC."
-        "This is the main tierkreis command-line tool.",
+        " This is the main tierkreis command-line tool.",
     )
     subparser = parser.add_subparsers(title="subcommands")
     TierkreisRunCli.add_subcommand(subparser)
