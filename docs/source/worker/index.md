@@ -101,7 +101,7 @@ Running workers can happen in two flavors, which have different appropriate exec
 1. Self defined workers
 2. Installed workers (we refer to them as prepackaged)
 
-```Important
+```{important}
 If you used the cli to generate the worker layout described above, both cases apply to your worker.
 This is due to worker being also added as a package to the root project.
 ```
@@ -130,7 +130,7 @@ When you want to reuse this worker in a different project (`project_B`) you can 
 Prepackaged workers are locally installed using `uv`.
 You can verify the worker is installed as package by running the `uv tree` command to list all project dependencies.
 
-```Important
+```{important}
 To run the worker the package `tkr-worker-name` alone is not sufficient!
 You will need the `tkr-worker-name-impl` package.
 ```
