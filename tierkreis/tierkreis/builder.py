@@ -71,7 +71,6 @@ class TypedGraphRef[Ins: TModel, Outs: TModel]:
 
     graph_ref: ValueRef
     outputs_type: type[Outs]
-    inputs_type: type[Ins]
 
 
 class LoopOutput(TNamedModel, Protocol):
@@ -151,7 +150,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         :return: The ref of the typed graph.
         :rtype: TypedGraphRef[Inputs, Outputs]
         """
-        return TypedGraphRef((-1, "body"), self.outputs_type, self.inputs_type)
+        return TypedGraphRef((-1, "body"), self.outputs_type)
 
     def outputs(self, outputs: Outputs) -> None:
         """Set output nodes of a graph.
@@ -262,7 +261,6 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         return TypedGraphRef[A, B](
             graph_ref=(idx, port),
             outputs_type=graph.outputs_type,
-            inputs_type=graph.inputs_type,
         )
 
     def task[Out: TModel](self, func: Function[Out]) -> Out:
