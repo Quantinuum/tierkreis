@@ -12,8 +12,10 @@ from tierkreis.controller.data.types import (
     bytes_from_ptype,
     is_ptype,
     ptype_from_bytes,
+    FinishedGraph,
 )
 from tierkreis.controller.data.graph import GraphData
+from tierkreis.controller.data.models import TKR
 
 
 class UntupledModel[U, V](BaseModel):
@@ -67,6 +69,7 @@ type_list.append(tuple[int, str])
 type_list.append(tuple[int | str])
 type_list.append(Mapping[str, dict[str, bytes]])
 type_list.append(GraphData)
+type_list.append(FinishedGraph[TKR[int], TKR[bool]])
 
 fail_list: Sequence[type] = []
 fail_list.append(UUID)

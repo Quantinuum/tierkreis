@@ -111,7 +111,8 @@ type ElementaryType = (
     | DictConvertible
     | ListConvertible
     | NdarraySurrogate
-    | BaseModel
+    | BaseModel  # Includes GraphData
+    | FinishedGraph  # So, special case: a FinishedGraph is just a GraphData, discard the type info
 )
 type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
@@ -206,7 +207,8 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     :return: The according TypeIs if the annotation is a PType, otherwise False.
     :rtype: TypeIs[type[PType]]
     """
-    if get_origin(annotation) is Annotated:
+    origin = get_origin(annotation)
+    if origin is Annotated:
         return is_ptype(get_args(annotation)[0])
 
     if _is_generic(annotation):
@@ -226,7 +228,9 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
             annotation,
             (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
         )
-    ) or annotation in get_args(ElementaryType.__value__):
+        or (isclass(origin) and issubclass(origin, FinishedGraph))
+        or annotation in get_args(ElementaryType.__value__)
+    ):
         return True
 
     origin = get_origin(annotation)
@@ -252,6 +256,8 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
         return sr.serializer(ptype)
 
     match ptype:
+        case FinishedGraph():
+            return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
