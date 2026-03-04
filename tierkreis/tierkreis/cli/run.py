@@ -6,9 +6,11 @@ import importlib
 import json
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from tierkreis.builder import GraphBuilder
 from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType, ptype_from_bytes
@@ -17,7 +19,6 @@ from tierkreis.exceptions import TierkreisError
 if TYPE_CHECKING:
     import argparse
     import types
-    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +51,24 @@ def load_graph(graph_input: str) -> GraphData:
         module = _import_from_path("graph_module", module_name)
     else:
         module = importlib.import_module(module_name, __package__)
-    build_submission_graph: Callable[[], GraphData] = getattr(module, function_name)
 
-    return build_submission_graph()
+    graph_data = None
+    graph_name: Any = getattr(module, function_name)
+    if isinstance(graph_name, GraphData):
+        graph_data = graph_name
+    if isinstance(graph_name, GraphBuilder):
+        graph_data = graph_name.data
+    if isinstance(graph_name, Callable):
+        graph_object = graph_name()
+        if isinstance(graph_object, GraphData):
+            graph_data = graph_object
+        if isinstance(graph_object, GraphBuilder):
+            graph_data = graph_object.data
+    if graph_data is None:
+        logger.error("Could not load object %s as GraphData", graph_data)
+        raise ValueError("Could not load Graph")
+
+    return graph_data
 
 
 def _load_inputs(input_files: list[str]) -> dict[str, PType]:
@@ -183,7 +199,7 @@ def run_workflow_args(args: argparse.Namespace) -> None:
         inputs,
         name=args.name,
         run_id=args.run_id,
-        log_level=args.log_level,
+        log_level=args.loglevel,
         registry_path=args.registry_path,
         n_iterations=args.n_iterations,
         polling_interval_seconds=args.polling_interval_seconds,
