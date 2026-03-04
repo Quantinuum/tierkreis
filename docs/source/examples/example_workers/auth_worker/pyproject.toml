@@ -1,18 +1,18 @@
 [project]
-name = "auth-worker"
-version = "0.1.0"
+name = "tkr-auth-worker-impl"
+version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = [
     "cryptography>=45.0.7",
     "pydantic>=2.11.7",
     "pyscrypt>=1.6.2",
     "tierkreis",
-    "auth-worker-api",
+    "tkr-auth-worker",
 ]
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-auth-worker-api = { workspace = true }
+tkr-auth-worker = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -22,4 +22,5 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [project.scripts]
-tkr-auth-worker = "src.main:main"
+tkr-auth-worker-impl = "src.main:main"
+

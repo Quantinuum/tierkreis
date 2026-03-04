@@ -1,6 +1,6 @@
 [project]
-name = "qsci-worker"
-version = "0.1.0"
+name = "tkr-qsci-worker-impl"
+version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.11.9",
@@ -10,12 +10,12 @@ dependencies = [
     "tierkreis",
     "ruff",
     "pyscf",
-    "qsci-worker-api",
+    "tkr-qsci-worker",
 ]
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-qsci-worker-api = { workspace = true }
+tkr-qsci-worker = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -25,4 +25,4 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [project.scripts]
-tkr-qsci-worker = "src.main:main"
+tkr-qsci-worker-impl = "src.main:main"

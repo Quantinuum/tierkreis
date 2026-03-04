@@ -9,33 +9,33 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "auth-worker",
-    "auth-worker-api",
-    "error-worker",
-    "error-worker-api",
-    "hello-world-worker",
-    "hello-world-worker-api",
-    "openssl-worker-api",
-    "qsci-worker",
-    "qsci-worker-api",
-    "scipy-worker",
-    "scipy-worker-api",
-    "substitution-worker",
-    "substitution-worker-api",
+    "openssl-worker",
     "tierkreis",
     "tierkreis-visualization",
     "tkr-aer-worker",
     "tkr-aer-worker-impl",
+    "tkr-auth-worker",
+    "tkr-auth-worker-impl",
+    "tkr-error-worker",
+    "tkr-error-worker-impl",
+    "tkr-hello-world-worker",
+    "tkr-hello-world-worker-impl",
     "tkr-ibmq-worker",
     "tkr-ibmq-worker-impl",
     "tkr-nexus-worker",
     "tkr-nexus-worker-impl",
     "tkr-pytket-worker",
     "tkr-pytket-worker-impl",
+    "tkr-qsci-worker",
+    "tkr-qsci-worker-impl",
     "tkr-quantinuum-worker",
     "tkr-quantinuum-worker-impl",
     "tkr-qulacs-worker",
     "tkr-qulacs-worker-impl",
+    "tkr-scipy-worker",
+    "tkr-scipy-worker-impl",
+    "tkr-substitution-worker",
+    "tkr-substitution-worker-impl",
 ]
 
 [manifest.dependency-groups]
@@ -161,38 +161,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/6b/5c/685e6633917e101e5
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl", hash = "sha256:adcf7e2a1fb3b36ac48d97835bb6d8ade15b8dcce26aba8bf1d14847b57a3373", size = 67615, upload-time = "2025-10-06T13:54:43.17Z" },
 ]
-
-[[package]]
-name = "auth-worker"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/auth_worker" }
-dependencies = [
-    { name = "auth-worker-api" },
-    { name = "cryptography" },
-    { name = "pydantic" },
-    { name = "pyscrypt" },
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "auth-worker-api", editable = "docs/source/examples/example_workers/auth_worker/src/api" },
-    { name = "cryptography", specifier = ">=45.0.7" },
-    { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "pyscrypt", specifier = ">=1.6.2" },
-    { name = "tierkreis", editable = "tierkreis" },
-]
-
-[[package]]
-name = "auth-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/auth_worker/src/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
 
 [[package]]
 name = "babel"
@@ -596,36 +564,6 @@ wheels = [
 ]
 
 [[package]]
-name = "error-worker"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/error_worker" }
-dependencies = [
-    { name = "error-worker-api" },
-    { name = "pydantic" },
-    { name = "ruff" },
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "error-worker-api", editable = "docs/source/examples/example_workers/error_worker/src/api" },
-    { name = "pydantic" },
-    { name = "ruff" },
-    { name = "tierkreis", editable = "tierkreis" },
-]
-
-[[package]]
-name = "error-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/error_worker/src/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
-
-[[package]]
 name = "executing"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -885,34 +823,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b6/d8/7368679b8df6925b8415f9dcc9ab1dab01ddc384d2b2c24aac9191bd9ceb/h5py-3.15.1-cp314-cp314-win_amd64.whl", hash = "sha256:9c73d1d7cdb97d5b17ae385153472ce118bed607e43be11e9a9deefaa54e0734", size = 2865704, upload-time = "2025-10-16T10:35:22.658Z" },
     { url = "https://files.pythonhosted.org/packages/d3/b7/4a806f85d62c20157e62e58e03b27513dc9c55499768530acc4f4c5ce4be/h5py-3.15.1-cp314-cp314-win_arm64.whl", hash = "sha256:a6d8c5a05a76aca9a494b4c53ce8a9c29023b7f64f625c6ce1841e92a362ccdf", size = 2465544, upload-time = "2025-10-16T10:35:25.695Z" },
 ]
-
-[[package]]
-name = "hello-world-worker"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/hello_world_worker" }
-dependencies = [
-    { name = "hello-world-worker-api" },
-    { name = "ruff" },
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "hello-world-worker-api", editable = "docs/source/examples/example_workers/hello_world_worker/src/api" },
-    { name = "ruff" },
-    { name = "tierkreis", editable = "tierkreis" },
-]
-
-[[package]]
-name = "hello-world-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/hello_world_worker/src/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
 
 [[package]]
 name = "httpcore"
@@ -1546,9 +1456,9 @@ wheels = [
 ]
 
 [[package]]
-name = "openssl-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/openssl_worker/src/api" }
+name = "openssl-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/openssl_worker/api" }
 dependencies = [
     { name = "tierkreis" },
 ]
@@ -2339,44 +2249,6 @@ wheels = [
 ]
 
 [[package]]
-name = "qsci-worker"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/qsci_worker" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pyscf" },
-    { name = "pytket" },
-    { name = "pytket-qiskit" },
-    { name = "qiskit-ibm-runtime" },
-    { name = "qsci-worker-api" },
-    { name = "ruff" },
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.11.9" },
-    { name = "pyscf" },
-    { name = "pytket", specifier = ">=2.9.3" },
-    { name = "pytket-qiskit", specifier = ">=0.71.0" },
-    { name = "qiskit-ibm-runtime", specifier = ">=0.41.1" },
-    { name = "qsci-worker-api", editable = "docs/source/examples/example_workers/qsci_worker/src/api" },
-    { name = "ruff" },
-    { name = "tierkreis", editable = "tierkreis" },
-]
-
-[[package]]
-name = "qsci-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/qsci_worker/src/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
-
-[[package]]
 name = "quantinuum-schemas"
 version = "7.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2759,36 +2631,6 @@ wheels = [
 ]
 
 [[package]]
-name = "scipy-worker"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/scipy_worker" }
-dependencies = [
-    { name = "ruff" },
-    { name = "scipy" },
-    { name = "scipy-worker-api" },
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "ruff" },
-    { name = "scipy", specifier = ">=1.16.3" },
-    { name = "scipy-worker-api", editable = "docs/source/examples/example_workers/scipy_worker/src/api" },
-    { name = "tierkreis", editable = "tierkreis" },
-]
-
-[[package]]
-name = "scipy-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/scipy_worker/src/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
-
-[[package]]
 name = "semver"
 version = "3.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3059,38 +2901,6 @@ wheels = [
 ]
 
 [[package]]
-name = "substitution-worker"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/substitution_worker" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pytket" },
-    { name = "ruff" },
-    { name = "substitution-worker-api" },
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "pytket", specifier = ">=2.9.3" },
-    { name = "ruff" },
-    { name = "substitution-worker-api", editable = "docs/source/examples/example_workers/substitution_worker/src/api" },
-    { name = "tierkreis", editable = "tierkreis" },
-]
-
-[[package]]
-name = "substitution-worker-api"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/substitution_worker/src/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
-
-[[package]]
 name = "symengine"
 version = "0.14.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3225,6 +3035,96 @@ requires-dist = [
 ]
 
 [[package]]
+name = "tkr-auth-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/auth_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-auth-worker-impl"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/auth_worker" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "pydantic" },
+    { name = "pyscrypt" },
+    { name = "tierkreis" },
+    { name = "tkr-auth-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=45.0.7" },
+    { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pyscrypt", specifier = ">=1.6.2" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-auth-worker", editable = "docs/source/examples/example_workers/auth_worker/api" },
+]
+
+[[package]]
+name = "tkr-error-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/error_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-error-worker-impl"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/error_worker" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "ruff" },
+    { name = "tierkreis" },
+    { name = "tkr-error-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic" },
+    { name = "ruff" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-error-worker", editable = "docs/source/examples/example_workers/error_worker/api" },
+]
+
+[[package]]
+name = "tkr-hello-world-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/hello_world_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-hello-world-worker-impl"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/hello_world_worker" }
+dependencies = [
+    { name = "ruff" },
+    { name = "tierkreis" },
+    { name = "tkr-hello-world-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ruff" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-hello-world-worker", editable = "docs/source/examples/example_workers/hello_world_worker/api" },
+]
+
+[[package]]
 name = "tkr-ibmq-worker"
 version = "0.2.0"
 source = { editable = "tierkreis_workers/ibmq_worker/api" }
@@ -3327,6 +3227,44 @@ test = [
 ]
 
 [[package]]
+name = "tkr-qsci-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/qsci_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-qsci-worker-impl"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/qsci_worker" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyscf" },
+    { name = "pytket" },
+    { name = "pytket-qiskit" },
+    { name = "qiskit-ibm-runtime" },
+    { name = "ruff" },
+    { name = "tierkreis" },
+    { name = "tkr-qsci-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.9" },
+    { name = "pyscf" },
+    { name = "pytket", specifier = ">=2.9.3" },
+    { name = "pytket-qiskit", specifier = ">=0.71.0" },
+    { name = "qiskit-ibm-runtime", specifier = ">=0.41.1" },
+    { name = "ruff" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-qsci-worker", editable = "docs/source/examples/example_workers/qsci_worker/api" },
+]
+
+[[package]]
 name = "tkr-quantinuum-worker"
 version = "0.2.0"
 source = { editable = "tierkreis_workers/quantinuum_worker/api" }
@@ -3382,6 +3320,68 @@ requires-dist = [
     { name = "pytket-qulacs", specifier = ">=0.41.0" },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-qulacs-worker", editable = "tierkreis_workers/qulacs_worker/api" },
+]
+
+[[package]]
+name = "tkr-scipy-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/scipy_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-scipy-worker-impl"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/scipy_worker" }
+dependencies = [
+    { name = "ruff" },
+    { name = "scipy" },
+    { name = "tierkreis" },
+    { name = "tkr-scipy-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ruff" },
+    { name = "scipy", specifier = ">=1.16.3" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-scipy-worker", editable = "docs/source/examples/example_workers/scipy_worker/api" },
+]
+
+[[package]]
+name = "tkr-substitution-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/substitution_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-substitution-worker-impl"
+version = "0.1.0"
+source = { editable = "docs/source/examples/example_workers/substitution_worker" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pytket" },
+    { name = "ruff" },
+    { name = "tierkreis" },
+    { name = "tkr-substitution-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pytket", specifier = ">=2.9.3" },
+    { name = "ruff" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-substitution-worker", editable = "docs/source/examples/example_workers/substitution_worker/api" },
 ]
 
 [[package]]

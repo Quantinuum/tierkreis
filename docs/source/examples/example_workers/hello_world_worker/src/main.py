@@ -1,17 +1,11 @@
-import logging
 from sys import argv
 
-from tierkreis import Worker
-
-logger = logging.getLogger(__name__)
-worker = Worker("hello_world_worker")
+from src.impl import worker
 
 
-@worker.task()
-def greet(greeting: str, subject: str) -> str:
-    logger.info("%s %s", greeting, subject)
-    return greeting + subject
+def main():
+    worker.app(argv)
 
 
 if __name__ == "__main__":
-    worker.app(argv)
+    main()

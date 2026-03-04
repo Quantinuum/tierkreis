@@ -1,21 +1,11 @@
-import logging
 from sys import argv
 
-from pytket._tket.circuit import Circuit
-from sympy import Symbol
-
-from tierkreis import Worker
-
-logger = logging.getLogger(__name__)
-
-worker = Worker("substitution_worker")
+from src.impl import worker
 
 
-@worker.task()
-def substitute(circuit: Circuit, a: float, b: float, c: float) -> Circuit:
-    circuit.symbol_substitution({Symbol("a"): a, Symbol("b"): b, Symbol("c"): c})
-    return circuit
+def main():
+    worker.app(argv)
 
 
 if __name__ == "__main__":
-    worker.app(argv)
+    main()

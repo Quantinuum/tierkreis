@@ -1,5 +1,5 @@
 [project]
-name = "substitution-worker"
+name = "tkr-substitution-worker-impl"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -7,12 +7,12 @@ dependencies = [
     "pytket>=2.9.3",
     "tierkreis",
     "ruff",
-    "substitution-worker-api",
+    "tkr-substitution-worker",
 ]
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-substitution-worker-api = { workspace = true }
+tkr-substitution-worker = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
