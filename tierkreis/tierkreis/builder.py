@@ -24,7 +24,7 @@ from tierkreis.controller.data.models import (
     dict_from_tmodel,
     init_tmodel,
 )
-from tierkreis.controller.data.types import PType
+from tierkreis.controller.data.types import PType, FinishedGraph
 
 
 @dataclass
@@ -113,12 +113,6 @@ def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
             return script_name
 
     return exec_script(input=script_input)
-
-
-@dataclass(frozen=True)
-class FinishedGraph[Inputs: TModel, Outputs: TModel]:
-    data: GraphData
-    outputs_type: type[Outputs]
 
 
 class GraphBuilder[Inputs: TModel, Outputs: TModel]:

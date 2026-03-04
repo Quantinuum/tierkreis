@@ -7,6 +7,7 @@ import pickle
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from inspect import Parameter, _empty, isclass
 from types import NoneType, UnionType
 from typing import (
@@ -21,6 +22,7 @@ from typing import (
     get_args,
     get_origin,
     runtime_checkable,
+    TYPE_CHECKING,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -33,6 +35,10 @@ from tierkreis.controller.data.core import (
     get_serializer,
 )
 from tierkreis.exceptions import TierkreisError
+
+if TYPE_CHECKING:
+    from tierkreis.controller.data.graph import GraphData
+    from tierkreis.controller.data.models import TModel
 
 
 @runtime_checkable
@@ -449,3 +455,9 @@ def has_default(t: Parameter) -> bool:
     :rtype: bool
     """
     return not (isclass(t.default) and issubclass(t.default, _empty))
+
+
+@dataclass(frozen=True)
+class FinishedGraph[Inputs: TModel, Outputs: TModel]:
+    data: "GraphData"
+    outputs_type: type[Outputs]
