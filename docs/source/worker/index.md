@@ -17,6 +17,7 @@ As long as there is a runnable binary, you can provide a thin wrapper which allo
 complex_types.md
 external_workers.md
 hello_world.md
+../examples/multiple_outputs.ipynb
 native_workers/index
 ```
 

@@ -1,0 +1,32 @@
+[project]
+name = "tkr-multiple-outputs-impl"
+version = "0.1.0"
+description = "A tierkreis worker implementation."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "tierkreis",
+]
+
+[tool.uv.workspace]
+members = [
+    "api",
+]
+
+[tool.uv.sources]
+tkr-multiple-outputs= { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+tkr_multiple-outputs = "src.main:main"
