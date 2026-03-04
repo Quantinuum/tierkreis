@@ -1,0 +1,11 @@
+[project]
+name = "sleep_worker"
+version = "0.1.0"
+description = "Worker that will sleep"
+requires-python = ">=3.12"
+dependencies = [
+    "tierkreis",
+]
+
+[tool.uv.sources]
+tierkreis = { path = "../../../", editable = true }
