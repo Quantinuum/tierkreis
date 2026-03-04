@@ -1,41 +1,66 @@
-# Tierkreis visualizer
+# Tierkreis Visualization
 
-To run with fast api:
+The Tierkreis Visualization package is a web server and frontend that can visualizer Tierkreis workflows before, during and after execution.
+
+## Quick-start
+
+Once you have installed the `tierkreis-visualization` package you can start the server with:
+
+```bash
+tkr vis
+```
+
+Which will start a web server that displays the contents of your Tierkreis checkpoints directory.
+
+For more advanced usage see the [Tierkreis documentation pages for the visualizer](https://quantinuum.github.io/tierkreis/visualization.html).
+
+
+## Development
+
+To run the webserver and frontend from within this repository:
 
 ```bash
 just serve
 ```
 
-To apply changes made in the frontend
+Note that you must first build the JavaScript bundle for the frontend.
+
+```bash
+just prod
+```
+
+Will (re)build the bundle and install the necessary dependencies.
+
+If you wish to do both in a single command you can run:
 
 ```bash
 just prod serve
 ```
 
-will bundle the js before running the serve.
+### Hot reloading
 
-## Dev server
+While developing it is sometimes useful to reload the python code whenever it is changed.
 
-To run a updating dev server you can run
+To run the python web server in development mode so that changes made to it are automatically reloaded and applied.
 
 ```bash
 uv run tkr-vis-dev
 ```
 
-from the `tierkreis/tierkreis_visualization` and
+from the `tierkreis/tierkreis_visualization` directory and
 
 ```bash
 npm run dev
 ```
 
-from `tierkreis/tierkreis_visualization/frontend`.
+from the `tierkreis/tierkreis_visualization/frontend` directory.
 
-## OpenAPI
+### OpenAPI
 
-To regenerated the openapi spec run
+To regenerate the OpenAPI spec run
 
 ```bash
 uv run tkr-vis-openapi
 ```
 
-Running `npm run dev` afterward will automatically update the api stubs.
+Running `npm run dev` afterward will automatically update the API stubs.
