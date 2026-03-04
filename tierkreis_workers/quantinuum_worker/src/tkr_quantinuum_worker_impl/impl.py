@@ -8,9 +8,9 @@ from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
 from pytket.passes import BasePass
 from qnexus.models import IssuerEnum
 from qnexus.models.references import ExecutionResultRef
-from src.impl.default_pass_quantinuum import default_compilation_pass
 from tierkreis.exceptions import TierkreisError
 
+from .default_pass_quantinuum import default_compilation_pass
 from tierkreis import Worker
 
 worker = Worker("quantinuum_worker")

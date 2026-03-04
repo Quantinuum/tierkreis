@@ -25,7 +25,7 @@ Since this worker uses the Tierkreis Python library, we can automatically genera
 The stub files will provide us with type hints in the graph building process later on.
 
 ```{code-cell}
-!cd ../examples/example_workers/auth_worker && uv run src/main.py --stubs-path ../../../tutorial/auth_stubs.py > /dev/null 2>&1
+!cd ../examples/example_workers/auth_worker && uv run src/main.py --stubs-path ../../../example_workers/auth_worker/api/api.py > /dev/null 2>&1
 ```
 
 ## Writing a graph
@@ -43,7 +43,7 @@ from tierkreis.models import EmptyModel, TKR
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins import mean
 
-from auth_stubs import encrypt, EncryptionResult
+from auth_worker import encrypt, EncryptionResult
 
 
 def map_body():

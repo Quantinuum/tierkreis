@@ -1,12 +1,6 @@
 from collections import Counter
 
 import qnexus as qnx
-from src.impl.compile_circuit import (
-    MINIMAL_GATE_SET,
-    CircuitFormat,
-    OptimizationLevel,
-    compile_circuit,
-)
 from pytket._tket.circuit import Circuit
 from pytket._tket.unit_id import Bit
 from pytket.backends.backendinfo import BackendInfo
@@ -20,9 +14,16 @@ from pytket.utils.expectations import expectation_from_counts
 from pytket.utils.measurements import append_pauli_measurement
 from pytket.utils.outcomearray import OutcomeArray
 from qnexus import BackendConfig, IBMQConfig, QuantinuumConfig
+from tierkreis.exceptions import TierkreisError
 
 from tierkreis import Worker
-from tierkreis.exceptions import TierkreisError
+
+from .compile_circuit import (
+    MINIMAL_GATE_SET,
+    CircuitFormat,
+    OptimizationLevel,
+    compile_circuit,
+)
 
 worker = Worker("pytket_worker")
 

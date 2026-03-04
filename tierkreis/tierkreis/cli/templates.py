@@ -78,8 +78,7 @@ tkr-{worker_name}= {{ workspace = true }}
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
+
 
 [project.scripts]
 tkr_{worker_name} = "src.main:main"

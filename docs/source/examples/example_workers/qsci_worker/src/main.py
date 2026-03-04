@@ -1,6 +1,6 @@
 from sys import argv
 
-from src.impl import worker
+from tkr_qsci_worker_impl import worker
 
 
 def main():

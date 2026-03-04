@@ -44,21 +44,16 @@ stubs-generate dir:
 stubs-generate-api dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run src/main.py --stubs-path src/api/stubs.py
-
-stubs-generate-new dir:
-  #!/usr/bin/env bash
-  cd {{dir}}
-  uv run src/main.py --stubs-path api/api.py
+  uv run src/main.py --stubs-path ./api/api.py
 
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
-  just stubs-generate-new 'tierkreis_workers/aer_worker'
-  just stubs-generate-new 'tierkreis_workers/ibmq_worker'
-  just stubs-generate-new 'tierkreis_workers/nexus_worker'
-  just stubs-generate-new 'tierkreis_workers/pytket_worker'
-  just stubs-generate-new 'tierkreis_workers/quantinuum_worker'
-  just stubs-generate-new 'tierkreis_workers/qulacs_worker'
+  just stubs-generate-api 'tierkreis_workers/aer_worker'
+  just stubs-generate-api 'tierkreis_workers/ibmq_worker'
+  just stubs-generate-api 'tierkreis_workers/nexus_worker'
+  just stubs-generate-api 'tierkreis_workers/pytket_worker'
+  just stubs-generate-api 'tierkreis_workers/quantinuum_worker'
+  just stubs-generate-api 'tierkreis_workers/qulacs_worker'
 
   just stubs-generate-api 'docs/source/examples/example_workers/auth_worker'
   just stubs-generate-api 'docs/source/examples/example_workers/error_worker'
