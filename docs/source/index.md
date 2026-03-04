@@ -1,7 +1,7 @@
-# tierkreis documentation
+# Tierkreis documentation
 
-tierkreis `[ˈtiːɐ̯ˌkʁaɪ̯s]` is an HPC native workflow management system (WMS) for asynchronous hybrid jobs.
-tierkreis combines task-based workers with context dependent execution on various storage implementations.
+Tierkreis `[ˈtiːɐ̯ˌkʁaɪ̯s]` is an HPC native workflow management system (WMS) for asynchronous hybrid jobs.
+Tierkreis combines task-based workers with context dependent execution on various storage implementations.
 
 | WMS       | Multi-Language | Multi-Executor | HPC-Support | Visualization | Repeat until convergence | Proprietary Workers |
 | --------- | :------------: | :------------: | :---------: | :-----------: | :----------------------: | :-----------------: |

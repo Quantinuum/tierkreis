@@ -85,7 +85,7 @@ Further information can be found in the workflows log file, typically located at
 
 #### Configuring Logs
 
-By default tierkreis will not show any logging statements as it just writes a log file instead.
+By default Tierkreis will not show any logging statements as it just writes a log file instead.
 If you want you can provide your own configuration.
 
 ```py
@@ -108,7 +108,7 @@ Once the error has been analyzed and resolved, you should delete the temporary d
 
 Currently there is only a limited amount of debugging information available.
 It is stored under `<checkpoints_dir>/<workflow_id>/debug/executors` in json format.
-The file contains json data mapping node locations (of task nodes) to data concerning their tierkreis executor.
+The file contains json data mapping node locations (of task nodes) to data concerning their Tierkreis executor.
 The data contains the following information:
 
 - The executor class string(s) (nested executors are separated by `:`)
