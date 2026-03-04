@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains examples how to use tierkreis to write workflows.
+This directory contains examples how to use Tierkreis to write workflows.
 Before writing workflows, we will shortly recap how to write a worker.
 It is intended that these notebooks are read in the following order.
 
@@ -23,7 +23,7 @@ qsci.ipynb
 
 ## How to use
 
-In the given examples you will be developing code involving tierkreis workers.
+In the given examples you will be developing code involving Tierkreis workers.
 Whenever you see an import containing `*_worker` this means one of the workers will be invoked (except for the `builtin`s).
 To ensure the examples will run correctly you will need to have the worker code available too.
 The simplest way to set this up is to clone the entire repository before running any of the examples.

@@ -28,7 +28,7 @@ Locations to inputs and outputs are provide in the form of
   optionally values can also be provided by the executor in the form
 - `input_<portname>_value`
   If possible this option should be avoided as values can be potentially very large and exceed shell limitations.
-  Below is an example to show how to use this to make a script of executable compatible with tierkreis.
+  Below is an example to show how to use this to make a script of executable compatible with Tierkreis.
 
 ## StdInOut
 
