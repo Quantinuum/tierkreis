@@ -1,4 +1,4 @@
-# tierkreis
+# Tierkreis
 
 Quantum-classical hybrid workflow orchestration tool.
 This is the top level repository containing the python packages.
@@ -16,10 +16,15 @@ This is the top level repository containing the python packages.
 
 Tierkreis comes with a command line interface for running workflows.
 To see all available options use `tkr --help`.
-To run the hello world example from the cli
+To run the hello world example in this repository from the cli
 
 ```
-uv run tkr -g docs/source/examples/hello_world.py:graph -i data.json --uv --registry-path docs/source/examples/example_workers/ -o
+uv run tkr run \
+  -g docs/source/examples/hello_world.py:graph \
+  -i docs/source/examples/data/world.json \
+  --uv \
+  --registry-path docs/source/examples/example_workers/ \
+  -o
 ```
 
 Explanation:
