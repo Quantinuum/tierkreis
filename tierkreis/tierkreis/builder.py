@@ -277,23 +277,11 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         OutModel = func.out()  # noqa: N806
         return init_tmodel(OutModel, lambda p: (idx, p))
 
-    @overload
     def eval[A: TModel, B: TModel](
         self,
-        body: TypedGraphRef[A, B],
+        body: GraphBuilder[A, B] | TypedGraphRef[A, B],
         eval_inputs: A,
-    ) -> B: ...
-    @overload
-    def eval[A: TModel, B: TModel](
-        self,
-        body: GraphBuilder[A, B],
-        eval_inputs: A,
-    ) -> B: ...
-    def eval[A: TModel, B: TModel](
-        self,
-        body: GraphBuilder[A, B] | TypedGraphRef,
-        eval_inputs: Any,
-    ) -> Any:
+    ) -> B:
         """Add a evaluation node to the graph.
 
         This will evaluate a nested graph with the given inputs.
@@ -312,20 +300,6 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(eval_inputs))("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
-    @overload
-    def loop[A: TModel, B: LoopOutput](
-        self,
-        body: TypedGraphRef[A, B],
-        loop_inputs: A,
-        name: str | None = None,
-    ) -> B: ...
-    @overload
-    def loop[A: TModel, B: LoopOutput](
-        self,
-        body: GraphBuilder[A, B],
-        loop_inputs: A,
-        name: str | None = None,
-    ) -> B: ...
     def loop[A: TModel, B: LoopOutput](
         self,
         body: TypedGraphRef[A, B] | GraphBuilder[A, B],
