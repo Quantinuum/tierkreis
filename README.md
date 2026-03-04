@@ -3,6 +3,31 @@
 Quantum-classical hybrid workflow orchestration tool.
 This is the top level repository containing the python packages.
 
+## Quick-start
+
+Tierkreis works best with the [uv package manager][uv]. We strongly recommend using it as your package manager for Tierkreis projects.
+
+To get started with Tierkreis start a new `uv` project in an empty directory with:
+
+```bash
+uv init
+```
+
+Then add Tierkreis to the project and run the project setup tool.
+
+```bash
+uv add tierkreis
+uv run tkr init project
+```
+
+You can then run the generated example graph at `tkr/graphs.main.py`.
+
+```bash
+uv run tkr/graphs/main.py
+```
+
+For a more in depth tutorial see our [full getting started guide][docs-getting-started].
+
 ## Packages
 
 - **Tierkreis**: the core functionality `pip install tierkreis`
@@ -43,24 +68,29 @@ Requirements
 
 See the justfile (requires `just`) for common development commands. For example:
 
-```sh
+```bash
 just test
 ```
 
 ## Documentation
 
+Tierkreis documentation can be found on our GitHub Pages [here][docs-home].
+
 To build the documentation locally, run the command in the top level justfile.
 
-```sh
+```bash
 just docs
 ```
 
 Documentation will be built in HTML format by default and will be available in the `docs/build/html` folder.
 
-For documentation we use the [MyST](https://myst-parser.readthedocs.io/en/latest/index.html) parser with markdown files.
+For documentation, we use the [MyST](https://myst-parser.readthedocs.io/en/latest/index.html) parser with markdown files.
 
 ## License
 
 This project is licensed under Apache License, Version 2.0 ([LICENSE][] or http://www.apache.org/licenses/LICENSE-2.0).
 
+[docs-home]: https://quantinuum.github.io/tierkreis/
+[docs-getting-started]: https://quantinuum.github.io/tierkreis/getting_started.html
+[uv]: https://docs.astral.sh/uv/
 [LICENSE]: https://github.com/Quantinuum/tierkreis/blob/main/LICENCE

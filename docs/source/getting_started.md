@@ -2,11 +2,17 @@
 
 ## Project Setup
 
-We recommend using [uv](https://docs.astral.sh/uv/).
-You can set up a project using `uv` and the tierkreis cli called `tkr`.
+Tierkreis works best with the [uv package manager](https://docs.astral.sh/uv/). We strongly recommend using it as your package manager for Tierkreis projects.
+
+To get started with Tierkreis start a new `uv` project in an empty directory with:
 
 ```bash
 uv init
+```
+
+Then add Tierkreis to the project and run the project setup tool.
+
+```bash
 uv add tierkreis
 uv run tkr init project
 ```
@@ -45,7 +51,7 @@ The repository is structure is intended to separate _graphs_, _workers_ and libr
 
 From here you can run your first graph by running
 
-```
+```bash
 uv run tkr/graphs/main.py
 > Value is: 1
 ```
