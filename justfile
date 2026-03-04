@@ -71,7 +71,7 @@ generate:
   cp 'tierkreis_workers/ibmq_worker/stubs.py' tierkreis/tierkreis/ibmq_worker.py
   cp 'tierkreis_workers/nexus_worker/stubs.py' tierkreis/tierkreis/nexus_worker.py
   cp 'tierkreis_workers/pytket_worker/stubs.py' tierkreis/tierkreis/pytket_worker.py
-  cp 'tierkreis_workers/quantinuum_worker/stubs.py' tierkreis/tierkreis/quantinuum_worker.py
+  cp 'tierkreis_workers/quantinuum_worker/api/api.py' tierkreis/tierkreis/quantinuum_worker.py
   cp 'tierkreis_workers/qulacs_worker/stubs.py' tierkreis/tierkreis/qulacs_worker.py
 
 check-stubs:
