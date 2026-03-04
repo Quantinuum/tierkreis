@@ -1,7 +1,6 @@
 """Valid Python types for annotating worker functions and their serialisation."""
 
 # ruff: noqa: ANN001 ANN003 ANN401 due to serialization and inheritance from json
-import collections.abc
 import json
 import logging
 import pickle
@@ -182,11 +181,11 @@ def _is_generic(o) -> TypeIs[type[TypeVar]]:
 
 
 def _is_list(ptype: object) -> TypeIs[type[Sequence[PType]]]:
-    return get_origin(ptype) == collections.abc.Sequence or get_origin(ptype) is list
+    return get_origin(ptype) == Sequence or get_origin(ptype) is list
 
 
 def _is_mapping(ptype: object) -> TypeIs[type[Mapping[str, PType]]]:
-    return get_origin(ptype) is collections.abc.Mapping or get_origin(ptype) is dict
+    return get_origin(ptype) is Mapping or get_origin(ptype) is dict
 
 
 def _is_tuple(o: object) -> TypeIs[type[tuple[Any, ...]]]:
@@ -257,10 +256,10 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
         case tuple():
             args = get_args(annotation) or [None] * len(ptype)
             return tuple([ser_from_ptype(p, args[i]) for i, p in enumerate(ptype)])
-        case collections.abc.Sequence():
+        case Sequence():
             arg = get_args(annotation)[0] if get_args(annotation) else None
             return [ser_from_ptype(p, arg) for p in ptype]
-        case collections.abc.Mapping():
+        case Mapping():
             arg = get_args(annotation)[1] if get_args(annotation) else None
             return {k: ser_from_ptype(p, arg) for k, p in ptype.items()}
         case DictConvertible():
@@ -369,14 +368,14 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
         }
         return cast("T", origin(**d))
 
-    if issubclass(origin, collections.abc.Sequence):
+    if issubclass(origin, Sequence):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
 
         return cast("T", [coerce_from_annotation(x, args[0]) for x in ser])
 
-    if issubclass(origin, collections.abc.Mapping):
+    if issubclass(origin, Mapping):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
