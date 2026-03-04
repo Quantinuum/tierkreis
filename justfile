@@ -46,12 +46,17 @@ stubs-generate-api dir:
   cd {{dir}}
   uv run src/main.py --stubs-path src/api/stubs.py
 
+stubs-generate-new dir:
+  #!/usr/bin/env bash
+  cd {{dir}}
+  uv run src/main.py --stubs-path api/api.py
+
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
   just stubs-generate 'tierkreis_workers/aer_worker'
   just stubs-generate 'tierkreis_workers/ibmq_worker'
   just stubs-generate 'tierkreis_workers/nexus_worker'
-  just stubs-generate 'tierkreis_workers/pytket_worker'
+  just stubs-generate-new 'tierkreis_workers/pytket_worker'
   just stubs-generate 'tierkreis_workers/quantinuum_worker'
   just stubs-generate 'tierkreis_workers/qulacs_worker'
 
@@ -65,7 +70,7 @@ generate:
   cp 'tierkreis_workers/aer_worker/stubs.py' tierkreis/tierkreis/aer_worker.py
   cp 'tierkreis_workers/ibmq_worker/stubs.py' tierkreis/tierkreis/ibmq_worker.py
   cp 'tierkreis_workers/nexus_worker/stubs.py' tierkreis/tierkreis/nexus_worker.py
-  cp 'tierkreis_workers/pytket_worker/stubs.py' tierkreis/tierkreis/pytket_worker.py
+  cp 'tierkreis_workers/pytket_worker/api/api.py' tierkreis/tierkreis/pytket_worker.py
   cp 'tierkreis_workers/quantinuum_worker/stubs.py' tierkreis/tierkreis/quantinuum_worker.py
   cp 'tierkreis_workers/qulacs_worker/stubs.py' tierkreis/tierkreis/qulacs_worker.py
 

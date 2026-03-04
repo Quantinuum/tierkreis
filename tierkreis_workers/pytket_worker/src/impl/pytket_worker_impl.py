@@ -1,8 +1,7 @@
 from collections import Counter
-from sys import argv
 
 import qnexus as qnx
-from compile_circuit import (
+from src.impl.compile_circuit import (
     MINIMAL_GATE_SET,
     CircuitFormat,
     OptimizationLevel,
@@ -420,11 +419,3 @@ def backend_result_from_dict(data: dict[str, list[str]]) -> BackendResult:
         shots=OutcomeArray.from_readouts(bit_strings),
         c_bits=bit_register,
     )
-
-
-def main() -> None:
-    worker.app(argv)
-
-
-if __name__ == "__main__":
-    main()

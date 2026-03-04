@@ -25,7 +25,7 @@ The authentication depends on IBMQ and Quantinuum web services respectively.
 
 The pytket worker exposes the following elementary tasks to the user:
 
-- `get_backend_info` retrieves the backend info given a configuration dict. **Requires authentication**. Requires optional dependencies `uv sync --groups backends`.
+- `get_backend_info` retrieves the backend info given a configuration dict. **Requires authentication**.
 - `device_name_from_info` retrieves the device name from backend info object.
 - `compile_using_info` compiles a circuit with a default pass for a backend info that was previously acquired.
 - `add_measure_all` adds final measurements to a circuit.
@@ -33,11 +33,13 @@ The pytket worker exposes the following elementary tasks to the user:
 - `optimise_phase_gadgets` applies the phase gadget optimization pass to a circuit.
 - `apply_pass` applies a user defined optimization pass.
 - `compile_generic_with_fixed_pass` generic compile function with a variety of options using a predefined pass without considering fidelities. No authentication is required.
-- `to_qasm_str` and `from_qasm_str` transforms a Circuit to/from QASM 2.
+- `to_qasm2_str` and `from_qasm2_str` transforms a Circuit to/from QASM 2.
 - `to_qir_bytes` and `from_qir_bytes` transforms a Circuit to/from QIR.
 - `expectation` estimates the expectation value from shot counts.
 - `n_qubits` returns the number of qubits in a const circuit.
 - `backend_result_to_dict` and `backend_result_from_dict` convert between a `BackendResult` and a register based dictionary mapping register names to a list of shot bitstrings.
+
+The full api is available in the {py:mod}`API Docs <pytket_worker>`.
 
 The straight forward approach to compiling a circuit with the default pass for a backend is:
 

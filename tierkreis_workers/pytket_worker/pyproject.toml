@@ -1,7 +1,8 @@
 [project]
-name = "tkr_pytket_worker"
-version = "0.1.6"
+name = "tkr-pytket-worker-impl"
+version = "0.2.0"
 description = "A tierkreis worker for pytket."
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,13 +10,12 @@ dependencies = [
     "pytket",
     "qnexus",
     "pytket_qirpass",
+    "tkr-pytket-worker"
 ]
 
-[project.optional-dependencies]
-backend-qiskit = [
+[dependency-groups]
+test = [
     "pytket-qiskit>=0.77.0",
-]
-backend-quantinuum = [
     "pytket-quantinuum>=0.57.0",
 ]
 
@@ -35,6 +35,7 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
+tkr-pytket-worker = { workspace = true }
 
 [project.scripts]
-tkr_pytket_worker = "main:main"
+tkr-pytket-worker-impl = "src.main:main"
