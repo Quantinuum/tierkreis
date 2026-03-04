@@ -9,7 +9,6 @@ from base64 import b64decode, b64encode
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from inspect import Parameter, _empty, isclass
-from itertools import chain
 from types import NoneType, UnionType
 from typing import (
     Annotated,
@@ -26,7 +25,6 @@ from typing import (
 )
 
 from pydantic import BaseModel, ValidationError
-from pydantic._internal._generics import get_args as pydantic_get_args
 from typing_extensions import TypeIs
 
 from tierkreis.controller.data.core import (
@@ -441,36 +439,6 @@ def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> 
                 return cast("T", bs)
         case _:
             assert_never(method)
-
-
-def generics_in_ptype(ptype: type[PType]) -> set[str]:
-    """Get the generics in a type annotation.
-
-    :param ptype: The ptype to extract generics from.
-    :type ptype: type[PType]
-    :return: The set of generic names in the ptype.
-    :rtype: set[str]
-    """
-    if _is_generic(ptype):
-        return {str(ptype)}
-
-    if _is_union(ptype) or _is_tuple(ptype) or _is_list(ptype) or _is_mapping(ptype):
-        return set(chain(*[generics_in_ptype(x) for x in get_args(ptype)]))
-
-    origin = get_origin(ptype)
-    if origin is not None:
-        return generics_in_ptype(origin)
-
-    if issubclass(ptype, (bool, int, float, complex, str, bytes, NoneType)):
-        return set()
-
-    if issubclass(ptype, (DictConvertible, ListConvertible, NdarraySurrogate, Struct)):
-        return set()
-
-    if issubclass(ptype, BaseModel):
-        return {str(x) for x in pydantic_get_args(ptype)}
-
-    assert_never(ptype)
 
 
 def has_default(t: Parameter) -> bool:
