@@ -21,13 +21,13 @@ class OuterOutputs(NamedTuple):
 def omit_input() -> FinishedGraph[Inputs, TKR[list[int]]]:
     g = GraphBuilder(Inputs, TKR[list[int]])
     range_1 = g.task(tkr_range(g.inputs.start, g.inputs.stop))
-    return g.outputs(range_1)
+    return g.finish_with_outputs(range_1)
 
 
 def passthru() -> FinishedGraph[Inputs, TKR[list[int]]]:
     g = GraphBuilder(Inputs, TKR[list[int]])
     range_1 = g.task(tkr_range(g.inputs.start, g.inputs.stop, g.inputs.step))
-    return g.outputs(range_1)
+    return g.finish_with_outputs(range_1)
 
 
 def defaults_omit() -> FinishedGraph[Inputs, OuterOutputs]:
@@ -35,7 +35,7 @@ def defaults_omit() -> FinishedGraph[Inputs, OuterOutputs]:
     range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
     range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
     range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
-    return g.outputs(OuterOutputs(range_1, range_2, range_3))
+    return g.finish_with_outputs(OuterOutputs(range_1, range_2, range_3))
 
 
 def defaults_passthru() -> FinishedGraph[Inputs, OuterOutputs]:
@@ -43,7 +43,7 @@ def defaults_passthru() -> FinishedGraph[Inputs, OuterOutputs]:
     range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
     range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
     range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
-    return g.outputs(OuterOutputs(range_1, range_2, range_3, g.inputs.step))
+    return g.finish_with_outputs(OuterOutputs(range_1, range_2, range_3, g.inputs.step))
 
 
 def defaults_not_none() -> FinishedGraph[Inputs, OuterOutputs]:
@@ -51,4 +51,6 @@ def defaults_not_none() -> FinishedGraph[Inputs, OuterOutputs]:
     range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
     range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
     range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
-    return g.outputs(OuterOutputs(range_1, range_2, range_3, g.inputs.start))
+    return g.finish_with_outputs(
+        OuterOutputs(range_1, range_2, range_3, g.inputs.start)
+    )

@@ -71,7 +71,7 @@ def aer_simulate_single() -> FinishedGraph[SimulateJobInputsSingle, TKR[BackendR
         ),
     )
     res = g.task(aer_run(compiled_circuit, circuit_shots.b))
-    return g.outputs(res)
+    return g.finish_with_outputs(res)
 
 
 def qulacs_simulate_single() -> FinishedGraph[
@@ -95,7 +95,7 @@ def qulacs_simulate_single() -> FinishedGraph[
         ),
     )
     res = g.task(qulacs_run(compiled_circuit, circuit_shots.b))
-    return g.outputs(res)
+    return g.finish_with_outputs(res)
 
 
 def compile_simulate_single() -> FinishedGraph[
@@ -117,7 +117,7 @@ def compile_simulate_single() -> FinishedGraph[
         qulacs_res,
     )
 
-    return g.outputs(res)
+    return g.finish_with_outputs(res)
 
 
 def compile_simulate() -> FinishedGraph[SimulateJobInputs, TKR[list[BackendResult]]]:
@@ -139,4 +139,4 @@ def compile_simulate() -> FinishedGraph[SimulateJobInputs, TKR[list[BackendResul
     )
     res = g.map(compile_simulate_single(), inputs)
 
-    return g.outputs(res)
+    return g.finish_with_outputs(res)

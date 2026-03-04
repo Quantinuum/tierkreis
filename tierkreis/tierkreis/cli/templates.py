@@ -171,7 +171,7 @@ class GraphOutputs(NamedTuple):
 def your_graph() -> FinishedGraph[GraphInputs, GraphOutputs]:
     g = GraphBuilder(GraphInputs, GraphOutputs)
     out = g.task(your_worker_task(g.inputs.value))
-    return g.outputs(GraphOutputs(value=out))
+    return g.finish_with_outputs(GraphOutputs(value=out))
 
 def main() -> None:
     graph = your_graph()
@@ -304,7 +304,7 @@ You can use them as a task in the graph:
 def your_graph() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     out = g.task(your_worker_task(g.inputs))
-    g.outputs(out)
+    g.finish_with_outputs(out)
     return g
 ```
 If you used the `tkr init project` example, you will see a working graph code example in `tkr/graphs/main.py`.

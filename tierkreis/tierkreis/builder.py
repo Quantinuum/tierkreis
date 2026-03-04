@@ -160,7 +160,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         """
         return TypedGraphRef((-1, "body"), self.inputs_type, self.outputs_type)
 
-    def outputs(self, outputs: Outputs) -> FinishedGraph[Inputs, Outputs]:
+    def finish_with_outputs(self, outputs: Outputs) -> FinishedGraph[Inputs, Outputs]:
         """Set output nodes of a graph.
 
         :param outputs: The output nodes.

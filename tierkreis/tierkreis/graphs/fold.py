@@ -53,7 +53,9 @@ def _fold_graph_outer[A: PType, B: PType]() -> FinishedGraph[
 
     next_accum = g.ifelse(non_empty, applied_next, accum)
     next_values = g.ifelse(non_empty, headed.rest, values)
-    return g.outputs(_FoldGraphOuterOutputs(next_accum, next_values, non_empty))
+    return g.finish_with_outputs(
+        _FoldGraphOuterOutputs(next_accum, next_values, non_empty)
+    )
 
 
 A_co = TypeVar("A_co", bound=PType, covariant=True)
@@ -106,4 +108,4 @@ def fold_graph[A_co: PType, B_co: PType](
         g.inputs.values,
     )
     loop = g.loop(_fold_graph_outer(), ins)
-    return g.outputs(loop.accum)
+    return g.finish_with_outputs(loop.accum)

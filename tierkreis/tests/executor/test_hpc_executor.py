@@ -21,7 +21,7 @@ from tierkreis.storage import read_outputs
 def mpi_graph() -> GraphData:
     builder = GraphBuilder(outputs_type=TKR[str | None])
     mpi_result = builder.task(mpi_rank_info())
-    builder.outputs(mpi_result)
+    builder.finish_with_outputs(mpi_result)
     return builder.data
 
 

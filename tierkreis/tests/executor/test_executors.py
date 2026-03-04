@@ -29,7 +29,7 @@ def shell_graph():
     )
     output: TKR[str] = TKR(*result("value"))  # unsafe cast
 
-    return g.outputs(output)
+    return g.finish_with_outputs(output)
 
 
 def test_shell_executor():
@@ -79,7 +79,7 @@ def test_suppress_env():
 
 def builtin_graph() -> FinishedGraph[TKR[bool], TKR[bool]]:
     g = GraphBuilder(TKR[bool], TKR[bool])
-    return g.outputs(g.task(neg(g.inputs)))
+    return g.finish_with_outputs(g.task(neg(g.inputs)))
 
 
 def test_builtin_executor():
@@ -107,7 +107,7 @@ def hello_graph() -> FinishedGraph[TKR[str], TKR[str]]:
     g = GraphBuilder(TKR[str], TKR[str])
     hello = g.const("hello ")
     output = g.task(greet(greeting=hello, subject=g.inputs))
-    return g.outputs(output)
+    return g.finish_with_outputs(output)
 
 
 def test_uv_executor():
@@ -141,7 +141,7 @@ def stdinout_graph():
     )
     output: TKR[str] = TKR(*result("value"))  # unsafe cast
 
-    return g.outputs(output)
+    return g.finish_with_outputs(output)
 
 
 def test_stdinout_executor():
@@ -178,7 +178,7 @@ def task_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    return g.outputs(output)
+    return g.finish_with_outputs(output)
 
 
 def test_task_executor():
@@ -230,7 +230,7 @@ def multiple_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    return g.outputs(output)
+    return g.finish_with_outputs(output)
 
 
 def test_multiple_executor():

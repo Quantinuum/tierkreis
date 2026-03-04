@@ -18,22 +18,22 @@ WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 def will_fail_graph() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    return graph.outputs(graph.task(fail()))
+    return graph.finish_with_outputs(graph.task(fail()))
 
 
 def wont_fail_graph() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    return graph.outputs(graph.task(wont_fail()))
+    return graph.finish_with_outputs(graph.task(wont_fail()))
 
 
 def fail_in_eval() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    return graph.outputs(graph.eval(will_fail_graph(), EmptyModel()))
+    return graph.finish_with_outputs(graph.eval(will_fail_graph(), EmptyModel()))
 
 
 def non_zero_exit_code() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    return graph.outputs(graph.task(exit_code_1()))
+    return graph.finish_with_outputs(graph.task(exit_code_1()))
 
 
 def test_raise_error() -> None:

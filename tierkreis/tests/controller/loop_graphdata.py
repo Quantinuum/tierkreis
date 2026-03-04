@@ -89,7 +89,7 @@ def _loop_body_multiple_acc() -> FinishedGraph[MultipleAcc, MultipleAccOut]:
     new_acc2 = g.task(tkr_builtins.iadd(a=acc2, b=two))
     new_acc3 = g.task(tkr_builtins.iadd(a=acc3, b=three))
 
-    return g.outputs(
+    return g.finish_with_outputs(
         MultipleAccOut(
             should_continue=should_continue,
             acc1=new_acc,
@@ -115,7 +115,9 @@ def loop_multiple_acc() -> FinishedGraph[EmptyModel, LoopMultipleAccOut]:
     body = _loop_body_multiple_acc()
     loop = g.loop(body, MultipleAcc(acc1, acc2, acc3), "my_loop")
 
-    return g.outputs(LoopMultipleAccOut(acc1=loop.acc1, acc2=loop.acc2, acc3=loop.acc3))
+    return g.finish_with_outputs(
+        LoopMultipleAccOut(acc1=loop.acc1, acc2=loop.acc2, acc3=loop.acc3)
+    )
 
 
 class Scoping(NamedTuple):
@@ -136,7 +138,9 @@ def _loop_body_scoping() -> FinishedGraph[Scoping, ScopingOut]:
     next_val = g.task(tkr_builtins.iadd(g.inputs.current, one))
     should_continue = g.task(tkr_builtins.neq(g.inputs.end, g.inputs.current))
 
-    return g.outputs(ScopingOut(should_continue=should_continue, current=next_val))
+    return g.finish_with_outputs(
+        ScopingOut(should_continue=should_continue, current=next_val)
+    )
 
 
 class LoopScopingOut(NamedTuple):
@@ -152,4 +156,4 @@ def loop_scoping() -> FinishedGraph[EmptyModel, LoopScopingOut]:
     body = _loop_body_scoping()
     loop = g.loop(body, Scoping(start, end), "scoped_loop")
 
-    return g.outputs(LoopScopingOut(result=loop.current))
+    return g.finish_with_outputs(LoopScopingOut(result=loop.current))

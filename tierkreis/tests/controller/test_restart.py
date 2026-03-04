@@ -20,7 +20,7 @@ def test_restart() -> None:
     left = g.task(iadd(g.const(1), plus_one))
     right = g.task(itimes(g.const(2), plus_one))
     out = g.task(iadd(left, right))
-    g = g.outputs(out)
+    g = g.finish_with_outputs(out)
 
     run_graph(storage, executor, g, {"value": 0})
 

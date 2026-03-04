@@ -61,7 +61,7 @@ def upload_circuit_graph() -> FinishedGraph[UploadCircuitInputs, TKR[ExecuteJobR
     """
     g = GraphBuilder(UploadCircuitInputs, TKR[ExecuteJobRef])
     programme = g.task(upload_circuit(g.inputs.project_name, g.inputs.circuit))
-    return g.outputs(programme)  # type: ignore[arg-type]
+    return g.finish_with_outputs(programme)  # type: ignore[arg-type]
 
 
 def _polling_loop_body(
@@ -77,7 +77,7 @@ def _polling_loop_body(
     )
     results = g.ifelse(pred, g.const([]), g.task(get_results(g.inputs)))
 
-    return g.outputs(_LoopOutputs(results=results, should_continue=wait))
+    return g.finish_with_outputs(_LoopOutputs(results=results, should_continue=wait))
 
 
 def nexus_submit_and_poll(
@@ -108,4 +108,4 @@ def nexus_submit_and_poll(
     )
 
     res = g.loop(_polling_loop_body(polling_interval), ref)
-    return g.outputs(res.results)
+    return g.finish_with_outputs(res.results)

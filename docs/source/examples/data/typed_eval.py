@@ -19,21 +19,21 @@ class DoublerOutput(NamedTuple):
 def typed_doubler():
     g = GraphBuilder(TKR[int], TKR[int])
     out = g.task(itimes(a=g.const(2), b=g.inputs))
-    return g.outputs(out)
+    return g.finish_with_outputs(out)
 
 
 def typed_doubler_plus_multi():
     g = GraphBuilder(DoublerInput, DoublerOutput)
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
-    return g.outputs(DoublerOutput(a=g.inputs.x, value=out))
+    return g.finish_with_outputs(DoublerOutput(a=g.inputs.x, value=out))
 
 
 def typed_doubler_plus():
     g = GraphBuilder(DoublerInput, TKR[int])
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
-    return g.outputs(out)
+    return g.finish_with_outputs(out)
 
 
 class TypedEvalOutputs(NamedTuple):
@@ -43,4 +43,4 @@ class TypedEvalOutputs(NamedTuple):
 def typed_eval():
     g = GraphBuilder(EmptyModel, TypedEvalOutputs)
     e = g.eval(typed_doubler_plus(), DoublerInput(x=g.const(6), intercept=g.const(0)))
-    return g.outputs(TypedEvalOutputs(typed_eval_output=e))
+    return g.finish_with_outputs(TypedEvalOutputs(typed_eval_output=e))

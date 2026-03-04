@@ -7,4 +7,4 @@ from hello_world_worker import greet
 graph = GraphBuilder(inputs_type=TKR[str], outputs_type=TKR[str])
 hello = graph.const("Hello ")
 output = graph.task(greet(greeting=hello, subject=graph.inputs))
-graph.outputs(output)
+graph.finish_with_outputs(output)

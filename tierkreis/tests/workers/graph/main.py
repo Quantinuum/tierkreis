@@ -15,7 +15,7 @@ def doubler_plus_graph() -> GraphData:
     g = GraphBuilder(TKR[int], TKR[int])
     double = g.task(itimes(g.inputs, g.const(2)))
     out = g.task(iadd(double, g.const(1)))
-    g.outputs(out)
+    g.finish_with_outputs(out)
     return g.get_data()
 
 
