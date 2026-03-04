@@ -96,9 +96,9 @@ def parse_args(
         "-g",
         "--graph-location",
         help="Fully qualifying name of a Callable () -> GraphData. "
-        "Example: tierkreis.cli.sample_graph:simple_eval"
-        "Or a path to a python file and function."
-        "Example: examples/hello_world/hello_world_graph.py:hello_graph",
+        " Example: tierkreis.cli.sample_graph:simple_eval"
+        " or a path to a python file and function."
+        " Example: examples/hello_world/hello_world_graph.py:hello_graph",
         type=str,
     )
     parser.add_argument(
@@ -106,8 +106,8 @@ def parse_args(
         "--input-files",
         nargs="*",
         help="Graph inputs:"
-        "Either a single .json file or a key value list  port1:path1 port2:path2"
-        "where path is a binary file.",
+        " Either a single .json file or a key value list  port1:path1 port2:path2"
+        " where path is a binary file.",
     )
     parser.add_argument(
         "--run-id",
@@ -158,7 +158,7 @@ def parse_args(
         action="store_true",
         help="Clear graph files before running",
     )
-    parser.add_argument("--uv", action="store_true", help="Use uv worker")
+    parser.add_argument("--uv", action="store_true", help="Use uv executor")
 
     return parser
 

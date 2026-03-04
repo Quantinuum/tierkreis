@@ -56,7 +56,7 @@ def parse_args(
     project.add_argument(
         "--worker-directory",
         help="Overwrites the default worker directory."
-        "Defaults to <project_directory>/workers.",
+        " Defaults to <project_directory>/workers.",
         type=Path,
         default=Path("./tkr") / "workers",
     )
@@ -73,7 +73,7 @@ def parse_args(
     worker.add_argument(
         "--worker-directory",
         help="Overwrites the default worker directory."
-        "Defaults to <project_directory>/workers.",
+        " Defaults to <project_directory>/workers.",
         type=Path,
         default=None,
     )
@@ -90,7 +90,7 @@ def parse_args(
         help="The name of the new worker.",
         type=str,
     )
-    stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with UV.")
+    stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with uv.")
     stubs.add_argument(
         "--worker-directory",
         help="Directory where to search for workers.",
