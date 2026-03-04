@@ -1,7 +1,6 @@
 import logging
 import warnings
 from datetime import datetime
-from sys import argv
 from time import sleep
 
 import qnexus as qnx
@@ -148,11 +147,3 @@ def submit(circuits: list[Circuit], n_shots: int) -> ExecuteJobRef:
         backend_config=QuantinuumConfig(device_name="reimei-E"),
         project=my_project_ref,
     )
-
-
-def main() -> None:
-    worker.app(argv)
-
-
-if __name__ == "__main__":
-    main()

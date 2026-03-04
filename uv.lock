@@ -25,12 +25,17 @@ members = [
     "tierkreis",
     "tierkreis-visualization",
     "tkr-aer-worker",
+    "tkr-aer-worker-impl",
     "tkr-ibmq-worker",
+    "tkr-ibmq-worker-impl",
     "tkr-nexus-worker",
+    "tkr-nexus-worker-impl",
     "tkr-pytket-worker",
     "tkr-pytket-worker-impl",
     "tkr-quantinuum-worker",
+    "tkr-quantinuum-worker-impl",
     "tkr-qulacs-worker",
+    "tkr-qulacs-worker-impl",
 ]
 
 [manifest.dependency-groups]
@@ -3193,27 +3198,52 @@ requires-dist = [
 
 [[package]]
 name = "tkr-aer-worker"
-version = "0.1.5"
+version = "0.2.0"
+source = { editable = "tierkreis_workers/aer_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-aer-worker-impl"
+version = "0.2.0"
 source = { editable = "tierkreis_workers/aer_worker" }
 dependencies = [
     { name = "pytket-qiskit" },
     { name = "tierkreis" },
+    { name = "tkr-aer-worker" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pytket-qiskit" },
     { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-aer-worker", editable = "tierkreis_workers/aer_worker/api" },
 ]
 
 [[package]]
 name = "tkr-ibmq-worker"
-version = "0.1.1"
+version = "0.2.0"
+source = { editable = "tierkreis_workers/ibmq_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-ibmq-worker-impl"
+version = "0.2.0"
 source = { editable = "tierkreis_workers/ibmq_worker" }
 dependencies = [
     { name = "pytket" },
     { name = "pytket-qiskit" },
     { name = "tierkreis" },
+    { name = "tkr-ibmq-worker" },
 ]
 
 [package.metadata]
@@ -3221,21 +3251,35 @@ requires-dist = [
     { name = "pytket" },
     { name = "pytket-qiskit" },
     { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-ibmq-worker", editable = "tierkreis_workers/ibmq_worker/api" },
 ]
 
 [[package]]
 name = "tkr-nexus-worker"
-version = "0.1.6"
+version = "0.2.0"
+source = { editable = "tierkreis_workers/nexus_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-nexus-worker-impl"
+version = "0.2.0"
 source = { editable = "tierkreis_workers/nexus_worker" }
 dependencies = [
     { name = "qnexus" },
     { name = "tierkreis" },
+    { name = "tkr-nexus-worker" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-nexus-worker", editable = "tierkreis_workers/nexus_worker/api" },
 ]
 
 [[package]]
@@ -3284,12 +3328,24 @@ test = [
 
 [[package]]
 name = "tkr-quantinuum-worker"
-version = "0.1.1"
+version = "0.2.0"
+source = { editable = "tierkreis_workers/quantinuum_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-quantinuum-worker-impl"
+version = "0.2.0"
 source = { editable = "tierkreis_workers/quantinuum_worker" }
 dependencies = [
     { name = "pytket-quantinuum" },
     { name = "qnexus" },
     { name = "tierkreis" },
+    { name = "tkr-quantinuum-worker" },
 ]
 
 [package.metadata]
@@ -3297,21 +3353,35 @@ requires-dist = [
     { name = "pytket-quantinuum", specifier = ">=0.57.0" },
     { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-quantinuum-worker", editable = "tierkreis_workers/quantinuum_worker/api" },
 ]
 
 [[package]]
 name = "tkr-qulacs-worker"
-version = "0.1.1"
+version = "0.2.0"
+source = { editable = "tierkreis_workers/qulacs_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-qulacs-worker-impl"
+version = "0.2.0"
 source = { editable = "tierkreis_workers/qulacs_worker" }
 dependencies = [
     { name = "pytket-qulacs" },
     { name = "tierkreis" },
+    { name = "tkr-qulacs-worker" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pytket-qulacs", specifier = ">=0.41.0" },
     { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-qulacs-worker", editable = "tierkreis_workers/qulacs_worker/api" },
 ]
 
 [[package]]

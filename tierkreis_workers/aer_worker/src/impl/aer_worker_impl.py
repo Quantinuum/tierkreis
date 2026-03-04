@@ -1,5 +1,4 @@
 import logging
-from sys import argv
 from typing import Any
 
 from pytket._tket.circuit import Circuit
@@ -108,11 +107,3 @@ def submit_single(circuit: Circuit, n_shots: int) -> BackendResult:
     :rtype: BackendResult
     """
     return AerBackend().run_circuit(circuit, n_shots=n_shots)
-
-
-def main() -> None:
-    worker.app(argv)
-
-
-if __name__ == "__main__":
-    main()

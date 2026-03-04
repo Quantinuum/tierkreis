@@ -53,12 +53,12 @@ stubs-generate-new dir:
 
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
-  just stubs-generate 'tierkreis_workers/aer_worker'
-  just stubs-generate 'tierkreis_workers/ibmq_worker'
-  just stubs-generate 'tierkreis_workers/nexus_worker'
+  just stubs-generate-new 'tierkreis_workers/aer_worker'
+  just stubs-generate-new 'tierkreis_workers/ibmq_worker'
+  just stubs-generate-new 'tierkreis_workers/nexus_worker'
   just stubs-generate-new 'tierkreis_workers/pytket_worker'
-  just stubs-generate 'tierkreis_workers/quantinuum_worker'
-  just stubs-generate 'tierkreis_workers/qulacs_worker'
+  just stubs-generate-new 'tierkreis_workers/quantinuum_worker'
+  just stubs-generate-new 'tierkreis_workers/qulacs_worker'
 
   just stubs-generate-api 'docs/source/examples/example_workers/auth_worker'
   just stubs-generate-api 'docs/source/examples/example_workers/error_worker'
@@ -67,12 +67,12 @@ generate:
   just stubs-generate-api 'docs/source/examples/example_workers/scipy_worker'
   just stubs-generate-api 'docs/source/examples/example_workers/substitution_worker'
 
-  cp 'tierkreis_workers/aer_worker/stubs.py' tierkreis/tierkreis/aer_worker.py
-  cp 'tierkreis_workers/ibmq_worker/stubs.py' tierkreis/tierkreis/ibmq_worker.py
-  cp 'tierkreis_workers/nexus_worker/stubs.py' tierkreis/tierkreis/nexus_worker.py
+  cp 'tierkreis_workers/aer_worker/api/api.py' tierkreis/tierkreis/aer_worker.py
+  cp 'tierkreis_workers/ibmq_worker/api/api.py' tierkreis/tierkreis/ibmq_worker.py
+  cp 'tierkreis_workers/nexus_worker/api/api.py' tierkreis/tierkreis/nexus_worker.py
   cp 'tierkreis_workers/pytket_worker/api/api.py' tierkreis/tierkreis/pytket_worker.py
-  cp 'tierkreis_workers/quantinuum_worker/stubs.py' tierkreis/tierkreis/quantinuum_worker.py
-  cp 'tierkreis_workers/qulacs_worker/stubs.py' tierkreis/tierkreis/qulacs_worker.py
+  cp 'tierkreis_workers/quantinuum_worker/api/api.py' tierkreis/tierkreis/quantinuum_worker.py
+  cp 'tierkreis_workers/qulacs_worker/api/api.py' tierkreis/tierkreis/qulacs_worker.py
 
 check-stubs:
   just generate

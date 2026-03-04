@@ -1,12 +1,14 @@
 [project]
-name = "tkr_aer_worker"
-version = "0.1.5"
-description = "A tierkreis worker for Aer."
+name = "tkr-aer-worker-impl"
+version = "0.2.0"
+description = "A Tierkreis worker for Aer."
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "tierkreis",
     "pytket-qiskit",
+    "tkr-aer-worker"
 ]
 
 [build-system]
@@ -24,6 +26,7 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
+tkr-aer-worker = { workspace = true }
 
 [project.scripts]
-tkr_aer_worker = "main:main"
+tkr-aer-worker-impl = "src.main:main"

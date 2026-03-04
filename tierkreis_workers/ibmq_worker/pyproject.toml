@@ -1,13 +1,15 @@
 [project]
-name = "tkr_ibmq_worker"
-version = "0.1.1"
-description = "A tierkreis worker for compilation of ibmq backends."
+name = "tkr-ibmq-worker-impl"
+version = "0.2.0"
+description = "A Tierkreis worker for compilation of ibmq backends."
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "tierkreis",
     "pytket",
     "pytket-qiskit",
+    "tkr-ibmq-worker"
 ]
 
 [build-system]
@@ -25,6 +27,7 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
+tkr-ibmq-worker = { workspace = true }
 
 [project.scripts]
-tkr_ibmq_worker = "main:main"
+tkr-ibmq-worker-impl = "src.main:main"

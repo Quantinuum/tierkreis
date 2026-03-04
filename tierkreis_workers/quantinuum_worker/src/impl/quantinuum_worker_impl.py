@@ -1,8 +1,6 @@
 import time
-from sys import argv
 
 import qnexus as qnx
-from default_pass_quantinuum import default_compilation_pass
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult
@@ -10,9 +8,10 @@ from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
 from pytket.passes import BasePass
 from qnexus.models import IssuerEnum
 from qnexus.models.references import ExecutionResultRef
+from src.impl.default_pass_quantinuum import default_compilation_pass
+from tierkreis.exceptions import TierkreisError
 
 from tierkreis import Worker
-from tierkreis.exceptions import TierkreisError
 
 worker = Worker("quantinuum_worker")
 
@@ -144,11 +143,3 @@ def run_circuit(circuit: Circuit, n_shots: int, device_name: str) -> BackendResu
         msg = f"Result was not a backend result: {backend_result}"
         raise TierkreisError(msg)
     return backend_result
-
-
-def main() -> None:
-    worker.app(argv)
-
-
-if __name__ == "__main__":
-    main()

@@ -1,4 +1,3 @@
-from sys import argv
 from typing import Any
 
 from pytket._tket.circuit import Circuit
@@ -58,7 +57,3 @@ def run_circuits(
     backend = get_backend(result_type, gpu_sim)
     config = get_config(seed)
     return backend.run_circuits(circuits, n_shots, **config)
-
-
-if __name__ == "__main__":
-    worker.app(argv)

@@ -1,11 +1,13 @@
 [project]
-name = "tkr_qulacs_worker"
-description = "A tierkreis worker for Qulacs."
-version = "0.1.1"
+name = "tkr-qulacs-worker-impl"
+description = "A Tierkreis worker for Qulacs."
+version = "0.2.0"
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
 requires-python = ">=3.12"
 dependencies = [
     "pytket-qulacs>=0.41.0",
     "tierkreis",
+    "tkr-qulacs-worker"
 ]
 
 [build-system]
@@ -23,6 +25,7 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
+tkr-qulacs-worker = { workspace = true }
 
 [project.scripts]
-tkr_qulacs_worker = "main:main"
+tkr-qulacs-worker-impl = "src.main:main"

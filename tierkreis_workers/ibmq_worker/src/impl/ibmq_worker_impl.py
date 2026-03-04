@@ -1,16 +1,15 @@
 from collections.abc import Sequence
-from sys import argv
 
-from default_pass import IBMQ_GATE_SET, default_compilation_pass
 from pytket._tket.circuit import Circuit
 from pytket.architecture import Architecture
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.ibm import IBMQBackend
 from pytket.passes import BasePass
+from src.impl.default_pass import IBMQ_GATE_SET, default_compilation_pass
+from tierkreis.exceptions import TierkreisError
 
 from tierkreis import Worker
-from tierkreis.exceptions import TierkreisError
 
 worker = Worker("ibmq_worker")
 
@@ -171,11 +170,3 @@ def run_circuit(circuit: Circuit, n_shots: int, device_name: str) -> BackendResu
     """
     backend = IBMQBackend(device_name)
     return backend.run_circuit(circuit, n_shots)
-
-
-def main() -> None:
-    worker.app(argv)
-
-
-if __name__ == "__main__":
-    main()

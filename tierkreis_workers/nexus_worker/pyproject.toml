@@ -1,12 +1,14 @@
 [project]
-name = "tkr_nexus_worker"
-version = "0.1.6"
-description = "A tierkreis worker for interacting with Nexus."
+name = "tkr-nexus-worker-impl"
+version = "0.2.0"
+description = "A Tierkreis worker for interacting with Nexus."
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "tierkreis",
     "qnexus==0.37.1",
+    "tkr-nexus-worker"
 ]
 
 [build-system]
@@ -24,6 +26,7 @@ include = [
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
+tkr-nexus-worker = { workspace = true }
 
 [project.scripts]
-tkr_nexus_worker = "main:main"
+tkr-nexus-worker-impl = "src.main:main"
