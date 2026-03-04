@@ -47,6 +47,8 @@ if __name__ == "__main__":
 def python_worker_pyproject(worker_name: str) -> str:
     """Generate the pyproject.toml for the worker workspace.
 
+    This is the full project containing the implementation.
+
     :param worker_name: Name of the worker.
     :type worker_name: str
     :return: The generated pyproject.toml content.
@@ -87,10 +89,9 @@ tkr_{worker_name} = "src.main:main"
 
 
 def python_worker_api_pyproject(worker_name: str) -> str:
-    """Generate the pyproject.toml for the worker.
+    """Generate the pyproject.toml for the worker api.
 
-    Either for the api directory (only stubs) used during build time or
-    the src directory (the actual worker implementation) used during runtime.
+    This is the API subproject containing the worker stubs.
 
     :param worker_name: Name of the worker.
     :type worker_name: str
@@ -100,7 +101,7 @@ def python_worker_api_pyproject(worker_name: str) -> str:
     template = f"""[project]
 name = "tkr-{package_name}"
 version = "0.1.0"
-description = "A tierkreis worker implementation."
+description = "A tierkreis worker api."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [ {{name = "Your Name", email = "you@example.com"}} ]

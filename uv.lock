@@ -28,6 +28,7 @@ members = [
     "tkr-ibmq-worker",
     "tkr-nexus-worker",
     "tkr-pytket-worker",
+    "tkr-pytket-worker-impl",
     "tkr-quantinuum-worker",
     "tkr-qulacs-worker",
 ]
@@ -3239,20 +3240,30 @@ requires-dist = [
 
 [[package]]
 name = "tkr-pytket-worker"
-version = "0.1.6"
+version = "0.2.0"
+source = { editable = "tierkreis_workers/pytket_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-pytket-worker-impl"
+version = "0.2.0"
 source = { editable = "tierkreis_workers/pytket_worker" }
 dependencies = [
     { name = "pytket" },
     { name = "pytket-qirpass" },
     { name = "qnexus" },
     { name = "tierkreis" },
+    { name = "tkr-pytket-worker" },
 ]
 
-[package.optional-dependencies]
-backend-qiskit = [
+[package.dev-dependencies]
+test = [
     { name = "pytket-qiskit" },
-]
-backend-quantinuum = [
     { name = "pytket-quantinuum" },
 ]
 
@@ -3260,12 +3271,16 @@ backend-quantinuum = [
 requires-dist = [
     { name = "pytket" },
     { name = "pytket-qirpass" },
-    { name = "pytket-qiskit", marker = "extra == 'backend-qiskit'", specifier = ">=0.77.0" },
-    { name = "pytket-quantinuum", marker = "extra == 'backend-quantinuum'", specifier = ">=0.57.0" },
     { name = "qnexus" },
     { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-pytket-worker", editable = "tierkreis_workers/pytket_worker/api" },
 ]
-provides-extras = ["backend-qiskit", "backend-quantinuum"]
+
+[package.metadata.requires-dev]
+test = [
+    { name = "pytket-qiskit", specifier = ">=0.77.0" },
+    { name = "pytket-quantinuum", specifier = ">=0.57.0" },
+]
 
 [[package]]
 name = "tkr-quantinuum-worker"

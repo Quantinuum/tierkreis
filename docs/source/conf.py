@@ -29,7 +29,7 @@ autodoc2_packages = [
         "module": "nexus_worker",
     },
     {
-        "path": "../../tierkreis_workers/pytket_worker/main.py",
+        "path": "../../tierkreis_workers/pytket_worker/src/impl/pytket_worker_impl.py",
         "module": "pytket_worker",
     },
     {
