@@ -47,6 +47,7 @@ def _fold_graph_outer[A: PType, B: PType]() -> GraphBuilder[
     tgd = TypedGraphRef[_InnerFuncInput, TKR[B]](
         func.value_ref(),
         TKR[B],
+        _InnerFuncInput,
     )
     applied_next = g.eval(tgd, _InnerFuncInput(accum, headed.head))
 
