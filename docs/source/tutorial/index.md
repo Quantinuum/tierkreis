@@ -4,8 +4,8 @@ This tutorial will guide you through using the basic nodes for constructing a gr
 
 ```{toctree}
 builtins.md
-eval.md
 inputs.md
+eval.md
 loop.md
 map.md
 ```
