@@ -11,7 +11,6 @@ from typing import (
     Mapping,
     NamedTuple,
     Protocol,
-    cast,
     overload,
     runtime_checkable,
 )
@@ -192,7 +191,8 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         :return: The constant value.
         :rtype: TKR[T]
         """
-        idx, port = self.data.const(value)
+        # FinishedGraph exists at build-time only; erase the types at runtime:
+        idx, port = self.data.const(value.data if isinstance(value, FinishedGraph) else value)
         return TKR[T](idx, port)
 
     def ifelse[A: PType, B: PType](
@@ -255,8 +255,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     ) -> TypedGraphRef[A, B]:
         # TODO @philipp-seitz: Turn this into a public method?
         return TypedGraphRef(
-            # FinishedGraph exists at build-time only; erase the types at runtime:
-            cast(TKR[FinishedGraph[A, B]], self.const(graph.data)),
+            self.const(graph),
             graph.outputs_type,
         )
 
