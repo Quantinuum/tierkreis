@@ -22,6 +22,8 @@ members = [
     "tkr-hello-world-worker-impl",
     "tkr-ibmq-worker",
     "tkr-ibmq-worker-impl",
+    "tkr-multiple-outputs-worker",
+    "tkr-multiple-outputs-worker-impl",
     "tkr-nexus-worker",
     "tkr-nexus-worker-impl",
     "tkr-pytket-worker",
@@ -3153,6 +3155,40 @@ requires-dist = [
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-ibmq-worker", editable = "tierkreis_workers/ibmq_worker/api" },
 ]
+
+[[package]]
+name = "tkr-multiple-outputs-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/multiple_outputs_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-multiple-outputs-worker-impl"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/multiple_outputs_worker" }
+dependencies = [
+    { name = "tierkreis" },
+    { name = "tkr-multiple-outputs-worker" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-multiple-outputs-worker", editable = "docs/source/examples/example_workers/multiple_outputs_worker/api" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.15.4" }]
 
 [[package]]
 name = "tkr-nexus-worker"

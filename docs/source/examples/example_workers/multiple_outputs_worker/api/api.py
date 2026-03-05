@@ -1,4 +1,4 @@
-"""Code generated from multiple_outputs namespace. Please do not edit."""
+"""Code generated from multiple_outputs_worker namespace. Please do not edit."""
 
 from typing import NamedTuple, Protocol
 from tierkreis.controller.data.models import TKR
@@ -28,7 +28,7 @@ class new_opaque_point(NamedTuple):
 
     @property
     def namespace(self) -> str:
-        return "multiple_outputs"
+        return "multiple_outputs_worker"
 
 
 class new_point(NamedTuple):
@@ -42,4 +42,4 @@ class new_point(NamedTuple):
 
     @property
     def namespace(self) -> str:
-        return "multiple_outputs"
+        return "multiple_outputs_worker"
