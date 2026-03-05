@@ -9,7 +9,7 @@ from tierkreis.aer_worker import (
 from tierkreis.aer_worker import (
     run_circuit as aer_run,
 )
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import GraphBuilder, FinishedGraph
 from tierkreis.builtins import str_eq, tkr_zip, untuple
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.qulacs_worker import (
@@ -53,7 +53,7 @@ class SimulateJobInputsSingle(NamedTuple):
     compilation_optimisation_level: TKR[int]
 
 
-def aer_simulate_single() -> GraphBuilder[SimulateJobInputsSingle, TKR[BackendResult]]:
+def aer_simulate_single() -> FinishedGraph[SimulateJobInputsSingle, TKR[BackendResult]]:
     """Construct a graph to simulate a single circuit using qiskit aer.
 
     This ignores the simulator_name field.
@@ -71,11 +71,10 @@ def aer_simulate_single() -> GraphBuilder[SimulateJobInputsSingle, TKR[BackendRe
         ),
     )
     res = g.task(aer_run(compiled_circuit, circuit_shots.b))
-    g.outputs(res)
-    return g
+    return g.outputs(res)
 
 
-def qulacs_simulate_single() -> GraphBuilder[
+def qulacs_simulate_single() -> FinishedGraph[
     SimulateJobInputsSingle,
     TKR[BackendResult],
 ]:
@@ -96,11 +95,10 @@ def qulacs_simulate_single() -> GraphBuilder[
         ),
     )
     res = g.task(qulacs_run(compiled_circuit, circuit_shots.b))
-    g.outputs(res)
-    return g
+    return g.outputs(res)
 
 
-def compile_simulate_single() -> GraphBuilder[
+def compile_simulate_single() -> FinishedGraph[
     SimulateJobInputsSingle,
     TKR[BackendResult],
 ]:
@@ -119,15 +117,13 @@ def compile_simulate_single() -> GraphBuilder[
         qulacs_res,
     )
 
-    g.outputs(res)
-    return g
+    return g.outputs(res)
 
 
-def compile_simulate() -> GraphBuilder[SimulateJobInputs, TKR[list[BackendResult]]]:
+def compile_simulate() -> FinishedGraph[SimulateJobInputs, TKR[list[BackendResult]]]:
     """Construct a graph to simulate multiple jobs on either aer or qulacs.
 
     :return: The graph for the simulation.
-    :rtype: GraphBuilder[SimulateJobInputs, TKR[list[BackendResult]]]
     """
     g = GraphBuilder(SimulateJobInputs, TKR[list[BackendResult]])
 
@@ -143,5 +139,4 @@ def compile_simulate() -> GraphBuilder[SimulateJobInputs, TKR[list[BackendResult
     )
     res = g.map(compile_simulate_single(), inputs)
 
-    g.outputs(res)
-    return g
+    return g.outputs(res)

@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
 import tierkreis.builtins.stubs as tkr_builtins
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import GraphBuilder, FinishedGraph
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import TKR
@@ -71,7 +71,7 @@ class MultipleAccOut(NamedTuple):
     acc3: TKR[int]
 
 
-def _loop_body_multiple_acc() -> GraphBuilder[MultipleAcc, MultipleAccOut]:
+def _loop_body_multiple_acc() -> FinishedGraph[MultipleAcc, MultipleAccOut]:
     g = GraphBuilder(MultipleAcc, MultipleAccOut)
 
     acc = g.inputs.acc1
@@ -89,7 +89,7 @@ def _loop_body_multiple_acc() -> GraphBuilder[MultipleAcc, MultipleAccOut]:
     new_acc2 = g.task(tkr_builtins.iadd(a=acc2, b=two))
     new_acc3 = g.task(tkr_builtins.iadd(a=acc3, b=three))
 
-    g.outputs(
+    return g.outputs(
         MultipleAccOut(
             should_continue=should_continue,
             acc1=new_acc,
@@ -98,8 +98,6 @@ def _loop_body_multiple_acc() -> GraphBuilder[MultipleAcc, MultipleAccOut]:
         ),
     )
 
-    return g
-
 
 class LoopMultipleAccOut(NamedTuple):
     acc1: TKR[int]
@@ -107,7 +105,7 @@ class LoopMultipleAccOut(NamedTuple):
     acc3: TKR[int]
 
 
-def loop_multiple_acc() -> GraphBuilder[EmptyModel, LoopMultipleAccOut]:
+def loop_multiple_acc() -> FinishedGraph[EmptyModel, LoopMultipleAccOut]:
     g = GraphBuilder(EmptyModel, LoopMultipleAccOut)
 
     acc1 = g.const(0)
@@ -117,9 +115,7 @@ def loop_multiple_acc() -> GraphBuilder[EmptyModel, LoopMultipleAccOut]:
     body = _loop_body_multiple_acc()
     loop = g.loop(body, MultipleAcc(acc1, acc2, acc3), "my_loop")
 
-    g.outputs(LoopMultipleAccOut(acc1=loop.acc1, acc2=loop.acc2, acc3=loop.acc3))
-
-    return g
+    return g.outputs(LoopMultipleAccOut(acc1=loop.acc1, acc2=loop.acc2, acc3=loop.acc3))
 
 
 class Scoping(NamedTuple):
@@ -132,7 +128,7 @@ class ScopingOut(NamedTuple):
     current: TKR[int]
 
 
-def _loop_body_scoping() -> GraphBuilder[Scoping, ScopingOut]:
+def _loop_body_scoping() -> FinishedGraph[Scoping, ScopingOut]:
     g = GraphBuilder(Scoping, ScopingOut)
 
     one = g.const(1)
@@ -140,16 +136,14 @@ def _loop_body_scoping() -> GraphBuilder[Scoping, ScopingOut]:
     next_val = g.task(tkr_builtins.iadd(g.inputs.current, one))
     should_continue = g.task(tkr_builtins.neq(g.inputs.end, g.inputs.current))
 
-    g.outputs(ScopingOut(should_continue=should_continue, current=next_val))
-
-    return g
+    return g.outputs(ScopingOut(should_continue=should_continue, current=next_val))
 
 
 class LoopScopingOut(NamedTuple):
     result: TKR[int]
 
 
-def loop_scoping() -> GraphBuilder[EmptyModel, LoopScopingOut]:
+def loop_scoping() -> FinishedGraph[EmptyModel, LoopScopingOut]:
     g = GraphBuilder(EmptyModel, LoopScopingOut)
 
     start = g.const(0)
@@ -158,6 +152,4 @@ def loop_scoping() -> GraphBuilder[EmptyModel, LoopScopingOut]:
     body = _loop_body_scoping()
     loop = g.loop(body, Scoping(start, end), "scoped_loop")
 
-    g.outputs(LoopScopingOut(result=loop.current))
-
-    return g
+    return g.outputs(LoopScopingOut(result=loop.current))

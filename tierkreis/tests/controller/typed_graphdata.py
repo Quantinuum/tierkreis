@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
 from tests.workers.graph.stubs import doubler_plus_graph, graph_of_graph, apply_twice
-from tierkreis.builder import GraphBuilder, TypedGraphRef
+from tierkreis.builder import GraphBuilder, TypedGraphRef, FinishedGraph
 from tierkreis.builtins import (
     conjugate,
     eq,
@@ -28,38 +28,34 @@ class DoublerOutput(NamedTuple):
     value: TKR[int]
 
 
-def typed_doubler() -> GraphBuilder[TKR[int], TKR[int]]:
+def typed_doubler() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     out = g.task(itimes(a=g.const(2), b=g.inputs))
-    g.outputs(out)
-    return g
+    return g.outputs(out)
 
 
-def typed_doubler_plus_multi() -> GraphBuilder[DoublerInput, DoublerOutput]:
+def typed_doubler_plus_multi() -> FinishedGraph[DoublerInput, DoublerOutput]:
     g = GraphBuilder(DoublerInput, DoublerOutput)
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
-    g.outputs(DoublerOutput(a=g.inputs.x, value=out))
-    return g
+    return g.outputs(DoublerOutput(a=g.inputs.x, value=out))
 
 
-def typed_doubler_plus() -> GraphBuilder[DoublerInput, TKR[int]]:
+def typed_doubler_plus() -> FinishedGraph[DoublerInput, TKR[int]]:
     g = GraphBuilder(DoublerInput, TKR[int])
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
-    g.outputs(out)
-    return g
+    return g.outputs(out)
 
 
 class TypedEvalOutputs(NamedTuple):
     typed_eval_output: TKR[int]
 
 
-def typed_eval() -> GraphBuilder[EmptyModel, TypedEvalOutputs]:
+def typed_eval() -> FinishedGraph[EmptyModel, TypedEvalOutputs]:
     g = GraphBuilder(EmptyModel, TypedEvalOutputs)
     e = g.eval(typed_doubler_plus(), DoublerInput(x=g.const(6), intercept=g.const(0)))
-    g.outputs(TypedEvalOutputs(typed_eval_output=e))
-    return g
+    return g.outputs(TypedEvalOutputs(typed_eval_output=e))
 
 
 class LoopBodyInput(NamedTuple):
@@ -71,61 +67,54 @@ class LoopBodyOutput(NamedTuple):
     should_continue: TKR[bool]
 
 
-def loop_body() -> GraphBuilder[LoopBodyInput, LoopBodyOutput]:
+def loop_body() -> FinishedGraph[LoopBodyInput, LoopBodyOutput]:
     g = GraphBuilder(LoopBodyInput, LoopBodyOutput)
     a_plus = g.task(iadd(a=g.inputs.loop_acc, b=g.const(1)))
     pred = g.task(igt(a=g.const(10), b=a_plus))
-    g.outputs(LoopBodyOutput(loop_acc=a_plus, should_continue=pred))
-    return g
+    return g.outputs(LoopBodyOutput(loop_acc=a_plus, should_continue=pred))
 
 
-def typed_loop() -> GraphBuilder[EmptyModel, TKR[int]]:
+def typed_loop() -> FinishedGraph[EmptyModel, TKR[int]]:
     g = GraphBuilder(EmptyModel, TKR[int])
     loop = g.loop(loop_body(), LoopBodyInput(loop_acc=g.const(6)))
-    g.outputs(loop.loop_acc)
-    return g
+    return g.outputs(loop.loop_acc)
 
 
-def typed_map_simple() -> GraphBuilder[TKR[list[int]], TKR[list[int]]]:
+def typed_map_simple() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     m = g.map(typed_doubler(), g.inputs)
-    g.outputs(m)
-    return g
+    return g.outputs(m)
 
 
-def typed_map() -> GraphBuilder[TKR[list[int]], TKR[list[int]]]:
+def typed_map() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     ins = g.map(lambda n: DoublerInput(x=n, intercept=g.const(6)), g.inputs)
     m = g.map(typed_doubler_plus(), ins)
-    g.outputs(m)
-    return g
+    return g.outputs(m)
 
 
-def typed_destructuring() -> GraphBuilder[TKR[list[int]], TKR[list[int]]]:
+def typed_destructuring() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     ins = g.map(lambda n: DoublerInput(x=n, intercept=g.const(6)), g.inputs)
     m = g.map(typed_doubler_plus_multi(), ins)
     mout = g.map(lambda x: x.value, m)
-    g.outputs(mout)
-    return g
+    return g.outputs(mout)
 
 
-def tuple_untuple() -> GraphBuilder[EmptyModel, TKR[int]]:
+def tuple_untuple() -> FinishedGraph[EmptyModel, TKR[int]]:
     g = GraphBuilder(EmptyModel, TKR[int])
     t = g.task(tkr_tuple(g.const(1), g.const(2)))
     ut = g.task(untuple(t))
-    g.outputs(g.task(iadd(ut.a, ut.b)))
-    return g
+    return g.outputs(g.task(iadd(ut.a, ut.b)))
 
 
-def factorial() -> GraphBuilder[TKR[int], TKR[int]]:
+def factorial() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     pred = g.task(igt(g.inputs, g.const(1)))
     n_minus_one = g.task(iadd(g.const(-1), g.inputs))
     rec = g.eval(g.ref(), n_minus_one)
     out = g.ifelse(pred, g.task(itimes(g.inputs, rec)), g.const(1))
-    g.outputs(out)
-    return g
+    return g.outputs(out)
 
 
 class GCDInput(NamedTuple):
@@ -133,38 +122,34 @@ class GCDInput(NamedTuple):
     b: TKR[int]
 
 
-def gcd() -> GraphBuilder[GCDInput, TKR[int]]:
+def gcd() -> FinishedGraph[GCDInput, TKR[int]]:
     g = GraphBuilder(GCDInput, TKR[int])
 
     pred = g.task(igt(g.inputs.b, g.const(0)))
     a_mod_b = g.task(mod(g.inputs.a, g.inputs.b))
     rec = g.eval(g.ref(), GCDInput(a=g.inputs.b, b=a_mod_b))
 
-    g.outputs(g.ifelse(pred, rec, g.inputs.a))
-    return g
+    return g.outputs(g.ifelse(pred, rec, g.inputs.a))
 
 
-def tkr_conj() -> GraphBuilder[TKR[complex], TKR[complex]]:
+def tkr_conj() -> FinishedGraph[TKR[complex], TKR[complex]]:
     g = GraphBuilder(TKR[complex], TKR[complex])
     z = g.task(conjugate(g.inputs))
-    g.outputs(z)
-    return g
+    return g.outputs(z)
 
 
-def tkr_list_conj() -> GraphBuilder[TKR[list[complex]], TKR[list[complex]]]:
+def tkr_list_conj() -> FinishedGraph[TKR[list[complex]], TKR[list[complex]]]:
     g = GraphBuilder(TKR[list[complex]], TKR[list[complex]])
     zs = g.map(tkr_conj(), g.inputs)
-    g.outputs(zs)
-    return g
+    return g.outputs(zs)
 
 
-def eval_body_is_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
+def eval_body_is_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
     graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
     out = g.eval(graph_ref, g.inputs)
-    g.outputs(out)
-    return g
+    return g.outputs(out)
 
 
 class ApplyTwiceInput(NamedTuple):
@@ -174,7 +159,7 @@ class ApplyTwiceInput(NamedTuple):
     value: TKR[int]
 
 
-def eval_from_worker_with_graph_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
+def eval_from_worker_with_graph_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
     # This is ok, but we can't pass the graph_ref into ApplyTwiceInput
@@ -184,11 +169,10 @@ def eval_from_worker_with_graph_from_worker() -> GraphBuilder[TKR[int], TKR[int]
     ap2 = g.task(apply_twice())
     ap2_ref = TypedGraphRef(ap2.value_ref(), ApplyTwiceInput, TKR[int])
     out = g.eval(ap2_ref, inputs)
-    g.outputs(out)
-    return g
+    return g.outputs(out)
 
 
-def eval_graph_of_graph() -> GraphBuilder[TKR[int], TKR[int]]:
+def eval_graph_of_graph() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
     # This is ok, but we can't pass the graph_ref into exponentiate_graph:
@@ -196,8 +180,7 @@ def eval_graph_of_graph() -> GraphBuilder[TKR[int], TKR[int]]:
     eg = g.task(graph_of_graph(graph, g.const(3)))
     exp_graph = TypedGraphRef(eg.value_ref(), TKR[int], TKR[int])
     out = g.eval(exp_graph, g.inputs)
-    g.outputs(out)
-    return g
+    return g.outputs(out)
 
 
 def embed_graph():
@@ -219,12 +202,10 @@ def embed_graph():
         )
         even = g.task(eq(g.task(mod(a=g.inputs, b=g.const(2))), g.const(0)))
         n = g.ifelse(even, div2, times3plus1)
-        g.outputs(InnerOutput(log=s, nxt=n))
-        return g
+        return g.outputs(InnerOutput(log=s, nxt=n))
 
     g = GraphBuilder(TKR[int], OuterOutput)
     inner_g = inner()
-    first = g.embed(inner_g, g.inputs)
-    second = g.embed(inner_g, first.nxt)
-    g.outputs(OuterOutput(first.log, second.log, second.nxt))
-    return g
+    first = g.embed(inner_g, g.inputs, InnerOutput)
+    second = g.embed(inner_g, first.nxt, InnerOutput)
+    return g.outputs(OuterOutput(first.log, second.log, second.nxt))

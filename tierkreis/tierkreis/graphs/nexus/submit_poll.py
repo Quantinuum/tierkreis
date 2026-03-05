@@ -3,7 +3,7 @@
 # ruff: noqa: F821
 from typing import NamedTuple
 
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import GraphBuilder, FinishedGraph
 from tierkreis.builtins import tkr_sleep
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.nexus_worker import (
@@ -53,7 +53,7 @@ class _LoopOutputs(NamedTuple):
     should_continue: TKR[bool]
 
 
-def upload_circuit_graph() -> GraphBuilder[UploadCircuitInputs, TKR[ExecuteJobRef]]:
+def upload_circuit_graph() -> FinishedGraph[UploadCircuitInputs, TKR[ExecuteJobRef]]:
     """Construct a graph to upload a circuit to nexus.
 
     :return: A uploading graph.
@@ -61,13 +61,12 @@ def upload_circuit_graph() -> GraphBuilder[UploadCircuitInputs, TKR[ExecuteJobRe
     """
     g = GraphBuilder(UploadCircuitInputs, TKR[ExecuteJobRef])
     programme = g.task(upload_circuit(g.inputs.project_name, g.inputs.circuit))
-    g.outputs(programme)  # type: ignore[arg-type]
-    return g
+    return g.outputs(programme)  # type: ignore[arg-type]
 
 
 def _polling_loop_body(
     polling_interval: float,
-) -> GraphBuilder[TKR[ExecuteJobRef], _LoopOutputs]:
+) -> FinishedGraph[TKR[ExecuteJobRef], _LoopOutputs]:
     g = GraphBuilder(TKR[ExecuteJobRef], _LoopOutputs)
     pred = g.task(is_running(g.inputs))
 
@@ -78,13 +77,12 @@ def _polling_loop_body(
     )
     results = g.ifelse(pred, g.const([]), g.task(get_results(g.inputs)))
 
-    g.outputs(_LoopOutputs(results=results, should_continue=wait))
-    return g
+    return g.outputs(_LoopOutputs(results=results, should_continue=wait))
 
 
 def nexus_submit_and_poll(
     polling_interval: float = 30.0,
-) -> GraphBuilder[JobInputs, TKR[list[BackendResult]]]:
+) -> FinishedGraph[JobInputs, TKR[list[BackendResult]]]:
     """Construct a graph submitting and polling a nexus job.
 
     :param polling_interval: The polling interval in seconds, defaults to 30.0
@@ -110,5 +108,4 @@ def nexus_submit_and_poll(
     )
 
     res = g.loop(_polling_loop_body(polling_interval), ref)
-    g.outputs(res.results)
-    return g
+    return g.outputs(res.results)

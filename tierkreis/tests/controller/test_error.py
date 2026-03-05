@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 
 from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import GraphBuilder, FinishedGraph
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.location import Loc
@@ -16,28 +16,24 @@ from tierkreis.exceptions import TierkreisError
 WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 
-def will_fail_graph() -> GraphBuilder[EmptyModel, TKR[int]]:
+def will_fail_graph() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    graph.outputs(graph.task(fail()))
-    return graph
+    return graph.outputs(graph.task(fail()))
 
 
-def wont_fail_graph() -> GraphBuilder[EmptyModel, TKR[int]]:
+def wont_fail_graph() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    graph.outputs(graph.task(wont_fail()))
-    return graph
+    return graph.outputs(graph.task(wont_fail()))
 
 
-def fail_in_eval() -> GraphBuilder[EmptyModel, TKR[int]]:
+def fail_in_eval() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    graph.outputs(graph.eval(will_fail_graph(), EmptyModel()))
-    return graph
+    return graph.outputs(graph.eval(will_fail_graph(), EmptyModel()))
 
 
-def non_zero_exit_code() -> GraphBuilder[EmptyModel, TKR[int]]:
+def non_zero_exit_code() -> FinishedGraph[EmptyModel, TKR[int]]:
     graph = GraphBuilder(EmptyModel, TKR[int])
-    graph.outputs(graph.task(exit_code_1()))
-    return graph
+    return graph.outputs(graph.task(exit_code_1()))
 
 
 def test_raise_error() -> None:

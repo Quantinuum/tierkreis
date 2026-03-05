@@ -115,6 +115,15 @@ def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
     return exec_script(input=script_input)
 
 
+@dataclass
+class FinishedGraph[Inputs: TModel, Outputs: TModel]:
+    _data: GraphData
+    outputs_type: type[Outputs]
+
+    def get_data(self) -> GraphData:
+        return self._data
+
+
 class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     """Class to construct typed workflow graphs.
 
@@ -153,16 +162,20 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         """
         return TypedGraphRef((-1, "body"), self.inputs_type, self.outputs_type)
 
-    def outputs(self, outputs: Outputs) -> None:
+    def outputs(self, outputs: Outputs) -> FinishedGraph[Inputs, Outputs]:
         """Set output nodes of a graph.
 
         :param outputs: The output nodes.
         :type outputs: Outputs
         """
         self.data.output(inputs=dict_from_tmodel(outputs))
+        return FinishedGraph(self.data, self.outputs_type)
 
-    def embed[A: TModel, B: TModel](self, other: "GraphBuilder[A, B]", inputs: A) -> B:
-        if other.data.graph_output_idx is None:
+    def embed[A: TModel, B: TModel](
+        self, other_fg: FinishedGraph[A, B], inputs: A, outputs_type: type[B]
+    ) -> B:
+        other = other_fg.get_data()
+        if other.graph_output_idx is None:
             raise ValueError("Can only embed graphs with an output node defined.")
         ins: Mapping[str, ValueRef] = dict_from_tmodel(inputs)
 
@@ -174,7 +187,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
             if idx in port_map:
                 return port_map[idx][port]
             if idx not in node_map:
-                node = other.data.nodes[idx]
+                node = other.nodes[idx]
                 if node.type == "input":
                     port_map[idx] = {node.name: ins[node.name]}
                     return port_map[idx][port]
@@ -187,8 +200,8 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
                 node_map[idx] = func("dummy_port")[0]
             return (node_map[idx], port)
 
-        outputs = other.data.nodes[other.data.graph_output_idx].inputs
-        return init_tmodel(other.outputs_type, lambda p: reindex(outputs[p]))
+        outputs = other.nodes[other.graph_output_idx].inputs
+        return init_tmodel(other_fg.outputs_type, lambda p: reindex(outputs[p]))
 
     def const[T: PType](self, value: T) -> TKR[T]:
         """Add a constant node to the graph.
@@ -255,14 +268,14 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
     def _graph_const[A: TModel, B: TModel](
         self,
-        graph: GraphBuilder[A, B],
+        graph: FinishedGraph[A, B],
     ) -> TypedGraphRef[A, B]:
         # TODO @philipp-seitz: Turn this into a public method?
-        idx, port = self.data.const(graph.data.model_dump())
+        idx, port = self.data.const(graph.get_data().model_dump())
         return TypedGraphRef[A, B](
             graph_ref=(idx, port),
             outputs_type=graph.outputs_type,
-            inputs_type=graph.inputs_type,
+            inputs_type=None,  # graph.inputs_type, # pyright: ignore
         )
 
     def task[Out: TModel](self, func: Function[Out]) -> Out:
@@ -281,22 +294,20 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
     def eval[A: TModel, B: TModel](
         self,
-        body: GraphBuilder[A, B] | TypedGraphRef[A, B],
+        body: FinishedGraph[A, B] | TypedGraphRef[A, B],
         eval_inputs: A,
     ) -> B:
         """Add a evaluation node to the graph.
 
         This will evaluate a nested graph with the given inputs.
 
+        :param A the input type of the graph.
+        :param B the output type of the graph.
         :param body: The graph to evaluate.
-        :type body: TypedGraphRef[A, B] | GraphBuilder[A, B],
-            where A are the input type and B the output type of the graph.
         :param eval_inputs: The inputs to the graph.
-        :type eval_inputs: A
         :return: The outputs of the evaluation.
-        :rtype: B
         """
-        if isinstance(body, GraphBuilder):
+        if isinstance(body, FinishedGraph):
             body = self._graph_const(body)
 
         idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(eval_inputs))("dummy")
@@ -304,7 +315,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
     def loop[A: TModel, B: LoopOutput](
         self,
-        body: TypedGraphRef[A, B] | GraphBuilder[A, B],
+        body: TypedGraphRef[A, B] | FinishedGraph[A, B],
         loop_inputs: A,
         name: str | None = None,
     ) -> B:
@@ -314,17 +325,14 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         To trace intermediate values, use the name attribute in conjunction with
         read_loop_trace.
 
+        :param A the input type of the graph.
+        :param B the output type of the graph.
         :param body: The graph to loop.
-        :type body: TypedGraphRef[A, B] | GraphBuilder[A, B],
-            where A are the input type and B the output type of the graph.
         :param loop_inputs: The inputs to the loop graph.
-        :type loop_inputs: A
         :param name: An optional name for the loop.
-        :type name: str | None
         :return: The outputs of the loop.
-        :rtype: B
         """
-        if isinstance(body, GraphBuilder):
+        if isinstance(body, FinishedGraph):
             body = self._graph_const(body)
 
         graph = body.graph_ref
@@ -379,7 +387,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     def map[A: PType, B: TNamedModel](
         self,
         body: (
-            Callable[[TKR[A]], B] | TypedGraphRef[TKR[A], B] | GraphBuilder[TKR[A], B]
+            Callable[[TKR[A]], B] | TypedGraphRef[TKR[A], B] | FinishedGraph[TKR[A], B]
         ),
         map_inputs: TKR[list[A]],
     ) -> TList[B]: ...
@@ -388,7 +396,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     def map[A: TNamedModel, B: PType](
         self,
         body: (
-            Callable[[A], TKR[B]] | TypedGraphRef[A, TKR[B]] | GraphBuilder[A, TKR[B]]
+            Callable[[A], TKR[B]] | TypedGraphRef[A, TKR[B]] | FinishedGraph[A, TKR[B]]
         ),
         map_inputs: TList[A],
     ) -> TKR[list[B]]: ...
@@ -396,7 +404,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
     @overload
     def map[A: TNamedModel, B: TNamedModel](
         self,
-        body: TypedGraphRef[A, B] | GraphBuilder[A, B],
+        body: TypedGraphRef[A, B] | FinishedGraph[A, B],
         map_inputs: TList[A],
     ) -> TList[B]: ...
 
@@ -406,26 +414,23 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         body: (
             Callable[[TKR[A]], TKR[B]]
             | TypedGraphRef[TKR[A], TKR[B]]
-            | GraphBuilder[TKR[A], TKR[B]]
+            | FinishedGraph[TKR[A], TKR[B]]
         ),
         map_inputs: TKR[list[A]],
     ) -> TKR[list[B]]: ...
 
     def map(
         self,
-        body: TypedGraphRef | Callable | GraphBuilder,
+        body: TypedGraphRef | Callable | FinishedGraph,
         map_inputs: TKR | TList,
     ) -> Any:
         """Add a map node to the graph.
 
         :param body: The graph to map over.
-        :type body: TypedGraphRef | Callable | GraphBuilder
         :param map_inputs: The values to map over.
-        :type map_inputs: TKR | TList
         :return: The outputs of the map.
-        :rtype: Any
         """
-        if isinstance(body, GraphBuilder):
+        if isinstance(body, FinishedGraph):
             body = self._graph_const(body)
 
         if isinstance(body, Callable):
