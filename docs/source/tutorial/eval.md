@@ -15,7 +15,7 @@ pip install tierkreis
 ## Graph
 
 We can run graphs from within other graphs by using `GraphBuilder.eval`.
-Recall the `fib_step` graph that we wrote last time:
+Recall the `fib_step` graph that we wrote in the [previous tutorial](./loop.md)
 
 ```{code-cell} ipython3
 from typing import NamedTuple
