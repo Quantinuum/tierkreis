@@ -29,14 +29,14 @@ def parse_args(
     """Parse the arguments for the init subcommand."""
     init_subparsers = parser.add_subparsers(
         dest="init_type",
-        help="Initialize tierkreis related structures",
+        help="Initialize Tierkreis related structures",
         required=True,
     )
     project = init_subparsers.add_parser(
         "project",
         description="Initialize and manages project wide options. "
         "Make sure to set up a python project first, e.g. by executing `uv init`.",
-        help="Initializes a new tierkreis project and manages project wide options.",
+        help="Initializes a new Tierkreis project and manages project wide options.",
     )
 
     project.add_argument(
@@ -107,6 +107,7 @@ def parse_args(
 
 
 def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -> None:
+    worker_name = worker_name.replace("-", "_")
     base_dir = worker_dir / worker_name
     base_dir.mkdir(exist_ok=True)
     with Path.open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
@@ -115,12 +116,10 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
         fh.write(python_worker_pyproject(worker_name))
     with Path.open(base_dir / "__init__.py", "w+", encoding="utf-8") as fh:
         fh.write(worker_init())
-    src_dir = base_dir / "src"
+    src_dir = base_dir / f"tkr_{worker_name}_impl"
     src_dir.mkdir(exist_ok=True)
     api_dir = base_dir / "api"
     api_dir.mkdir(exist_ok=True)
-    impl_dir = src_dir / "impl"
-    impl_dir.mkdir(exist_ok=True)
     with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_api_pyproject(worker_name))
     with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
@@ -131,10 +130,10 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
             fh.write(external_worker_idl(worker_name))
         return
     with Path.open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_main())
-    with Path.open(impl_dir / "__init__.py", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_main(worker_name))
+    with Path.open(src_dir / "__init__.py", "w+", encoding="utf-8") as fh:
         fh.write(worker_impl_init())
-    with Path.open(impl_dir / "worker_impl.py", "w+", encoding="utf-8") as fh:
+    with Path.open(src_dir / "impl.py", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_impl(worker_name))
 
     _gen_worker_stubs(worker_dir, worker_name, "./api/api.py")
@@ -308,8 +307,8 @@ class TierkreisInitCli:
         """Add the init subcommand."""
         parser = main_parser.add_parser(
             "init",
-            description="Initializes the tierkreis project resources",
-            help="Initializes the tierkreis project resources. Run `tkr init --help`"
+            description="Initializes the Tierkreis project resources",
+            help="Initializes the Tierkreis project resources. Run `tkr init --help`"
             " for more information.",
         )
         parser = parse_args(parser)
