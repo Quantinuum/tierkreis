@@ -1,11 +1,12 @@
 """Code generated from graph namespace. Please do not edit."""
 
-from typing import NamedTuple, Protocol
+from typing import NamedTuple
 from tierkreis.controller.data.models import TKR
-from tierkreis.controller.data.types import Struct, FinishedGraph
+from tierkreis.controller.data.types import FinishedGraph
 
 
-class ApplyTwiceInput(Struct, Protocol):
+# ALAN manually edited this, generated stub had `class ApplyTwiceInput(Struct, Protocol)`
+class ApplyTwiceInput(NamedTuple):
     graph: TKR[FinishedGraph[TKR[int], TKR[int]]]  # noqa: F821 # fmt: skip
     value: TKR[int]  # noqa: F821 # fmt: skip
 

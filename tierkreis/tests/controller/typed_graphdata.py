@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from tests.workers.graph.stubs import doubler_plus_graph, graph_of_graph, apply_twice
+from tests.workers.graph.stubs import doubler_plus_graph, graph_of_graph, apply_twice, ApplyTwiceInput
 from tierkreis.builder import GraphBuilder, TypedGraphRef, FinishedGraph
 from tierkreis.builtins import (
     conjugate,
@@ -15,7 +15,7 @@ from tierkreis.builtins import (
     tkr_str,
 )
 from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.models import TKR, OpaqueType
+from tierkreis.controller.data.models import TKR
 
 
 class DoublerInput(NamedTuple):
@@ -149,13 +149,6 @@ def eval_body_is_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
     graph = TypedGraphRef(g.task(doubler_plus_graph()), TKR[int])
     out = g.eval(graph, g.inputs)
     return g.finish_with_outputs(out)
-
-
-class ApplyTwiceInput(NamedTuple):
-    # Note we mangle this like the stub generator would, although the generator
-    # never sees the graph's inputs as they are hidden in an untyped GraphData.
-    graph: TKR[OpaqueType["tierkreis.controller.data.graph.GraphData"]]  # noqa: F821
-    value: TKR[int]
 
 
 def eval_from_worker_with_graph_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
