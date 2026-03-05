@@ -59,6 +59,7 @@ generate:
   just stubs-generate-new 'tierkreis_workers/pytket_worker'
   just stubs-generate 'tierkreis_workers/quantinuum_worker'
   just stubs-generate 'tierkreis_workers/qulacs_worker'
+  just stubs-generate 'tierkreis/tests/workers/graph'
 
   just stubs-generate-api 'docs/source/examples/example_workers/auth_worker'
   just stubs-generate-api 'docs/source/examples/example_workers/error_worker'
