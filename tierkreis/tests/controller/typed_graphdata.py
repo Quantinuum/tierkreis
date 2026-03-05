@@ -146,9 +146,8 @@ def tkr_list_conj() -> FinishedGraph[TKR[list[complex]], TKR[list[complex]]]:
 
 def eval_body_is_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
-    graph = g.task(doubler_plus_graph())
-    graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
-    out = g.eval(graph_ref, g.inputs)
+    graph = TypedGraphRef(g.task(doubler_plus_graph()), TKR[int])
+    out = g.eval(graph, g.inputs)
     return g.finish_with_outputs(out)
 
 
@@ -162,24 +161,19 @@ class ApplyTwiceInput(NamedTuple):
 def eval_from_worker_with_graph_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
-    # This is ok, but we can't pass the graph_ref into ApplyTwiceInput
-    # graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
     inputs = ApplyTwiceInput(graph=graph, value=g.inputs)
 
-    ap2 = g.task(apply_twice())
-    ap2_ref = TypedGraphRef(ap2.value_ref(), ApplyTwiceInput, TKR[int])
-    out = g.eval(ap2_ref, inputs)
+    ap2 = TypedGraphRef(g.task(apply_twice()), TKR[int])
+    out = g.eval(ap2, inputs)
     return g.finish_with_outputs(out)
 
 
 def eval_graph_of_graph() -> FinishedGraph[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
-    # This is ok, but we can't pass the graph_ref into exponentiate_graph:
-    # graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
-    eg = g.task(graph_of_graph(graph, g.const(3)))
-    exp_graph = TypedGraphRef(eg.value_ref(), TKR[int], TKR[int])
-    out = g.eval(exp_graph, g.inputs)
+    e1 = g.task(graph_of_graph(graph, g.const(3)))
+    eg = TypedGraphRef(e1, TKR[int])
+    out = g.eval(eg, g.inputs)
     return g.finish_with_outputs(out)
 
 

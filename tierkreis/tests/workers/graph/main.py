@@ -4,7 +4,6 @@ from typing import NamedTuple
 from tierkreis import Worker
 from tierkreis.builder import GraphBuilder, FinishedGraph, TypedGraphRef
 from tierkreis.builtins import iadd, itimes
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import TKR
 
 worker = Worker("graph")
@@ -21,14 +20,16 @@ def doubler_plus_graph() -> FinishedGraph[TKR[int], TKR[int]]:
 @worker.task()
 # The input graph here is expected to be int->int, but we have no way to express that in the type system.
 # (GraphBuilder doesn't work as it's not accepted by the stub generator)
-def graph_of_graph(f: GraphData, n: int) -> FinishedGraph[TKR[int], TKR[int]]:
+def graph_of_graph(
+    f: FinishedGraph[TKR[int], TKR[int]], n: int
+) -> FinishedGraph[TKR[int], TKR[int]]:
     """Builds a new graph: lambda x: f^n(x)
 
     I.e. the graph applies the first argument `f` to the graph's input `n` times.
     The graph contains the argument graph `f` as a constant."""
     g = GraphBuilder(TKR[int], TKR[int])
     v = g.inputs
-    ref = TypedGraphRef(g.const(f).value_ref(), TKR[int], TKR[int])
+    ref: TypedGraphRef[TKR[int], TKR[int]] = g._graph_const(f)
     for _ in range(n):
         v = g.eval(ref, v)
     return g.finish_with_outputs(v)
@@ -46,7 +47,7 @@ def apply_twice() -> FinishedGraph[ApplyTwiceInput, TKR[int]]:
     That is, `f` and `x` are inputs to the graph, not the worker function building it.
     """
     g = GraphBuilder(ApplyTwiceInput, TKR[int])
-    f = TypedGraphRef(g.inputs.graph.value_ref(), TKR[int], TKR[int])
+    f = TypedGraphRef(g.inputs.graph, TKR[int])
     run_once = g.eval(f, g.inputs.value)
     run_twice = g.eval(f, run_once)
     return g.finish_with_outputs(run_twice)

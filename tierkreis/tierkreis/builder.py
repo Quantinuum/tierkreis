@@ -11,6 +11,7 @@ from typing import (
     Mapping,
     NamedTuple,
     Protocol,
+    cast,
     overload,
     runtime_checkable,
 )
@@ -66,11 +67,9 @@ class TypedGraphRef[Ins: TModel, Outs: TModel]:
 
     :attr graph_ref: The graph reference.
     :attr outputs_type: The output type of the graph.
-    :attr inputs_type: The input type of the graph.
     """
 
-    graph_ref: ValueRef
-    inputs_type: type[Ins]
+    graph_ref: TKR[FinishedGraph[Ins, Outs]]
     outputs_type: type[Outs]
 
 
@@ -144,7 +143,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         :return: The ref of the typed graph.
         :rtype: TypedGraphRef[Inputs, Outputs]
         """
-        return TypedGraphRef((-1, "body"), self.inputs_type, self.outputs_type)
+        return TypedGraphRef(TKR(-1, "body"), self.outputs_type)
 
     def finish_with_outputs(self, outputs: Outputs) -> FinishedGraph[Inputs, Outputs]:
         """Set output nodes of a graph.
@@ -255,11 +254,10 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         graph: FinishedGraph[A, B],
     ) -> TypedGraphRef[A, B]:
         # TODO @philipp-seitz: Turn this into a public method?
-        idx, port = self.data.const(graph.data.model_dump())
-        return TypedGraphRef[A, B](
-            graph_ref=(idx, port),
-            outputs_type=graph.outputs_type,
-            inputs_type=None,  # graph.inputs_type, # pyright: ignore
+        return TypedGraphRef(
+            # FinishedGraph exists at build-time only; erase the types at runtime:
+            cast(TKR[FinishedGraph[A, B]], self.const(graph.data)),
+            graph.outputs_type,
         )
 
     def task[Out: TModel](self, func: Function[Out]) -> Out:
@@ -294,7 +292,9 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         if isinstance(body, FinishedGraph):
             body = self._graph_const(body)
 
-        idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(eval_inputs))("dummy")
+        idx, _ = self.data.eval(
+            body.graph_ref.value_ref(), dict_from_tmodel(eval_inputs)
+        )("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
     def loop[A: TModel, B: LoopOutput](
@@ -319,9 +319,8 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         if isinstance(body, FinishedGraph):
             body = self._graph_const(body)
 
-        graph = body.graph_ref
         idx, _ = self.data.loop(
-            graph,
+            body.graph_ref.value_ref(),
             dict_from_tmodel(loop_inputs),
             "should_continue",
             name,
@@ -363,7 +362,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         body: TypedGraphRef[A, B],
     ) -> TList[B]:
         ins = dict_from_tmodel(map_inputs._value)  # noqa: SLF001
-        idx, _ = self.data.map(body.graph_ref, ins)("x")
+        idx, _ = self.data.map(body.graph_ref.value_ref(), ins)("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
 
