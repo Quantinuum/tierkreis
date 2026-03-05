@@ -177,13 +177,12 @@ class ApplyTwiceInput(NamedTuple):
 def eval_from_worker_with_graph_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
-    # This is ok, but we can't pass the graph_ref into ApplyTwiceInputs
+    # This is ok, but we can't pass the graph_ref into ApplyTwiceInput
     # graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
     inputs = ApplyTwiceInput(graph=graph, value=g.inputs)
 
     ap2 = g.task(apply_twice())
-    # TypedGraphRef Constructor takes outputs then inputs, but type-params are inputs then outputs:
-    ap2_ref = TypedGraphRef(ap2.value_ref(), TKR[int], ApplyTwiceInput)
+    ap2_ref = TypedGraphRef(ap2.value_ref(), ApplyTwiceInput, TKR[int])
     out = g.eval(ap2_ref, inputs)
     g.outputs(out)
     return g

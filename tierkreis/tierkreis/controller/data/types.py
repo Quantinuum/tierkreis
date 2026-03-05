@@ -1,7 +1,6 @@
 """Valid Python types for annotating worker functions and their serialisation."""
 
 # ruff: noqa: ANN001 ANN003 ANN401 due to serialization and inheritance from json
-import collections.abc
 import json
 import logging
 import pickle
@@ -9,7 +8,6 @@ from base64 import b64decode, b64encode
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from inspect import Parameter, _empty, isclass
-from itertools import chain
 from types import NoneType, UnionType
 from typing import (
     Annotated,
@@ -26,7 +24,6 @@ from typing import (
 )
 
 from pydantic import BaseModel, ValidationError
-from pydantic._internal._generics import get_args as pydantic_get_args
 from typing_extensions import TypeIs
 
 from tierkreis.controller.data.core import (
@@ -184,11 +181,11 @@ def _is_generic(o) -> TypeIs[type[TypeVar]]:
 
 
 def _is_list(ptype: object) -> TypeIs[type[Sequence[PType]]]:
-    return get_origin(ptype) == collections.abc.Sequence or get_origin(ptype) is list
+    return get_origin(ptype) == Sequence or get_origin(ptype) is list
 
 
 def _is_mapping(ptype: object) -> TypeIs[type[Mapping[str, PType]]]:
-    return get_origin(ptype) is collections.abc.Mapping or get_origin(ptype) is dict
+    return get_origin(ptype) is Mapping or get_origin(ptype) is dict
 
 
 def _is_tuple(o: object) -> TypeIs[type[tuple[Any, ...]]]:
@@ -259,10 +256,10 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
         case tuple():
             args = get_args(annotation) or [None] * len(ptype)
             return tuple([ser_from_ptype(p, args[i]) for i, p in enumerate(ptype)])
-        case collections.abc.Sequence():
+        case Sequence():
             arg = get_args(annotation)[0] if get_args(annotation) else None
             return [ser_from_ptype(p, arg) for p in ptype]
-        case collections.abc.Mapping():
+        case Mapping():
             arg = get_args(annotation)[1] if get_args(annotation) else None
             return {k: ser_from_ptype(p, arg) for k, p in ptype.items()}
         case DictConvertible():
@@ -371,14 +368,14 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
         }
         return cast("T", origin(**d))
 
-    if issubclass(origin, collections.abc.Sequence):
+    if issubclass(origin, Sequence):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
 
         return cast("T", [coerce_from_annotation(x, args[0]) for x in ser])
 
-    if issubclass(origin, collections.abc.Mapping):
+    if issubclass(origin, Mapping):
         args = get_args(annotation)
         if len(args) == 0:
             return ser
@@ -441,36 +438,6 @@ def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> 
                 return cast("T", bs)
         case _:
             assert_never(method)
-
-
-def generics_in_ptype(ptype: type[PType]) -> set[str]:
-    """Get the generics in a type annotation.
-
-    :param ptype: The ptype to extract generics from.
-    :type ptype: type[PType]
-    :return: The set of generic names in the ptype.
-    :rtype: set[str]
-    """
-    if _is_generic(ptype):
-        return {str(ptype)}
-
-    if _is_union(ptype) or _is_tuple(ptype) or _is_list(ptype) or _is_mapping(ptype):
-        return set(chain(*[generics_in_ptype(x) for x in get_args(ptype)]))
-
-    origin = get_origin(ptype)
-    if origin is not None:
-        return generics_in_ptype(origin)
-
-    if issubclass(ptype, (bool, int, float, complex, str, bytes, NoneType)):
-        return set()
-
-    if issubclass(ptype, (DictConvertible, ListConvertible, NdarraySurrogate, Struct)):
-        return set()
-
-    if issubclass(ptype, BaseModel):
-        return {str(x) for x in pydantic_get_args(ptype)}
-
-    assert_never(ptype)
 
 
 def has_default(t: Parameter) -> bool:

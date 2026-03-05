@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from inspect import isclass
-from itertools import chain
 from typing import (
     Any,
     Callable,
@@ -25,7 +24,7 @@ from tierkreis.controller.data.core import (
     RestrictedNamedTuple,
     ValueRef,
 )
-from tierkreis.controller.data.types import PType, generics_in_ptype
+from tierkreis.controller.data.types import PType
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
@@ -143,15 +142,3 @@ def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef])
         return cast("T", model(*args))
     (ref,) = fields.values()
     return tmodel(*ref)
-
-
-def generics_in_pmodel(pmodel: type[PModel]) -> set[str]:
-    if is_portmapping(pmodel):
-        origin = get_origin(pmodel)
-        if origin is not None:
-            return generics_in_pmodel(origin)
-
-        x = [generics_in_ptype(pmodel.__annotations__[t]) for t in model_fields(pmodel)]
-        return set(chain(*x))
-
-    return generics_in_ptype(pmodel)
