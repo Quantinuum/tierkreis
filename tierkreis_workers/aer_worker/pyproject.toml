@@ -20,4 +20,4 @@ tierkreis = { workspace = true }
 tkr-aer-worker = { workspace = true }
 
 [project.scripts]
-tkr-aer-worker-impl = "src.main:main"
+tkr-aer-worker = "tkr_aer_worker_impl.main:main"
