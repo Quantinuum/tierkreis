@@ -23,4 +23,4 @@ tierkreis = { workspace = true }
 tkr-quantinuum-worker = { workspace = true }
 
 [project.scripts]
-tkr-quantinuum-worker-impl = "src.main:main"
+tkr-quantinuum-worker = "tkr_quantinuum_worker_impl.main:main"

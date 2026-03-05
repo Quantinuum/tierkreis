@@ -30,4 +30,4 @@ tierkreis = { workspace = true }
 tkr-pytket-worker = { workspace = true }
 
 [project.scripts]
-tkr-pytket-worker-impl = "src.main:main"
+tkr-pytket-worker = "tkr_pytket_worker_impl.main:main"

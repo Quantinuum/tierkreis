@@ -22,4 +22,4 @@ tierkreis = { workspace = true }
 tkr-ibmq-worker = { workspace = true }
 
 [project.scripts]
-tkr-ibmq-worker-impl = "src.main:main"
+tkr-ibmq-worker = "tkr_ibmq_worker_impl.main:main"

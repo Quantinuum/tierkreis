@@ -21,4 +21,4 @@ tierkreis = { workspace = true }
 tkr-qulacs-worker = { workspace = true }
 
 [project.scripts]
-tkr-qulacs-worker-impl = "src.main:main"
+tkr-qulacs-worker = "tkr_qulacs_worker_impl.main:main"

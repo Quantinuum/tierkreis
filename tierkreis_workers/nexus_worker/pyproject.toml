@@ -21,4 +21,4 @@ tierkreis = { workspace = true }
 tkr-nexus-worker = { workspace = true }
 
 [project.scripts]
-tkr-nexus-worker-impl = "src.main:main"
+tkr-nexus-worker = "tkr_nexus_worker_impl.main:main"
