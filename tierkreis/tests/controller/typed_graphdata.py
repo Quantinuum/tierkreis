@@ -168,8 +168,8 @@ def eval_body_is_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
 
 
 class ApplyTwiceInput(NamedTuple):
-    # Note we mangle this as the stub generator does, unlike
-    # the original worker ApplyTwiceInput which takes TKR[GraphData]
+    # Note we mangle this like the stub generator would, although the generator
+    # never sees the graph's inputs as they are hidden in an untyped GraphData.
     graph: TKR[OpaqueType["tierkreis.controller.data.graph.GraphData"]]  # noqa: F821
     value: TKR[int]
 

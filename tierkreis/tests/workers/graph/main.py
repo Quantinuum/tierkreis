@@ -36,17 +36,17 @@ def graph_of_graph(f: GraphData, n: int) -> GraphData:
     return g.get_data()
 
 
-class ApplyTwiceInput(NamedTuple):
-    graph: TKR[GraphData]
-    value: TKR[int]
-
-
 @worker.task()
 def apply_twice() -> GraphData:
     """Returns a graph for lambda f,x: f(f(x)).
 
     That is, `f` and `x` are inputs to the graph, not the worker function building it.
     """
+
+    class ApplyTwiceInput(NamedTuple):
+        graph: TKR[GraphData]
+        value: TKR[int]
+
     g = GraphBuilder(ApplyTwiceInput, TKR[int])
     f = TypedGraphRef(g.inputs.graph.value_ref(), TKR[int], TKR[int])
     run_once = g.eval(f, g.inputs.value)
