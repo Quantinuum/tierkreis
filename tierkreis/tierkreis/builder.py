@@ -70,8 +70,8 @@ class TypedGraphRef[Ins: TModel, Outs: TModel]:
     """
 
     graph_ref: ValueRef
-    outputs_type: type[Outs]
     inputs_type: type[Ins]
+    outputs_type: type[Outs]
 
 
 class LoopOutput(TNamedModel, Protocol):
@@ -151,7 +151,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         :return: The ref of the typed graph.
         :rtype: TypedGraphRef[Inputs, Outputs]
         """
-        return TypedGraphRef((-1, "body"), self.outputs_type, self.inputs_type)
+        return TypedGraphRef((-1, "body"), self.inputs_type, self.outputs_type)
 
     def outputs(self, outputs: Outputs) -> None:
         """Set output nodes of a graph.
@@ -279,23 +279,11 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         OutModel = func.out()  # noqa: N806
         return init_tmodel(OutModel, lambda p: (idx, p))
 
-    @overload
     def eval[A: TModel, B: TModel](
         self,
-        body: TypedGraphRef[A, B],
+        body: GraphBuilder[A, B] | TypedGraphRef[A, B],
         eval_inputs: A,
-    ) -> B: ...
-    @overload
-    def eval[A: TModel, B: TModel](
-        self,
-        body: GraphBuilder[A, B],
-        eval_inputs: A,
-    ) -> B: ...
-    def eval[A: TModel, B: TModel](
-        self,
-        body: GraphBuilder[A, B] | TypedGraphRef,
-        eval_inputs: Any,
-    ) -> Any:
+    ) -> B:
         """Add a evaluation node to the graph.
 
         This will evaluate a nested graph with the given inputs.
@@ -314,20 +302,6 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.eval(body.graph_ref, dict_from_tmodel(eval_inputs))("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
-    @overload
-    def loop[A: TModel, B: LoopOutput](
-        self,
-        body: TypedGraphRef[A, B],
-        loop_inputs: A,
-        name: str | None = None,
-    ) -> B: ...
-    @overload
-    def loop[A: TModel, B: LoopOutput](
-        self,
-        body: GraphBuilder[A, B],
-        loop_inputs: A,
-        name: str | None = None,
-    ) -> B: ...
     def loop[A: TModel, B: LoopOutput](
         self,
         body: TypedGraphRef[A, B] | GraphBuilder[A, B],
