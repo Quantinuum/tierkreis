@@ -55,6 +55,13 @@ uv run tkr/graphs/main.py
 > Value is: 1
 ```
 
+You can also run this through the cli:
+```bash
+uv run tkr run -i tkr/graphs/inputs.json -o
+> value: 1
+```
+
+
 From here you can continue with the other tutorials.
 
 ## Tutorials for writing workflows

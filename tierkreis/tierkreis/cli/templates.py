@@ -350,3 +350,13 @@ The worker project depends on the api but not the other way around,
 so you can for example use the api in your graph code without having to install the whole worker.
 
 """
+
+
+def value_json() -> str:
+    """Generate a values.json file to run sample cli command.
+
+    :return: The generated values.json
+    :rtype: str
+    """
+    return """{ "value": 1 }
+"""

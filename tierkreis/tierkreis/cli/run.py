@@ -101,7 +101,7 @@ def parse_args(
         name="run",
         description="Tierkreis: a workflow engine for quantum HPC.",
     )
-    graph = parser.add_mutually_exclusive_group(required=True)
+    graph = parser.add_mutually_exclusive_group()
     graph.add_argument(
         "-f",
         "--from-file",
@@ -112,10 +112,11 @@ def parse_args(
         "-g",
         "--graph-location",
         help="Fully qualifying name of a Callable () -> GraphData. "
-        " Example: tierkreis.cli.sample_graph:simple_eval"
+        " Example: examples.hello_world.hello_world_graph:hello_graph"
         " or a path to a python file and function."
         " Example: examples/hello_world/hello_world_graph.py:hello_graph",
         type=str,
+        default="./tkr/graphs/main.py:your_graph",
     )
     parser.add_argument(
         "-i",
@@ -180,7 +181,7 @@ def parse_args(
 
 
 def run_workflow_args(args: argparse.Namespace) -> None:
-    """Run a tierkreis workflow according to the run command.
+    """Run a Tierkreis workflow according to the run command.
 
     :param args: The arguments parsed from tkr run.
     :type args: argparse.Namespace
