@@ -317,13 +317,16 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
     :return: The coerced value.
     :rtype: T
     """
+    from tierkreis.controller.data.graph import GraphData
+
     if annotation is None:
         return ser
 
     if ds := get_deserializer(annotation):
         return ds.deserializer(ser)
 
-    if get_origin(annotation) is Annotated:
+    origin = get_origin(annotation)
+    if origin is Annotated:
         return coerce_from_annotation(ser, get_args(annotation)[0])
 
     if _is_union(annotation):
@@ -335,7 +338,6 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
         msg = f"Could not deserialise {ser} as {annotation}"
         raise TierkreisError(msg)
 
-    origin = get_origin(annotation)
     if origin is None:
         origin = annotation
 
@@ -372,6 +374,10 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             msg = "Invalid subclass relation encountered."
             raise TypeError(msg)
         return annotation(**ser)
+
+    if issubclass(origin, FinishedGraph):
+        _inputs, outputs = get_args(annotation)
+        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
 
     if issubclass(origin, Struct):
         d = {

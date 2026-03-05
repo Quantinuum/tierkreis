@@ -16,6 +16,7 @@ from tierkreis.controller.data.types import (
 )
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
+from tests.controller.typed_graphdata import typed_doubler
 
 
 class UntupledModel[U, V](BaseModel):
@@ -100,12 +101,18 @@ ptypes: Sequence[PType] = [
     DummyBaseModel(a=5, b=b"some bytes"),
 ]
 
+annotated_ptypes: Sequence[tuple[PType, type]] = [
+    (ptype, type(ptype)) for ptype in ptypes
+] + [  # Not possible to deserialise without annotations
+    (typed_doubler(), FinishedGraph[TKR[int], TKR[int]])
+]
 
-@pytest.mark.parametrize("ptype", ptypes)
-def test_bytes_roundtrip(ptype: PType) -> None:
-    bs = bytes_from_ptype(ptype)
-    new_type = ptype_from_bytes(bs, type(ptype))
-    assert ptype == new_type
+
+@pytest.mark.parametrize(("value", "annotation"), annotated_ptypes)
+def test_bytes_roundtrip(value: PType, annotation: type) -> None:
+    bs = bytes_from_ptype(value)
+    new_type = ptype_from_bytes(bs, annotation)
+    assert value == new_type
 
 
 annotated_ptypes: Sequence[tuple[PType, type]] = [
