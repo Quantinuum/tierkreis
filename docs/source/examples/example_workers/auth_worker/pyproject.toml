@@ -20,5 +20,5 @@ build-backend = "hatchling.build"
 
 
 [project.scripts]
-tkr-auth-worker-impl = "src.main:main"
+tkr-auth-worker = "tkr_auth_worker_impl.main:main"
 

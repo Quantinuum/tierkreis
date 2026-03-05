@@ -3,7 +3,7 @@ from typing import NamedTuple
 from tierkreis import Worker
 from tierkreis.models import portmapping
 
-worker = Worker("multiple_outputs")
+worker = Worker("multiple_outputs_worker")
 
 
 class OpaquePoint(NamedTuple):

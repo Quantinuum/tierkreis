@@ -12,8 +12,6 @@ tkr-hello-world-worker = { workspace = true }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-
-
 [project.scripts]
-tkr-hello-world-worker = "src.main:main"
+tkr-hello-world-worker = "tkr_hello_world_worker_impl.main:main"
 

@@ -20,4 +20,4 @@ build-backend = "hatchling.build"
 
 
 [project.scripts]
-tkr-scipy-worker = "src.main:main"
+tkr-scipy-worker = "tkr_scipy_worker_impl.main:main"

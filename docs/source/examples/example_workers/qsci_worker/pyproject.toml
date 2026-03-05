@@ -24,4 +24,4 @@ build-backend = "hatchling.build"
 
 
 [project.scripts]
-tkr-qsci-worker-impl = "src.main:main"
+tkr-qsci-worker = "tkr_qsci_worker_impl.main:main"

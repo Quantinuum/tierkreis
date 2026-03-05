@@ -15,4 +15,4 @@ build-backend = "hatchling.build"
 
 
 [project.scripts]
-tkr-error-worker-impl = "src.main:main"
+tkr-error-worker = "tkr_error_worker_impl.main:main"

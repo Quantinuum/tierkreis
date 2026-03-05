@@ -21,4 +21,4 @@ build-backend = "hatchling.build"
 
 
 [project.scripts]
-tkr-substitution-worker = "src.main:main"
+tkr-substitution-worker = "tkr_substitution_worker_impl.main:main"
