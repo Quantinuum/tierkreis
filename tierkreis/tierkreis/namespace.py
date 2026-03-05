@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Self
 
 from tierkreis.codegen import format_method, format_model
-from tierkreis.controller.data.models import PModel, is_portmapping, TKR
+from tierkreis.controller.data.models import PModel, is_portmapping
 from tierkreis.controller.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
@@ -46,12 +46,8 @@ class Namespace:
             return
 
         annotations = generic_type.origin.__annotations__
-        decls = []
-        for k,x in annotations.items():
-            if GenericType.from_type(x).origin == TKR:
-                raise TierkreisError("TKR types are not supported in struct fields.")
-            decl = TypedArg(k, GenericType.from_type(x))
-            decls.append(decl)
+        decls = [TypedArg(k, GenericType.from_type(x)) for k, x in annotations.items()]
+        for decl in decls:
             [self.add_struct(g) for g in decl.t.included_structs()]
 
         portmapping_flag = bool(is_portmapping(generic_type.origin))
