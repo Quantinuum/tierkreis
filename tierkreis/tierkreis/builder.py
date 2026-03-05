@@ -138,14 +138,6 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         self.outputs_type = outputs_type
         self.inputs = init_tmodel(self.inputs_type, self.data.input)
 
-    def get_data(self) -> GraphData:
-        """Return the underlying graph from the builder.
-
-        :return: The graph.
-        :rtype: GraphData
-        """
-        return self.data
-
     def ref(self) -> TypedGraphRef[Inputs, Outputs]:
         """Return a reference of the typed graph.
 
