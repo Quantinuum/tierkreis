@@ -200,7 +200,7 @@ def worker_init() -> str:
     :return: An init template
     :rtype: str
     """
-    return """from .api.api import *
+    return """from from .api.api import *
 
 """
 
@@ -249,18 +249,18 @@ The recommend structure for a python worker is as follows:
 ├── api/
 │    ├── api.py
 │    └── pyproject.toml
-├── src/
-│    ├── impl/
-│    │    ├── __init__.py
-│    │    └── worker_impl.py
+├── tkr_{worker_name}_impl/
+│    ├── lib/ (not generated)
+│    ├── __init__.py
+│    ├── impl.py
 │    └── main.py
 ├── README.md (this file)
 └── pyproject.toml
 ```
-The `src` directory contains the worker tasks in `worker_impl.py` which are used during runtime of a workflow.
+The `tkr_{worker_name}_impl` directory contains the worker tasks in `impl.py` which are used during runtime of a workflow.
 For this the toplevel pyproject.toml defines a script entry point which points to the `main.py` file.
 You should not edit this `main.py`.
-The `impl` directory is a placeholder for your library code.
+The `lib` directory is a placeholder for your library code.
 If you're using a preexisting codebase we recommend move your code base there and point the worker tasks at it.
 You than can import the functionality in `worker_impl.py`.
 The source code is packaged as `trk-{worker_name}-impl`.
@@ -322,9 +322,9 @@ By default, the `tkr init project` will do this.
 
 2. Importing the local python module
 ```python
-from workers.example_worker import your_worker_task
+from tkr.workers.example_worker import your_worker_task
 ```
-This will only work if your code is locally available!
+This will only work if your code is locally available, and might need to run as python module (-m).
 
 """
 
