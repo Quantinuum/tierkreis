@@ -5,7 +5,6 @@ from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import FinishedGraph
 
 
-# ALAN manually edited this, generated stub had `class ApplyTwiceInput(Struct, Protocol)`
 class ApplyTwiceInput(NamedTuple):
     graph: TKR[FinishedGraph[TKR[int], TKR[int]]]  # noqa: F821 # fmt: skip
     value: TKR[int]  # noqa: F821 # fmt: skip

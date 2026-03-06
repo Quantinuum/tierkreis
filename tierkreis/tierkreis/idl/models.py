@@ -148,11 +148,13 @@ class Model:
         is_portmapping (bool): Whether the model is a portmapping.
         t (GenericType): The type of the model.
         decl (list[TypedArg]) The list of its typed arguments.
+        is_tmodel (bool): Whether the model is a TNamedModel, i.e. all fields are TKRs or TModels
     """
 
     is_portmapping: bool
     t: GenericType
     decls: list[TypedArg]
+    is_tmodel: bool = False
 
     def __hash__(self) -> int:
         """Produce a hash of the model.
