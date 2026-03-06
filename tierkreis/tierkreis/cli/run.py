@@ -77,6 +77,8 @@ def _load_inputs(input_files: list[str]) -> dict[str, PType]:
         with Path.open(Path(input_files[0])) as fh:
             return {k: json.dumps(v).encode() for k, v in json.load(fh).items()}
     inputs = {}
+    if len(input_files) == 1 and input_files[0] == "None":
+        return inputs
     for input_file in input_files:
         if ":" not in input_file:
             msg = f"Invalid argument: {input_file}"
@@ -127,7 +129,7 @@ def parse_args(
         help="Graph inputs:"
         " Either a single .json file or a key value list  port1:path1 port2:path2"
         " where path is a binary file.",
-        default="workflow_inputs.json",
+        default=["workflow_inputs.json"],
     )
     parser.add_argument(
         "--run-id",
