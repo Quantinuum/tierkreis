@@ -19,7 +19,7 @@ class WorkerStorage(Protocol):
         E.g. for a file storage, relative paths are resolved against a base directory.
 
         :param path: The path to resolve.
-        :type path: Path | str
+        :type path: pathlib.Path | str
         :return: The resolved path according to the storage.
         :rtype: Path
         """
@@ -32,7 +32,7 @@ class WorkerStorage(Protocol):
         determine which function to call.
 
         :param path: The path to read from.
-        :type path: Path
+        :type path: pathlib.Path
         :return: The call args of the worker function.
         :rtype: WorkerCallArgs
         """
@@ -44,7 +44,7 @@ class WorkerStorage(Protocol):
         Input locations are defined in the call args.
 
         :param path: The path to read from.
-        :type path: Path
+        :type path: pathlib.Path
         :return: The bytes read from the input location.
         :rtype: bytes
         """
@@ -56,7 +56,7 @@ class WorkerStorage(Protocol):
         Output locations are defined in the call args.
 
         :param path: The path to write to.
-        :type path: Path
+        :type path: pathlib.Path
         :param value: The bytes to write.
         :type value: bytes
         """
@@ -80,7 +80,7 @@ class WorkerStorage(Protocol):
         Done paths are defined in the call args.
 
         :param path: The path to mark as done.
-        :type path: Path
+        :type path: pathlib.Path
         """
         ...
 
@@ -90,7 +90,7 @@ class WorkerStorage(Protocol):
         Logs are stored in a location defined in the call args.
 
         :param path: The path to write the error logs to.
-        :type path: Path
+        :type path: pathlib.Path
         :param error_logs: The message to write.
         :type error_logs: str
         """

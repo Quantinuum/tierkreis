@@ -165,7 +165,7 @@ class Worker:
         """Run a function with the parameters defined in worker_definition_path.
 
         :param worker_definition_path: The worker call args written by the controller.
-        :type worker_definition_path: Path
+        :type worker_definition_path: pathlib.Path
         :raises TierkreisError: When the function execution results in an error.
         """
         node_definition = self.storage.read_call_args(worker_definition_path)

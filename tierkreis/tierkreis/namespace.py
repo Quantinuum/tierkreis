@@ -99,7 +99,7 @@ class Namespace:
         """Generate a Namespace from a tsp spec file.
 
         :param path: The path to the spec file.
-        :type path: Path
+        :type path: pathlib.Path
         :return: The generated namespace.
         :rtype: Namespace
         """
@@ -146,7 +146,7 @@ from tierkreis.controller.data.types import PType, Struct
         """Write the type stubs to stubs_path.
 
         :param stubs_path: The location to write to.
-        :type stubs_path: Path
+        :type stubs_path: pathlib.Path
         """
         if not stubs_path.parent.exists():
             stubs_path.parent.mkdir(parents=True, exist_ok=True)

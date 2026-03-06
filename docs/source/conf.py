@@ -53,17 +53,19 @@ nb_execution_excludepatterns = [
     "polling_and_dir.ipynb",
     "storage_and_executors.ipynb",
     "hpc.ipynb",
+    "*",
 ]
 
 nitpicky = True
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "examples/**/.venv/**"]
 
 
-suppress_warnings = ["ref.python", "ref.class"]
+# suppress_warnings = ["ref.python", "ref.class"]
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "typing_extensions": ("https://typing-extensions.readthedocs.io/en/latest/", None),
     "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "pydantic_core": ("https://docs.pydantic.dev/latest/api/pydantic_core/", None),
     "pytket": ("https://docs.quantinuum.com/tket/api-docs/", None),
     "pytket.extensions.qiskit": (
         "https://docs.quantinuum.com/tket/extensions/pytket-qiskit/",

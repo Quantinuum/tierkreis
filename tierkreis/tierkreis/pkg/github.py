@@ -31,9 +31,9 @@ class GitHubDependency(TKRDependency):
         """Get the worker cache subdirectory.
 
         :param worker_cache: The base directory for worker caches.
-        :type worker_cache: Path
+        :type worker_cache: pathlib.Path
         :return: The subdirectory path within the worker cache.
-        :rtype: Path
+        :rtype: pathlib.Path
         """
         return worker_cache / "github" / self.account / self.repo / self.branch
 

@@ -19,7 +19,7 @@ def set_tkr_logger(
     Adds a filehandler for use in the controller.
 
     :param file_name: The file to use for the logging.
-    :type file_name: Path
+    :type file_name: pathlib.Path
     :param level: The log level, defaults to logging.INFO
     :type level: int | str, optional
     """

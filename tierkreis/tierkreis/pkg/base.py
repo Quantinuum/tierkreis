@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from tierkreis.consts import WORKER_CACHE
 
 
-class TKRDependency(ABC, BaseModel):
+class TKRDependency(BaseModel, ABC):
     """A worker dependency for a Tierkreis project.
 
     :fields:
@@ -32,8 +32,8 @@ class TKRDependency(ABC, BaseModel):
         :param worker_name: The name of the worker.
         :type worker_name: str
         :param target_dir: The target directory to install the worker into.
-        :type target_dir: Path
+        :type target_dir: pathlib.Path
         :param worker_cache: The worker cache directory, defaults to WORKER_CACHE
-        :type worker_cache: Path, optional
+        :type worker_cache: pathlib.Path, optional
         """
         ...
