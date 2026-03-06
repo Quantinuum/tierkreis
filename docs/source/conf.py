@@ -42,6 +42,11 @@ autodoc2_packages = [
     },
 ]
 autodoc2_hidden_objects = ["private"]
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".ipynb": "myst-nb",
+    ".myst": "myst-nb",
+}
 
 templates_path = ["_templates"]
 nb_execution_excludepatterns = [
@@ -57,7 +62,14 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "examples/**/.venv/**"]
 suppress_warnings = ["ref.python", "ref.class"]
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
+    "typing_extensions": ("https://typing-extensions.readthedocs.io/en/latest/", None),
     "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "pytket": ("https://docs.quantinuum.com/tket/api-docs/", None),
+    "pytket.extensions.qiskit": (
+        "https://docs.quantinuum.com/tket/extensions/pytket-qiskit/",
+        None,
+    ),
+    "qnexus": ("https://docs.quantinuum.com/nexus/", None),
 }
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

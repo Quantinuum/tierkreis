@@ -73,15 +73,15 @@ From here you can continue with the other tutorials.
 
 A sequence of tutorials that cover the fundamentals of writing and operating Tierkreis workflows.
 
-[Our first graph](tutorial/builtins.md)
+[Our first graph](graphs/builtins.md)
 
-[Graph inputs and outputs](tutorial/inputs.md)
+[Graph inputs and outputs](graphs/inputs.md)
 
-[Nested graphs using Eval](tutorial/eval.md)
+[Nested graphs using Eval](graphs/eval.md)
 
-[Iteration using Loop](tutorial/loop.md)
+[Iteration using Loop](graphs/loop.md)
 
-[Parallel computation using Map](tutorial/map.md)
+[Parallel computation using Map](graphs/map.md)
 
 ## Tutorials for writing workers
 

@@ -16,11 +16,11 @@ Tierkreis combines task-based workers with context dependent execution on variou
 installation.md
 core_concepts.md
 getting_started.md
+graphs/index
 visualization.md
 logging_and_errors.md
 worker/index
 executors/index
-tutorial/index
 examples/index
 apidocs/index
 ```
