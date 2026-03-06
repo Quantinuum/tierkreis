@@ -167,15 +167,15 @@ class GraphOutputs(NamedTuple):
     value: TKR[int]
 
 
-def your_graph() -> GraphBuilder[GraphInputs, GraphOutputs]:
+def workflow() -> GraphBuilder[GraphInputs, GraphOutputs]:
     g = GraphBuilder(GraphInputs, GraphOutputs)
     out = g.task(your_worker_task(g.inputs.value))
     g.outputs(GraphOutputs(value=out))
     return g
 
 def main() -> None:
-    graph = your_graph()
-    storage = FileStorage(workflow_id=UUID(int=12345), name="your_graph")
+    graph = workflow()
+    storage = FileStorage(workflow_id=UUID(int=12345), name=your_workflow")
     executor = UvExecutor(
         Path(__file__).parent.parent / "workers", storage.logs_path
     )
@@ -349,4 +349,14 @@ They are encapsulated in a separate package `tkr-{worker_name}` to avoid unneces
 The worker project depends on the api but not the other way around,
 so you can for example use the api in your graph code without having to install the whole worker.
 
+"""
+
+
+def inputs_json() -> str:
+    """Generate a workflow_inputs.json file to run sample cli command.
+
+    :return: The generated workflow.json
+    :rtype: str
+    """
+    return """{ "value": 1 }
 """

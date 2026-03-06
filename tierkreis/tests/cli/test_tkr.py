@@ -98,7 +98,7 @@ default_args = [
 
 cli_params = [
     (
-        [*default_args, "-f", "tierkreis/tests/cli/data/sample_graph"],
+        [*default_args, "-f", "tierkreis/tests/cli/data/sample_graph", "-i", "None"],
         {"simple_eval_output": 12},
     ),
     (

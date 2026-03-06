@@ -14,6 +14,7 @@ from tierkreis.cli.templates import (
     python_worker_impl,
     python_worker_main,
     python_worker_pyproject,
+    inputs_json,
     worker_impl_init,
     worker_init,
     worker_api_readme,
@@ -219,6 +220,8 @@ def run_args(args: argparse.Namespace) -> None:
         graphs_dir.mkdir(exist_ok=True, parents=True)
         with Path.open(graphs_dir / "main.py", "w+", encoding="utf-8") as fh:
             fh.write(default_graph(worker_name))
+        with Path.open(project_dir / "inputs.json", "w+", encoding="utf-8") as fh:
+            fh.write(inputs_json())
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
         print(f"""Successfully generated project in '{project_dir / "tkr"}'.
               

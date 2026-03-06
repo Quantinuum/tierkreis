@@ -59,9 +59,9 @@ def run_workflow(  # noqa: PLR0913
     workflow_id = uuid.uuid4() if run_id is None else uuid.UUID(int=run_id)
     logger.info("Workflow ID is %s", workflow_id)
     storage = ControllerFileStorage(workflow_id, name=name, do_cleanup=True)
-    if registry_path is None:
-        registry_path = Path(__file__).parent
     if use_uv_executor:
+        if registry_path is None:
+            registry_path = Path(__file__).parent
         executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
     else:
         executor = ShellExecutor(registry_path, storage.workflow_dir)
