@@ -50,7 +50,7 @@ The rest will be discarded.
 
 In this example we will use the shell executor to generate a RSA private key to sign a message.
 For this we will use `openssl-genrsa`.
-Additionally we will use the generated key to sign a message using the auth workers introduced in the [map example](../tutorial/map.md).
+Additionally we will use the generated key to sign a message using the auth workers introduced in the [map example](../graphs/map.md).
 
 For the Shell Executor we need to wrap the `genrsa` in a `main.sh` script parsing the inputs and outputs:
 
