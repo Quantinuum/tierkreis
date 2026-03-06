@@ -61,7 +61,7 @@ Reloading is not available through the programming interface.
 ## Usage
 
 The visualizer provides plenty information about the graphs in the system.
-![visualizer overview](./_static/visualization/overview.png)
+![visualizer overview](../_static/visualization/overview.png)
 
 ### General Functionality
 
@@ -87,7 +87,7 @@ Tasks will be displayed by their function names and constant values, inputs and 
 
 The node status is indicated by the border color of the nodes:
 
-![node state example](./_static/visualization/node_states.png)
+![node state example](../_static/visualization/node_states.png)
 
 - Yellow: Node is currently running
 - Green: Node is finished
@@ -110,7 +110,7 @@ The graph symbol indicates a value is a constant subgraph supplied as a nested g
 The higher order nodes `eval`, `map`, and `loop` can be expanded by pressing the `+` button.
 This will show their nested structure.
 
-![node state example](./_static/visualization/Expanded.png)
+![node state example](../_static/visualization/Expanded.png)
 For `eval` nodes this will immediately be the nested graph;
 For `map`/`loop` nodes this will show the individual elements/iterations which each contain their own subgraph.
 For unevaluated graphs, this will only show a placeholder evaluation.
@@ -122,4 +122,4 @@ Logs can be accessed by double-clicking a node.
 If an error has occurred on a node, it will have a `!` button.
 Pressing it will show the error information.
 
-![error logs](./_static/visualization/Debugging.png)
+![error logs](../_static/visualization/Debugging.png)

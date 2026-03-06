@@ -63,7 +63,7 @@ The storage base class is defined in [](#tierkreis.controller.storage.protocol).
 
 A worker implements _atomic_ functionalities that will not be broken further by the controller.
 These functionalities are unrestricted and can be implemented in any language as long as they correctly implement the interface defined by the storage layer.
-To facilitate the interface, workers have access to their own storage layer, see [](tierkreis.worker.storage.protocol).
+To facilitate the interface, workers have access to their own storage layer, see the [API](#tierkreis.worker.storage.protocol).
 Typically, workers represent more expensive operations that run asynchronously.
 See [Workers](#tierkreis.worker.worker.Worker).
 Tierkreis can automatically generate type stubs for python workers.

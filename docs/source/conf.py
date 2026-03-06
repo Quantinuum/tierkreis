@@ -12,32 +12,32 @@ author = "Quantinuum"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
+add_module_names = False
 extensions = ["autodoc2", "myst_nb", "sphinx.ext.intersphinx"]
 autodoc2_packages = [
     "../../tierkreis/tierkreis",
     {
-        "path": "../../tierkreis_workers/aer_worker/src/impl/aer_worker_impl.py",
+        "path": "../../tierkreis_workers/aer_worker/tkr_aer_worker_impl/impl.py",
         "module": "aer_worker",
     },
     {
-        "path": "../../tierkreis_workers/ibmq_worker/src/impl/ibmq_worker_impl.py",
-        "module": "ibmq_worker",
+        "path": "../../tierkreis_workers/ibmq_worker/tkr_ibmq_worker_impl/impl.py",
+        "module": "ibmq_worker.tkr_ibmq_worker_impl.impl",
     },
     {
-        "path": "../../tierkreis_workers/nexus_worker/src/impl/nexus_worker_impl.py",
+        "path": "../../tierkreis_workers/nexus_worker/tkr_nexus_worker_impl/impl.py",
         "module": "nexus_worker",
     },
     {
-        "path": "../../tierkreis_workers/pytket_worker/src/impl/pytket_worker_impl.py",
-        "module": "pytket_worker",
+        "path": "../../tierkreis_workers/pytket_worker/tkr_pytket_worker_impl/impl.py",
+        "module": "pytket_worker.tkr_pytket_worker_impl.impl",
     },
     {
-        "path": "../../tierkreis_workers/quantinuum_worker/src/impl/quantinuum_worker_impl.py",
-        "module": "quantinuum_worker",
+        "path": "../../tierkreis_workers/quantinuum_worker/tkr_quantinuum_worker_impl/impl.py",
+        "module": "quantinuum_worker.tkr_quantinuum_worker_impl.impl",
     },
     {
-        "path": "../../tierkreis_workers/qulacs_worker/src/impl/qulacs_worker_impl.py",
+        "path": "../../tierkreis_workers/qulacs_worker/tkr_qulacs_worker_impl/impl.py",
         "module": "qulacs_worker",
     },
 ]

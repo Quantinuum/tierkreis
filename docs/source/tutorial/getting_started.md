@@ -69,40 +69,4 @@ This will use the following default locations:
 
 From here you can continue with the other tutorials.
 
-## Tutorials for writing workflows
-
-A sequence of tutorials that cover the fundamentals of writing and operating Tierkreis workflows.
-
-[Our first graph](graphs/builtins.md)
-
-[Graph inputs and outputs](graphs/inputs.md)
-
-[Nested graphs using Eval](graphs/eval.md)
-
-[Iteration using Loop](graphs/loop.md)
-
-[Parallel computation using Map](graphs/map.md)
-
-## Tutorials for writing workers
-
-Tutorials on writing workers that provide additional tasks.
-For a general overview look at the [worker documentation](worker/index.md)
-For worker libraries see [this document](worker/native_workers/index.md)
-
-### Tierkreis Python library
-
-[Hello world worker](worker/hello_world.md)
-
-[Complex types in Tierkreis Python workers](worker/complex_types.md)
-
-### Other Workers
-
-[External workers with an IDL](worker/external_workers.md)
-
-## Executors
-
-[Overview](executors/index.md)
-
-[Shell Executors](executors/shell.md)
-
-[HPC Executors](executors/hpc.md)
+Next up is [building your first graph!](./my_first_graph.md)

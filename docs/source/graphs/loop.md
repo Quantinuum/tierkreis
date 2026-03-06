@@ -124,7 +124,7 @@ loop_output = g.loop(body, LoopBodyInput(g.const(0)))
 rus_workflow = g.finish_with_outputs(loop_output.i)
 ```
 
-# Execution
+## Execution
 
 Since we still only use built-in functions, we execute the graph in the same way as before.
 

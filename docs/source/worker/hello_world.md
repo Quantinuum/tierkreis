@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
 The complete worker file is as follows:
 
-```{literalinclude} ../examples/example_workers/hello_world_worker/src/main.py
+```{literalinclude} ../examples/example_workers/hello_world_worker/tkr_hello_world_worker_impl/impl.py
 :language: python
 ```
 
