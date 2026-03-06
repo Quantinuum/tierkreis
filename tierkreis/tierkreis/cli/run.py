@@ -119,7 +119,7 @@ def parse_args(
         type=str,
         dest="graph",
     )
-    parser.set_defaults(graph="./tkr/graphs/main.py:your_graph")
+    parser.set_defaults(graph="./tkr/graphs/main.py:workflow")
     parser.add_argument(
         "-i",
         "--input-files",
@@ -127,6 +127,7 @@ def parse_args(
         help="Graph inputs:"
         " Either a single .json file or a key value list  port1:path1 port2:path2"
         " where path is a binary file.",
+        default="workflow_inputs.json",
     )
     parser.add_argument(
         "--run-id",
