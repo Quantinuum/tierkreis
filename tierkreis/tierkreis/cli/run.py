@@ -106,6 +106,7 @@ def parse_args(
         "-f",
         "--from-file",
         type=Path,
+        dest="graph",
         help="Load a graph from a .json file",
     )
     graph.add_argument(
@@ -116,8 +117,9 @@ def parse_args(
         " or a path to a python file and function."
         " Example: examples/hello_world/hello_world_graph.py:hello_graph",
         type=str,
-        default="./tkr/graphs/main.py:your_graph",
+        dest="graph",
     )
+    parser.set_defaults(graph="./tkr/graphs/main.py:your_graph")
     parser.add_argument(
         "-i",
         "--input-files",
@@ -189,10 +191,10 @@ def run_workflow_args(args: argparse.Namespace) -> None:
     if args.verbose:
         args.log_level = logging.DEBUG
 
-    if args.graph_location is not None:
-        graph = load_graph(args.graph_location)
+    if isinstance(args.graph, str):
+        graph = load_graph(args.graph)
     else:
-        with Path.open(args.from_file) as fh:
+        with Path.open(args.graph) as fh:
             graph = ptype_from_bytes(fh.read().encode(), GraphData)
     inputs = _load_inputs(args.input_files) if args.input_files is not None else {}
     run_workflow(
