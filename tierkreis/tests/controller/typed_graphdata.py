@@ -1,6 +1,11 @@
 from typing import NamedTuple
 
-from tests.workers.graph.stubs import doubler_plus_graph, graph_of_graph, apply_twice, ApplyTwiceInput
+from tests.workers.graph.stubs import (
+    doubler_plus_graph,
+    graph_of_graph,
+    apply_twice,
+    ApplyTwiceInput,
+)
 from tierkreis.builder import GraphBuilder, TypedGraphRef, FinishedGraph
 from tierkreis.builtins import (
     conjugate,

@@ -192,7 +192,9 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
         :rtype: TKR[T]
         """
         # FinishedGraph exists at build-time only; erase the types at runtime:
-        idx, port = self.data.const(value.data if isinstance(value, FinishedGraph) else value)
+        idx, port = self.data.const(
+            value.data if isinstance(value, FinishedGraph) else value
+        )
         return TKR[T](idx, port)
 
     def ifelse[A: PType, B: PType](
