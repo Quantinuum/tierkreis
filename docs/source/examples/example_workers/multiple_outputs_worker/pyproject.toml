@@ -2,7 +2,6 @@
 name = "tkr-multiple-outputs-worker-impl"
 version = "0.2.0"
 description = "A tierkreis worker implementation."
-readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "tierkreis",

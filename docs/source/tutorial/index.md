@@ -1,25 +1,30 @@
-# Examples
+# Beginners Tutorial
 
-This directory contains examples how to use Tierkreis to write workflows.
+<!--TODO This beginner tutorial contains examples how to use Tierkreis to write workflows.
 Before writing workflows, we will shortly recap how to write a worker.
-It is intended that these notebooks are read in the following order.
+It is intended that these notebooks are read in the following order. -->
 
 ```{toctree}
 :maxdepth: 1
-worker.ipynb
-hello_world_graph.ipynb
-storage_and_executors.ipynb
-types_and_defaults.ipynb
-multiple_outputs.ipynb
-polling_and_dir.ipynb
-parallelism.ipynb
-errors_and_debugging.ipynb
-restart.ipynb
-signing_graph.ipynb
-hpc.ipynb
-scipy.ipynb
-hamiltonian.ipynb
-qsci.ipynb
+core_concepts.md
+getting_started.md
+my_first_graph.md
+visualization.md
+../examples/worker.ipynb
+../examples/hello_world_graph.ipynb
+../examples/storage_and_executors.ipynb
+../examples/types_and_defaults.ipynb
+../examples/polling_and_dir.ipynb
+../examples/parallelism.ipynb
+../examples/errors_and_debugging.ipynb
+logging_and_errors.md
+../examples/restart.ipynb
+../examples/signing_graph.ipynb
+../examples/hpc.ipynb
+../examples/scipy.ipynb
+../examples/hamiltonian.ipynb
+../examples/qsci.ipynb
+further_topics.md
 ```
 
 ## How to use
