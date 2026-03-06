@@ -44,35 +44,31 @@ stubs-generate dir:
 stubs-generate-api dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run src/main.py --stubs-path src/api/stubs.py
-
-stubs-generate-new dir:
-  #!/usr/bin/env bash
-  cd {{dir}}
-  uv run src/main.py --stubs-path api/api.py
+  uv run main.py --stubs-path ../api/api.py
 
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
-  just stubs-generate 'tierkreis_workers/aer_worker'
-  just stubs-generate 'tierkreis_workers/ibmq_worker'
-  just stubs-generate 'tierkreis_workers/nexus_worker'
-  just stubs-generate-new 'tierkreis_workers/pytket_worker'
-  just stubs-generate 'tierkreis_workers/quantinuum_worker'
-  just stubs-generate 'tierkreis_workers/qulacs_worker'
+  just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'
+  just stubs-generate-api 'tierkreis_workers/ibmq_worker/tkr_ibmq_worker_impl'
+  just stubs-generate-api 'tierkreis_workers/nexus_worker/tkr_nexus_worker_impl'
+  just stubs-generate-api 'tierkreis_workers/pytket_worker/tkr_pytket_worker_impl'
+  just stubs-generate-api 'tierkreis_workers/quantinuum_worker/tkr_quantinuum_worker_impl'
+  just stubs-generate-api 'tierkreis_workers/qulacs_worker/tkr_qulacs_worker_impl'
 
-  just stubs-generate-api 'docs/source/examples/example_workers/auth_worker'
-  just stubs-generate-api 'docs/source/examples/example_workers/error_worker'
-  just stubs-generate-api 'docs/source/examples/example_workers/hello_world_worker'
-  just stubs-generate-api 'docs/source/examples/example_workers/qsci_worker'
-  just stubs-generate-api 'docs/source/examples/example_workers/scipy_worker'
-  just stubs-generate-api 'docs/source/examples/example_workers/substitution_worker'
+  just stubs-generate-api 'docs/source/examples/example_workers/auth_worker/tkr_auth_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/error_worker/tkr_error_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/hello_world_worker/tkr_hello_world_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/multiple_outputs_worker/tkr_multiple_outputs_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/qsci_worker/tkr_qsci_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/scipy_worker/tkr_scipy_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/substitution_worker/tkr_substitution_worker_impl'
 
-  cp 'tierkreis_workers/aer_worker/stubs.py' tierkreis/tierkreis/aer_worker.py
-  cp 'tierkreis_workers/ibmq_worker/stubs.py' tierkreis/tierkreis/ibmq_worker.py
-  cp 'tierkreis_workers/nexus_worker/stubs.py' tierkreis/tierkreis/nexus_worker.py
+  cp 'tierkreis_workers/aer_worker/api/api.py' tierkreis/tierkreis/aer_worker.py
+  cp 'tierkreis_workers/ibmq_worker/api/api.py' tierkreis/tierkreis/ibmq_worker.py
+  cp 'tierkreis_workers/nexus_worker/api/api.py' tierkreis/tierkreis/nexus_worker.py
   cp 'tierkreis_workers/pytket_worker/api/api.py' tierkreis/tierkreis/pytket_worker.py
-  cp 'tierkreis_workers/quantinuum_worker/stubs.py' tierkreis/tierkreis/quantinuum_worker.py
-  cp 'tierkreis_workers/qulacs_worker/stubs.py' tierkreis/tierkreis/qulacs_worker.py
+  cp 'tierkreis_workers/quantinuum_worker/api/api.py' tierkreis/tierkreis/quantinuum_worker.py
+  cp 'tierkreis_workers/qulacs_worker/api/api.py' tierkreis/tierkreis/qulacs_worker.py
 
 check-stubs:
   just generate

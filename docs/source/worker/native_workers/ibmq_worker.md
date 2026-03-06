@@ -31,6 +31,8 @@ The IBMQ worker exposes the following elementary tasks to the user:
 - `compile_circuit_ibmq` and `compile_circuits_ibmq` applies a predefined compilation pass to a (list of) circuits.
 - `run_circuit` Runs the circuit on the backend. **Requires authentication**.
 
+The full api is available in the {py:mod}`API Docs <ibmq_worker>`.
+
 ## Example
 
 ```python

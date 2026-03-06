@@ -21,6 +21,8 @@ The Qulacs worker exposes the following elementary tasks to the user.
 - `run_circuit`. A wrapper around `QulacsBackend.run_circuit`, which is intended to be parallelised using a Tierkreis `map`.
 - `run_circuits`. A runs multiple circuits according to the logic defined in the `process_circuits` method in [pytket-qulacs](https://github.com/Quantinuum/pytket-qulacs/blob/main/pytket/extensions/qulacs/backends/qulacs_backend.py#L186).
 
+The full api is available in the {py:mod}`API Docs <qulacs_worker>`.
+
 ## Prepackaged graphs
 
 The Tierkreis Python package provides a few prepackaged graphs to make it easier to compile and run circuits with Qulacs.

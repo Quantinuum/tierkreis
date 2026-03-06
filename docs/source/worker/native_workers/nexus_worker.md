@@ -31,6 +31,8 @@ The Nexus worker exposes the following elementary tasks to the user.
 - `start_execute_job`. A wrapper around `qnuexs.jobs.start_execute_job` that takes a `BackendConfig` to specify what hardware the circuits should be run on.
 - `is_running`. A wrapper around `qnexus.jobs.status` that will fail if an unsuccessful terminal state is received, return `False` if the job is successfully completed and return `True` otherwise.
 
+The full api is available in the {py:mod}`API Docs <nexus_worker>`.
+
 ## Prepackaged graphs
 
 The Tierkreis Python package provides a couple of prepackaged graphs to make it easier to interact with the Nexus API.

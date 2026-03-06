@@ -29,14 +29,14 @@ def parse_args(
     """Parse the arguments for the init subcommand."""
     init_subparsers = parser.add_subparsers(
         dest="init_type",
-        help="Initialize tierkreis related structures",
+        help="Initialize Tierkreis related structures",
         required=True,
     )
     project = init_subparsers.add_parser(
         "project",
         description="Initialize and manages project wide options. "
         "Make sure to set up a python project first, e.g. by executing `uv init`.",
-        help="Initializes a new tierkreis project and manages project wide options.",
+        help="Initializes a new Tierkreis project and manages project wide options.",
     )
 
     project.add_argument(
@@ -101,12 +101,13 @@ def parse_args(
         "--api-file-name",
         help="File location where to generate api to. Relative to the worker directory.",
         type=Path,
-        default=Path("./src/api/api.py"),
+        default=Path("./api/api.py"),
     )
     return parser
 
 
 def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -> None:
+    worker_name = worker_name.replace("-", "_")
     base_dir = worker_dir / worker_name
     base_dir.mkdir(exist_ok=True)
     with Path.open(base_dir / "README.md", "w+", encoding="utf-8") as fh:
@@ -115,62 +116,48 @@ def _gen_worker(worker_name: str, worker_dir: Path, *, external: bool = False) -
         fh.write(python_worker_pyproject(worker_name))
     with Path.open(base_dir / "__init__.py", "w+", encoding="utf-8") as fh:
         fh.write(worker_init())
-    src_dir = base_dir / "src"
+    src_dir = base_dir / f"tkr_{worker_name}_impl"
     src_dir.mkdir(exist_ok=True)
     api_dir = base_dir / "api"
     api_dir.mkdir(exist_ok=True)
-    impl_dir = src_dir / "impl"
-    impl_dir.mkdir(exist_ok=True)
     with Path.open(api_dir / "pyproject.toml", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_api_pyproject(worker_name))
     with Path.open(api_dir / "README.md", "w+", encoding="utf-8") as fh:
         fh.write(worker_api_readme(worker_name))
-    src_dir.mkdir(exist_ok=True)
     if external:
         with Path.open(src_dir / f"{worker_name}.tsp", "w+", encoding="utf-8") as fh:
             fh.write(external_worker_idl(worker_name))
         return
     with Path.open(src_dir / "main.py", "w+", encoding="utf-8") as fh:
-        fh.write(python_worker_main())
-    with Path.open(impl_dir / "__init__.py", "w+", encoding="utf-8") as fh:
+        fh.write(python_worker_main(worker_name))
+    with Path.open(src_dir / "__init__.py", "w+", encoding="utf-8") as fh:
         fh.write(worker_impl_init())
-    with Path.open(impl_dir / "worker_impl.py", "w+", encoding="utf-8") as fh:
+    with Path.open(src_dir / "impl.py", "w+", encoding="utf-8") as fh:
         fh.write(python_worker_impl(worker_name))
 
-    _gen_worker_stubs(worker_dir, worker_name, "./api/api.py")
+    _gen_worker_stubs(worker_dir, "./api/api.py")
 
 
 def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
-        command = [
-            sys.executable,
-            "src/main.py",
-            "--stubs-path",
-            stubs_name,
-        ]
+        command = [sys.executable]
     else:
-        command = [
-            uv_path,
-            "run",
-            "--active",
-            "src/main.py",
-            "--stubs-path",
-            stubs_name,
-        ]
+        command = [uv_path, "run"]
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
-        if (idl := next(worker.glob("*.tsp"), None)) is not None:
+        if (idl := next(worker.glob("*/*.tsp"), None)) is not None:
             namespace = Namespace.from_spec_file(idl)
             namespace.write_stubs(idl.parent / stubs_name)
         else:
+            command.extend(
+                [f"tkr_{worker.name}_impl/main.py", "--stubs-path", stubs_name]
+            )
             subprocess.run(command, cwd=worker, check=True)
 
 
-def _gen_worker_stubs(
-    worker_directory: Path, worker_name: str, stubs_name: str
-) -> None:
+def _gen_worker_stubs(worker_directory: Path, stubs_name: str) -> None:
     uv_path = shutil.which("uv")
     if uv_path is None:
         msg = "uv is required to use this feature."
@@ -179,8 +166,16 @@ def _gen_worker_stubs(
         if not worker.is_dir():
             continue
         else:
+            worker_name = worker.name
             subprocess.run(
-                [uv_path, "run", "--active", "src/main.py", "--stubs-path", stubs_name],
+                [
+                    uv_path,
+                    "run",
+                    "--active",
+                    f"tkr_{worker_name}_impl/main.py",
+                    "--stubs-path",
+                    stubs_name,
+                ],
                 cwd=worker,
                 check=True,
             )
@@ -227,14 +222,14 @@ def run_args(args: argparse.Namespace) -> None:
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
         print(f"""Successfully generated project in '{project_dir / "tkr"}'.
               
-To run the sample graph use "python -m tkr.graphs.main".
+To run the sample graph use "uv run tkr/graphs/main/py".
 Or import the function into a top level script with:
               
 from tkr.graphs.main import main
 main()
               
-It is highly recommended to include the newly created structure
-to your project definition e.g. pyproject.toml.
+It is highly recommended to examinte the newly created structure
+and how it was added to your project definition e.g. pyproject.toml.
 Keep in mind that workers are independent of your graph code.
 """)
     elif args.init_type == "worker":
@@ -308,8 +303,8 @@ class TierkreisInitCli:
         """Add the init subcommand."""
         parser = main_parser.add_parser(
             "init",
-            description="Initializes the tierkreis project resources",
-            help="Initializes the tierkreis project resources. Run `tkr init --help`"
+            description="Initializes the Tierkreis project resources",
+            help="Initializes the Tierkreis project resources. Run `tkr init --help`"
             " for more information.",
         )
         parser = parse_args(parser)

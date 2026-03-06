@@ -24,7 +24,7 @@ native_workers/index
 ## Generating workers from the cli
 
 The cli supports you in setting up new workers.
-By default, we assume workers are stored in a directory `<project_root>/tkr/workers/`, you can chain this using a flag in the cli.
+By default, we assume workers are stored in a directory `<project_root>/tkr/workers/`, you can change this using a flag in the cli.
 
 You can generate a new worker by running:
 
@@ -33,19 +33,18 @@ tkr init worker --worker-name <worker-name>
 ```
 
 This will generate a new worker directory and the associated files.
-In the worker directory this will be:
+In the worker directory this will be (auxiallary files omitted):
 
 ```
 <worker_name>/
 ├── api/
 │    ├── api.py
 │    └── pyproject.toml
-├── src/
-│    ├── impl/
-│    │    ├── __init__.py
-│    │    └── worker_impl.py
-│    └── main.py
-├── README.md (this file)
+├── tkr_example_worker_impl/
+│   ├── __init__.py
+│   ├── impl.py (task definitions)
+│   └── main.py
+├── README.md
 └── pyproject.toml
 ```
 
@@ -54,7 +53,7 @@ Each worker is an independent project, with it's own dependencies consisting of 
 - `tkr-worker-name` contains the api definitions which you can as tasks in graph.
 - `tkr-worker-name-impl` the implementation which is invoked at runtime.
 
-The `worker_impl.py` file is the location where you defined your worker task.
+The `impl.py` file is the location where you defined your worker task.
 Here you can decorate a python function with `@worker.task()` to declare a worker task.
 At runtime, `main.py` will be called by an executor (more on [executors](../executors/index.md)) and search for the correct task in it.
 See [Running Prepackaged Workers](#running-workers) for details on executing workers.
@@ -73,7 +72,7 @@ tkr init stubs
 or running
 
 ```
-uv run <worker_dir>/main.py --stubs-path <path to stubs>.py
+uv run <worker_dir>/tkr_<worker_name>_impl/main.py --stubs-path <path to stubs>.py
 ```
 
 This allows you to include a workers api for typechecking purposes without the need to building them and therefore making your development environment less polluted.
@@ -117,7 +116,7 @@ executor = UvExecutor(
 )
 ```
 
-When running the graph with this executor, tierkreis will search for the directory `<project_root>/tkr/workers/worker_name/src` and inside execute the command
+When running the graph with this executor, tierkreis will search for the directory `<project_root>/tkr/workers/worker_name/tkr_<worker_name>_impl` and inside execute the command
 
 ```bash
 uv run main.py ...

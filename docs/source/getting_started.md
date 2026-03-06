@@ -30,10 +30,9 @@ project_root/
 │             │   ├── api.py (stubs for the worker)
 │             │   ├── pyproject.toml
 │             │   └── README.md
-│             ├── src/
-│             │   ├── impl/
-│             │   │   ├── __init__.py
-│             │   │   └── worker_impl.py (task definitions)
+│             ├── tkr_example_worker_impl/
+│             │   ├── __init__.py
+│             │   ├── impl.py (task definitions)
 │             │   └── main.py
 │             ├── __init__.py
 │             ├── pyproject.toml

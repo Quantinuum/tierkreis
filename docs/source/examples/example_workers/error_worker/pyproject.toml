@@ -1,19 +1,18 @@
 [project]
-name = "error-worker"
-version = "0.1.0"
+name = "tkr-error-worker-impl"
+version = "0.2.0"
 requires-python = ">=3.12"
-dependencies = ["pydantic", "tierkreis", "ruff", "error-worker-api"]
+dependencies = ["pydantic", "tierkreis", "ruff", "tkr-error-worker"]
 
 [tool.uv.sources]
 tierkreis = { workspace = true }
-error-worker-api = { workspace = true }
+tkr-error-worker = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
+
 
 [project.scripts]
-tkr-error-worker = "src.main:main"
+tkr-error-worker = "tkr_error_worker_impl.main:main"

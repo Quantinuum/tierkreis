@@ -3,9 +3,9 @@ members = [
     "tierkreis",
     "tierkreis_visualization",
     "tierkreis_workers/*worker",
-    "tierkreis_workers/pytket_worker/api",
-    "docs/source/examples/example_workers/*_worker",
-    "docs/source/examples/example_workers/*_worker/src/api",
+    "tierkreis_workers/*worker/api",
+    "docs/source/examples/example_workers/*worker",
+    "docs/source/examples/example_workers/*worker/api",
 ]
 exclude = [
     "docs/source/examples/example_workers/openssl_worker",

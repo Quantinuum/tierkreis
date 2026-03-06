@@ -26,8 +26,8 @@ def check_and_set_launcher(
     If `check_shell` is set or `launcher_path` is None
     will check if one of the following is in $PATH (using which):
     1. launcher_name
-    2. tkr_launcher_name_impl
-    3. tkr-launcher-name-impl
+    2. tkr_launcher_name
+    3. tkr-launcher-name
 
     :param launcher_path: The directory to search.
     :type launcher_path: Path | None
@@ -57,7 +57,7 @@ def check_and_set_launcher(
         except TierkreisError as ef:
             msg = (
                 f"Launcher '{launcher_name}' not found in"
-                f" '{launcher_path}' or '{launcher_path}/src'."
+                f" '{launcher_path}' or '{launcher_path}/tkr_{launcher_name}_impl'."
             )
             raise ExceptionGroup(
                 msg,
@@ -72,11 +72,11 @@ def check_and_set_launcher(
 
 
 def _check_tkr_worker_command(launcher_name: str) -> str | None:
-    cmd = f"tkr-{launcher_name}-impl".replace("_", "-")
+    cmd = f"tkr-{launcher_name}".replace("_", "-")
     path = shutil.which(cmd)
     if path is not None:
         return path
-    cmd = f"tkr-{launcher_name}-impl".replace("-", "_")
+    cmd = f"tkr-{launcher_name}".replace("-", "_")
     path = shutil.which(cmd)
     if path is not None:
         return path
@@ -92,7 +92,7 @@ def _exists(
 ) -> Path:
     launcher_path = launcher_path / launcher_name
     if add_src:
-        launcher_path = launcher_path / "src"
+        launcher_path = launcher_path / f"tkr_{launcher_name}_impl"
     if not launcher_path.exists():
         msg = f"Launcher not found: {launcher_name}."
         raise TierkreisError(msg)

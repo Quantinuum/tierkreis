@@ -17,15 +17,15 @@ extensions = ["autodoc2", "myst_nb", "sphinx.ext.intersphinx"]
 autodoc2_packages = [
     "../../tierkreis/tierkreis",
     {
-        "path": "../../tierkreis_workers/aer_worker/main.py",
+        "path": "../../tierkreis_workers/aer_worker/src/impl/aer_worker_impl.py",
         "module": "aer_worker",
     },
     {
-        "path": "../../tierkreis_workers/ibmq_worker/main.py",
+        "path": "../../tierkreis_workers/ibmq_worker/src/impl/ibmq_worker_impl.py",
         "module": "ibmq_worker",
     },
     {
-        "path": "../../tierkreis_workers/nexus_worker/main.py",
+        "path": "../../tierkreis_workers/nexus_worker/src/impl/nexus_worker_impl.py",
         "module": "nexus_worker",
     },
     {
@@ -33,11 +33,11 @@ autodoc2_packages = [
         "module": "pytket_worker",
     },
     {
-        "path": "../../tierkreis_workers/quantinuum_worker/main.py",
+        "path": "../../tierkreis_workers/quantinuum_worker/src/impl/quantinuum_worker_impl.py",
         "module": "quantinuum_worker",
     },
     {
-        "path": "../../tierkreis_workers/qulacs_worker/main.py",
+        "path": "../../tierkreis_workers/qulacs_worker/src/impl/qulacs_worker_impl.py",
         "module": "qulacs_worker",
     },
 ]
