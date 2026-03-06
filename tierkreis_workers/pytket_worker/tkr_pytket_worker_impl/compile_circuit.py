@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from enum import Enum, auto
 from typing import assert_never
 
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.architecture import Architecture, FullyConnected
 from pytket.circuit import OpType
 from pytket.mapping import LexiLabellingMethod, LexiRouteRoutingMethod

@@ -1,6 +1,6 @@
 import logging
 
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from sympy import Symbol
 
 from tierkreis import Worker

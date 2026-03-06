@@ -3,7 +3,7 @@ from collections import Counter
 from typing import NamedTuple, cast
 
 import numpy as np
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.circuit import Qubit
 from pytket.pauli import QubitPauliString

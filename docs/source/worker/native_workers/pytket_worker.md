@@ -60,7 +60,7 @@ For debugging purposes this also showcases how to use the `InMemoryExecutor` whi
 
 ```python
 class IBMInput(NamedTuple):
-    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821
+    circuit: TKR[OpaqueType["pytket.Circuit"]]  # noqa: F821
     n_shots: TKR[int]
     backend: TKR[str]
 

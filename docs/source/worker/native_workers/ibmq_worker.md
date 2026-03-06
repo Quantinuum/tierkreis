@@ -37,7 +37,7 @@ The full api is available in the {py:mod}`API Docs <ibmq_worker>`.
 
 ```python
 class IBMQInput(NamedTuple):
-    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821
+    circuit: TKR[OpaqueType["pytket.Circuit"]]  # noqa: F821
     n_shots: TKR[int]
     backend: TKR[str]
 

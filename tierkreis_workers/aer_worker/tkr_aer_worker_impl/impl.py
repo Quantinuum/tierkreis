@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.aer import AerBackend
 from pytket.extensions.qiskit.qiskit_convert import tk_to_qiskit

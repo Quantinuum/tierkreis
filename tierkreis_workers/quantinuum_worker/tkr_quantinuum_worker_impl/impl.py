@@ -1,7 +1,7 @@
 import time
 
 import qnexus as qnx
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend

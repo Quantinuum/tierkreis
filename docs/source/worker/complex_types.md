@@ -118,13 +118,13 @@ The stub generation process does not provide any introspection for these types b
 For instance if one wants to use a `pytket` `Circuit` as an input or an output then the resulting type will look as follows:
 
 ```python
-TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
+TKR[OpaqueType["pytket.Circuit"]]
 ```
 
 and a list of `Circuit`s would be typed as:
 
 ```python
-TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]
+TKR[list[OpaqueType["pytket.Circuit"]]]
 ```
 
 ## Pydantic BaseModels

@@ -2,7 +2,7 @@ import itertools
 
 import numpy as np
 from numpy.typing import NDArray
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.circuit import PauliExpBox, Qubit
 from pytket.extensions.qiskit.backends.aer import AerStateBackend
 from pytket.pauli import Pauli, QubitPauliString

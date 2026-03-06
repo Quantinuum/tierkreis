@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.architecture import Architecture
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult

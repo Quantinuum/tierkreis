@@ -3,7 +3,7 @@ from typing import cast
 
 import numpy as np
 from numpy.typing import NDArray
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket.circuit import PauliExpBox
 from pytket.pauli import Pauli
 from pytket.utils.operators import QubitPauliOperator

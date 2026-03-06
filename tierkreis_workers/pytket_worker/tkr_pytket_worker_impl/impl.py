@@ -1,7 +1,7 @@
 from collections import Counter
 
 import qnexus as qnx
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket._tket.unit_id import Bit
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult

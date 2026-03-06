@@ -1,4 +1,4 @@
-from pytket._tket.circuit import Circuit
+from pytket import Circuit
 from pytket._tket.unit_id import Bit
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.aer import AerBackend
