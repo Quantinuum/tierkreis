@@ -15,7 +15,7 @@ from typing import (
     runtime_checkable,
 )
 
-from tierkreis.controller.data.core import EmptyModel
+from tierkreis.controller.data.core import EmptyModel, RestrictedNamedTuple
 from tierkreis.controller.data.graph import GraphData, ValueRef, reindex_inputs
 from tierkreis.controller.data.models import (
     TKR,
@@ -441,7 +441,7 @@ class GraphBuilder[Inputs: TModel, Outputs: TModel]:
 
         if not isclass(body.outputs_type) or not issubclass(
             body.outputs_type,
-            TNamedModel,
+            RestrictedNamedTuple,  # Cannot check TNamedModel
         ):
             out = self._fold_list(out)
 

@@ -111,7 +111,7 @@ type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
 
 
-@runtime_checkable
+# @runtime_checkable # ALAN no, as we cannot distinguish between this and TNamedModel
 class Struct(RestrictedNamedTuple[JsonType], Protocol):
     """Supertype for structs, which are named tuples with JSON-serialisable fields."""
 
