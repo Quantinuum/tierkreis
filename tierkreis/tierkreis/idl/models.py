@@ -6,7 +6,7 @@ from types import NoneType
 from typing import Annotated, Self, get_args, get_origin
 
 from tierkreis.controller.data.core import RestrictedNamedTuple
-from tierkreis.controller.data.types import _is_generic
+from tierkreis.controller.data.types import _is_generic, is_ptype
 
 type ElementaryType = (
     type[int | float | bytes | str | bool | NoneType | Mapping | Sequence]
@@ -28,6 +28,7 @@ class GenericType:
 
     origin: ElementaryType
     args: "Sequence[GenericType | str]"
+    is_ptype: bool | None = None  # None = unknown (not constructed from a `type`)
 
     @classmethod
     def from_type(cls, t: type) -> "Self":
@@ -47,7 +48,7 @@ class GenericType:
         subargs = []
         [subargs.append(str(x)) for x in args if _is_generic(x)]
         [subargs.append(cls.from_type(x)) for x in args if not _is_generic(x)]
-        return cls(origin, subargs)
+        return cls(origin, subargs, is_ptype(t))
 
     @classmethod
     def _included_structs(cls, t: "GenericType") -> "set[GenericType]":
