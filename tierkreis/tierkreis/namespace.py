@@ -4,15 +4,14 @@ import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from inspect import Signature, signature, isclass
+from inspect import Signature, signature
 from logging import getLogger
 from pathlib import Path
-from typing import Self, get_args, get_origin, Annotated
+from typing import Self
 
 from tierkreis.codegen import format_method, format_model
-from tierkreis.controller.data.core import RestrictedNamedTuple
-from tierkreis.controller.data.models import PModel, TKR, is_portmapping
-from tierkreis.controller.data.types import FinishedGraph, has_default, is_ptype
+from tierkreis.controller.data.models import PModel, is_portmapping
+from tierkreis.controller.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
 from tierkreis.idl.spec import spec
@@ -34,34 +33,26 @@ class Namespace:
     methods: list[Method] = field(default_factory=list)
     models: set[Model] = field(default_factory=set)
 
-    def add_struct(self, ty: type) -> None:
+    def add_struct(self, generic_type: GenericType) -> None:
         """Add a struct to the namespace.
 
         :param generic_type: The generic type to add.
         :type generic_type: GenericType
         """
         if (
-            Model(is_portmapping=False, t=GenericType.from_type(ty), decls=[])
-            in self.models
+            not isinstance(generic_type.origin, Struct)
+            or Model(is_portmapping=False, t=generic_type, decls=[]) in self.models
         ):
             return
-        for t in all_structs(ty):
-            portmapping_flag = bool(is_portmapping(t.origin))
-            annotations = t.origin.__annotations__
-            decls = [
-                TypedArg(k, GenericType.from_type(x)) for k, x in annotations.items()
-            ]
-            if portmapping_flag:
-                is_t = False
-            else:
-                are_ptypes = set(is_ptype(x) for x in annotations.values())
-                if len(are_ptypes) != 1:
-                    raise TypeError(
-                        f"Struct {t} has fields that are not all PTypes or all non-PTypes."
-                    )
-                is_t = not next(iter(are_ptypes))
-            model = Model(portmapping_flag, t, decls, is_t)
-            self.models.add(model)
+
+        annotations = generic_type.origin.__annotations__
+        decls = [TypedArg(k, GenericType.from_type(x)) for k, x in annotations.items()]
+        for decl in decls:
+            [self.add_struct(g) for g in decl.t.included_structs()]
+
+        portmapping_flag = bool(is_portmapping(generic_type.origin))
+        model = Model(portmapping_flag, generic_type, decls)
+        self.models.add(model)
 
     @staticmethod
     def _validate_signature(func: WorkerFunction) -> Signature:
@@ -98,7 +89,10 @@ class Namespace:
         self.methods.append(method)
 
         for annotation_type in func.__annotations__.values():
-            self.add_struct(annotation_type)
+            [
+                self.add_struct(struct)
+                for struct in GenericType.from_type(annotation_type).included_structs()
+            ]
 
     @classmethod
     def from_spec_file(cls, path: Path) -> "Namespace":
@@ -176,41 +170,3 @@ from tierkreis.controller.data.types import PType, Struct, FinishedGraph
             )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")
-
-
-# ALAN This takes `type` rather than `GenericType` because is_ptype requires a `type`.
-def all_structs(ty: type) -> set[GenericType]:
-    """Find all included structs of this type, including its fields.
-
-    :return: A set of types
-    :rtype: set[GenericType]
-    """
-
-    outs = set()
-
-    def scan(ty: type):
-        g = GenericType.from_type(ty)
-        if g in outs:
-            return
-        if get_origin(ty) is Annotated:
-            ty = get_args(ty)[0]
-        if (
-            isclass(g.origin) and issubclass(g.origin, RestrictedNamedTuple)
-        ) or is_portmapping(g.origin):
-            outs.add(g)
-            for field_ty in g.origin.__annotations__.values():
-                scan(field_ty)
-            # fallthrough to scan type-args
-        elif isinstance(ty, str) or (g.origin is TKR):
-            # Occurrences of TypeVars within the body (field defns) of a generic class
-            # seem to be returned as GenericAlias's rather than TypeVar's.
-            return  # skip
-        elif not is_ptype(ty) and g.origin is not FinishedGraph:
-            raise TypeError(f"Unexpected type {ty} in all_structs")
-        # ptype's may contain nested structs of interest, but are not interesting themselves.
-
-        for x in get_args(ty):
-            scan(x)
-
-    scan(ty)
-    return outs

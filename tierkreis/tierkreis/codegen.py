@@ -106,13 +106,7 @@ def format_model(model: Model) -> str:
     outs.sort()
     outs_str = "\n    ".join(outs)
 
-    # If is_tmodel, really would like to inherit TNamedModel,
-    # but class doesn't actually implement the RestrictedNamedTuple methods
-    # so it would be uninstantiable. (And NamedTuple doesn't support multiple inheritance.)
-    # ALAN unclear how the `Struct` classes can be instantiated....
-    bases = (
-        ["NamedTuple"] if is_portmapping or model.is_tmodel else ["Struct", "Protocol"]
-    )
+    bases = ["NamedTuple"] if is_portmapping else ["Struct", "Protocol"]
     bases_str = ", ".join(bases)
     generic_type_str = format_generic_type(model.t, include_bound=True, is_tkr=False)
 
