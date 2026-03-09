@@ -13,5 +13,4 @@ logging_and_errors.md
 ../examples/hpc.ipynb
 ../examples/scipy.ipynb
 ../examples/qsci.ipynb
-further_topics.md
 ```
