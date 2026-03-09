@@ -13,7 +13,7 @@ As long as there is a runnable binary, you can provide a thin wrapper which allo
 ```
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 hello_world.md
 complex_types.md
 external_workers.md
