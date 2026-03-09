@@ -33,13 +33,13 @@ from tierkreis.builder import GraphBuilder
 from tierkreis.controller.data.models import TKR
 
 g = GraphBuilder(TKR[int], TKR[list[int]])
-g.outputs(g.inputs)
+g.finish_with_outputs(g.inputs)
 ```
 
-will provide an error message as an integer cant be converted to a list:
+will provide an error message as an integer can't be converted to a list:
 
 ```
-Argument of type "TKR[int]" cannot be assigned to parameter "outputs" of type "TKR[list[int]]" in function "outputs"
+Argument of type "TKR[int]" cannot be assigned to parameter "outputs" of type "TKR[list[int]]" in function "finish_with_outputs"
   "TKR[int]" is not assignable to "TKR[list[int]]"
     Type parameter "T@TKR" is covariant, but "int" is not a subtype of "list[int]"
       "int" is not assignable to "list[int]"

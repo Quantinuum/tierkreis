@@ -52,7 +52,7 @@ from tierkreis.builtins import iadd, igt, rand_int
 i = loop_body.task(iadd(loop_body.const(1), loop_body.inputs.i))
 value = loop_body.task(iadd(loop_body.inputs.step, loop_body.inputs.value))
 pred = loop_body.task(igt(loop_body.inputs.bound, i))
-loop_body.outputs(LoopBodyOutput(i=i, value=value, should_continue=pred))
+body1 = loop_body.finish_with_outputs(LoopBodyOutput(i=i, value=value, should_continue=pred))
 ```
 
 The main graph constructs the initial values for the loop and uses `GraphBuilder.loop` to run the loop.
@@ -62,8 +62,8 @@ from tierkreis.models import EmptyModel
 
 f = GraphBuilder(EmptyModel, TKR[int])
 init = LoopBodyInput(f.const(0), f.const(0), f.const(2), f.const(10))
-loop_output = f.loop(loop_body, init)
-f.outputs(loop_output.value)
+loop_output = f.loop(body1, init)
+f.finish_with_outputs(loop_output.value)
 ```
 
 ### Tracking Outputs
@@ -78,8 +78,8 @@ from tierkreis.models import EmptyModel
 
 f = GraphBuilder(EmptyModel, TKR[int])
 init = LoopBodyInput(f.const(0), f.const(0), f.const(2), f.const(10))
-loop_output = f.loop(loop_body, init, "my_loop")
-f.outputs(loop_output.value)
+loop_output = f.loop(body1, init, "my_loop")
+workflow = f.finish_with_outputs(loop_output.value)
 ```
 
 We can refer to this name after execution.
@@ -111,7 +111,7 @@ body = GraphBuilder(LoopBodyInput, LoopBodyOutput)
 i = body.task(iadd(body.const(1), body.inputs.i))
 a = body.task(rand_int(body.const(0), body.const(10)))
 pred = body.task(igt(body.const(10), a))
-body.outputs(LoopBodyOutput(i=i, should_continue=pred))
+body2 = body.finish_with_outputs(LoopBodyOutput(i=i, should_continue=pred))
 ```
 
 The main graph runs the loop and tells us the iteration on which we found success.
@@ -120,8 +120,8 @@ The main graph runs the loop and tells us the iteration on which we found succes
 from tierkreis.models import EmptyModel
 
 g = GraphBuilder(EmptyModel, TKR[int])
-loop_output = g.loop(body, LoopBodyInput(g.const(0)))
-g.outputs(loop_output.i)
+loop_output = g.loop(body2, LoopBodyInput(g.const(0)))
+rus_workflow = g.finish_with_outputs(loop_output.i)
 ```
 
 # Execution
@@ -140,11 +140,11 @@ storage = FileStorage(UUID(int=99), name="Nested graphs using Eval")
 executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
 
 storage.clean_graph_files()
-run_graph(storage, executor, f.get_data(), {})
-print(read_outputs(f, storage))
-print(read_loop_trace(f, storage, "my_loop"))
+run_graph(storage, executor, workflow, {})
+print(read_outputs(workflow, storage))
+print(read_loop_trace(workflow, storage, "my_loop"))
 
 storage.clean_graph_files()
-run_graph(storage, executor, g.get_data(), {})
-print(read_outputs(g, storage))
+run_graph(storage, executor, rus_workflow, {})
+print(read_outputs(rus_workflow, storage))
 ```

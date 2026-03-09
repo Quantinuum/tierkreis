@@ -131,8 +131,7 @@ def multiple_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
 
 
 def main():
@@ -171,8 +170,8 @@ def task_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
+
 def main():
     g = task_graph()
     storage = ControllerFileStorage(UUID(int=305), name="Task")

@@ -36,7 +36,7 @@ from tierkreis.builtins import iadd, itimes
 
 double = f.task(itimes(f.const(2), f.inputs))
 f_out = f.task(iadd(double, f.const(1)))
-f.outputs(f_out)
+f = f.finish_with_outputs(f_out)
 ```
 
 ### Nested types within a single output
@@ -66,7 +66,7 @@ The contents of `A` will not in general be accessible to the graph builder code.
 from tierkreis.models import EmptyModel
 
 init_data = GraphBuilder(EmptyModel, TKR[FibDataStruct])
-init_data.outputs(init_data.const(FibDataStruct(a=0, b=1)))
+init_workflow = init_data.finish_with_outputs(init_data.const(FibDataStruct(a=0, b=1)))
 ```
 
 ## Multiple inputs and multiple outputs
@@ -91,7 +91,7 @@ from tierkreis.models import TKR
 
 fib_step = GraphBuilder(FibData, FibData)
 sum = fib_step.task(iadd(fib_step.inputs.a, fib_step.inputs.b))
-fib_step.outputs(FibData(fib_step.inputs.b, sum))
+fib_step = fib_step.finish_with_outputs(FibData(fib_step.inputs.b, sum))
 ```
 
 Note that we are now able to access the contents of `FibData` in the graph builder.
@@ -161,14 +161,14 @@ storage = FileStorage(UUID(int=99), name="Graph inputs and outputs")
 executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
 
 storage.clean_graph_files()
-run_graph(storage, executor, f.get_data(), 10)
+run_graph(storage, executor, f, 10)
 print(read_outputs(f, storage))
 
 storage.clean_graph_files()
-run_graph(storage, executor, init_data.get_data(), {})
-print(read_outputs(init_data, storage))
+run_graph(storage, executor, init_workflow, {})
+print(read_outputs(init_workflow, storage))
 
 storage.clean_graph_files()
-run_graph(storage, executor, fib_step.get_data(), {'a': 0, 'b': 1})
+run_graph(storage, executor, fib_step, {'a': 0, 'b': 1})
 print(read_outputs(fib_step, storage))
 ```

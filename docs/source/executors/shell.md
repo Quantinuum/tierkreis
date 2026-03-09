@@ -89,8 +89,7 @@ def signing_graph()-> GraphBuilder[EmptyModel, TKR[str]]:
 
     # Finally we use the auth worker to sign the message
     signing_result = g.task(sign(private_key, passphrase, message)).hex_signature
-    g.outputs(signing_result)
-    return g
+    return g.finish_with_outputs(signing_result)
 ```
 
 Running the graph follows all the usual steps.

@@ -57,7 +57,7 @@ This allows us to use the [pyright](https://github.com/microsoft/pyright) static
 To finish, we specify the outputs of the graph.
 
 ```{code-cell} ipython3
-g.outputs(three)
+workflow = g.finish_with_outputs(three)
 ```
 
 ## Running the graph
@@ -103,6 +103,6 @@ With the storage and executor specified we can now run a graph using `run_graph`
 from tierkreis import run_graph
 from tierkreis.storage import read_outputs
 
-run_graph(storage, executor, g.get_data(), {})
-print(read_outputs(g, storage))
+run_graph(storage, executor, workflow, {})
+print(read_outputs(workflow, storage))
 ```

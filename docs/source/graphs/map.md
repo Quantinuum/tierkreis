@@ -49,8 +49,7 @@ from auth_worker import encrypt, EncryptionResult
 def map_body():
     g = GraphBuilder(TKR[str], EncryptionResult)
     result = g.task(encrypt(plaintext=g.inputs, work_factor=g.const(2**14)))
-    g.outputs(result)
-    return g
+    return g.finish_with_outputs(result)
 
 
 class GraphOutputs(NamedTuple):
@@ -69,8 +68,7 @@ def graph():
     av = g.task(mean(values=times))
     out = GraphOutputs(ciphertexts=ciphertexts, average_time_taken=av)
 
-    g.outputs(out)
-    return g
+    return g.finish_with_outputs(out)
 ```
 
 ## Running the graph
@@ -97,7 +95,7 @@ executor = UvExecutor(
     registry_path=Path("../examples/example_workers"), logs_path=storage.logs_path
 )
 start = time.time()
-run_graph(storage, executor, graph().data, {})
+run_graph(storage, executor, graph(), {})
 total_time = time.time() - start
 
 outputs = read_outputs(graph(), storage)
