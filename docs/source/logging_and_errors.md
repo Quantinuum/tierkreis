@@ -61,7 +61,7 @@ In both cases, the controller will stop the execution, raising a `TierkreisError
 
 Error information is available in two places.
 When running [`run_graph`](#tierkreis.controller.run_graph) or [`run_workflow`](#tierkreis.cli.run_workflow.run_workflow), error information including a stack trace will be printed to `stdout`.
-For example running the example `error_handling_graph.py` will produce the following output
+For example running the [Errors and Debugging](./examples/errors_and_debugging.ipynb) example will produce the following output
 
 ```
 Graph finished with errors.
@@ -69,7 +69,7 @@ Graph finished with errors.
 <stack_trace for node N0>
 
 Node: -.N0 encountered an error
-Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/errors
+Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/logs
 I refuse!
 
 --- Tierkreis graph errors above this line. ---
@@ -78,7 +78,7 @@ I refuse!
 This tells us the following information:
 
 1. A list of nodes that have encountered an error in this case `-.NO` from `Node: -.N0 encountered an error`
-2. Where to find error information, typically in a file called `errors` in the node: `Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/errors`
+2. Where to find error information, typically in a file called `errors` in the node: `Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/logs`
 3. The reason for the error: `I refuse!` typically this would include a stack trace, but here we just raised a simple python `Exception`
 
 Further information can be found in the workflows log file, typically located at `<checkpoints_dir>/<workflow_id>/logs`.

@@ -131,7 +131,7 @@ def resume_graph(
                 logger.error(storage.read_errors(error_loc))
                 logger.error("Node: '%s' encountered an error.", error_loc)
                 logger.error(
-                    "Stderr information is available at %s.",
+                    "Stderr information is available at %s",
                     storage._worker_logs_path(error_loc),  # noqa: SLF001
                 )
 

@@ -30,9 +30,9 @@ For a more in depth tutorial see our [full getting started guide][docs-getting-s
 
 ## Packages
 
-- **Tierkreis**: the core functionality `pip install tierkreis`
-- **Tierkreis Visualization**: A simple web visualization tool for debugging workflows `pip install tierkreis-visualization`
-- **Tierkreis Workers**: A collection of commonly used workers `pip install tkr-<name>-worker`
+- **Tierkreis**: the core functionality `uv add tierkreis`
+- **Tierkreis Visualization**: A simple web visualization tool for debugging workflows `uv add tierkreis-visualization`
+- **Tierkreis Workers**: A collection of commonly used workers `uv add tkr-<name>-worker`
   - Qiskit Aer
   - Quantinuum Nexus
   - Quantinuum Pytket

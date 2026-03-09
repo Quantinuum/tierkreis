@@ -77,6 +77,8 @@ def _load_inputs(input_files: list[str]) -> dict[str, PType]:
         with Path.open(Path(input_files[0])) as fh:
             return {k: json.dumps(v).encode() for k, v in json.load(fh).items()}
     inputs = {}
+    if len(input_files) == 1 and input_files[0] == "None":
+        return inputs
     for input_file in input_files:
         if ":" not in input_file:
             msg = f"Invalid argument: {input_file}"
@@ -101,22 +103,25 @@ def parse_args(
         name="run",
         description="Tierkreis: a workflow engine for quantum HPC.",
     )
-    graph = parser.add_mutually_exclusive_group(required=True)
+    graph = parser.add_mutually_exclusive_group()
     graph.add_argument(
         "-f",
         "--from-file",
         type=Path,
+        dest="graph",
         help="Load a graph from a .json file",
     )
     graph.add_argument(
         "-g",
         "--graph-location",
         help="Fully qualifying name of a Callable () -> GraphData. "
-        " Example: tierkreis.cli.sample_graph:simple_eval"
+        " Example: examples.hello_world.hello_world_graph:hello_graph"
         " or a path to a python file and function."
         " Example: examples/hello_world/hello_world_graph.py:hello_graph",
         type=str,
+        dest="graph",
     )
+    parser.set_defaults(graph="./tkr/graphs/main.py:workflow")
     parser.add_argument(
         "-i",
         "--input-files",
@@ -124,6 +129,7 @@ def parse_args(
         help="Graph inputs:"
         " Either a single .json file or a key value list  port1:path1 port2:path2"
         " where path is a binary file.",
+        default=["workflow_inputs.json"],
     )
     parser.add_argument(
         "--run-id",
@@ -180,7 +186,7 @@ def parse_args(
 
 
 def run_workflow_args(args: argparse.Namespace) -> None:
-    """Run a tierkreis workflow according to the run command.
+    """Run a Tierkreis workflow according to the run command.
 
     :param args: The arguments parsed from tkr run.
     :type args: argparse.Namespace
@@ -188,10 +194,10 @@ def run_workflow_args(args: argparse.Namespace) -> None:
     if args.verbose:
         args.log_level = logging.DEBUG
 
-    if args.graph_location is not None:
-        graph = load_graph(args.graph_location)
+    if isinstance(args.graph, str):
+        graph = load_graph(args.graph)
     else:
-        with Path.open(args.from_file) as fh:
+        with Path.open(args.graph) as fh:
             graph = ptype_from_bytes(fh.read().encode(), GraphData)
     inputs = _load_inputs(args.input_files) if args.input_files is not None else {}
     run_workflow(

@@ -32,6 +32,8 @@ The Quantinuum worker exposes the following elementary tasks to the user:
 - `compile_circuit_quantinuum` and `compile_circuits_quantinuum` applies a predefined compilation pass to a (list of) circuits.
 - `run_circuit` Runs the circuit on the backend. **Requires authentication**.
 
+The full api is available in the {py:mod}`API Docs <quantinuum_worker>`.
+
 ## Example
 
 ```python
