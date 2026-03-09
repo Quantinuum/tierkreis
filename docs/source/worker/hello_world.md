@@ -66,7 +66,7 @@ An example of this can be found in the examples: `error_handling_graph.py`
 Since this worker uses the Tierkreis Python library, we can automatically generate stub files using the following command.
 
 ```{code-cell}
-!cd ../examples/example_workers/hello_world_worker && uv run src/main.py --stubs-path ../../../worker/hello_stubs.py > /dev/null 2>&1
+!cd ../examples/example_workers/hello_world_worker && uv run tkr_hello_world_worker_impl/main.py --stubs-path ../../../worker/hello_stubs.py > /dev/null 2>&1
 ```
 
 ## Graph creation

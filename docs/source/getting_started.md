@@ -30,10 +30,9 @@ project_root/
 │             │   ├── api.py (stubs for the worker)
 │             │   ├── pyproject.toml
 │             │   └── README.md
-│             ├── src/
-│             │   ├── impl/
-│             │   │   ├── __init__.py
-│             │   │   └── worker_impl.py (task definitions)
+│             ├── tkr_example_worker_impl/
+│             │   ├── __init__.py
+│             │   ├── impl.py (task definitions)
 │             │   └── main.py
 │             ├── __init__.py
 │             ├── pyproject.toml
@@ -44,7 +43,8 @@ project_root/
 ├── main.py
 ├── pyproject.toml
 ├── README.md
-└── uv.lock
+├── uv.lock
+└── workflow_inputs.json
 ```
 
 The repository is structure is intended to separate _graphs_, _workers_ and library code.
@@ -56,21 +56,32 @@ uv run tkr/graphs/main.py
 > Value is: 1
 ```
 
+You can also run this through the cli:
+```bash
+uv run tkr run -o
+> value: 1
+```
+This will use the following default locations:
+1. The graph definition is used from `tkr/graphs/main.py:workflow`
+2. The inputs are taken from `workflow_inputs.json`
+3. `-o` enables the printing of outputs
+
+
 From here you can continue with the other tutorials.
 
 ## Tutorials for writing workflows
 
 A sequence of tutorials that cover the fundamentals of writing and operating Tierkreis workflows.
 
-[Our first graph](tutorial/builtins.md)
+[Our first graph](graphs/builtins.md)
 
-[Graph inputs and outputs](tutorial/inputs.md)
+[Graph inputs and outputs](graphs/inputs.md)
 
-[Nested graphs using Eval](tutorial/eval.md)
+[Nested graphs using Eval](graphs/eval.md)
 
-[Iteration using Loop](tutorial/loop.md)
+[Iteration using Loop](graphs/loop.md)
 
-[Parallel computation using Map](tutorial/map.md)
+[Parallel computation using Map](graphs/map.md)
 
 ## Tutorials for writing workers
 

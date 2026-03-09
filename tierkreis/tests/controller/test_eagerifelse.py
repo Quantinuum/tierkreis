@@ -20,10 +20,10 @@ from tierkreis.controller.storage.filestorage import ControllerFileStorage
 def eagerifelse_long_running() -> GraphData:
     g = GraphData()
     pred = g.input("pred")
-    pred_long = g.func("controller.sleep_and_return", {"output": pred})("value")
+    pred_long = g.func("sleep_worker.sleep_and_return", {"output": pred})("value")
 
     one = g.const(1)
-    one_long = g.func("controller.sleep_and_return", {"output": one})("value")
+    one_long = g.func("sleep_worker.sleep_and_return", {"output": one})("value")
 
     two = g.const(2)
     out = g.eager_if_else(pred_long, one_long, two)("value")
@@ -39,7 +39,7 @@ def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -> None
     g = eagerifelse_long_running()
     storage = ControllerFileStorage(UUID(int=150), name="eagerifelse_long_running")
 
-    registry_path = Path(__file__).parent.parent
+    registry_path = Path(__file__).parent.parent / "workers"
     executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
 
     storage.clean_graph_files()

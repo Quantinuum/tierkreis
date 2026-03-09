@@ -22,6 +22,8 @@ The Aer worker exposes the following elementary tasks to the user.
 - `run_circuits`. A wrapper around `AerBackend.run_circuits`, which performs multiple simulations according to the logic in the `process_circuits` method in [pytket-qiskit](https://github.com/Quantinuum/pytket-qiskit/blob/main/pytket/extensions/qiskit/backends/aer.py).
 - `to_qasm3_str`. Converts a pytket `Circuit` to QASM3 using the Qiskit qasm3 module.
 
+The full api is available in the {py:mod}`API Docs <aer_worker>`.
+
 ## Prepackaged graphs
 
 The Tierkreis Python package provides a few prepackaged graphs to make it easier to compile and run circuits with Aer.
