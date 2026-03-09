@@ -14,6 +14,7 @@ visualization.md
 ../examples/storage_and_executors.ipynb
 ../examples/parallelism.ipynb
 ../examples/hamiltonian.ipynb
+further_topics.md
 ```
 
 ## How to use
