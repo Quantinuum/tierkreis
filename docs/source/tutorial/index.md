@@ -9,7 +9,6 @@ It is intended that these notebooks are read in the following order. -->
 core_concepts.md
 ../examples/first_graph.ipynb
 visualization.md
-../examples/worker.ipynb
 ../examples/hello_world_graph.ipynb
 ../examples/storage_and_executors.ipynb
 ../examples/parallelism.ipynb
