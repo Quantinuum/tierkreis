@@ -38,7 +38,7 @@ The simplest way to set this up is to clone the entire repository before running
 git clone https://github.com/Quantinuum/tierkreis.git
 ```
 
-To set up the environment we us uv:
+To set up the environment we use uv:
 
 ```
 uv sync --all-extras
