@@ -28,7 +28,8 @@ class GenericType:
 
     origin: ElementaryType
     args: "Sequence[GenericType | str]"
-    is_ptype: bool | None = None  # None = unknown (not constructed from a `type`)
+    is_ptype: bool = True  # Assume yes if not constructed from a `type`
+    # This might be a dangerous default but seems right for the parser.
 
     @classmethod
     def from_type(cls, t: type) -> "Self":

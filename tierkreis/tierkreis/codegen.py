@@ -110,9 +110,6 @@ def format_model(model: Model) -> str:
         has_ptypes = False
         has_tkrs = False
         for decl in model.decls:
-            assert decl.t.is_ptype is not None, (
-                "Model decls should have been built via from_type"
-            )
             if decl.t.is_ptype:
                 has_ptypes = True
             else:
