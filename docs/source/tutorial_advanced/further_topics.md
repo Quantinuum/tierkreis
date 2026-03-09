@@ -4,6 +4,10 @@ Once you have finished the tutorial you can start writing your own workflows.
 If you want to learn more details to fully leverage the power of Tierkreis,
 the advanced documentation 
 
+## Advanced Tutorials
+
+There is a advanced tutorial available [here](../tutorial_advanced/index.md).
+
 ## Documents for writing graphs
 
 A sequence of documents that cover the fundamentals of writing complex Tierkreis graphs.

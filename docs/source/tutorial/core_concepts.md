@@ -1,5 +1,8 @@
 # Core Concepts in Tierkreis
 
+This documents covers the basics of tierkreis.
+If you want to immediately write you first graph, you can immediately skip to the [next page](../examples/first_graph.ipynb).
+
 ## Program model
 
 In Tierkreis, a computation is represented as a sequence of tasks comprising a workflow.

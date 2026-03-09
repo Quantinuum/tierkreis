@@ -19,6 +19,7 @@ For more advanced topics see the specific contents below.
 :maxdepth: 3
 installation.md
 tutorial/index
+tutorial_advanced/index
 graphs/index
 worker/index
 executors/index
