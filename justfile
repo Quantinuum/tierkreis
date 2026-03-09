@@ -48,6 +48,8 @@ stubs-generate-api dir:
 
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
+  just stubs-generate 'tierkreis/tests/workers/graph'
+
   just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'
   just stubs-generate-api 'tierkreis_workers/ibmq_worker/tkr_ibmq_worker_impl'
   just stubs-generate-api 'tierkreis_workers/nexus_worker/tkr_nexus_worker_impl'

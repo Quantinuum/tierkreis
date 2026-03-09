@@ -24,6 +24,8 @@ from tests.controller.sample_graphdata import (
 )
 from tests.controller.typed_graphdata import (
     eval_body_is_from_worker,
+    eval_graph_of_graph,
+    eval_from_worker_with_graph_from_worker,
     factorial,
     gcd,
     tkr_conj,
@@ -214,14 +216,26 @@ with_worker_param_data: list[
     tuple[GraphData | GraphBuilder, Any, str, dict[str, PType] | PType]
 ] = [
     (eval_body_is_from_worker(), 21, "eval_body_is_from_worker", {"value": 10}),
+    (eval_graph_of_graph(), 31, "eval_graph_of_graph", {"value": 3}),
+    (
+        eval_from_worker_with_graph_from_worker(),
+        23,
+        "eval_from_worker_with_graph_from_worker",
+        {"value": 5},
+    ),
 ]
+
 with_worker_params: list[
     tuple[GraphData | GraphBuilder, Any, str, int, dict[str, PType] | PType]
 ] = [
     (graph, output, name, i + 1, inputs)
     for i, (graph, output, name, inputs) in enumerate(with_worker_param_data)
 ]
-with_worker_ids = ["eval_body_is_from_worker"]
+with_worker_ids = [
+    "eval_body_is_from_worker",
+    "eval_graph_of_graph",
+    "eval_from_worker_with_graph_from_worker",
+]
 
 
 @pytest.mark.parametrize(

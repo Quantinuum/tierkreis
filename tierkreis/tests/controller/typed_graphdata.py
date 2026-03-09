@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from tests.workers.graph.stubs import doubler_plus_graph
+from tests.workers.graph.stubs import doubler_plus_graph, graph_of_graph, apply_twice
 from tierkreis.builder import GraphBuilder, TypedGraphRef
 from tierkreis.builtins import (
     conjugate,
@@ -15,7 +15,7 @@ from tierkreis.builtins import (
     tkr_str,
 )
 from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.models import TKR
+from tierkreis.controller.data.models import TKR, OpaqueType
 
 
 class DoublerInput(NamedTuple):
@@ -163,6 +163,39 @@ def eval_body_is_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
     graph = g.task(doubler_plus_graph())
     graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
     out = g.eval(graph_ref, g.inputs)
+    g.outputs(out)
+    return g
+
+
+class ApplyTwiceInput(NamedTuple):
+    # Note we mangle this like the stub generator would, although the generator
+    # never sees the graph's inputs as they are hidden in an untyped GraphData.
+    graph: TKR[OpaqueType["tierkreis.controller.data.graph.GraphData"]]  # noqa: F821
+    value: TKR[int]
+
+
+def eval_from_worker_with_graph_from_worker() -> GraphBuilder[TKR[int], TKR[int]]:
+    g = GraphBuilder(TKR[int], TKR[int])
+    graph = g.task(doubler_plus_graph())
+    # This is ok, but we can't pass the graph_ref into ApplyTwiceInput
+    # graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
+    inputs = ApplyTwiceInput(graph=graph, value=g.inputs)
+
+    ap2 = g.task(apply_twice())
+    ap2_ref = TypedGraphRef(ap2.value_ref(), ApplyTwiceInput, TKR[int])
+    out = g.eval(ap2_ref, inputs)
+    g.outputs(out)
+    return g
+
+
+def eval_graph_of_graph() -> GraphBuilder[TKR[int], TKR[int]]:
+    g = GraphBuilder(TKR[int], TKR[int])
+    graph = g.task(doubler_plus_graph())
+    # This is ok, but we can't pass the graph_ref into exponentiate_graph:
+    # graph_ref = TypedGraphRef(graph.value_ref(), TKR[int], TKR[int])
+    eg = g.task(graph_of_graph(graph, g.const(3)))
+    exp_graph = TypedGraphRef(eg.value_ref(), TKR[int], TKR[int])
+    out = g.eval(exp_graph, g.inputs)
     g.outputs(out)
     return g
 
