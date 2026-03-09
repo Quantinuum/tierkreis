@@ -62,7 +62,7 @@ g.outputs(three)
 
 ## Running the graph
 
-To run a general Tierkreis graph we need to set up:-
+To run a general Tierkreis graph we need to set up:
 
 - a way to store and share inputs and outputs (the 'storage' interface)
 - a way to run tasks (the 'executor' interface)

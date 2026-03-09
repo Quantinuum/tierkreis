@@ -123,4 +123,4 @@ If you're using the visualize to debug workflow, error information will be immed
 On the landing page, the workflows table will show you all nodes containing an error.
 In then workflow view a red node indicates an error.
 Logging information is available by double clicking a node; error information by pressing the "!" button on errored nodes.
-For a guide to the visualize please refer to [this document](./visualization.md)
+For a guide to the visualize please refer to [this document](../tutorial//visualization.md)

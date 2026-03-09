@@ -7,24 +7,13 @@ It is intended that these notebooks are read in the following order. -->
 ```{toctree}
 :maxdepth: 1
 core_concepts.md
-getting_started.md
-my_first_graph.md
+../examples/first_graph.ipynb
 visualization.md
 ../examples/worker.ipynb
 ../examples/hello_world_graph.ipynb
 ../examples/storage_and_executors.ipynb
-../examples/types_and_defaults.ipynb
-../examples/polling_and_dir.ipynb
 ../examples/parallelism.ipynb
-../examples/errors_and_debugging.ipynb
-logging_and_errors.md
-../examples/restart.ipynb
-../examples/signing_graph.ipynb
-../examples/hpc.ipynb
-../examples/scipy.ipynb
 ../examples/hamiltonian.ipynb
-../examples/qsci.ipynb
-further_topics.md
 ```
 
 ## How to use
