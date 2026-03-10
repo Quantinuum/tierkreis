@@ -1,13 +1,6 @@
 """Code generation utilities for Tierkreis stubs."""
 
-from inspect import isclass
-
-from pydantic import BaseModel
-
 from tierkreis.controller.data.types import (
-    DictConvertible,
-    ListConvertible,
-    NdarraySurrogate,
     _is_union,
 )
 from tierkreis.idl.models import GenericType, Method, Model, TypedArg
@@ -25,12 +18,6 @@ def format_ptype(ptype: type | str) -> str:
     """
     if isinstance(ptype, str):
         return ptype
-
-    if isclass(ptype) and issubclass(
-        ptype,
-        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel),
-    ):
-        return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
 
     if _is_union(ptype):
         return "Union"
@@ -114,6 +101,14 @@ def format_model(model: Model) -> str:
 class {generic_type_str}({bases_str}):
     {outs_str}
 """
+
+
+def format_opaque_alias(name: str, fqname: str) -> str:
+    return f'type {name} = Literal["{fqname}"]'
+
+
+def format_opaque_aliases(aliases: dict[str, str]) -> str:
+    return "\n".join([format_opaque_alias(x, y) for x, y in aliases.items()])
 
 
 def format_method(namespace_name: str, fn: Method) -> str:

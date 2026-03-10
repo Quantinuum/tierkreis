@@ -192,6 +192,20 @@ def _is_tuple(o: object) -> TypeIs[type[tuple[Any, ...]]]:
     return get_origin(o) is tuple
 
 
+def is_opaque(o: object) -> bool:
+    """Is the given object an opaque type?
+
+    I.e. should its contents be hidden from the graph builder?"""
+    if isinstance(o, (BaseModel, DictConvertible, ListConvertible, NdarraySurrogate)):
+        return True
+    if isclass(o) and issubclass(
+        o, (BaseModel, DictConvertible, ListConvertible, NdarraySurrogate)
+    ):
+        return True
+
+    return False
+
+
 def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     """Check if a type annotation is a PType.
 
