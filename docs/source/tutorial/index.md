@@ -110,7 +110,9 @@ Graph definitions, like a `hello_world_graph` you will write in this tutorial sh
 The main file contains an example graph, and has set up the storage and executors similar to the ones above.
 
 `Workers` are a way to add custom functionality, which will be executed as Tierkreis tasks.
+If you're not familiar with `workers` yet, we will explain them as part of this tutorial.
 It is very simple to wrap existing python code to make it available in Tierkreis.
 Each worker is a separate entity, your new project will contain one `example_worker`.
 If you want to include more they should have a similar structure.
+
 

@@ -25,7 +25,7 @@ Since this worker uses the Tierkreis Python library, we can automatically genera
 The stub files will provide us with type hints in the graph building process later on.
 
 ```{code-cell}
-!cd ../examples/example_workers/auth_worker && uv run tkr_auth_worker_impl/main.py --stubs-path ../../../example_workers/auth_worker/api/api.py > /dev/null 2>&1
+!cd ../examples/example_workers/auth_worker && uv run tkr_auth_worker_impl/main.py --stubs-path ./api/api.py > /dev/null 2>&1
 ```
 
 ## Writing a graph
