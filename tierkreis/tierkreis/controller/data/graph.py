@@ -204,7 +204,24 @@ class Output(NodeDefBase):
     type: Literal["output"] = field(default="output")
 
 
-NodeDef = Func | Eval | Loop | Map | Const | IfElse | EagerIfElse | Input | Output
+@dataclass
+class Breakpoint(NodeDefBase):
+    inputs: dict[PortID, ValueRef]
+    type: Literal["breakpoint"] = field(default="breakpoint")
+
+
+NodeDef = (
+    Func
+    | Eval
+    | Loop
+    | Map
+    | Const
+    | IfElse
+    | EagerIfElse
+    | Input
+    | Output
+    | Breakpoint
+)
 NodeDefModel = RootModel[NodeDef]
 
 
@@ -221,7 +238,7 @@ def reindex_inputs(node: NodeDef, reindex: Callable[[ValueRef], ValueRef]) -> No
             node.pred = reindex(node.pred)
             node.if_true = reindex(node.if_true)
             node.if_false = reindex(node.if_false)
-        case "const" | "function" | "input" | "output":
+        case "const" | "function" | "input" | "output" | "breakpoint":
             pass
         case _:
             assert_never(node)
@@ -253,7 +270,7 @@ def in_edges(node: NodeDef) -> dict[PortID, ValueRef]:
             parents["pred"] = node.pred
             parents["if_true"] = node.if_true
             parents["if_false"] = node.if_false
-        case "const" | "function" | "input" | "output":
+        case "const" | "function" | "input" | "output" | "breakpoint":
             pass
         case _:
             assert_never(node)
@@ -285,6 +302,11 @@ class GraphData(BaseModel):
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
     named_nodes: dict[str, NodeIndex] = {}
+
+    def breakpoint(
+        self, inputs: dict[PortID, ValueRef]
+    ) -> Callable[[PortID], ValueRef]:
+        return self.add(Breakpoint(inputs))
 
     def input(self, name: str) -> ValueRef:
         """Add an input name.
@@ -447,7 +469,15 @@ class GraphData(BaseModel):
                 self.graph_output_idx = idx
             case "input":
                 self.graph_inputs.add(node.name)
-            case "const" | "eval" | "function" | "map" | "ifelse" | "eifelse":
+            case (
+                "const"
+                | "eval"
+                | "function"
+                | "map"
+                | "ifelse"
+                | "eifelse"
+                | "breakpoint"
+            ):
                 pass
             case "loop":
                 if node.name is not None:
@@ -553,7 +583,15 @@ def graph_node_from_loc(
                 return Eval((-1, "body"), node.inputs, outputs=node.outputs), graph
 
             node, graph = graph_node_from_loc(remaining_location, graph)
-        case "const" | "function" | "input" | "output" | "ifelse" | "eifelse":
+        case (
+            "const"
+            | "function"
+            | "input"
+            | "output"
+            | "ifelse"
+            | "eifelse"
+            | "breakpoint"
+        ):
             pass
         case _:
             assert_never(node)

@@ -20,6 +20,7 @@ from tierkreis.controller.storage.data import (
     WorkflowMetaData,
 )
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
+from tierkreis.controller.storage.walk_result import WalkResult
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,9 @@ class ControllerStorage(ABC):
     @property
     def debug_path(self) -> Path:  # noqa: D102 documented in class
         return self.workflow_dir / "debug"
+
+    def _breakpoint(self, node_location: Loc) -> Path:
+        return self.debug_path / "breakpoints" / str(node_location)
 
     def _exec_data_path(self, node_location: Loc) -> Path:
         return self.debug_path / "executors" / str(node_location)
@@ -737,3 +741,25 @@ class ControllerStorage(ABC):
         self.delete(self._nodedef_path(loc))
 
         return list(deps)
+
+    def write_breakpoint(self, node_location: Loc, walk_result: WalkResult) -> None:
+        walk_result.breaks = None
+        self.write(
+            self._breakpoint(node_location), walk_result.model_dump_json().encode()
+        )
+
+    def read_breakpoints(self) -> WalkResult | None:
+        result = WalkResult(inputs_ready=[], started=[])
+        if not self._breakpoint(Loc()).parent.exists():
+            return None
+        for path in self.list_subpaths(self._breakpoint(Loc()).parent):
+            if path.is_dir():
+                msg = f"Breakpoint directory contains dir at {path}"
+                raise TierkreisError(msg)
+            data = json.loads(self.read(path))
+            result.extend(WalkResult(**data))
+            path.unlink()
+        self._breakpoint(Loc()).parent.rmdir()
+        if result == WalkResult(inputs_ready=[], started=[]):
+            return None
+        return result

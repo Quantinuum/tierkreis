@@ -14,6 +14,7 @@ from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
+from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.start import NodeRunData, start, start_nodes
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -86,7 +87,9 @@ def run_graph[A: TModel, B: TModel](
     inputs: dict[PortID, ValueRef] = {
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
     }
-    node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
+    node_run_data = NodeRunData(
+        node_location=Loc(), node=Eval((-1, "body"), inputs), output_list=[]
+    )
     start(storage, executor, node_run_data)
     resume_graph(storage, executor, n_iterations, polling_interval_seconds)
 
@@ -119,7 +122,8 @@ def resume_graph(
     graph = ptype_from_bytes(message, GraphData)
 
     for _ in range(n_iterations):
-        walk_results = walk_node(storage, Loc(), graph.output_idx(), graph)
+        if (walk_results := storage.read_breakpoints()) is None:
+            walk_results = walk_node(storage, Loc(), graph.output_idx(), graph)
         if walk_results.errored != []:
             # TODO: add to base class after storage refactor
             (storage.logs_path.parent / "-" / "_error").touch()
@@ -138,6 +142,13 @@ def resume_graph(
             logger.error("--- Tierkreis graph errors above this line. ---")
             msg = "Graph encountered errors"
             raise TierkreisError(msg)
+
+        if walk_results.breaks is not None:
+            if isinstance(executor, InMemoryExecutor):
+                breakpoint()
+            else:
+                storage.write_breakpoint(walk_results.breaks, walk_results)
+                break
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):

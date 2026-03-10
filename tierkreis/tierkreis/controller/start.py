@@ -3,13 +3,12 @@
 import logging
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
 
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import Eval, GraphData, NodeDef
+from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc, OutputLoc
 from tierkreis.controller.data.types import bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
@@ -18,25 +17,11 @@ from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.walk_result import NodeRunData
 from tierkreis.exceptions import TierkreisError
 from tierkreis.labels import Labels
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class NodeRunData:
-    """Data required to run a node.
-
-    :fields:
-        node_location (Loc): The location of the node to run.
-        node (NodeDef): The node definition to run.
-        output_list (list[PortID]): The list of output port ids for the node.
-    """
-
-    node_location: Loc
-    node: NodeDef
-    output_list: list[PortID]
 
 
 def start_nodes(
@@ -157,6 +142,10 @@ def start(
         _pipe_inputs_to_output_location(storage, parent, ins)
         storage.mark_node_finished(parent)
 
+    elif node.type == "breakpoint":
+        _pipe_inputs_to_output_location(storage, node_location, ins)
+        storage.mark_node_finished(node_location)
+
     elif node.type == "const":
         bs = bytes_from_ptype(node.value)
         storage.write_output(node_location, Labels.VALUE, bs)
@@ -179,13 +168,13 @@ def start(
             storage,
             executor,
             NodeRunData(
-                node_location.L(0),
-                Eval(
+                node_location=node_location.L(0),
+                node=Eval(
                     (-1, "body"),
                     {k: (-1, k) for k, _ in ins.items()},
                     outputs=node.outputs,
                 ),
-                output_list,
+                output_list=output_list,
             ),
         )
 
