@@ -42,7 +42,8 @@ f.outputs(f_out)
 ### Nested types within a single output
 
 Sometimes we want to return a nested data structure within a single output.
-To do this we define a Python `NamedTuple` or `pydantic.BaseModel`.
+To do this we can use a Python `NamedTuple`.
+In practice these `NamedTuple`s will often be defined already in the API definition of a Tierkreis worker and so we usually import them rather than define them manually.
 
 ```{code-cell} ipython3
 from typing import NamedTuple
@@ -50,12 +51,6 @@ from typing import NamedTuple
 class FibDataStruct(NamedTuple):
     a: int
     b: int
-
-## Alternative using pydantic.BaseModel
-# from pydantic import BaseModel
-# class FibDataStruct(BaseModel):
-#     a: int
-#     b: int
 ```
 
 To use this as part of the signature of a graph, we wrap it in `TKR`.
