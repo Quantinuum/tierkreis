@@ -8,7 +8,7 @@ Tierkreis consist of multiple packages:
     - `tkr-*-worker`: **only the API**
     - `tkr-*-worker-impl`: API + Implementation 
 
-The libraries can be installed with `pip` but we recommend using [uv](https://docs.astral.sh/uv/) read more in the [Getting Started](./tutorial/getting_started.md) docs.
+The libraries can be installed with `pip` but we recommend using [uv](https://docs.astral.sh/uv/) read more in the [Getting Started](./tutorial/index.md) docs.
 
 ```
 uv add tierkreis

@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Graph using built-in tasks
+# Tasks: Using Builtins
 
 To create this graph we need only to install the `tierkreis` package:
 

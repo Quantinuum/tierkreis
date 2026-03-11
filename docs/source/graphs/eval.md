@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Nested graphs using Eval
+# Eval: Using nested graphs
 
 To create this graph we need only to install the `tierkreis` package:
 

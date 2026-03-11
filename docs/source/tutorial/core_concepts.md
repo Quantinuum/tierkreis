@@ -34,6 +34,10 @@ From the data dependencies, the runtime environment can infer which tasks it nee
 
 In Tierkreis, it is possible to associate types with edges (data) at construction.
 Type information can be used while building the `Graph` to detect and prevent runtime errors.
+Tierkreis values correspond to the edges in the graph.
+These values can have a type assigned to them at construction time.
+The set of available types is a subset of all python types, e.g. we require serialization; see more in [complex types](../worker/complex_types.md) how to add your own serialization.
+As result we use the `TKR` container to promote the python types into Tierkreis compatible types.
 
 ## Execution model
 

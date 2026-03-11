@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Parallel computation using Map
+# Map: Parallel computation
 
 An example of how to run several CPU intensive nodes in parallel and aggregate the results.
 
