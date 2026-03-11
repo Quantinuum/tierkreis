@@ -28,8 +28,6 @@ A sequence of documents that cover the fundamentals of writing complex Tierkreis
 
 Documents on writing workers that provide additional tasks. For a general overview look at the [worker documentation](../worker/index.md)
 
-[Hello world worker](../worker/hello_world.md)
-
 [Complex types in Tierkreis Python workers](../worker/complex_types.md)
 
 [Tierkreis prebuild workers](../worker/native_workers/index.md)
