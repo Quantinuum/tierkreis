@@ -30,8 +30,10 @@ git clone https://github.com/Quantinuum/tierkreis.git
 To set up the environment we use uv:
 
 ```bash
-uv sync --all-extras
+(cd tierkreis && uv sync --all-extras)
 ```
+
+Note that some third-party packages e.g. qulacs, automatically included via `uv sync --all-extras`, have other dependencies that you'll need to have installed on your system first: CMake and Boost (>=1.71).
 
 When running the notebooks select the kernel corresponding to the uv environment.
 
@@ -45,17 +47,18 @@ uv init
 uv add tierkreis
 ```
 
+(and optionally `uv add tierkreis-visualization` ?)
+
 Your local environment will now have access to the `tkr` cli.
 Running
 
 ```bash
 uv run tkr init project
 ```
-
-will set up the following project structure in your current directory:
+(you can ignore the warnings about tierkreis-visualization not being installed...)
+and you should now have the following project structure in your current directory:
 
 ```
-project_root/
 ├── tkr/
 │   ├── graphs/
 │   │   └── main.py
@@ -73,30 +76,41 @@ project_root/
 │             ├── pyproject.toml
 │             ├── README.md
 │             └── uv.lock
-├── .gitignore
-├── .python-version
-├── main.py
-├── pyproject.toml
-├── README.md
-├── uv.lock
-└── workflow_inputs.json
+├── .git                } All of
+├── .gitignore.         } these were
+├── .python-version.    } actually
+├── main.py.            } added by
+├── pyproject.toml.     } `uv init`
+├── README.md           } earlier
+├── uv.lock           -- and this one by `uv add tierkreis`
 ```
 
 From here you can run an example graph by running
 
 ```bash
-uv run tkr/graphs/main.py
+uv run python -m tkr.graphs.main
 > Value is: 1
+```
+
+Note alternative suggestion does not seem to work:
+```bash
+$ uv run tkr/graphs/main.py
+Traceback (most recent call last):
+  File "/Users/alanlawrence/tierkreis-trial/tkr/graphs/main.py", line 11, in <module>
+    from tkr.workers.example_worker.api.api import your_worker_task
+ModuleNotFoundError: No module named 'tkr'
 ```
 
 You can also run this through the cli:
 ```bash
 uv run tkr run -o
+-- sadly not, resulted in usage message plus "tkr run: error: one of the arguments -f/--from-file -g/--graph-location is required"
 > value: 1
 ```
+
 This will use the following default locations:
-1. The graph definition is used from `tkr/graphs/main.py:workflow`
-2. The inputs are taken from `workflow_inputs.json`
+1. The graph definition is used from `tkr/graphs/main.py:workflow` -- there is no such variable
+2. The inputs are taken from `workflow_inputs.json` -- there is no such file
 3. `-o` enables the printing of outputs
 
 ### How to use the new project
@@ -109,7 +123,7 @@ Graph definitions, like a `hello_world_graph` you will write in this tutorial sh
 The main file contains an example graph, and has set up the storage and executors similar to the ones above.
 
 `Workers` are a way to add custom functionality, which will be executed as Tierkreis tasks.
-If you're not familiar with `workers` yet, we will explain them as part of this tutorial.
+If you're not familiar with `workers` yet, we will explain them as part of this tutorial. -- Is this upcoming, or is "this tutorial" another file somewhere else?
 It is very simple to wrap existing python code to make it available in Tierkreis.
 Each worker is a separate entity, your new project will contain one `example_worker`.
 If you want to include more they should have a similar structure.
@@ -119,5 +133,5 @@ If you want to include more they should have a similar structure.
 
 Once you have finished the tutorial you can start writing your own workflows.
 If you want to learn more details to fully leverage the power of Tierkreis,
-the advanced  user guide available [here](../tutorial_advanced/index.md).
-It includes further tutorials, and detailed descsriptions on how to write graphs, workers and executors.
+the advanced user guide available [here](../tutorial_advanced/index.md).
+It includes further tutorials, and detailed descriptions on how to write graphs, workers and executors.
