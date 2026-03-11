@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Iteration using Loop
+# Loop: Iterating graphs
 
 One way to perform iteration in Tierkreis is to use `GraphBuilder.loop`.
 The first argument to `GraphBuilder.loop` is a graph that constitutes the loop body.

@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Graph inputs and outputs
+# Inputs and Output
 
 ## Single input and single output
 

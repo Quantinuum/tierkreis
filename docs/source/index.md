@@ -20,8 +20,5 @@ For more advanced topics see the specific contents below.
 installation.md
 tutorial/index
 tutorial_advanced/index
-graphs/index
-worker/index
-executors/index
 apidocs/index
 ```

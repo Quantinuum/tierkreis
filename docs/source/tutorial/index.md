@@ -14,7 +14,6 @@ visualization.md
 ../examples/storage_and_executors.ipynb
 ../examples/parallelism.ipynb
 ../examples/hamiltonian.ipynb
-further_topics.md
 ```
 
 ## How to use
@@ -116,3 +115,9 @@ Each worker is a separate entity, your new project will contain one `example_wor
 If you want to include more they should have a similar structure.
 
 
+## Advanced Topics
+
+Once you have finished the tutorial you can start writing your own workflows.
+If you want to learn more details to fully leverage the power of Tierkreis,
+the advanced  user guide available [here](../tutorial_advanced/index.md).
+It includes further tutorials, and detailed descsriptions on how to write graphs, workers and executors.
