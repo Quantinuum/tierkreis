@@ -16,26 +16,9 @@ visualization.md
 ../examples/hamiltonian.ipynb
 ```
 
-## How to use
 
-In the given examples you will be developing code involving Tierkreis workers.
-Whenever you see an import containing `*_worker` this means one of the workers will be invoked (except for the `builtin`s).
-To ensure the examples will run correctly you will need to have the worker code available too.
-The simplest way to set this up is to clone the entire repository before running any of the examples.
+## Creating your own Tierkreis project
 
-```bash
-git clone https://github.com/Quantinuum/tierkreis.git
-```
-
-To set up the environment we use uv:
-
-```bash
-uv sync --all-extras
-```
-
-When running the notebooks select the kernel corresponding to the uv environment.
-
-### Creating your own Tierkreis project
 If you instead want to immediately develop your own project, you can use  the `tkr` cli to set up your own project
 
 After running
@@ -45,14 +28,20 @@ uv init
 uv add tierkreis
 ```
 
+If you want to use the visualizer you need to add
+```bash
+uv add tierkreis-visualizer
+```
+
+
 Your local environment will now have access to the `tkr` cli.
-Running
+After Running
 
 ```bash
 uv run tkr init project
 ```
 
-will set up the following project structure in your current directory:
+following project structure will be in your current directory:
 
 ```
 project_root/
@@ -121,3 +110,25 @@ Once you have finished the tutorial you can start writing your own workflows.
 If you want to learn more details to fully leverage the power of Tierkreis,
 the advanced  user guide available [here](../tutorial_advanced/index.md).
 It includes further tutorials, and detailed descsriptions on how to write graphs, workers and executors.
+
+### Running
+
+In the given examples you will be developing code involving Tierkreis workers.
+Whenever you see an import containing `*_worker` this means one of the workers will be invoked (except for the `builtin`s).
+```{important}
+To run the examples you will need to have the worker code available too.
+The simplest way to set this up is to clone the entire repository before running any of the examples.
+```
+
+```bash
+git clone https://github.com/Quantinuum/tierkreis.git
+```
+
+To set up the environment we use uv:
+
+```bash
+cd tierkreis && uv sync --all-extras
+```
+
+Note that some third-party packages e.g. qulacs, automatically included via `uv sync --all-extras`, have other dependencies that you'll need to have installed on your system first: CMake and Boost (>=1.71).
+When running the notebooks select the kernel corresponding to the uv environment.
