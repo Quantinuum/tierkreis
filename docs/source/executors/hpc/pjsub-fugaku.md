@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Fugaku pjsub
+# Fugaku: pjsub
 
 We see how to run a worker using `pjsub` on Fugaku.
 In particular we do not focus on the exact structure of our Tierkreis graph.

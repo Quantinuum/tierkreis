@@ -4,7 +4,7 @@ Executors are fundamental in running graph nodes in different environments.
 They also ensure that the workers can fulfill their contracts by preparing inputs and outputs.
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 shell.md
 hpc.md
 hpc/index
@@ -30,7 +30,7 @@ The controller is aware of the following files, if not specified otherwise they 
 - The `definition` file contains the serialized `WorkerCallArgs`, the worker needs to parse this to find out about the locations inputs, outputs and the here listed files.
 - Completion is indicated by the `_done` file, workers must set this once they have written all outputs
 - Failures is indicated by the `_error` file, workers must set this if they can not complete normal execution
-- In case of failure error messages should be written to the `errors_path` location of its call arguments, typically `<checkpoints_dir>/<workflow_id>/<node_location>/errors`.
+- In case of failure error messages should be written to the `errors_path` location of its call arguments, typically `<checkpoints_dir>/<workflow_id>/<node_location>/logs`.
   Currently as a fallback it is also possible to write to the `<checkpoints_dir>/<workflow_id>/<node_location>/_errors` file.
 
 ### Task, Inputs and Outputs

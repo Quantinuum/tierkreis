@@ -81,7 +81,10 @@ JobSpec(
 
 ## Examples
 
-In this section we give some examples based on commonly used job submission systems.
-In cases where none of the following examples are useful, a custom executor can be provided to the Tierkreis library.
+Tierkreis is compatibble with many schdeduling systems.
+On the following pages you can find system-specific information.
 
-[pjsub on Fugaku](./hpc/pjsub-fugaku.md)
+```{toctree}
+:maxdepth: 1
+./hpc/pjsub-fugaku.md
+```
