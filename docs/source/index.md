@@ -19,6 +19,26 @@ For more advanced topics see the specific contents below.
 :maxdepth: 3
 installation.md
 tutorial/index
-tutorial/user_guide.md
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: User guide
+:hidden:
+
+tutorial/core_concepts.md
+tutorial/visualization.md
+tutorial/logging_and_errors.md
+tutorial/cli.md
+graphs/index
+worker/index
+executors/index
+tutorial/tutorials.md
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: APIs
+:hidden:
 apidocs/index
 ```
