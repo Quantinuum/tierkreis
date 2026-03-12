@@ -19,6 +19,7 @@ As long as there is a runnable binary, you can provide a thin wrapper which allo
 ```
 
 ```{toctree}
+:hidden:
 :maxdepth: 1
 complex_types.md
 external_workers.md

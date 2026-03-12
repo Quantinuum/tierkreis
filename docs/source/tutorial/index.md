@@ -10,6 +10,7 @@ tutorial.  For more in depth information, and more advanced topics,
 please refer to the User Guide or the API Reference.
 
 ```{toctree}
+:hidden:
 :maxdepth: 1
 ../examples/first_graph.ipynb
 ../examples/hello_world_graph.ipynb

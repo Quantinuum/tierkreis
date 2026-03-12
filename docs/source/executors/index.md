@@ -5,6 +5,7 @@ They also ensure that the workers can fulfill their contracts by preparing input
 
 ```{toctree}
 :maxdepth: 1
+:hidden:
 shell.md
 hpc.md
 ```

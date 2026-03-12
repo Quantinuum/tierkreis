@@ -24,7 +24,6 @@ tutorial/index
 ```{toctree}
 :maxdepth: 2
 :caption: User guide
-:hidden:
 
 tutorial/core_concepts.md
 tutorial/visualization.md
@@ -39,6 +38,5 @@ tutorial/tutorials.md
 ```{toctree}
 :maxdepth: 2
 :caption: APIs
-:hidden:
 apidocs/index
 ```

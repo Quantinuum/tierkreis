@@ -3,6 +3,7 @@
 Once you have completed the beginners tutorial, you can look at advanced topics.
 
 ```{toctree}
+:hidden:
 :maxdepth: 1
 ../examples/types_and_defaults.ipynb
 ../examples/polling_and_dir.ipynb

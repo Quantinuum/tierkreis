@@ -86,5 +86,6 @@ On the following pages you can find system-specific information.
 
 ```{toctree}
 :maxdepth: 1
+:hidden:
 ./hpc/pjsub-fugaku.md
 ```

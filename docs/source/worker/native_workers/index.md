@@ -7,6 +7,7 @@ Currently only stubs are included. To use the workers during execution they need
 ```
 
 ```{toctree}
+:hidden:
 aer_worker.md
 ibmq_worker.md
 nexus_worker.md
