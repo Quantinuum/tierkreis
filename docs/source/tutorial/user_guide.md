@@ -6,6 +6,8 @@ Once you have completed the beginners tutorial, you can look at advanced topics.
 :maxdepth: 1
 core_concepts.md
 visualization.md
+logging_and_errors.md
+cli.md
 ../graphs/index
 ../worker/index
 ../executors/index

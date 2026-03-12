@@ -1,18 +1,4 @@
-```bash
-uv run tkr run -o
-> value: 1
-```
-This will use the following default locations:
-1. The graph definition is used from `tkr/graphs/main.py:workflow`
-2. The inputs are taken from `workflow_inputs.json`
-3. `-o` enables the printing of outputs
-
-This is the same as 
-```bash
-uv run tkr/graphs/main.py
-> Value is: 1
-```
-
+### How to use the new project
 
 The project is set up in a way to be convenient for developers already experienced with Tierkreis.
 Some of the concepts we will discuss in the [core concepts](./core_concepts.md) and implement in the upcoming pages.
@@ -26,3 +12,12 @@ If you're not familiar with `workers` yet, we will explain them as part of this 
 It is very simple to wrap existing python code to make it available in Tierkreis.
 Each worker is a separate entity, your new project will contain one `example_worker`.
 If you want to include more they should have a similar structure.
+
+
+## Advanced Topics
+
+Once you have finished the tutorial you can start writing your own workflows.
+If you want to learn more details to fully leverage the power of Tierkreis,
+the advanced  user guide available [here](../tutorial_advanced/index.md).
+It includes further tutorials, and detailed descsriptions on how to write graphs, workers and executors.
+

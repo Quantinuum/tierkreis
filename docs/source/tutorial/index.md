@@ -9,8 +9,6 @@ Tierkreis can do many things that are not covered in this short
 tutorial.  For more in depth information, and more advanced topics,
 please refer to the User Guide or the API Reference.
 
-**TODO add links**
-
 ```{toctree}
 :maxdepth: 1
 ../examples/first_graph.ipynb
@@ -86,42 +84,17 @@ project_root/
 └── workflow_inputs.json
 ```
 
-From here you can run an example workflow by running
+This seems like a lot, but the default project contains a lot of
+things we won't need in this tutorial.  There are really two
+directories of note here: 
+* `graphs` contains the graphs that define your workflow.  Making
+  graphs is the main thing you will do when using Tierkreis.  We'll
+  tackle this topic in the [next lesson](../examples/first_graph.ipynb).  
+* `workers` is where we add custom functionality to the graph.  You
+  can think of a worker as a library that is available in your
+  workflow.  Code for your own workers will live here, as we describe
+  in [lesson 2](../examples/hello_world_graph.ipynb) and the [worker advanced guide](../worker/index.md).
+  **TODO**.
 
-```bash
-uv run tkr/graphs/main.py
-> Value is: 1
-```
-
-You can also run this through the cli:
-```bash
-uv run tkr run -o
-> value: 1
-```
-This will use the following default locations:
-1. The workflow definition is used from `tkr/graphs/main.py:workflow`
-2. The inputs are taken from `workflow_inputs.json`
-3. `-o` enables the printing of outputs
-
-### How to use the new project
-
-The project is set up in a way to be convenient for developers already experienced with Tierkreis.
-Some of the concepts we will discuss in the [core concepts](./core_concepts.md) and implement in the upcoming pages.
-
-The repository is structure is intended to separate _graphs_, _workers_ and library code.
-Graph definitions, like a `hello_world_graph` you will write in this tutorial should go into the `graphs` directory.
-The main file contains an example graph, and has set up the storage and executors similar to the ones above.
-
-`Workers` are a way to add custom functionality, which will be executed as Tierkreis tasks.
-If you're not familiar with `workers` yet, we will explain them as part of this tutorial.
-It is very simple to wrap existing python code to make it available in Tierkreis.
-Each worker is a separate entity, your new project will contain one `example_worker`.
-If you want to include more they should have a similar structure.
-
-
-## Advanced Topics
-
-Once you have finished the tutorial you can start writing your own workflows.
-If you want to learn more details to fully leverage the power of Tierkreis,
-the advanced  user guide available [here](../tutorial_advanced/index.md).
-It includes further tutorials, and detailed descsriptions on how to write graphs, workers and executors.
+The summary above is fairly simplified; for a more information you may
+want to look at [core concepts](./core_concepts.md).
