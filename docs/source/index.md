@@ -19,6 +19,6 @@ For more advanced topics see the specific contents below.
 :maxdepth: 3
 installation.md
 tutorial/index
-tutorial_advanced/index
+tutorial/user_guide.md
 apidocs/index
 ```

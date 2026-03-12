@@ -4,6 +4,8 @@ Once you have completed the beginners tutorial, you can look at advanced topics.
 
 ```{toctree}
 :maxdepth: 1
+core_concepts.md
+visualization.md
 ../graphs/index
 ../worker/index
 ../executors/index
