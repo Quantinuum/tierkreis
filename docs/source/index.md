@@ -24,11 +24,10 @@ tutorial/index
 ```{toctree}
 :maxdepth: 2
 :caption: User guide
-
 tutorial/core_concepts.md
 tutorial/visualization.md
 tutorial/logging_and_errors.md
-tutorial/cli.md
+tutorial/cli
 graphs/index
 worker/index
 executors/index

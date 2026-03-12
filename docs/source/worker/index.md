@@ -24,7 +24,14 @@ As long as there is a runnable binary, you can provide a thin wrapper which allo
 complex_types.md
 external_workers.md
 ../examples/multiple_outputs.ipynb
-native_workers/index
+
+:caption: Prepackaged Workers
+../native_workers/aer_worker.md
+../native_workers/ibmq_worker.md
+../native_workers/nexus_worker.md
+../native_workers/pytket_worker.md
+../native_workers/quantinuum_worker.md
+../native_workers/qulacs_worker.md
 ```
 
 ## Generating workers from the cli
