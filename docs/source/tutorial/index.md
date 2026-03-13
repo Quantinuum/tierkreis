@@ -13,7 +13,7 @@ please refer to the User Guide or the API Reference.
 :hidden:
 :maxdepth: 1
 ../examples/first_graph.ipynb
-../examples/hello_world_graph.ipynb
+../examples/pytket_graph.ipynb
 ../examples/storage_and_executors.ipynb
 ../examples/parallelism.ipynb
 ../examples/hamiltonian.ipynb

@@ -61,6 +61,7 @@ generate:
   just stubs-generate-api 'docs/source/examples/example_workers/error_worker/tkr_error_worker_impl'
   just stubs-generate-api 'docs/source/examples/example_workers/hello_world_worker/tkr_hello_world_worker_impl'
   just stubs-generate-api 'docs/source/examples/example_workers/multiple_outputs_worker/tkr_multiple_outputs_worker_impl'
+  just stubs-generate-api 'docs/source/examples/example_workers/pytket_example_worker/tkr_pytket_example_worker_impl'
   just stubs-generate-api 'docs/source/examples/example_workers/qsci_worker/tkr_qsci_worker_impl'
   just stubs-generate-api 'docs/source/examples/example_workers/scipy_worker/tkr_scipy_worker_impl'
   just stubs-generate-api 'docs/source/examples/example_workers/substitution_worker/tkr_substitution_worker_impl'
