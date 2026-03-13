@@ -51,6 +51,13 @@ uv run tkr run -o
 > value: 1
 ```
 
+### Setting up prepackaged workers
+
+Throughout the tutorial we're going to use some prepackade worker and define your own.
+To make the examples run locally you need to install the workers first:
+```uv
+uv add tkr-aer-worker-impl tkr-pytket-worker-impl tkr-quantinuum-worker-impl tkr-qulacs-worker-impl 
+```
 
 **TODO: describe how to install the necessary workers and dependencies
 for running the later lessons.** 
@@ -94,8 +101,7 @@ directories of note here:
 * `workers` is where we add custom functionality to the graph.  You
   can think of a worker as a library that is available in your
   workflow.  Code for your own workers will live here, as we describe
-  in [lesson 2](../examples/hello_world_graph.ipynb) and the [worker advanced guide](../worker/index.md).
-  **TODO**.
-
+  in [lesson 2](../examples/pytket_graph.ipynb) and the [worker advanced guide](../worker/index.md).
+ 
 The summary above is fairly simplified; for a more information you may
 want to look at [core concepts](./core_concepts.md).

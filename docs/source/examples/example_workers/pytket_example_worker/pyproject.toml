@@ -1,0 +1,26 @@
+[project]
+name = "tkr-pytket-example-worker-impl"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.11.7",
+    "pytket>=2.9.3",
+    "tierkreis",
+    "ruff",
+    "sympy",
+    "pytket-qiskit",
+    "tkr-pytket-example-worker",
+]
+
+[tool.uv.sources]
+tierkreis = { workspace = true }
+tkr-pytket-example-worker = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+
+[project.scripts]
+tkr-pytket-example-worker = "tkr_pytket_example_worker_impl.main:main"
