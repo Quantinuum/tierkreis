@@ -14,15 +14,15 @@ pip install tierkreis
 
 ## Constructing the graph
 
-First we instantiate a `GraphBuilder` object.
+First we instantiate a `Graph` object.
 The arguments to the constructor describe the inputs and outputs of the graph respectively.
 The following graph has no inputs and outputs a single integer.
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.models import EmptyModel, TKR
 
-g = GraphBuilder(EmptyModel, TKR[int])
+g = Graph(EmptyModel, TKR[int])
 ```
 
 In general a graph can have a multiple inputs and multiple outputs
@@ -33,7 +33,7 @@ In order to keep a clear separation between the types used in the Tierkreis grap
 (The `TKR[A]` wrapper type indicates that an edge in the graph contains a value of type `A`.)
 ```
 
-We can add constants to a graph using `GraphBuilder.const`.
+We can add constants to a graph using `Graph.const`.
 
 ```{code-cell} ipython3
 one = g.const(1)
@@ -43,7 +43,7 @@ two = g.const(2)
 The constants will be added into the data structure defining the graph.
 In particular if the graph is serialized then these constants will be hard-coded into that serialization.
 
-We can add tasks using `GraphBuilder.task`:
+We can add tasks using `Graph.task`:
 
 ```{code-cell} ipython3
 from tierkreis.builtins import iadd

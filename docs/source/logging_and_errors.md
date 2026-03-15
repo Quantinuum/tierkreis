@@ -29,10 +29,10 @@ The goal of such errors is to catch errors before potentially running an expensi
 For example providing an incorrect type to the output
 
 ```python
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.controller.data.models import TKR
 
-g = GraphBuilder(TKR[int], TKR[list[int]])
+g = Graph(TKR[int], TKR[list[int]])
 g.finish_with_outputs(g.inputs)
 ```
 

@@ -11,7 +11,7 @@ def visualize_graph(graph_data: GraphData | Workflow) -> None:
     """Visualize a computation graph in a web browser.
 
     :param graph_data: The computation graph to visualize.
-    :type graph_data: GraphData | GraphBuilder
+    :type graph_data: GraphData | Graph
     """
     if isinstance(graph_data, Workflow):
         graph_data = graph_data.data

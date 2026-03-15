@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 
 from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
-from tierkreis.builder import GraphBuilder, Workflow
+from tierkreis.builder import Graph, Workflow
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.location import Loc
@@ -17,22 +17,22 @@ WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 
 def will_fail_graph() -> Workflow[EmptyModel, TKR[int]]:
-    graph = GraphBuilder(EmptyModel, TKR[int])
+    graph = Graph(EmptyModel, TKR[int])
     return graph.finish_with_outputs(graph.task(fail()))
 
 
 def wont_fail_graph() -> Workflow[EmptyModel, TKR[int]]:
-    graph = GraphBuilder(EmptyModel, TKR[int])
+    graph = Graph(EmptyModel, TKR[int])
     return graph.finish_with_outputs(graph.task(wont_fail()))
 
 
 def fail_in_eval() -> Workflow[EmptyModel, TKR[int]]:
-    graph = GraphBuilder(EmptyModel, TKR[int])
+    graph = Graph(EmptyModel, TKR[int])
     return graph.finish_with_outputs(graph.eval(will_fail_graph(), EmptyModel()))
 
 
 def non_zero_exit_code() -> Workflow[EmptyModel, TKR[int]]:
-    graph = GraphBuilder(EmptyModel, TKR[int])
+    graph = Graph(EmptyModel, TKR[int])
     return graph.finish_with_outputs(graph.task(exit_code_1()))
 
 

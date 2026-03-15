@@ -29,7 +29,7 @@ The full api is available in the {py:mod}`API Docs <aer_worker>`.
 The Tierkreis Python package provides a few prepackaged graphs to make it easier to compile and run circuits with Aer.
 
 `tierkreis.graphs.simulate.compile_simulate.compile_simulate` is intended for the common use case of compiling a list of circuits in parallel and then running them in parallel.
-It can be included within a custom graph using `GraphBuilder.eval` or run as a standalone graph.
+It can be included within a custom graph using `Graph.eval` or run as a standalone graph.
 
 An example use is in `docs/source/examples/parallelism.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis), which looks like:
 

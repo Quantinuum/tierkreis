@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import UUID
 
 from tests.workers.hello_world_worker.stubs import greet
-from tierkreis.builder import Workflow, GraphBuilder
+from tierkreis.builder import Workflow, Graph
 from tierkreis.builtins import neg
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
@@ -22,7 +22,7 @@ WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 
 def shell_graph():
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     result = g.data.func(  # escape hatch into untyped builder
         "shell_worker.greet",
         {"greeting": g.inputs.value_ref()},
@@ -78,7 +78,7 @@ def test_suppress_env():
 
 
 def builtin_graph() -> Workflow[TKR[bool], TKR[bool]]:
-    g = GraphBuilder(TKR[bool], TKR[bool])
+    g = Graph(TKR[bool], TKR[bool])
     return g.finish_with_outputs(g.task(neg(g.inputs)))
 
 
@@ -104,7 +104,7 @@ def test_builtin_executor():
 
 
 def hello_graph() -> Workflow[TKR[str], TKR[str]]:
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     hello = g.const("hello ")
     output = g.task(greet(greeting=hello, subject=g.inputs))
     return g.finish_with_outputs(output)
@@ -134,7 +134,7 @@ def test_uv_executor():
 
 
 def stdinout_graph():
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     result = g.data.func(  # escape hatch into untyped builder
         "stdinout_worker.greet",
         {"greeting": g.inputs.value_ref()},
@@ -167,7 +167,7 @@ def test_stdinout_executor():
 
 def task_graph():
     # Both tasks are the same, we just use different names to test the task executor
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     first_call = g.data.func(
         "shell_worker.meet",
         {"greeting": g.inputs.value_ref()},
@@ -219,7 +219,7 @@ def test_task_executor():
 
 def multiple_graph():
     # Both tasks are the same, we just use different names to test the task executor
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     first_call = g.data.func(
         "shell_worker.meet",
         {"greeting": g.inputs.value_ref()},

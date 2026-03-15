@@ -151,7 +151,7 @@ def default_graph(worker_name: str) -> str:
 from pathlib import Path
 from uuid import UUID
 
-from tierkreis.builder import Workflow, GraphBuilder
+from tierkreis.builder import Workflow, Graph
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.executor import ShellExecutor, UvExecutor
@@ -168,7 +168,7 @@ class GraphOutputs(NamedTuple):
 
 
 def workflow() -> Workflow[GraphInputs, GraphOutputs]:
-    g = GraphBuilder(GraphInputs, GraphOutputs)
+    g = Graph(GraphInputs, GraphOutputs)
     out = g.task(your_worker_task(g.inputs.value))
     return g.finish_with_outputs(GraphOutputs(value=out))
 
@@ -301,7 +301,7 @@ To update the project settings make sure to `uv sync`.
 You can use them as a task in the graph:
 ```python
 def your_graph() -> Workflow[TKR[int], TKR[int]]:
-    g = GraphBuilder(TKR[int], TKR[int])
+    g = Graph(TKR[int], TKR[int])
     out = g.task(your_worker_task(g.inputs))
     g.finish_with_outputs(out)
     return g

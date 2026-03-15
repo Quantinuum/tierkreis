@@ -67,11 +67,11 @@ Since we don't have stubs for the script (which we could generate by providing a
 
 ```{code} ipython3
 from tierkreis.models import EmptyModel, TKR
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from ..tutorial.auth_stubs import sign
 
-def signing_graph()-> GraphBuilder[EmptyModel, TKR[str]]:
-    g = GraphBuilder(EmptyModel, TKR[str])
+def signing_graph()-> Graph[EmptyModel, TKR[str]]:
+    g = Graph(EmptyModel, TKR[str])
     # Define the fix inputs to the graph
     message = g.const("dummymessage")
     passphrase = g.const(b"dummypassphrase")

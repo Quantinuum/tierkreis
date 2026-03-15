@@ -44,7 +44,7 @@ class QuantinuumInput(NamedTuple):
 
 
 def compile_run_single():
-    g = GraphBuilder(
+    g = Graph(
         QuantinuumInput, TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]
     )
 

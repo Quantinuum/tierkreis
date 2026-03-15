@@ -2,7 +2,7 @@
 
 from typing import NamedTuple, TypeVar
 
-from tierkreis.builder import GraphBuilder, Workflow, TypedGraphRef
+from tierkreis.builder import Graph, Workflow, TypedGraphRef
 from tierkreis.builtins import head, igt, tkr_len
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
@@ -24,7 +24,7 @@ def _fold_graph_outer[A: PType, B: PType]() -> Workflow[
     _FoldGraphOuterInputs[A, B],
     _FoldGraphOuterOutputs[A, B],
 ]:
-    g = GraphBuilder(_FoldGraphOuterInputs[A, B], _FoldGraphOuterOutputs[A, B])
+    g = Graph(_FoldGraphOuterInputs[A, B], _FoldGraphOuterOutputs[A, B])
 
     func = g.inputs.func
     accum = g.inputs.accum
@@ -84,11 +84,11 @@ def fold_graph[A_co: PType, B_co: PType](
     fold : { A x B -> B } -> { list[A] x B -> B }
 
     :param func: The function to fold over.
-    :type func: GraphBuilder[FoldFunctionInput[A_co, B_co], TKR[B_co]]
+    :type func: Graph[FoldFunctionInput[A_co, B_co], TKR[B_co]]
     :return: A graph implementing the fold function.
-    :rtype: GraphBuilder[FoldGraphInputs[A_co, B_co], TKR[B_co]]
+    :rtype: Graph[FoldGraphInputs[A_co, B_co], TKR[B_co]]
     """
-    g = GraphBuilder(FoldGraphInputs[A_co, B_co], TKR[B_co])
+    g = Graph(FoldGraphInputs[A_co, B_co], TKR[B_co])
     foldfunc = g._graph_const(func)  # noqa: SLF001
     # TODO @mwpb: include the computation inside the fold
     ins = _FoldGraphOuterInputs(

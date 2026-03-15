@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
 import tierkreis.builtins.stubs as tkr_builtins
-from tierkreis.builder import GraphBuilder, Workflow
+from tierkreis.builder import Graph, Workflow
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import TKR
@@ -72,7 +72,7 @@ class MultipleAccOut(NamedTuple):
 
 
 def _loop_body_multiple_acc() -> Workflow[MultipleAcc, MultipleAccOut]:
-    g = GraphBuilder(MultipleAcc, MultipleAccOut)
+    g = Graph(MultipleAcc, MultipleAccOut)
 
     acc = g.inputs.acc1
     acc2 = g.inputs.acc2
@@ -106,7 +106,7 @@ class LoopMultipleAccOut(NamedTuple):
 
 
 def loop_multiple_acc() -> Workflow[EmptyModel, LoopMultipleAccOut]:
-    g = GraphBuilder(EmptyModel, LoopMultipleAccOut)
+    g = Graph(EmptyModel, LoopMultipleAccOut)
 
     acc1 = g.const(0)
     acc2 = g.const(0)
@@ -131,7 +131,7 @@ class ScopingOut(NamedTuple):
 
 
 def _loop_body_scoping() -> Workflow[Scoping, ScopingOut]:
-    g = GraphBuilder(Scoping, ScopingOut)
+    g = Graph(Scoping, ScopingOut)
 
     one = g.const(1)
 
@@ -148,7 +148,7 @@ class LoopScopingOut(NamedTuple):
 
 
 def loop_scoping() -> Workflow[EmptyModel, LoopScopingOut]:
-    g = GraphBuilder(EmptyModel, LoopScopingOut)
+    g = Graph(EmptyModel, LoopScopingOut)
 
     start = g.const(0)
     end = g.const(10)

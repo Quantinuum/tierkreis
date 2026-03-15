@@ -3,7 +3,7 @@
 # ruff: noqa: F821
 from typing import NamedTuple
 
-from tierkreis.builder import GraphBuilder, Workflow
+from tierkreis.builder import Graph, Workflow
 from tierkreis.builtins import tkr_sleep
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.nexus_worker import (
@@ -57,9 +57,9 @@ def upload_circuit_graph() -> Workflow[UploadCircuitInputs, TKR[ExecuteJobRef]]:
     """Construct a graph to upload a circuit to nexus.
 
     :return: A uploading graph.
-    :rtype: GraphBuilder[UploadCircuitInputs, TKR[ExecuteJobRef]]
+    :rtype: Graph[UploadCircuitInputs, TKR[ExecuteJobRef]]
     """
-    g = GraphBuilder(UploadCircuitInputs, TKR[ExecuteJobRef])
+    g = Graph(UploadCircuitInputs, TKR[ExecuteJobRef])
     programme = g.task(upload_circuit(g.inputs.project_name, g.inputs.circuit))
     return g.finish_with_outputs(programme)  # type: ignore[arg-type]
 
@@ -67,7 +67,7 @@ def upload_circuit_graph() -> Workflow[UploadCircuitInputs, TKR[ExecuteJobRef]]:
 def _polling_loop_body(
     polling_interval: float,
 ) -> Workflow[TKR[ExecuteJobRef], _LoopOutputs]:
-    g = GraphBuilder(TKR[ExecuteJobRef], _LoopOutputs)
+    g = Graph(TKR[ExecuteJobRef], _LoopOutputs)
     pred = g.task(is_running(g.inputs))
 
     wait = g.ifelse(
@@ -88,9 +88,9 @@ def nexus_submit_and_poll(
     :param polling_interval: The polling interval in seconds, defaults to 30.0
     :type polling_interval: float, optional
     :return: A graph performing submission and polling.
-    :rtype: GraphBuilder[JobInputs, TKR[list[BackendResult]]]
+    :rtype: Graph[JobInputs, TKR[list[BackendResult]]]
     """
-    g = GraphBuilder(JobInputs, TKR[list[BackendResult]])
+    g = Graph(JobInputs, TKR[list[BackendResult]])
     upload_inputs = g.map(
         lambda x: UploadCircuitInputs(g.inputs.project_name, x),
         g.inputs.circuits,

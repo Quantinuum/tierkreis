@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import UUID
 
 from tierkreis import run_graph
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.builtins import iadd, itimes
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
@@ -15,7 +15,7 @@ def test_restart() -> None:
     storage.clean_graph_files()
     executor = UvExecutor(Path(__file__).parent.parent / "workers", storage.logs_path)
 
-    g = GraphBuilder(TKR[int], TKR[int])
+    g = Graph(TKR[int], TKR[int])
     plus_one = g.task(iadd(g.const(1), g.inputs))
     left = g.task(iadd(g.const(1), plus_one))
     right = g.task(itimes(g.const(2), plus_one))

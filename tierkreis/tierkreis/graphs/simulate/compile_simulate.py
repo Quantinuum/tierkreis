@@ -9,7 +9,7 @@ from tierkreis.aer_worker import (
 from tierkreis.aer_worker import (
     run_circuit as aer_run,
 )
-from tierkreis.builder import GraphBuilder, Workflow
+from tierkreis.builder import Graph, Workflow
 from tierkreis.builtins import str_eq, tkr_zip, untuple
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.qulacs_worker import (
@@ -59,9 +59,9 @@ def aer_simulate_single() -> Workflow[SimulateJobInputsSingle, TKR[BackendResult
     This ignores the simulator_name field.
 
     :return: The graph for the simulation.
-    :rtype: GraphBuilder[SimulateJobInputsSingle, TKR[BackendResult]]
+    :rtype: Graph[SimulateJobInputsSingle, TKR[BackendResult]]
     """
-    g = GraphBuilder(SimulateJobInputsSingle, TKR[BackendResult])
+    g = Graph(SimulateJobInputsSingle, TKR[BackendResult])
     circuit_shots = g.task(untuple(g.inputs.circuit_shots))
 
     compiled_circuit = g.task(
@@ -83,9 +83,9 @@ def qulacs_simulate_single() -> Workflow[
     This ignores the simulator_name field.
 
     :return: The graph for the simulation.
-    :rtype: GraphBuilder[SimulateJobInputsSingle, TKR[BackendResult]]
+    :rtype: Graph[SimulateJobInputsSingle, TKR[BackendResult]]
     """
-    g = GraphBuilder(SimulateJobInputsSingle, TKR[BackendResult])
+    g = Graph(SimulateJobInputsSingle, TKR[BackendResult])
     circuit_shots = g.task(untuple(g.inputs.circuit_shots))
 
     compiled_circuit = g.task(
@@ -105,9 +105,9 @@ def compile_simulate_single() -> Workflow[
     """CConstruct a graph to simulate a single job on either aer or qulacs.
 
     :return: The graph for the simulation.
-    :rtype: GraphBuilder[ SimulateJobInputsSingle, TKR[BackendResult], ]
+    :rtype: Graph[ SimulateJobInputsSingle, TKR[BackendResult], ]
     """
-    g = GraphBuilder(SimulateJobInputsSingle, TKR[BackendResult])
+    g = Graph(SimulateJobInputsSingle, TKR[BackendResult])
 
     aer_res = g.eval(aer_simulate_single(), g.inputs)
     qulacs_res = g.eval(qulacs_simulate_single(), g.inputs)
@@ -125,7 +125,7 @@ def compile_simulate() -> Workflow[SimulateJobInputs, TKR[list[BackendResult]]]:
 
     :return: The graph for the simulation.
     """
-    g = GraphBuilder(SimulateJobInputs, TKR[list[BackendResult]])
+    g = Graph(SimulateJobInputs, TKR[list[BackendResult]])
 
     circuits_shots = g.task(tkr_zip(g.inputs.circuits, g.inputs.n_shots))
 

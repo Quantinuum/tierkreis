@@ -43,7 +43,7 @@ class IBMQInput(NamedTuple):
 
 
 def compile_run_single():
-    g = GraphBuilder(
+    g = Graph(
         IBMQInput, TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]
     )
 

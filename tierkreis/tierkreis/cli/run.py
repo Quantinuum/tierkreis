@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType, ptype_from_bytes
@@ -56,13 +56,13 @@ def load_graph(graph_input: str) -> GraphData:
     graph_name: Any = getattr(module, function_name)
     if isinstance(graph_name, GraphData):
         graph_data = graph_name
-    if isinstance(graph_name, GraphBuilder):
+    if isinstance(graph_name, Graph):
         graph_data = graph_name.data
     if isinstance(graph_name, Callable):
         graph_object = graph_name()
         if isinstance(graph_object, GraphData):
             graph_data = graph_object
-        if isinstance(graph_object, GraphBuilder):
+        if isinstance(graph_object, Graph):
             graph_data = graph_object.data
     if graph_data is None:
         logger.error("Could not load object %s as GraphData", graph_data)

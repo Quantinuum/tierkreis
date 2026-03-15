@@ -113,7 +113,7 @@ def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
     return exec_script(input=script_input)
 
 
-class GraphBuilder[Inputs: TModel, Outputs: TModel]:
+class Graph[Inputs: TModel, Outputs: TModel]:
     """Class to construct typed workflow graphs.
 
     :attr data: The underlying graph data.

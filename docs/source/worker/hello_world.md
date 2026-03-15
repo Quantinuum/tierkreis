@@ -71,14 +71,14 @@ Since this worker uses the Tierkreis Python library, we can automatically genera
 
 ## Graph creation
 
-Now can we import the `greet` function from the stubs file and use it in `GraphBuilder.task`.
+Now can we import the `greet` function from the stubs file and use it in `Graph.task`.
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.models import TKR
 from hello_stubs import greet
 
-g = GraphBuilder(TKR[str], TKR[str])
+g = Graph(TKR[str], TKR[str])
 output = g.task(greet(greeting=g.const("hello "), subject=g.inputs))
 workflow = g.finish_with_outputs(output)
 ```

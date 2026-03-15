@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from tierkreis.builder import GraphBuilder, Workflow
+from tierkreis.builder import Graph, Workflow
 from tierkreis.builtins import tkr_range
 from tierkreis.controller.data.models import TKR
 
@@ -19,19 +19,19 @@ class OuterOutputs(NamedTuple):
 
 
 def omit_input() -> Workflow[Inputs, TKR[list[int]]]:
-    g = GraphBuilder(Inputs, TKR[list[int]])
+    g = Graph(Inputs, TKR[list[int]])
     range_1 = g.task(tkr_range(g.inputs.start, g.inputs.stop))
     return g.finish_with_outputs(range_1)
 
 
 def passthru() -> Workflow[Inputs, TKR[list[int]]]:
-    g = GraphBuilder(Inputs, TKR[list[int]])
+    g = Graph(Inputs, TKR[list[int]])
     range_1 = g.task(tkr_range(g.inputs.start, g.inputs.stop, g.inputs.step))
     return g.finish_with_outputs(range_1)
 
 
 def defaults_omit() -> Workflow[Inputs, OuterOutputs]:
-    g = GraphBuilder(Inputs, OuterOutputs)
+    g = Graph(Inputs, OuterOutputs)
     range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
     range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
     range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
@@ -39,7 +39,7 @@ def defaults_omit() -> Workflow[Inputs, OuterOutputs]:
 
 
 def defaults_passthru() -> Workflow[Inputs, OuterOutputs]:
-    g = GraphBuilder(Inputs, OuterOutputs)
+    g = Graph(Inputs, OuterOutputs)
     range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
     range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
     range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
@@ -47,7 +47,7 @@ def defaults_passthru() -> Workflow[Inputs, OuterOutputs]:
 
 
 def defaults_not_none() -> Workflow[Inputs, OuterOutputs]:
-    g = GraphBuilder(Inputs, OuterOutputs)
+    g = Graph(Inputs, OuterOutputs)
     range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
     range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
     range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
