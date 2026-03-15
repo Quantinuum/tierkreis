@@ -6,7 +6,7 @@ from tests.workers.graph.stubs import (
     apply_twice,
     ApplyTwiceInput,
 )
-from tierkreis.builder import GraphBuilder, TypedGraphRef, FinishedGraph
+from tierkreis.builder import GraphBuilder, TypedGraphRef, Workflow
 from tierkreis.builtins import (
     conjugate,
     eq,
@@ -33,20 +33,20 @@ class DoublerOutput(NamedTuple):
     value: TKR[int]
 
 
-def typed_doubler() -> FinishedGraph[TKR[int], TKR[int]]:
+def typed_doubler() -> Workflow[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     out = g.task(itimes(a=g.const(2), b=g.inputs))
     return g.finish_with_outputs(out)
 
 
-def typed_doubler_plus_multi() -> FinishedGraph[DoublerInput, DoublerOutput]:
+def typed_doubler_plus_multi() -> Workflow[DoublerInput, DoublerOutput]:
     g = GraphBuilder(DoublerInput, DoublerOutput)
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
     return g.finish_with_outputs(DoublerOutput(a=g.inputs.x, value=out))
 
 
-def typed_doubler_plus() -> FinishedGraph[DoublerInput, TKR[int]]:
+def typed_doubler_plus() -> Workflow[DoublerInput, TKR[int]]:
     g = GraphBuilder(DoublerInput, TKR[int])
     mul = g.task(itimes(a=g.inputs.x, b=g.const(2)))
     out = g.task(iadd(a=mul, b=g.inputs.intercept))
@@ -57,7 +57,7 @@ class TypedEvalOutputs(NamedTuple):
     typed_eval_output: TKR[int]
 
 
-def typed_eval() -> FinishedGraph[EmptyModel, TypedEvalOutputs]:
+def typed_eval() -> Workflow[EmptyModel, TypedEvalOutputs]:
     g = GraphBuilder(EmptyModel, TypedEvalOutputs)
     e = g.eval(typed_doubler_plus(), DoublerInput(x=g.const(6), intercept=g.const(0)))
     return g.finish_with_outputs(TypedEvalOutputs(typed_eval_output=e))
@@ -72,33 +72,33 @@ class LoopBodyOutput(NamedTuple):
     should_continue: TKR[bool]
 
 
-def loop_body() -> FinishedGraph[LoopBodyInput, LoopBodyOutput]:
+def loop_body() -> Workflow[LoopBodyInput, LoopBodyOutput]:
     g = GraphBuilder(LoopBodyInput, LoopBodyOutput)
     a_plus = g.task(iadd(a=g.inputs.loop_acc, b=g.const(1)))
     pred = g.task(igt(a=g.const(10), b=a_plus))
     return g.finish_with_outputs(LoopBodyOutput(loop_acc=a_plus, should_continue=pred))
 
 
-def typed_loop() -> FinishedGraph[EmptyModel, TKR[int]]:
+def typed_loop() -> Workflow[EmptyModel, TKR[int]]:
     g = GraphBuilder(EmptyModel, TKR[int])
     loop = g.loop(loop_body(), LoopBodyInput(loop_acc=g.const(6)))
     return g.finish_with_outputs(loop.loop_acc)
 
 
-def typed_map_simple() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
+def typed_map_simple() -> Workflow[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     m = g.map(typed_doubler(), g.inputs)
     return g.finish_with_outputs(m)
 
 
-def typed_map() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
+def typed_map() -> Workflow[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     ins = g.map(lambda n: DoublerInput(x=n, intercept=g.const(6)), g.inputs)
     m = g.map(typed_doubler_plus(), ins)
     return g.finish_with_outputs(m)
 
 
-def typed_destructuring() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
+def typed_destructuring() -> Workflow[TKR[list[int]], TKR[list[int]]]:
     g = GraphBuilder(TKR[list[int]], TKR[list[int]])
     ins = g.map(lambda n: DoublerInput(x=n, intercept=g.const(6)), g.inputs)
     m = g.map(typed_doubler_plus_multi(), ins)
@@ -106,14 +106,14 @@ def typed_destructuring() -> FinishedGraph[TKR[list[int]], TKR[list[int]]]:
     return g.finish_with_outputs(mout)
 
 
-def tuple_untuple() -> FinishedGraph[EmptyModel, TKR[int]]:
+def tuple_untuple() -> Workflow[EmptyModel, TKR[int]]:
     g = GraphBuilder(EmptyModel, TKR[int])
     t = g.task(tkr_tuple(g.const(1), g.const(2)))
     ut = g.task(untuple(t))
     return g.finish_with_outputs(g.task(iadd(ut.a, ut.b)))
 
 
-def factorial() -> FinishedGraph[TKR[int], TKR[int]]:
+def factorial() -> Workflow[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     pred = g.task(igt(g.inputs, g.const(1)))
     n_minus_one = g.task(iadd(g.const(-1), g.inputs))
@@ -127,7 +127,7 @@ class GCDInput(NamedTuple):
     b: TKR[int]
 
 
-def gcd() -> FinishedGraph[GCDInput, TKR[int]]:
+def gcd() -> Workflow[GCDInput, TKR[int]]:
     g = GraphBuilder(GCDInput, TKR[int])
 
     pred = g.task(igt(g.inputs.b, g.const(0)))
@@ -137,26 +137,26 @@ def gcd() -> FinishedGraph[GCDInput, TKR[int]]:
     return g.finish_with_outputs(g.ifelse(pred, rec, g.inputs.a))
 
 
-def tkr_conj() -> FinishedGraph[TKR[complex], TKR[complex]]:
+def tkr_conj() -> Workflow[TKR[complex], TKR[complex]]:
     g = GraphBuilder(TKR[complex], TKR[complex])
     z = g.task(conjugate(g.inputs))
     return g.finish_with_outputs(z)
 
 
-def tkr_list_conj() -> FinishedGraph[TKR[list[complex]], TKR[list[complex]]]:
+def tkr_list_conj() -> Workflow[TKR[list[complex]], TKR[list[complex]]]:
     g = GraphBuilder(TKR[list[complex]], TKR[list[complex]])
     zs = g.map(tkr_conj(), g.inputs)
     return g.finish_with_outputs(zs)
 
 
-def eval_body_is_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
+def eval_body_is_from_worker() -> Workflow[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = TypedGraphRef(g.task(doubler_plus_graph()), TKR[int])
     out = g.eval(graph, g.inputs)
     return g.finish_with_outputs(out)
 
 
-def eval_from_worker_with_graph_from_worker() -> FinishedGraph[TKR[int], TKR[int]]:
+def eval_from_worker_with_graph_from_worker() -> Workflow[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
     inputs = ApplyTwiceInput(graph=graph, value=g.inputs)
@@ -166,7 +166,7 @@ def eval_from_worker_with_graph_from_worker() -> FinishedGraph[TKR[int], TKR[int
     return g.finish_with_outputs(out)
 
 
-def eval_graph_of_graph() -> FinishedGraph[TKR[int], TKR[int]]:
+def eval_graph_of_graph() -> Workflow[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
     e1 = g.task(graph_of_graph(graph, g.const(3)))

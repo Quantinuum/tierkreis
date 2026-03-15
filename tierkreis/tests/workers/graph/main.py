@@ -2,7 +2,7 @@ from sys import argv
 from typing import NamedTuple
 
 from tierkreis import Worker
-from tierkreis.builder import GraphBuilder, FinishedGraph, TypedGraphRef
+from tierkreis.builder import GraphBuilder, Workflow, TypedGraphRef
 from tierkreis.builtins import iadd, itimes
 from tierkreis.models import TKR
 
@@ -10,7 +10,7 @@ worker = Worker("graph")
 
 
 @worker.task()
-def doubler_plus_graph() -> FinishedGraph[TKR[int], TKR[int]]:
+def doubler_plus_graph() -> Workflow[TKR[int], TKR[int]]:
     g = GraphBuilder(TKR[int], TKR[int])
     double = g.task(itimes(g.inputs, g.const(2)))
     out = g.task(iadd(double, g.const(1)))
@@ -21,8 +21,8 @@ def doubler_plus_graph() -> FinishedGraph[TKR[int], TKR[int]]:
 # The input graph here is expected to be int->int, but we have no way to express that in the type system.
 # (GraphBuilder doesn't work as it's not accepted by the stub generator)
 def graph_of_graph(
-    f: FinishedGraph[TKR[int], TKR[int]], n: int
-) -> FinishedGraph[TKR[int], TKR[int]]:
+    f: Workflow[TKR[int], TKR[int]], n: int
+) -> Workflow[TKR[int], TKR[int]]:
     """Builds a new graph: lambda x: f^n(x)
 
     I.e. the graph applies the first argument `f` to the graph's input `n` times.
@@ -36,12 +36,12 @@ def graph_of_graph(
 
 
 class ApplyTwiceInput(NamedTuple):
-    graph: TKR[FinishedGraph[TKR[int], TKR[int]]]
+    graph: TKR[Workflow[TKR[int], TKR[int]]]
     value: TKR[int]
 
 
 @worker.task()
-def apply_twice() -> FinishedGraph[ApplyTwiceInput, TKR[int]]:
+def apply_twice() -> Workflow[ApplyTwiceInput, TKR[int]]:
     """Returns a graph for lambda f,x: f(f(x)).
 
     That is, `f` and `x` are inputs to the graph, not the worker function building it.

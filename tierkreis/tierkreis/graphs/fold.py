@@ -2,14 +2,14 @@
 
 from typing import NamedTuple, TypeVar
 
-from tierkreis.builder import GraphBuilder, FinishedGraph, TypedGraphRef
+from tierkreis.builder import GraphBuilder, Workflow, TypedGraphRef
 from tierkreis.builtins import head, igt, tkr_len
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
 
 
 class _FoldGraphOuterInputs[A: PType, B: PType](NamedTuple):
-    func: TKR[FinishedGraph["FoldFunctionInput[A, B]", TKR[B]]]
+    func: TKR[Workflow["FoldFunctionInput[A, B]", TKR[B]]]
     accum: TKR[B]
     values: TKR[list[A]]
 
@@ -20,7 +20,7 @@ class _FoldGraphOuterOutputs[A: PType, B: PType](NamedTuple):
     should_continue: TKR[bool]
 
 
-def _fold_graph_outer[A: PType, B: PType]() -> FinishedGraph[
+def _fold_graph_outer[A: PType, B: PType]() -> Workflow[
     _FoldGraphOuterInputs[A, B],
     _FoldGraphOuterOutputs[A, B],
 ]:
@@ -76,8 +76,8 @@ class FoldFunctionInput[A: PType, B: PType](NamedTuple):
 
 
 def fold_graph[A_co: PType, B_co: PType](
-    func: FinishedGraph[FoldFunctionInput[A_co, B_co], TKR[B_co]],
-) -> FinishedGraph[FoldGraphInputs[A_co, B_co], TKR[B_co]]:
+    func: Workflow[FoldFunctionInput[A_co, B_co], TKR[B_co]],
+) -> Workflow[FoldGraphInputs[A_co, B_co], TKR[B_co]]:
     """Construct a fold graph.
 
     fold : {func: (b -> a -> b)} -> {initial: b} -> {values: list[a]} -> {value: b}

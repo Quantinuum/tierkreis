@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
 import tierkreis.builtins.stubs as tkr_builtins
-from tierkreis.builder import GraphBuilder, FinishedGraph
+from tierkreis.builder import GraphBuilder, Workflow
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import TKR
@@ -71,7 +71,7 @@ class MultipleAccOut(NamedTuple):
     acc3: TKR[int]
 
 
-def _loop_body_multiple_acc() -> FinishedGraph[MultipleAcc, MultipleAccOut]:
+def _loop_body_multiple_acc() -> Workflow[MultipleAcc, MultipleAccOut]:
     g = GraphBuilder(MultipleAcc, MultipleAccOut)
 
     acc = g.inputs.acc1
@@ -105,7 +105,7 @@ class LoopMultipleAccOut(NamedTuple):
     acc3: TKR[int]
 
 
-def loop_multiple_acc() -> FinishedGraph[EmptyModel, LoopMultipleAccOut]:
+def loop_multiple_acc() -> Workflow[EmptyModel, LoopMultipleAccOut]:
     g = GraphBuilder(EmptyModel, LoopMultipleAccOut)
 
     acc1 = g.const(0)
@@ -130,7 +130,7 @@ class ScopingOut(NamedTuple):
     current: TKR[int]
 
 
-def _loop_body_scoping() -> FinishedGraph[Scoping, ScopingOut]:
+def _loop_body_scoping() -> Workflow[Scoping, ScopingOut]:
     g = GraphBuilder(Scoping, ScopingOut)
 
     one = g.const(1)
@@ -147,7 +147,7 @@ class LoopScopingOut(NamedTuple):
     result: TKR[int]
 
 
-def loop_scoping() -> FinishedGraph[EmptyModel, LoopScopingOut]:
+def loop_scoping() -> Workflow[EmptyModel, LoopScopingOut]:
     g = GraphBuilder(EmptyModel, LoopScopingOut)
 
     start = g.const(0)

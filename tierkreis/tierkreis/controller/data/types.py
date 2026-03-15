@@ -112,7 +112,7 @@ type ElementaryType = (
     | ListConvertible
     | NdarraySurrogate
     | BaseModel  # Includes GraphData
-    | FinishedGraph  # So, special case: a FinishedGraph is just a GraphData, discard the type info
+    | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
 )
 type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
@@ -228,7 +228,7 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
             annotation,
             (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
         )
-        or (isclass(origin) and issubclass(origin, FinishedGraph))
+        or (isclass(origin) and issubclass(origin, Workflow))
         or annotation in get_args(ElementaryType.__value__)
     ):
         return True
@@ -256,7 +256,7 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
         return sr.serializer(ptype)
 
     match ptype:
-        case FinishedGraph():
+        case Workflow():
             return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
@@ -375,7 +375,7 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             raise TypeError(msg)
         return annotation(**ser)
 
-    if issubclass(origin, FinishedGraph):
+    if issubclass(origin, Workflow):
         _inputs, outputs = get_args(annotation)
         return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
 
@@ -470,6 +470,6 @@ def has_default(t: Parameter) -> bool:
 
 
 @dataclass(frozen=True)
-class FinishedGraph[Inputs: TModel, Outputs: TModel]:
+class Workflow[Inputs: TModel, Outputs: TModel]:
     data: "GraphData"
     outputs_type: type[Outputs]

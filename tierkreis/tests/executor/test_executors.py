@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import UUID
 
 from tests.workers.hello_world_worker.stubs import greet
-from tierkreis.builder import FinishedGraph, GraphBuilder
+from tierkreis.builder import Workflow, GraphBuilder
 from tierkreis.builtins import neg
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
@@ -77,7 +77,7 @@ def test_suppress_env():
     assert "main.sh" in exec_data.launch_command
 
 
-def builtin_graph() -> FinishedGraph[TKR[bool], TKR[bool]]:
+def builtin_graph() -> Workflow[TKR[bool], TKR[bool]]:
     g = GraphBuilder(TKR[bool], TKR[bool])
     return g.finish_with_outputs(g.task(neg(g.inputs)))
 
@@ -103,7 +103,7 @@ def test_builtin_executor():
     assert exec_data.executor == "builtin"
 
 
-def hello_graph() -> FinishedGraph[TKR[str], TKR[str]]:
+def hello_graph() -> Workflow[TKR[str], TKR[str]]:
     g = GraphBuilder(TKR[str], TKR[str])
     hello = g.const("hello ")
     output = g.task(greet(greeting=hello, subject=g.inputs))

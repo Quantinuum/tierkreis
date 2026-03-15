@@ -12,7 +12,7 @@ from tierkreis.controller.data.types import (
     bytes_from_ptype,
     is_ptype,
     ptype_from_bytes,
-    FinishedGraph,
+    Workflow,
 )
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
@@ -70,7 +70,7 @@ type_list.append(tuple[int, str])
 type_list.append(tuple[int | str])
 type_list.append(Mapping[str, dict[str, bytes]])
 type_list.append(GraphData)
-type_list.append(FinishedGraph[TKR[int], TKR[bool]])
+type_list.append(Workflow[TKR[int], TKR[bool]])
 
 fail_list: Sequence[type] = []
 fail_list.append(UUID)
@@ -104,7 +104,7 @@ ptypes: Sequence[PType] = [
 annotated_ptypes: Sequence[tuple[PType, type]] = [
     (ptype, type(ptype)) for ptype in ptypes
 ] + [  # Not possible to deserialise without annotations
-    (typed_doubler(), FinishedGraph[TKR[int], TKR[int]])
+    (typed_doubler(), Workflow[TKR[int], TKR[int]])
 ]
 
 

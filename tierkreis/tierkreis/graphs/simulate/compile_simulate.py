@@ -9,7 +9,7 @@ from tierkreis.aer_worker import (
 from tierkreis.aer_worker import (
     run_circuit as aer_run,
 )
-from tierkreis.builder import GraphBuilder, FinishedGraph
+from tierkreis.builder import GraphBuilder, Workflow
 from tierkreis.builtins import str_eq, tkr_zip, untuple
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.qulacs_worker import (
@@ -53,7 +53,7 @@ class SimulateJobInputsSingle(NamedTuple):
     compilation_optimisation_level: TKR[int]
 
 
-def aer_simulate_single() -> FinishedGraph[SimulateJobInputsSingle, TKR[BackendResult]]:
+def aer_simulate_single() -> Workflow[SimulateJobInputsSingle, TKR[BackendResult]]:
     """Construct a graph to simulate a single circuit using qiskit aer.
 
     This ignores the simulator_name field.
@@ -74,7 +74,7 @@ def aer_simulate_single() -> FinishedGraph[SimulateJobInputsSingle, TKR[BackendR
     return g.finish_with_outputs(res)
 
 
-def qulacs_simulate_single() -> FinishedGraph[
+def qulacs_simulate_single() -> Workflow[
     SimulateJobInputsSingle,
     TKR[BackendResult],
 ]:
@@ -98,7 +98,7 @@ def qulacs_simulate_single() -> FinishedGraph[
     return g.finish_with_outputs(res)
 
 
-def compile_simulate_single() -> FinishedGraph[
+def compile_simulate_single() -> Workflow[
     SimulateJobInputsSingle,
     TKR[BackendResult],
 ]:
@@ -120,7 +120,7 @@ def compile_simulate_single() -> FinishedGraph[
     return g.finish_with_outputs(res)
 
 
-def compile_simulate() -> FinishedGraph[SimulateJobInputs, TKR[list[BackendResult]]]:
+def compile_simulate() -> Workflow[SimulateJobInputs, TKR[list[BackendResult]]]:
     """Construct a graph to simulate multiple jobs on either aer or qulacs.
 
     :return: The graph for the simulation.

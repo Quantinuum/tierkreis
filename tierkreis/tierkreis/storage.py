@@ -1,6 +1,6 @@
 """Implementation to access node storage data."""
 
-from tierkreis.builder import FinishedGraph
+from tierkreis.builder import Workflow
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
@@ -38,7 +38,7 @@ def _read_output(
 
 
 def read_outputs[A: TModel, B: TModel](
-    graph: GraphData | FinishedGraph[A, B],
+    graph: GraphData | Workflow[A, B],
     storage: ControllerStorage,
 ) -> dict[str, PType] | PType:
     """Read the outputs of a workflow graph.
@@ -46,7 +46,7 @@ def read_outputs[A: TModel, B: TModel](
     The bytes are parsed into Python types if possible.
 
     :param graph: The graph to read.
-    :type graph: GraphData | FinishedGraph
+    :type graph: GraphData | Workflow
     :param storage: The storage of the workflow run.
     :type storage: ControllerStorage
     :return: The output values. If the graph has a single output port named "value" it
@@ -55,7 +55,7 @@ def read_outputs[A: TModel, B: TModel](
     :rtype: dict[str, PType] | PType
     """
     output_annotation = None
-    if isinstance(graph, FinishedGraph):
+    if isinstance(graph, Workflow):
         output_annotation = graph.outputs_type
         graph = graph.data
 
@@ -77,7 +77,7 @@ def read_outputs[A: TModel, B: TModel](
 
 
 def read_loop_trace(
-    graph: GraphData | FinishedGraph,
+    graph: GraphData | Workflow,
     storage: ControllerStorage,
     node_name: str,
     output_name: str | None = None,
@@ -87,7 +87,7 @@ def read_loop_trace(
     This is useful to track intermediate values in a loop.
 
     :param graph: The graph to read.
-    :type graph: GraphData | FinishedGraph
+    :type graph: GraphData | Workflow
     :param storage: The storage of the workflow run.
     :type storage: ControllerStorage
     :param node_name: The name of the loop node.
@@ -101,7 +101,7 @@ def read_loop_trace(
         of values for the specified output port is returned.
     :rtype: list[PType | dict[str, list[PType]]]
     """
-    if isinstance(graph, FinishedGraph):
+    if isinstance(graph, Workflow):
         graph = graph.data
     loc = storage.loc_from_node_name(node_name)
     if loc is None:

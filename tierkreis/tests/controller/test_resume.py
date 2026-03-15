@@ -38,7 +38,7 @@ from tests.controller.typed_graphdata import (
     typed_map_simple,
     embed_graph,
 )
-from tierkreis.builder import FinishedGraph
+from tierkreis.builder import Workflow
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
@@ -52,7 +52,7 @@ from tierkreis.storage import read_outputs
 
 param_data: list[
     tuple[
-        GraphData | FinishedGraph,
+        GraphData | Workflow,
         dict[str, PType] | PType,
         str,
         dict[str, PType] | PType,
@@ -135,9 +135,7 @@ param_data: list[
     ),
     (embed_graph(), {"s1": "1", "s2": "4", "final": 2}, "embed_graph", 1),
 ]
-params: list[
-    tuple[GraphData | FinishedGraph, Any, str, int, dict[str, PType] | PType]
-] = [
+params: list[tuple[GraphData | Workflow, Any, str, int, dict[str, PType] | PType]] = [
     (graph, output, name, i + 1, inputs)
     for i, (graph, output, name, inputs) in enumerate(param_data)
 ]
@@ -213,7 +211,7 @@ def test_resume(  # noqa: PLR0913
 
 
 with_worker_param_data: list[
-    tuple[GraphData | FinishedGraph, Any, str, dict[str, PType] | PType]
+    tuple[GraphData | Workflow, Any, str, dict[str, PType] | PType]
 ] = [
     (eval_body_is_from_worker(), 21, "eval_body_is_from_worker", {"value": 10}),
     (eval_graph_of_graph(), 31, "eval_graph_of_graph", {"value": 3}),
@@ -226,7 +224,7 @@ with_worker_param_data: list[
 ]
 
 with_worker_params: list[
-    tuple[GraphData | FinishedGraph, Any, str, int, dict[str, PType] | PType]
+    tuple[GraphData | Workflow, Any, str, int, dict[str, PType] | PType]
 ] = [
     (graph, output, name, i + 1, inputs)
     for i, (graph, output, name, inputs) in enumerate(with_worker_param_data)
