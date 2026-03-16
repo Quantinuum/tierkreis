@@ -7,7 +7,6 @@ import pickle
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from inspect import Parameter, _empty, isclass
 from types import NoneType, UnionType
 from typing import (
@@ -22,7 +21,6 @@ from typing import (
     get_args,
     get_origin,
     runtime_checkable,
-    TYPE_CHECKING,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -35,10 +33,6 @@ from tierkreis.controller.data.core import (
     get_serializer,
 )
 from tierkreis.exceptions import TierkreisError
-
-if TYPE_CHECKING:
-    from tierkreis.controller.data.graph import GraphData
-    from tierkreis.controller.data.models import TModel
 
 
 @runtime_checkable
@@ -79,6 +73,22 @@ class DictConvertible(Protocol):
 
 
 @runtime_checkable
+class ModelConvertible(Protocol):
+    """A protocol for types that can be converted to and from pydantic BaseModels."""
+
+    def to_model(self) -> BaseModel:
+        """Convert self to a BaseModel."""
+        ...
+
+    @classmethod
+    def from_model(cls, annot: type[Self], arg: BaseModel, /) -> "Self":
+        """Construct self from a BaseModel.
+
+        :param annot: The annotation of the type to convert to, i.e. so it can contain type arguments for generic ModelConvertible's."""
+        ...
+
+
+@runtime_checkable
 class ListConvertible(Protocol):
     """A protocol for types that can be converted to and from lists."""
 
@@ -111,8 +121,8 @@ type ElementaryType = (
     | DictConvertible
     | ListConvertible
     | NdarraySurrogate
-    | BaseModel  # Includes GraphData
-    | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
+    | BaseModel
+    | ModelConvertible
 )
 type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
@@ -226,14 +236,22 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
         isclass(annotation)
         and issubclass(
             annotation,
-            (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
+            (
+                DictConvertible,
+                ModelConvertible,
+                ListConvertible,
+                NdarraySurrogate,
+                BaseModel,
+                Struct,
+            ),
         )
-        or (isclass(origin) and issubclass(origin, Workflow))
         or annotation in get_args(ElementaryType.__value__)
+        or (  # should we check args are ptypes too?
+            isclass(origin) and issubclass(origin, ModelConvertible)
+        )
     ):
         return True
 
-    origin = get_origin(annotation)
     if origin is not None:
         return is_ptype(origin) and all(is_ptype(x) for x in get_args(annotation))
 
@@ -256,8 +274,6 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
         return sr.serializer(ptype)
 
     match ptype:
-        case Workflow():
-            return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
@@ -276,6 +292,8 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
             return {k: ser_from_ptype(p, arg) for k, p in ptype.items()}
         case DictConvertible():
             return ser_from_ptype(ptype.to_dict(), None)
+        case ModelConvertible():
+            return ser_from_ptype(ptype.to_model(), None)
         case ListConvertible():
             return ser_from_ptype(ptype.to_list(), None)
         case BaseModel():
@@ -317,7 +335,6 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
     :return: The coerced value.
     :rtype: T
     """
-    from tierkreis.controller.data.graph import GraphData
 
     if annotation is None:
         return ser
@@ -355,10 +372,27 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
         return ser
 
     if issubclass(origin, DictConvertible):
+        # This works only when get_origin(annotation)=None so `origin is annotation`.
+        # Otherwise, annotation would be a GenericAlias instantiation of origin,
+        # not a subclass.
         if not issubclass(annotation, origin):
             msg = "Invalid subclass relation encountered."
             raise TypeError(msg)
         return annotation.from_dict(ser)
+
+    if issubclass(origin, ModelConvertible):
+        if isclass(annotation):
+            assert issubclass(annotation, ModelConvertible)
+            assert annotation is origin  # because get_origin(annotation) == None
+        else:
+            # not a subclass of ModelConvertible as not a class
+            from typing import _GenericAlias
+
+            assert isinstance(annotation, _GenericAlias)
+        # The Annotated that we cast to here is an intersection type
+        return annotation.from_model(
+            cast(Annotated[type[ModelConvertible], T], annotation), ser
+        )
 
     if issubclass(origin, ListConvertible):
         if not issubclass(annotation, origin):
@@ -374,10 +408,6 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
             msg = "Invalid subclass relation encountered."
             raise TypeError(msg)
         return annotation(**ser)
-
-    if issubclass(origin, Workflow):
-        _inputs, outputs = get_args(annotation)
-        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
 
     if issubclass(origin, Struct):
         d = {
@@ -467,9 +497,3 @@ def has_default(t: Parameter) -> bool:
     :rtype: bool
     """
     return not (isclass(t.default) and issubclass(t.default, _empty))
-
-
-@dataclass(frozen=True)
-class Workflow[Inputs: TModel, Outputs: TModel]:
-    data: "GraphData"
-    outputs_type: type[Outputs]
