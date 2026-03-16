@@ -59,8 +59,7 @@ To make the examples run locally you need to install the workers first:
 uv add tkr-aer-worker-impl tkr-pytket-worker-impl tkr-quantinuum-worker-impl tkr-qulacs-worker-impl 
 ```
 
-**TODO: describe how to install the necessary workers and dependencies
-for running the later lessons.** 
+**TODO: make sure these packages exist.** 
 
 ## The Default Project
 The `tkr init project` command creates a directory structure like this:
