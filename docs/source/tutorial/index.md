@@ -34,7 +34,7 @@ uv add tierkreis
 ```
 The Tierkreis Visualizer is a separate package, so we'll install that too.
 ```bash
-uv add tierkreis-visualizer
+uv add tierkreis-visualization
 ```
 
 The Tierkreis package includes CLI tool called `tkr`.  The best way to
