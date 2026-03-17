@@ -36,6 +36,6 @@ tutorial/tutorials.md
 
 ```{toctree}
 :maxdepth: 2
-:caption: APIs
+:caption: API Reference
 apidocs/index
 ```

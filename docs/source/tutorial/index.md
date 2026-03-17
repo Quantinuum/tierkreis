@@ -7,7 +7,7 @@ projects straight away.
 
 Tierkreis can do many things that are not covered in this short
 tutorial.  For more in depth information, and more advanced topics,
-please refer to the User Guide or the API Reference.
+please refer to the [User Guide](core_concepts.md) or the [API Reference](../apidocs/index).
 
 ```{toctree}
 :hidden:
@@ -55,7 +55,7 @@ uv run tkr run -o
 
 Throughout the tutorial we're going to use some prepackade worker and define your own.
 To make the examples run locally you need to install the workers first:
-```uv
+```bash
 uv add tkr-aer-worker-impl tkr-pytket-worker-impl tkr-quantinuum-worker-impl tkr-qulacs-worker-impl 
 ```
 
