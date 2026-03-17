@@ -55,7 +55,7 @@ uv run tkr run -o
 Throughout the tutorial we're going to use some prepackade worker and define your own.
 To make the examples run locally you need to install the workers first:
 ```bash
-uv add tkr-aer-worker-impl tkr-pytket-worker-impl tkr-quantinuum-worker-impl tkr-qulacs-worker-impl 
+uv add tkr-aer-worker-impl tkr-pytket-worker-impl
 ```
 
 **TODO: make sure these packages exist.** 
