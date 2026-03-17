@@ -15,7 +15,6 @@ please refer to the [User Guide](core_concepts.md) or the [API Reference](../api
 ../examples/first_graph.ipynb
 ../examples/pytket_graph.ipynb
 ../examples/storage_and_executors.ipynb
-../examples/parallelism.ipynb
 ../examples/hamiltonian.ipynb
 whatnext.md
 ```

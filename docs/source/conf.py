@@ -13,7 +13,8 @@ author = "Quantinuum"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 add_module_names = False
-extensions = ["autodoc2", "myst_nb", "sphinx.ext.intersphinx"]
+extensions = ["autodoc2", "myst_nb", "sphinx.ext.intersphinx", "sphinx.ext.mathjax"]
+latex_engine = "xelatex"
 autodoc2_packages = [
     "../../tierkreis/tierkreis",
     {
@@ -54,6 +55,7 @@ nb_execution_excludepatterns = [
     "storage_and_executors.ipynb",
     "hpc.ipynb",
 ]
+myst_enable_extensions = ["dollarmath", "amsmath"]
 
 nitpicky = True
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "examples/**/.venv/**"]
