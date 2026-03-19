@@ -14,11 +14,11 @@ from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
-from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.start import NodeRunData, start, start_nodes
+from tierkreis.controller.start import start, start_nodes
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
+from tierkreis.controller.storage.walk_result import NodeRunData
 from tierkreis.exceptions import TierkreisError
 from tierkreis.logger_setup import set_tkr_logger
 
@@ -158,13 +158,9 @@ def resume_graph(
             msg = "Graph encountered errors"
             raise TierkreisError(msg)
 
-        print(walk_results.breaks)
         if enable_breakpoints and (walk_results.breaks is not None):
-            if isinstance(executor, InMemoryExecutor):
-                breakpoint()
-            else:
-                storage.write_breakpoint(walk_results.breaks, walk_results)
-                break
+            storage.write_breakpoint(walk_results.breaks, walk_results)
+            break
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):
