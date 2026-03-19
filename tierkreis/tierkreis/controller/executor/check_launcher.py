@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
+from tierkreis.consts import PACKAGE_PATH
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,8 @@ def check_and_set_launcher(
     :return: The full path to the worker executable.
     :rtype: Path
     """
+    if launcher_name == "builtins":
+        return Path(PACKAGE_PATH / "tierkreis" / "builtins" / "main.py")
     if check_shell or launcher_path is None:
         if (path := shutil.which(launcher_name)) is not None:
             return Path(path)

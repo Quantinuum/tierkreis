@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
-from tierkreis.controller.data.graph import NodeDef, PortID
+
+from tierkreis.controller.data.core import PortID
+from tierkreis.controller.data.graph import NodeDef
 from tierkreis.controller.data.location import Loc
 
 
@@ -43,4 +45,5 @@ class WalkResult(BaseModel):
         self.inputs_ready.extend(walk_result.inputs_ready)
         self.started.extend(walk_result.started)
         self.errored.extend(walk_result.errored)
-        self.breaks = walk_result.breaks
+        if self.breaks is None:
+            self.breaks = walk_result.breaks
