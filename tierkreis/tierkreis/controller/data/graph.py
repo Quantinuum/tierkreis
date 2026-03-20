@@ -25,10 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class NodeMetaData:
+    has_breakpoint: bool = False
+
+
+@dataclass
 class NodeDefBase:
     """Map each out-port to the list of nodes that use it."""
 
     outputs: dict[PortID, list[NodeIndex]] = field(default_factory=dict, kw_only=True)
+    annotations: NodeMetaData = field(default_factory=NodeMetaData, kw_only=True)
 
 
 @dataclass
@@ -308,7 +314,7 @@ class GraphData(BaseModel):
     ) -> Callable[[PortID], ValueRef]:
         return self.add(Breakpoint(inputs))
 
-    def input(self, name: str) -> ValueRef:
+    def input(self, name: str, metadata: NodeMetaData = NodeMetaData()) -> ValueRef:
         """Add an input name.
 
         :param name: The name of the input.
@@ -316,9 +322,9 @@ class GraphData(BaseModel):
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Input(name))(name)
+        return self.add(Input(name, annotations=metadata))(name)
 
-    def const(self, value: PType) -> ValueRef:
+    def const(self, value: PType, metadata: NodeMetaData = NodeMetaData()) -> ValueRef:
         """Add a constant value.
 
         :param value: The value to add.
@@ -326,12 +332,13 @@ class GraphData(BaseModel):
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Const(value))("value")
+        return self.add(Const(value, annotations=metadata))("value")
 
     def func(
         self,
         function_name: str,
         inputs: dict[PortID, ValueRef],
+        metadata: NodeMetaData = NodeMetaData(),
     ) -> Callable[[PortID], ValueRef]:
         """Add a function node (task).
 
@@ -342,12 +349,13 @@ class GraphData(BaseModel):
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Func(function_name, inputs))
+        return self.add(Func(function_name, inputs, annotations=metadata))
 
     def eval(
         self,
         graph: ValueRef,
         inputs: dict[PortID, ValueRef],
+        metadata: NodeMetaData = NodeMetaData(),
     ) -> Callable[[PortID], ValueRef]:
         """Add an eval node.
 
@@ -358,7 +366,7 @@ class GraphData(BaseModel):
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Eval(graph, inputs))
+        return self.add(Eval(graph, inputs, annotations=metadata))
 
     def loop(
         self,
@@ -366,6 +374,7 @@ class GraphData(BaseModel):
         inputs: dict[PortID, ValueRef],
         continue_port: PortID,
         name: str | None = None,
+        metadata: NodeMetaData = NodeMetaData(),
     ) -> Callable[[PortID], ValueRef]:
         """Add a loop node.
 
@@ -380,12 +389,15 @@ class GraphData(BaseModel):
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Loop(body, inputs, continue_port, name=name))
+        return self.add(
+            Loop(body, inputs, continue_port, name=name, annotations=metadata)
+        )
 
     def map(
         self,
         body: ValueRef,
         inputs: dict[PortID, ValueRef],
+        metadata: NodeMetaData = NodeMetaData(),
     ) -> Callable[[PortID], ValueRef]:
         """Add a map node.
 
@@ -396,13 +408,14 @@ class GraphData(BaseModel):
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Map(body, inputs))
+        return self.add(Map(body, inputs, annotations=metadata))
 
     def if_else(
         self,
         pred: ValueRef,
         if_true: ValueRef,
         if_false: ValueRef,
+        metadata: NodeMetaData = NodeMetaData(),
     ) -> Callable[[PortID], ValueRef]:
         """Add an lazy if else node.
 
@@ -415,13 +428,14 @@ class GraphData(BaseModel):
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(IfElse(pred, if_true, if_false))
+        return self.add(IfElse(pred, if_true, if_false, annotations=metadata))
 
     def eager_if_else(
         self,
         pred: ValueRef,
         if_true: ValueRef,
         if_false: ValueRef,
+        metadata: NodeMetaData = NodeMetaData(),
     ) -> Callable[[PortID], ValueRef]:
         """Add an eager if else node.
 
@@ -434,9 +448,11 @@ class GraphData(BaseModel):
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(EagerIfElse(pred, if_true, if_false))
+        return self.add(EagerIfElse(pred, if_true, if_false, annotations=metadata))
 
-    def output(self, inputs: dict[PortID, ValueRef]) -> None:
+    def output(
+        self, inputs: dict[PortID, ValueRef], metadata: NodeMetaData = NodeMetaData()
+    ) -> None:
         """Add an output node.
 
         Computation -> output.
@@ -444,7 +460,8 @@ class GraphData(BaseModel):
         :param inputs: The inputs of the outup node.
         :type inputs: dict[PortID, ValueRef]
         """
-        _ = self.add(Output(inputs))
+
+        _ = self.add(Output(inputs, annotations=metadata))
 
     def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
         """Add a node to the graph.

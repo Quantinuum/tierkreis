@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from copy import copy
 from dataclasses import dataclass
+from functools import partial
 from inspect import isclass
 from typing import (
     Any,
@@ -16,7 +17,7 @@ from typing import (
 )
 
 from tierkreis.controller.data.core import EmptyModel, ValueRef
-from tierkreis.controller.data.graph import GraphData, reindex_inputs
+from tierkreis.controller.data.graph import GraphData, NodeMetaData, reindex_inputs
 from tierkreis.controller.data.models import (
     TKR,
     TModel,
@@ -136,6 +137,14 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self.outputs_type = outputs_type
         self.inputs = init_tmodel(self.inputs_type, self.data.input)
 
+    def get_data(self) -> GraphData:
+        """Return the underlying graph from the builder.
+
+        :return: The graph.
+        :rtype: GraphData
+        """
+        return self.data
+
     def ref(self) -> TypedGraphRef[Inputs, Outputs]:
         """Return a reference of the typed graph.
 
@@ -150,7 +159,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :param outputs: The output nodes.
         :type outputs: Outputs
         """
-        self.data.output(inputs=dict_from_tmodel(outputs))
+        self.data.output(inputs=dict_from_tmodel(outputs), metadata=NodeMetaData())
         return Workflow(self.data, self.outputs_type)
 
     def embed[A: TModel, B: TModel](
@@ -199,7 +208,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """
         # Workflow exists at build-time only; erase the types at runtime:
         idx, port = self.data.const(
-            value.data if isinstance(value, Workflow) else value
+            value.data if isinstance(value, Workflow) else value, NodeMetaData()
         )
         return TKR[T](idx, port)
 
@@ -208,6 +217,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         pred: TKR[bool],
         if_true: TKR[A],
         if_false: TKR[B],
+        metadata: NodeMetaData | None = None,
     ) -> TKR[A] | TKR[B]:
         """Add an if-else node to the graph.
 
@@ -227,6 +237,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             pred.value_ref(),
             if_true.value_ref(),
             if_false.value_ref(),
+            metadata or NodeMetaData(),
         )("value")
         return TKR(idx, port)
 
@@ -235,6 +246,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         pred: TKR[bool],
         if_true: TKR[A],
         if_false: TKR[B],
+        metadata: NodeMetaData | None = None,
     ) -> TKR[A] | TKR[B]:
         """Add an eager if-else node to the graph.
 
@@ -254,6 +266,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             pred.value_ref(),
             if_true.value_ref(),
             if_false.value_ref(),
+            metadata or NodeMetaData(),
         )("value")
         return TKR(idx, port)
 
@@ -271,7 +284,11 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             graph.outputs_type,
         )
 
-    def task[Out: TModel](self, func: Function[Out]) -> Out:
+    def task[Out: TModel](
+        self,
+        func: Function[Out],
+        metadata: NodeMetaData | None = None,
+    ) -> Out:
         """Add a worker task node to the graph.
 
         :param func: The worker function.
@@ -281,7 +298,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """
         name = f"{func.namespace}.{func.__class__.__name__}"
         inputs = dict_from_tmodel(func)
-        idx, _ = self.data.func(name, inputs)("dummy")
+        idx, _ = self.data.func(name, inputs, metadata or NodeMetaData())("dummy")
         OutModel = func.out()  # noqa: N806
         return init_tmodel(OutModel, lambda p: (idx, p))
 
@@ -289,6 +306,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: Workflow[A, B] | TypedGraphRef[A, B],
         eval_inputs: A,
+        metadata: NodeMetaData | None = None,
     ) -> B:
         """Add a evaluation node to the graph.
 
@@ -306,7 +324,9 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             body = self.graph_const(body)
 
         idx, _ = self.data.eval(
-            body.graph_ref.value_ref(), dict_from_tmodel(eval_inputs)
+            body.graph_ref.value_ref(),
+            dict_from_tmodel(eval_inputs),
+            metadata or NodeMetaData(),
         )("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
@@ -315,6 +335,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         body: TypedGraphRef[A, B] | Workflow[A, B],
         loop_inputs: A,
         name: str | None = None,
+        metadata: NodeMetaData | None = None,
     ) -> B:
         """Add a loop node to the graph.
 
@@ -340,6 +361,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             dict_from_tmodel(loop_inputs),
             "should_continue",
             name,
+            metadata=metadata or NodeMetaData(),
         )(
             "dummy",
         )
@@ -347,12 +369,16 @@ class Graph[Inputs: TModel, Outputs: TModel]:
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
         ins = (ref.node_index, ref.port_id)
-        idx, _ = self.data.func("builtins.unfold_values", {"value": ins})("dummy")
+        idx, _ = self.data.func(
+            "builtins.unfold_values", {"value": ins}, NodeMetaData()
+        )("dummy")
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
         value_ref = (refs._value.node_index, refs._value.port_id)  # noqa: SLF001
-        idx, _ = self.data.func("builtins.fold_values", {"values_glob": value_ref})(
+        idx, _ = self.data.func(
+            "builtins.fold_values", {"values_glob": value_ref}, NodeMetaData()
+        )(
             "dummy",
         )
         return TKR[list[T]](idx, "value")
@@ -376,9 +402,12 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         map_inputs: TList[A],
         body: TypedGraphRef[A, B],
+        metadata: NodeMetaData | None = None,
     ) -> TList[B]:
         ins = dict_from_tmodel(map_inputs._value)  # noqa: SLF001
-        idx, _ = self.data.map(body.graph_ref.value_ref(), ins)("x")
+        idx, _ = self.data.map(
+            body.graph_ref.value_ref(), ins, metadata or NodeMetaData()
+        )("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
 
@@ -387,6 +416,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: (Callable[[TKR[A]], B] | TypedGraphRef[TKR[A], B] | Workflow[TKR[A], B]),
         map_inputs: TKR[list[A]],
+        metadata: NodeMetaData | None = None,
     ) -> TList[B]: ...
 
     @overload
@@ -394,6 +424,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: (Callable[[A], TKR[B]] | TypedGraphRef[A, TKR[B]] | Workflow[A, TKR[B]]),
         map_inputs: TList[A],
+        metadata: NodeMetaData | None = None,
     ) -> TKR[list[B]]: ...
 
     @overload
@@ -401,6 +432,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: TypedGraphRef[A, B] | Workflow[A, B],
         map_inputs: TList[A],
+        metadata: NodeMetaData | None = None,
     ) -> TList[B]: ...
 
     @overload
@@ -412,12 +444,14 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             | Workflow[TKR[A], TKR[B]]
         ),
         map_inputs: TKR[list[A]],
+        metadata: NodeMetaData | None = None,
     ) -> TKR[list[B]]: ...
 
     def map(
         self,
         body: TypedGraphRef | Callable | Workflow,
         map_inputs: TKR | TList,
+        metadata: NodeMetaData | None = None,
     ) -> Any:
         """Add a map node to the graph.
 
@@ -440,7 +474,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         if isinstance(map_inputs, TKR):
             map_inputs = self._unfold_list(map_inputs)
 
-        out = self._map_graph_full(map_inputs, body)
+        out = self._map_graph_full(map_inputs, body, metadata or NodeMetaData())
 
         if not isclass(body.outputs_type) or not issubclass(
             body.outputs_type,
