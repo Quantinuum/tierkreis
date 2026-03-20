@@ -126,16 +126,23 @@ class Graph[Inputs: TModel, Outputs: TModel]:
     inputs_type: type[Inputs]
     outputs_type: type[Outputs]
     inputs: Inputs
+    _breakpoints_on_outputs: bool
 
     def __init__(
         self,
         inputs_type: type[Inputs] = EmptyModel,
         outputs_type: type[Outputs] = EmptyModel,
+        breakpoints_on_inputs: bool = False,
+        breakpoints_on_outputs: bool = False,
     ) -> None:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
-        self.inputs = init_tmodel(self.inputs_type, self.data.input)
+        input_fn = partial(
+            self.data.input, metadata=NodeMetaData(breakpoints_on_inputs)
+        )
+        self.inputs = init_tmodel(self.inputs_type, input_fn)
+        self._breakpoints_on_outputs = breakpoints_on_outputs
 
     def get_data(self) -> GraphData:
         """Return the underlying graph from the builder.
@@ -159,7 +166,10 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :param outputs: The output nodes.
         :type outputs: Outputs
         """
-        self.data.output(inputs=dict_from_tmodel(outputs), metadata=NodeMetaData())
+        self.data.output(
+            inputs=dict_from_tmodel(outputs),
+            metadata=NodeMetaData(self._breakpoints_on_outputs),
+        )
         return Workflow(self.data, self.outputs_type)
 
     def embed[A: TModel, B: TModel](
@@ -226,6 +236,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type if_true: TKR[A]
         :param if_false: The value if the predicate is false.
         :type if_false: TKR[B]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The outputs of the if-else expression.
         :rtype: TKR[A] | TKR[B]
         """
@@ -233,7 +245,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             pred.value_ref(),
             if_true.value_ref(),
             if_false.value_ref(),
-            metadata or NodeMetaData(),
+            metadata,
         )("value")
         return TKR(idx, port)
 
@@ -255,6 +267,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type if_true: TKR[A]
         :param if_false: The value if the predicate is false.
         :type if_false: TKR[B]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The outputs of the if-else expression.
         :rtype: TKR[A] | TKR[B]
         """
@@ -262,7 +276,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             pred.value_ref(),
             if_true.value_ref(),
             if_false.value_ref(),
-            metadata or NodeMetaData(),
+            metadata,
         )("value")
         return TKR(idx, port)
 
@@ -289,12 +303,14 @@ class Graph[Inputs: TModel, Outputs: TModel]:
 
         :param func: The worker function.
         :type func: Function[Out]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The outputs of the task.
         :rtype: Out
         """
         name = f"{func.namespace}.{func.__class__.__name__}"
         inputs = dict_from_tmodel(func)
-        idx, _ = self.data.func(name, inputs, metadata or NodeMetaData())("dummy")
+        idx, _ = self.data.func(name, inputs, metadata)("dummy")
         OutModel = func.out()  # noqa: N806
         return init_tmodel(OutModel, lambda p: (idx, p))
 
@@ -313,6 +329,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             where A are the input type and B the output type of the graph.
         :param eval_inputs: The inputs to the graph.
         :type eval_inputs: A
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The outputs of the evaluation.
         :rtype: B
         """
@@ -322,7 +340,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.eval(
             body.graph_ref.value_ref(),
             dict_from_tmodel(eval_inputs),
-            metadata or NodeMetaData(),
+            metadata,
         )("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
@@ -346,6 +364,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type loop_inputs: A
         :param name: An optional name for the loop.
         :type name: str | None
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The outputs of the loop.
         :rtype: B
         """
@@ -357,7 +377,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             dict_from_tmodel(loop_inputs),
             "should_continue",
             name,
-            metadata=metadata or NodeMetaData(),
+            metadata=metadata,
         )(
             "dummy",
         )
@@ -365,16 +385,12 @@ class Graph[Inputs: TModel, Outputs: TModel]:
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
         ins = (ref.node_index, ref.port_id)
-        idx, _ = self.data.func(
-            "builtins.unfold_values", {"value": ins}, NodeMetaData()
-        )("dummy")
+        idx, _ = self.data.func("builtins.unfold_values", {"value": ins})("dummy")
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
         value_ref = (refs._value.node_index, refs._value.port_id)  # noqa: SLF001
-        idx, _ = self.data.func(
-            "builtins.fold_values", {"values_glob": value_ref}, NodeMetaData()
-        )(
+        idx, _ = self.data.func("builtins.fold_values", {"values_glob": value_ref})(
             "dummy",
         )
         return TKR[list[T]](idx, "value")
@@ -401,9 +417,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         metadata: NodeMetaData | None = None,
     ) -> TList[B]:
         ins = dict_from_tmodel(map_inputs._value)  # noqa: SLF001
-        idx, _ = self.data.map(
-            body.graph_ref.value_ref(), ins, metadata or NodeMetaData()
-        )("x")
+        idx, _ = self.data.map(body.graph_ref.value_ref(), ins, metadata)("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
 
@@ -455,6 +469,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type body: TypedGraphRef | Callable | Workflow
         :param map_inputs: The values to map over.
         :type map_inputs: TKR | TList
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The outputs of the map.
         :rtype: Any
         """
@@ -470,7 +486,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         if isinstance(map_inputs, TKR):
             map_inputs = self._unfold_list(map_inputs)
 
-        out = self._map_graph_full(map_inputs, body, metadata or NodeMetaData())
+        out = self._map_graph_full(map_inputs, body, metadata)
 
         if not isclass(body.outputs_type) or not issubclass(
             body.outputs_type,

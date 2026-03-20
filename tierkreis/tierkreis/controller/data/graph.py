@@ -34,7 +34,6 @@ class NodeDefBase:
     """Map each out-port to the list of nodes that use it."""
 
     outputs: dict[PortID, list[NodeIndex]] = field(default_factory=dict, kw_only=True)
-    annotations: NodeMetaData = field(default_factory=NodeMetaData, kw_only=True)
 
 
 @dataclass
@@ -291,32 +290,37 @@ class GraphData(BaseModel):
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
     named_nodes: dict[str, NodeIndex] = {}
+    node_metadata: dict[NodeIndex, NodeMetaData] = {}
 
-    def input(self, name: str, metadata: NodeMetaData = NodeMetaData()) -> ValueRef:
+    def input(self, name: str, metadata: NodeMetaData | None = None) -> ValueRef:
         """Add an input name.
 
         :param name: The name of the input.
         :type name: str
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Input(name, annotations=metadata))(name)
+        return self.add(Input(name), metadata)(name)
 
-    def const(self, value: PType, metadata: NodeMetaData = NodeMetaData()) -> ValueRef:
+    def const(self, value: PType, metadata: NodeMetaData | None = None) -> ValueRef:
         """Add a constant value.
 
         :param value: The value to add.
         :type value: PType
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Const(value, annotations=metadata))("value")
+        return self.add(Const(value), metadata)("value")
 
     def func(
         self,
         function_name: str,
         inputs: dict[PortID, ValueRef],
-        metadata: NodeMetaData = NodeMetaData(),
+        metadata: NodeMetaData | None = None,
     ) -> Callable[[PortID], ValueRef]:
         """Add a function node (task).
 
@@ -324,16 +328,18 @@ class GraphData(BaseModel):
         :type function_name: str
         :param inputs: The mapping of the input values.
         :type inputs: dict[PortID, ValueRef]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Func(function_name, inputs, annotations=metadata))
+        return self.add(Func(function_name, inputs), metadata)
 
     def eval(
         self,
         graph: ValueRef,
         inputs: dict[PortID, ValueRef],
-        metadata: NodeMetaData = NodeMetaData(),
+        metadata: NodeMetaData | None = None,
     ) -> Callable[[PortID], ValueRef]:
         """Add an eval node.
 
@@ -341,10 +347,12 @@ class GraphData(BaseModel):
         :type graph: ValueRef
         :param inputs: The mapping of the input values.
         :type inputs: dict[PortID, ValueRef]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Eval(graph, inputs, annotations=metadata))
+        return self.add(Eval(graph, inputs), metadata)
 
     def loop(
         self,
@@ -352,7 +360,7 @@ class GraphData(BaseModel):
         inputs: dict[PortID, ValueRef],
         continue_port: PortID,
         name: str | None = None,
-        metadata: NodeMetaData = NodeMetaData(),
+        metadata: NodeMetaData | None = None,
     ) -> Callable[[PortID], ValueRef]:
         """Add a loop node.
 
@@ -364,18 +372,18 @@ class GraphData(BaseModel):
         :type continue_port: PortID
         :param name: Name of the loop for tracing, defaults to None
         :type name: str | None, optional
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(
-            Loop(body, inputs, continue_port, name=name, annotations=metadata)
-        )
+        return self.add(Loop(body, inputs, continue_port, name=name), metadata)
 
     def map(
         self,
         body: ValueRef,
         inputs: dict[PortID, ValueRef],
-        metadata: NodeMetaData = NodeMetaData(),
+        metadata: NodeMetaData | None = None,
     ) -> Callable[[PortID], ValueRef]:
         """Add a map node.
 
@@ -383,17 +391,19 @@ class GraphData(BaseModel):
         :type body: ValueRef
         :param inputs: The mapping of the input values.
         :type inputs: dict[PortID, ValueRef]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Map(body, inputs, annotations=metadata))
+        return self.add(Map(body, inputs), metadata)
 
     def if_else(
         self,
         pred: ValueRef,
         if_true: ValueRef,
         if_false: ValueRef,
-        metadata: NodeMetaData = NodeMetaData(),
+        metadata: NodeMetaData | None = None,
     ) -> Callable[[PortID], ValueRef]:
         """Add an lazy if else node.
 
@@ -403,17 +413,19 @@ class GraphData(BaseModel):
         :type if_true: ValueRef
         :param if_false: The graph/value for the false branch.
         :type if_false: ValueRef
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(IfElse(pred, if_true, if_false, annotations=metadata))
+        return self.add(IfElse(pred, if_true, if_false), metadata)
 
     def eager_if_else(
         self,
         pred: ValueRef,
         if_true: ValueRef,
         if_false: ValueRef,
-        metadata: NodeMetaData = NodeMetaData(),
+        metadata: NodeMetaData | None = None,
     ) -> Callable[[PortID], ValueRef]:
         """Add an eager if else node.
 
@@ -423,13 +435,15 @@ class GraphData(BaseModel):
         :type if_true: ValueRef
         :param if_false: The graph/value for the false branch.
         :type if_false: ValueRef
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(EagerIfElse(pred, if_true, if_false, annotations=metadata))
+        return self.add(EagerIfElse(pred, if_true, if_false), metadata)
 
     def output(
-        self, inputs: dict[PortID, ValueRef], metadata: NodeMetaData = NodeMetaData()
+        self, inputs: dict[PortID, ValueRef], metadata: NodeMetaData | None = None
     ) -> None:
         """Add an output node.
 
@@ -437,15 +451,21 @@ class GraphData(BaseModel):
 
         :param inputs: The inputs of the outup node.
         :type inputs: dict[PortID, ValueRef]
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         """
 
-        _ = self.add(Output(inputs, annotations=metadata))
+        _ = self.add(Output(inputs), metadata)
 
-    def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
+    def add(
+        self, node: NodeDef, metadata: NodeMetaData | None = None
+    ) -> Callable[[PortID], ValueRef]:
         """Add a node to the graph.
 
         :param node: The node to add.
         :type node: NodeDef
+        :param metadata: Optional metadata for the node, defaults to None
+        :type metadata: NodeMetaData | None, optional
         :raises TierkreisError: If multiple outputs are added.
         :return: A function given the output name of a node returns
             the index of the node it corresponds to.
@@ -471,6 +491,8 @@ class GraphData(BaseModel):
                     self.named_nodes[node.name] = idx
             case _:
                 assert_never(node)
+        if metadata is not None:
+            self.node_metadata[idx] = metadata
 
         for i, port in in_edges(node).values():
             self.nodes[i].outputs.setdefault(port, []).append(idx)
