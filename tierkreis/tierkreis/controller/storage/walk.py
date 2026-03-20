@@ -157,8 +157,6 @@ def walk_node(
 
         case "input":
             return WalkResult(inputs_ready=[], started=[])
-        case "breakpoint":
-            return WalkResult(inputs_ready=[node_run_data], started=[])
         case _:
             assert_never(node)
 

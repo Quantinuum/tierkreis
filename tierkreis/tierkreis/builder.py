@@ -194,10 +194,6 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         outputs = other.nodes[other.graph_output_idx].inputs
         return init_tmodel(other_fg.outputs_type, lambda p: reindex(outputs[p]))
 
-    def breakpoint[A: PType](self, input: TKR[A]) -> TKR[A]:
-        idx, port = self.data.breakpoint({"value": input.value_ref()})("value")
-        return TKR(idx, port)
-
     def const[T: PType](self, value: T) -> TKR[T]:
         """Add a constant node to the graph.
 

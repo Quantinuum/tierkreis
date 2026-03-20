@@ -142,10 +142,6 @@ def start(
         _pipe_inputs_to_output_location(storage, parent, ins)
         storage.mark_node_finished(parent)
 
-    elif node.type == "breakpoint":
-        _pipe_inputs_to_output_location(storage, node_location, ins)
-        storage.mark_node_finished(node_location)
-
     elif node.type == "const":
         bs = bytes_from_ptype(node.value)
         storage.write_output(node_location, Labels.VALUE, bs)

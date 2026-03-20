@@ -40,15 +40,7 @@ def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
             data = get_map_node(storage, loc, node, errored_nodes)
             return PyGraph(nodes=data.nodes, edges=data.edges)
 
-        case (
-            "function"
-            | "const"
-            | "ifelse"
-            | "eifelse"
-            | "input"
-            | "output"
-            | "breakpoint"
-        ):
+        case "function" | "const" | "ifelse" | "eifelse" | "input" | "output":
             raise HTTPException(
                 400,
                 detail="Only eval, loop and map nodes return a graph.",
