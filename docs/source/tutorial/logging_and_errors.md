@@ -117,6 +117,40 @@ The data contains the following information:
 - `env` the current user environment when launching the task.
 - `packages` a list of installed python packages. Only used for the [`UvExecutor`](#tierkreis.controller.executor.uv_executor.UvExecutor)
 
+### Breakpoints
+
+All nodes can be declared ar breakpoints by adding `NodeMetaData` as follows:
+```python
+from tierkreis.controller.data.graph import NodeMetaData
+g.task(..., NodeMetaData(has_breakpoint=True))
+```
+By default the controller will ignore this information unless you set `enable_breakpoints=True` in `run_graph`. 
+When running with breakpoints the graph execution will stop as soon as it hits a breakpoint node e.g. after running:
+```python
+run_graph(
+    storage, executor, graph, None, enable_breakpoints=enable_breakpoints
+)
+```
+you can examine the storage and current values of all previous nodes.
+Afterward you can resume the execution with
+```python
+resume_graph(storage, executor)
+```
+
+### Debug Mode
+
+If you want to debug a graph with a python debugger you can use [](#tierkreis.controller.storgare.debug_graph.debug_graph).
+It acts similar to `run_workflow` with some defaults enabled:
+- Enables all set breakpoints
+- Sets up logging
+- Adds a specific storage and executor to enable python debugging
+```{important}
+This will only work with python based workers.
+All workers need to be installed locally.
+```
+
+
+
 ## Visualizer
 
 If you're using the visualize to debug workflow, error information will be immediately visible to you.

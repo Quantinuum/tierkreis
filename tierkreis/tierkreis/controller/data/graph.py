@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class NodeMetaData:
+    """Metadata stored for each node"""
+
     has_breakpoint: bool = False
 
 
