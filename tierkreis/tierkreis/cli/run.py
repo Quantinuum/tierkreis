@@ -193,9 +193,8 @@ def run_workflow_args(args: argparse.Namespace) -> None:
     """
     if args.verbose:
         args.log_level = logging.DEBUG
-
-    if isinstance(args.graph, str):
-        graph = load_graph(args.graph)
+    if ":" in str(args.graph):
+        graph = load_graph(str(args.graph))
     else:
         with Path.open(args.graph) as fh:
             graph = ptype_from_bytes(fh.read().encode(), GraphData)
