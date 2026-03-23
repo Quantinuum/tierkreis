@@ -130,7 +130,7 @@ uv run tkr init stubs
 
 
 # Generate stubs for workers in custom directory
-uv run tkr init stubs --worker-directory ./my-workers
+uv run tkr init stubs --worker-directory ./custom_workers
 ```
 ---
 
@@ -145,7 +145,7 @@ uv run tkr run [OPTIONS]
 
 **Description:**
 Runs a Tierkreis workflow graph. By default, it loads the graph from `./tkr/graphs/main.py:workflow` and reads inputs from `workflow_inputs.json`.
- You can specify a different graph location or load from a JSON file, and provide inputs either as a JSON file or as binary files with key-value pairs.
+You can specify a different graph location or load from a JSON file, and provide inputs either as a JSON file or as binary files with key-value pairs.
 
 **Graph Specification:**
 
@@ -162,12 +162,16 @@ You can specify the graph in two ways:
 You can provide inputs in two ways:
 
 1. **JSON file (default):** A single `.json` file containing input values
-   - Example: `workflow_inputs.json`
+  - Example: `workflow_inputs.json` e.g.
+  ```
+  { "value": 1 }
+  ```
 
 2. **Binary files:** Key-value pairs where `key` is the input port name and `path` is a file containing binary data
-   - Example: `port1:input1 port2:input2`
-
-Where input1 might look like
+  - Example: `port1:input1 port2:input2` e.g. `input1` contains
+  ```
+  b"1"
+  ```
 
 **Options:**
 
@@ -187,6 +191,13 @@ Where input1 might look like
 | `-l, --loglevel` | {CRITICAL, FATAL, ERROR, WARN, WARNING, INFO, DEBUG, NOTSET} | WARNING | Set logging level |
 | `-v, --verbose` | FLAG | False | Enable verbose output |
 
+
+```{note}
+The `--registry-path` resolve the namespace for workers automatically.
+For example, if you have custom task `my_task` from an external worker `my_worker`, Tierkreis will invoke
+`<registry_path>/my_task/main.sh`. See more [here](../worker/index.md)
+```
+
 **Examples:**
 
 ```bash
@@ -204,8 +215,8 @@ uv run tkr run -g my_module.workflows:main_workflow
 # Load graph from file
 uv run tkr run -f my_graph.json
 
-# Provide custom inputs as binary files
-uv run tkr run -i value:input.bin count:count.bin
+# Provide custom inputs as files containing binary values e.g. b"5"
+uv run tkr run -i value:input count:count
 
 # Run with custom configuration
 uv run tkr run \
@@ -224,7 +235,7 @@ uv run tkr run \
   --n-iterations 100
 
 # Use custom registry path
-uv run tkr run --registry-path /path/to/tasks
+uv run tkr run --registry-path ./path/to/custom_workers
 ```
 
 **What happens:**
