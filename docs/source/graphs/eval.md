@@ -44,7 +44,7 @@ from tierkreis.models import EmptyModel
 fib4 = Graph(EmptyModel, TKR[int])
 ```
 
-The `Graph.eval` method takes a `Graph` object as its first argument
+The `Graph.eval` method takes a `Workflow` object as its first argument
 and the appropriately typed input data as the second object.
 
 ```{code-cell} ipython3

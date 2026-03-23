@@ -111,7 +111,7 @@ body = Graph(LoopBodyInput, LoopBodyOutput)
 i = body.task(iadd(body.const(1), body.inputs.i))
 a = body.task(rand_int(body.const(0), body.const(10)))
 pred = body.task(igt(body.const(10), a))
-body2 = body.finish_with_outputs(LoopBodyOutput(i=i, should_continue=pred))
+body = body.finish_with_outputs(LoopBodyOutput(i=i, should_continue=pred))
 ```
 
 The main graph runs the loop and tells us the iteration on which we found success.
@@ -120,7 +120,7 @@ The main graph runs the loop and tells us the iteration on which we found succes
 from tierkreis.models import EmptyModel
 
 g = Graph(EmptyModel, TKR[int])
-loop_output = g.loop(body2, LoopBodyInput(g.const(0)))
+loop_output = g.loop(body, LoopBodyInput(g.const(0)))
 rus_workflow = g.finish_with_outputs(loop_output.i)
 ```
 

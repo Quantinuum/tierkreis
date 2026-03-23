@@ -54,7 +54,7 @@ three = g.task(iadd(g.const(1), g.const(2)))
 In this example we import the type stubs provided by the Tierkreis library for the built-in functions.
 This allows us to use the [pyright](https://github.com/microsoft/pyright) static analysis tool to check that the input and outputs types of the tasks are what we expect them to be.
 
-To finish, we specify the outputs of the graph.
+To finish, we convert the graph into a runnable `Workflow` by specifying the outputs:
 
 ```{code-cell} ipython3
 workflow = g.finish_with_outputs(three)
@@ -62,7 +62,7 @@ workflow = g.finish_with_outputs(three)
 
 ## Running the graph
 
-To run a general Tierkreis graph we need to set up:-
+To run a general Tierkreis graph (`Workflow`) we need to set up:-
 
 - a way to store and share inputs and outputs (the 'storage' interface)
 - a way to run tasks (the 'executor' interface)
