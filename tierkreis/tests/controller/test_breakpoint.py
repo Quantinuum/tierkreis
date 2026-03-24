@@ -21,7 +21,7 @@ def breakpoint_graph() -> GraphBuilder[TKR[Circuit], TKR[int]]:
     g = GraphBuilder(TKR[Circuit], TKR[int])
     test = g.const(5)
     nq = g.task(n_qubits(g.inputs), NodeMetaData(has_breakpoint=True))  # type: ignore
-    out = g.task(iadd(test, nq))
+    out = g.task(iadd(test, nq), NodeMetaData(has_breakpoint=True))
     g.outputs(out)
     return g
 
@@ -48,7 +48,10 @@ def test_breakpoint(
     if enable_breakpoints:
         assert not storage.is_node_finished(Loc())
         assert storage.exists(storage._breakpoint(Loc("-.N2")))
-        resume_graph(storage, executor)
+        resume_graph(storage, executor, enable_breakpoints=enable_breakpoints)
+        assert not storage.is_node_finished(Loc())
+        assert storage.exists(storage._breakpoint(Loc("-.N3")))
+        resume_graph(storage, executor, enable_breakpoints=enable_breakpoints)
     assert storage.is_node_finished(Loc())
     out = read_outputs(graph, storage)
     assert out == 7

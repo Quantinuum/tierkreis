@@ -27,12 +27,13 @@ class WalkResult(BaseModel):
             and therefore can be started.
         started (list[Loc]): A list of locations that have been started (on this walk).
         errored (list[Loc]): A list of locations that have encountered an error.
+        breakpoints (list[Loc]): A list of locations that have hit a breakpoint.
     """
 
     inputs_ready: list[NodeRunData]
     started: list[Loc]
     errored: list[Loc] = Field(default_factory=list[Loc])
-    breaks: Loc | None = None
+    breakpoints: list[Loc] = Field(default_factory=list[Loc])
 
     def extend(self, walk_result: "WalkResult") -> None:
         """Extend a current walk result with an existing one.
@@ -45,5 +46,4 @@ class WalkResult(BaseModel):
         self.inputs_ready.extend(walk_result.inputs_ready)
         self.started.extend(walk_result.started)
         self.errored.extend(walk_result.errored)
-        if self.breaks is None:
-            self.breaks = walk_result.breaks
+        self.breakpoints.extend(walk_result.breakpoints)

@@ -24,8 +24,7 @@ from tierkreis.exceptions import TierkreisError
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class NodeMetaData:
+class NodeMetaData(BaseModel):
     """Metadata stored for each node"""
 
     has_breakpoint: bool = False

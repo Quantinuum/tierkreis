@@ -742,15 +742,23 @@ class ControllerStorage(ABC):
 
         return list(deps)
 
-    def write_breakpoint(self, node_location: Loc, walk_result: WalkResult) -> None:
-        walk_result.breaks = None
-        self.write(
-            self._breakpoint(node_location), walk_result.model_dump_json().encode()
-        )
+    def write_breakpoint(self, walk_result: WalkResult) -> None:
+        if walk_result.breakpoints == []:
+            return
+        self.mkdir(self._breakpoint(Loc()).parent)
+        locs = walk_result.breakpoints.copy()
+        walk_result.breakpoints = []
+        for node_location in locs:
+            self.write(
+                self._breakpoint(node_location), walk_result.model_dump_json().encode()
+            )
 
     def read_breakpoints(self) -> WalkResult | None:
         result = WalkResult(inputs_ready=[], started=[])
-        if not self._breakpoint(Loc()).parent.exists():
+        try:  # works with both inmemory and file storage
+            if self.list_subpaths(self._breakpoint(Loc()).parent) == []:
+                return None
+        except FileNotFoundError:  # eqv. to self._breakpoint(Loc()).parent) is None
             return None
         for path in self.list_subpaths(self._breakpoint(Loc()).parent):
             if path.is_dir():
@@ -758,8 +766,14 @@ class ControllerStorage(ABC):
                 raise TierkreisError(msg)
             data = json.loads(self.read(path))
             result.extend(WalkResult(**data))
-            path.unlink()
-        self._breakpoint(Loc()).parent.rmdir()
+            self.delete(path)
+        self.delete(self._breakpoint(Loc()).parent)
         if result == WalkResult(inputs_ready=[], started=[]):
             return None
+        # remove duplicates
+        result.started = list(set(result.started))
+        result.errored = list(set(result.errored))
+        result.inputs_ready = list(
+            {inputs.node_location: inputs for inputs in result.inputs_ready}.values()
+        )
         return result

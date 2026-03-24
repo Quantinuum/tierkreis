@@ -158,8 +158,8 @@ def resume_graph(
             msg = "Graph encountered errors"
             raise TierkreisError(msg)
 
-        if enable_breakpoints and (walk_results.breaks is not None):
-            storage.write_breakpoint(walk_results.breaks, walk_results)
+        if enable_breakpoints and (walk_results.breakpoints != []):
+            storage.write_breakpoint(walk_results)
             break
 
         start_nodes(storage, executor, walk_results.inputs_ready)

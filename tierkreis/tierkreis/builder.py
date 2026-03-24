@@ -117,10 +117,12 @@ def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
 class Graph[Inputs: TModel, Outputs: TModel]:
     """Class to construct typed workflow graphs.
 
-    :attr data: The underlying graph data.
-    :attr inputs_type: The input type of the graph.
-    :attr inputs: The inputs to the graph.
-    :attr outputs_type: The output type of the graph.
+    :fields:
+        data (GraphData): The underlying graph data.
+        inputs_type (type[TModel]) The input type of the graph.
+        inputs (inputs_type): The inputs to the graph.
+        outputs_type((type[TModel])): The output type of the graph.
+        _breakpoints_on_outputs(bool): Make outputs act as breakpoints.
     """
 
     inputs_type: type[Inputs]
@@ -139,7 +141,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
         input_fn = partial(
-            self.data.input, metadata=NodeMetaData(breakpoints_on_inputs)
+            self.data.input, metadata=NodeMetaData(has_breakpoint=breakpoints_on_inputs)
         )
         self.inputs = init_tmodel(self.inputs_type, input_fn)
         self._breakpoints_on_outputs = breakpoints_on_outputs
@@ -168,7 +170,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """
         self.data.output(
             inputs=dict_from_tmodel(outputs),
-            metadata=NodeMetaData(self._breakpoints_on_outputs),
+            metadata=NodeMetaData(has_breakpoint=self._breakpoints_on_outputs),
         )
         return Workflow(self.data, self.outputs_type)
 

@@ -50,7 +50,8 @@ class ControllerInMemoryStorage(ControllerStorage):
 
     @override
     def delete(self, path: Path) -> None:
-        self.files = {}
+        if path in self.files:
+            del self.files[path]
 
     @override
     def exists(self, path: Path) -> bool:

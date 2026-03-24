@@ -111,7 +111,9 @@ def walk_node(
     if not storage.is_node_started(loc):
         # have all inputs, start current node
         if idx in graph.node_metadata and graph.node_metadata[idx].has_breakpoint:
-            return WalkResult(inputs_ready=[node_run_data], started=[], breaks=loc)
+            return WalkResult(
+                inputs_ready=[node_run_data], started=[], breakpoints=[loc]
+            )
         return WalkResult(inputs_ready=[node_run_data], started=[])
 
     # Handle cases where we have nested graphs.
