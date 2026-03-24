@@ -144,7 +144,7 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     if uv_path is None:
         command = [sys.executable]
     else:
-        command = [uv_path, "run"]
+        command = [uv_path, "run", "--active"]
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
@@ -152,10 +152,12 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
             namespace = Namespace.from_spec_file(idl)
             namespace.write_stubs(idl.parent / stubs_name)
         else:
-            command.extend(
-                [f"tkr_{worker.name}_impl/main.py", "--stubs-path", stubs_name]
-            )
-            subprocess.run(command, cwd=worker, check=True)
+            worker_command = command + [
+                f"tkr_{worker.name}_impl/main.py",
+                "--stubs-path",
+                stubs_name,
+            ]
+            subprocess.run(worker_command, cwd=worker, check=True)
 
 
 def _gen_worker_stubs(worker_directory: Path, stubs_name: str) -> None:
@@ -227,13 +229,13 @@ def run_args(args: argparse.Namespace) -> None:
         os.environ["TKR_DIR"] = str(args.default_checkpoint_directory)
         print(f"""Successfully generated project in '{project_dir / "tkr"}'.
               
-To run the sample graph use "uv run tkr/graphs/main/py".
+To run the sample graph use "uv run tkr/graphs/main.py".
 Or import the function into a top level script with:
               
 from tkr.graphs.main import main
 main()
               
-It is highly recommended to examinte the newly created structure
+It is highly recommended to examine the newly created structure
 and how it was added to your project definition e.g. pyproject.toml.
 Keep in mind that workers are independent of your graph code.
 """)
