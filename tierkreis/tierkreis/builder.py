@@ -17,7 +17,7 @@ from typing import (
 )
 
 from tierkreis.controller.data.core import EmptyModel, ValueRef
-from tierkreis.controller.data.graph import GraphData, NodeMetaData, reindex_inputs
+from tierkreis.controller.data.graph import GraphData, reindex_inputs
 from tierkreis.controller.data.models import (
     TKR,
     TModel,
@@ -140,9 +140,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
-        input_fn = partial(
-            self.data.input, metadata=NodeMetaData(has_breakpoint=breakpoints_on_inputs)
-        )
+        input_fn = partial(self.data.input, has_breakpoint=breakpoints_on_inputs)
         self.inputs = init_tmodel(self.inputs_type, input_fn)
         self._breakpoints_on_outputs = breakpoints_on_outputs
 
@@ -170,7 +168,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """
         self.data.output(
             inputs=dict_from_tmodel(outputs),
-            metadata=NodeMetaData(has_breakpoint=self._breakpoints_on_outputs),
+            has_breakpoint=self._breakpoints_on_outputs,
         )
         return Workflow(self.data, self.outputs_type)
 
@@ -216,7 +214,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """
         # Workflow exists at build-time only; erase the types at runtime:
         idx, port = self.data.const(
-            value.data if isinstance(value, Workflow) else value, NodeMetaData()
+            value.data if isinstance(value, Workflow) else value
         )
         return TKR[T](idx, port)
 
@@ -225,7 +223,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         pred: TKR[bool],
         if_true: TKR[A],
         if_false: TKR[B],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TKR[A] | TKR[B]:
         """Add an if-else node to the graph.
 
@@ -238,8 +236,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type if_true: TKR[A]
         :param if_false: The value if the predicate is false.
         :type if_false: TKR[B]
-        :param metadata: Optional metadata for the node, defaults to None
-        :type metadata: NodeMetaData | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The outputs of the if-else expression.
         :rtype: TKR[A] | TKR[B]
         """
@@ -247,7 +245,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             pred.value_ref(),
             if_true.value_ref(),
             if_false.value_ref(),
-            metadata,
+            **kwargs,
         )("value")
         return TKR(idx, port)
 
@@ -256,7 +254,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         pred: TKR[bool],
         if_true: TKR[A],
         if_false: TKR[B],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TKR[A] | TKR[B]:
         """Add an eager if-else node to the graph.
 
@@ -269,8 +267,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type if_true: TKR[A]
         :param if_false: The value if the predicate is false.
         :type if_false: TKR[B]
-        :param metadata: Optional metadata for the node, defaults to None
-        :type metadata: NodeMetaData | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The outputs of the if-else expression.
         :rtype: TKR[A] | TKR[B]
         """
@@ -278,7 +276,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             pred.value_ref(),
             if_true.value_ref(),
             if_false.value_ref(),
-            metadata,
+            **kwargs,
         )("value")
         return TKR(idx, port)
 
@@ -299,20 +297,20 @@ class Graph[Inputs: TModel, Outputs: TModel]:
     def task[Out: TModel](
         self,
         func: Function[Out],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> Out:
         """Add a worker task node to the graph.
 
         :param func: The worker function.
         :type func: Function[Out]
-        :param metadata: Optional metadata for the node, defaults to None
-        :type metadata: NodeMetaData | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The outputs of the task.
         :rtype: Out
         """
         name = f"{func.namespace}.{func.__class__.__name__}"
         inputs = dict_from_tmodel(func)
-        idx, _ = self.data.func(name, inputs, metadata)("dummy")
+        idx, _ = self.data.func(name, inputs, **kwargs)("dummy")
         OutModel = func.out()  # noqa: N806
         return init_tmodel(OutModel, lambda p: (idx, p))
 
@@ -320,7 +318,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: Workflow[A, B] | TypedGraphRef[A, B],
         eval_inputs: A,
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> B:
         """Add a evaluation node to the graph.
 
@@ -331,8 +329,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             where A are the input type and B the output type of the graph.
         :param eval_inputs: The inputs to the graph.
         :type eval_inputs: A
-        :param metadata: Optional metadata for the node, defaults to None
-        :type metadata: NodeMetaData | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The outputs of the evaluation.
         :rtype: B
         """
@@ -342,7 +340,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.eval(
             body.graph_ref.value_ref(),
             dict_from_tmodel(eval_inputs),
-            metadata,
+            **kwargs,
         )("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
@@ -351,7 +349,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         body: TypedGraphRef[A, B] | Workflow[A, B],
         loop_inputs: A,
         name: str | None = None,
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> B:
         """Add a loop node to the graph.
 
@@ -366,8 +364,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type loop_inputs: A
         :param name: An optional name for the loop.
         :type name: str | None
-        :param metadata: Optional metadata for the node, defaults to None
-        :type metadata: NodeMetaData | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The outputs of the loop.
         :rtype: B
         """
@@ -379,7 +377,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             dict_from_tmodel(loop_inputs),
             "should_continue",
             name,
-            metadata=metadata,
+            **kwargs,
         )(
             "dummy",
         )
@@ -416,10 +414,10 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         map_inputs: TList[A],
         body: TypedGraphRef[A, B],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TList[B]:
         ins = dict_from_tmodel(map_inputs._value)  # noqa: SLF001
-        idx, _ = self.data.map(body.graph_ref.value_ref(), ins, metadata)("x")
+        idx, _ = self.data.map(body.graph_ref.value_ref(), ins, **kwargs)("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
 
@@ -428,7 +426,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: (Callable[[TKR[A]], B] | TypedGraphRef[TKR[A], B] | Workflow[TKR[A], B]),
         map_inputs: TKR[list[A]],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TList[B]: ...
 
     @overload
@@ -436,7 +434,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: (Callable[[A], TKR[B]] | TypedGraphRef[A, TKR[B]] | Workflow[A, TKR[B]]),
         map_inputs: TList[A],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TKR[list[B]]: ...
 
     @overload
@@ -444,7 +442,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: TypedGraphRef[A, B] | Workflow[A, B],
         map_inputs: TList[A],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TList[B]: ...
 
     @overload
@@ -456,14 +454,14 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             | Workflow[TKR[A], TKR[B]]
         ),
         map_inputs: TKR[list[A]],
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> TKR[list[B]]: ...
 
     def map(
         self,
         body: TypedGraphRef | Callable | Workflow,
         map_inputs: TKR | TList,
-        metadata: NodeMetaData | None = None,
+        **kwargs,
     ) -> Any:
         """Add a map node to the graph.
 
@@ -471,8 +469,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type body: TypedGraphRef | Callable | Workflow
         :param map_inputs: The values to map over.
         :type map_inputs: TKR | TList
-        :param metadata: Optional metadata for the node, defaults to None
-        :type metadata: NodeMetaData | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The outputs of the map.
         :rtype: Any
         """
@@ -488,7 +486,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         if isinstance(map_inputs, TKR):
             map_inputs = self._unfold_list(map_inputs)
 
-        out = self._map_graph_full(map_inputs, body, metadata)
+        out = self._map_graph_full(map_inputs, body, **kwargs)
 
         if not isclass(body.outputs_type) or not issubclass(
             body.outputs_type,

@@ -6,7 +6,6 @@ from pytket._tket.circuit import Circuit
 from tierkreis.builder import GraphBuilder
 from tierkreis.builtins import iadd
 from tierkreis.controller import resume_graph, run_graph
-from tierkreis.controller.data.graph import NodeMetaData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
@@ -20,8 +19,8 @@ from tierkreis.storage import read_outputs
 def breakpoint_graph() -> GraphBuilder[TKR[Circuit], TKR[int]]:
     g = GraphBuilder(TKR[Circuit], TKR[int])
     test = g.const(5)
-    nq = g.task(n_qubits(g.inputs), NodeMetaData(has_breakpoint=True))  # type: ignore
-    out = g.task(iadd(test, nq), NodeMetaData(has_breakpoint=True))
+    nq = g.task(n_qubits(g.inputs), has_breakpoint=True)  # type: ignore
+    out = g.task(iadd(test, nq), has_breakpoint=True)
     g.outputs(out)
     return g
 
