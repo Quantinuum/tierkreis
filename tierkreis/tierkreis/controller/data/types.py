@@ -289,7 +289,7 @@ def bytes_from_ptype(ptype: PType, annotation: type[PType] | None = None) -> byt
         case bytes():
             return ser  # Top level bytes should be a clean pass-through.
         case _:
-            return json.dumps(ser, cls=TierkreisEncoder).encode()
+            return json.dumps(ser, cls=TierkreisEncoder, indent=2).encode()
 
 
 def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
