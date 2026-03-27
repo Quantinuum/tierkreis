@@ -1,6 +1,6 @@
 from sys import argv
 
-from tkr_pytket_example_worker_impl import worker
+from tkr_my_example_worker_impl import worker
 
 
 def main():

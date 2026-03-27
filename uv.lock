@@ -24,10 +24,10 @@ members = [
     "tkr-ibmq-worker-impl",
     "tkr-multiple-outputs-worker",
     "tkr-multiple-outputs-worker-impl",
+    "tkr-my-example-worker",
+    "tkr-my-example-worker-impl",
     "tkr-nexus-worker",
     "tkr-nexus-worker-impl",
-    "tkr-pytket-example-worker",
-    "tkr-pytket-example-worker-impl",
     "tkr-pytket-worker",
     "tkr-pytket-worker-impl",
     "tkr-qsci-worker",
@@ -3191,6 +3191,42 @@ requires-dist = [
 dev = [{ name = "ruff", specifier = ">=0.15.4" }]
 
 [[package]]
+name = "tkr-my-example-worker"
+version = "0.2.0"
+source = { editable = "docs/source/examples/example_workers/my_example_worker/api" }
+dependencies = [
+    { name = "tierkreis" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+
+[[package]]
+name = "tkr-my-example-worker-impl"
+version = "0.1.0"
+source = { editable = "docs/source/examples/example_workers/my_example_worker" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pytket" },
+    { name = "pytket-qiskit" },
+    { name = "ruff" },
+    { name = "sympy" },
+    { name = "tierkreis" },
+    { name = "tkr-my-example-worker" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pytket", specifier = ">=2.9.3" },
+    { name = "pytket-qiskit" },
+    { name = "ruff" },
+    { name = "sympy" },
+    { name = "tierkreis", editable = "tierkreis" },
+    { name = "tkr-my-example-worker", editable = "docs/source/examples/example_workers/my_example_worker/api" },
+]
+
+[[package]]
 name = "tkr-nexus-worker"
 version = "0.2.0"
 source = { editable = "tierkreis_workers/nexus_worker/api" }
@@ -3216,42 +3252,6 @@ requires-dist = [
     { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-nexus-worker", editable = "tierkreis_workers/nexus_worker/api" },
-]
-
-[[package]]
-name = "tkr-pytket-example-worker"
-version = "0.2.0"
-source = { editable = "docs/source/examples/example_workers/pytket_example_worker/api" }
-dependencies = [
-    { name = "tierkreis" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
-
-[[package]]
-name = "tkr-pytket-example-worker-impl"
-version = "0.1.0"
-source = { editable = "docs/source/examples/example_workers/pytket_example_worker" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pytket" },
-    { name = "pytket-qiskit" },
-    { name = "ruff" },
-    { name = "sympy" },
-    { name = "tierkreis" },
-    { name = "tkr-pytket-example-worker" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "pytket", specifier = ">=2.9.3" },
-    { name = "pytket-qiskit" },
-    { name = "ruff" },
-    { name = "sympy" },
-    { name = "tierkreis", editable = "tierkreis" },
-    { name = "tkr-pytket-example-worker", editable = "docs/source/examples/example_workers/pytket_example_worker/api" },
 ]
 
 [[package]]
