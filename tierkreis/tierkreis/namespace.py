@@ -9,9 +9,14 @@ from logging import getLogger
 from pathlib import Path
 from typing import Self
 
-from tierkreis.codegen import format_method, format_model
+
+from tierkreis.codegen import format_method, format_model, format_opaque_aliases
 from tierkreis.controller.data.models import PModel, is_portmapping
-from tierkreis.controller.data.types import Struct, has_default, is_ptype
+from tierkreis.controller.data.types import (
+    Struct,
+    has_default,
+    is_ptype,
+)
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
 from tierkreis.idl.spec import spec
@@ -32,6 +37,7 @@ class Namespace:
     name: str
     methods: list[Method] = field(default_factory=list)
     models: set[Model] = field(default_factory=set)
+    opaque_type_lookup: dict[str, str] = field(default_factory=dict)
 
     def add_struct(self, generic_type: GenericType) -> None:
         """Add a struct to the namespace.
@@ -77,16 +83,24 @@ class Namespace:
         """
         sig = self._validate_signature(func)
 
+        args = [
+            TypedArg(k, GenericType.from_type(t.annotation), has_default(t))
+            for k, t in sig.parameters.items()
+        ]
+        return_type = GenericType.from_type(sig.return_annotation)
         method = Method(
             GenericType(func.__name__, [str(x) for x in func.__type_params__]),
-            [
-                TypedArg(k, GenericType.from_type(t.annotation), has_default(t))
-                for k, t in sig.parameters.items()
-            ],
-            GenericType.from_type(sig.return_annotation),
+            args,
+            return_type,
             is_portmapping(sig.return_annotation),
         )
         self.methods.append(method)
+
+        [
+            self.opaque_type_lookup.update(arg.t.included_opaque_type_names())
+            for arg in args
+        ]
+        self.opaque_type_lookup.update(return_type.included_opaque_type_names())
 
         for annotation_type in func.__annotations__.values():
             [
@@ -126,6 +140,7 @@ class Namespace:
         :return: The generated stubs as string.
         :rtype: str
         """
+        aliases_str = format_opaque_aliases(self.opaque_type_lookup)
         functions = [format_method(self.name, method) for method in self.methods]
         functions_str = "\n\n".join(functions)
         models_str = "\n\n".join([format_model(model) for model in sorted(self.models)])
@@ -136,6 +151,8 @@ from typing import Literal, NamedTuple, Sequence, TypeVar, Generic, Protocol, Un
 from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import PType, Struct
+
+{aliases_str}
 
 {models_str}
 

@@ -5,8 +5,12 @@ from dataclasses import dataclass
 from types import NoneType
 from typing import Annotated, Self, get_args, get_origin
 
+
 from tierkreis.controller.data.core import RestrictedNamedTuple
-from tierkreis.controller.data.types import _is_generic
+from tierkreis.controller.data.types import (
+    _is_generic,
+    is_opaque,
+)
 
 type ElementaryType = (
     type[int | float | bytes | str | bool | NoneType | Mapping | Sequence]
@@ -48,6 +52,28 @@ class GenericType:
         [subargs.append(str(x)) for x in args if _is_generic(x)]
         [subargs.append(cls.from_type(x)) for x in args if not _is_generic(x)]
         return cls(origin, subargs)
+
+    @classmethod
+    def _included_opaque_type_names(cls, t: "GenericType") -> "dict[str, str]":
+        if is_opaque(t.origin):
+            outs = {
+                t.origin.__qualname__: f"{t.origin.__module__}.{t.origin.__qualname__}"
+            }
+        else:
+            outs = dict()
+        [
+            outs.update(cls._included_opaque_type_names(x))
+            for x in t.args
+            if isinstance(x, cls)
+        ]
+        return outs
+
+    def included_opaque_type_names(self) -> "dict[str, str]":
+        """Find the opaque types in this type.
+
+        Am opaque type is one of (BaseModel, DictConvertible, ListConvertible, NdarraySurrogate)
+        """
+        return GenericType._included_opaque_type_names(self)
 
     @classmethod
     def _included_structs(cls, t: "GenericType") -> "set[GenericType]":

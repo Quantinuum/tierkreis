@@ -1,8 +1,11 @@
 """Code generated from qsci_worker namespace. Please do not edit."""
 
-from typing import NamedTuple, Protocol
-from tierkreis.controller.data.models import TKR, OpaqueType
+from typing import Literal, NamedTuple, Protocol
+from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import Struct
+
+type Circuit = Literal["pytket._tket.circuit.Circuit"]
+type BackendResult = Literal["pytket.backends.backendresult.BackendResult"]
 
 
 class CompleteActiveSpace(Struct, Protocol):
@@ -32,8 +35,8 @@ class state_prep(NamedTuple):
     cas_hsim: TKR[CompleteActiveSpace]  # noqa: F821 # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[Circuit]]:  # noqa: F821 # fmt: skip
+        return TKR[Circuit]  # noqa: F821 # fmt: skip
 
     @property
     def namespace(self) -> str:
@@ -43,7 +46,7 @@ class state_prep(NamedTuple):
 class circuits_from_hamiltonians(NamedTuple):
     ham_init: TKR[Hamiltonian]  # noqa: F821 # fmt: skip
     ham_hsim: TKR[Hamiltonian]  # noqa: F821 # fmt: skip
-    adapt_circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    adapt_circuit: TKR[Circuit]  # noqa: F821 # fmt: skip
     t_step_list: TKR[list[float]]  # noqa: F821 # fmt: skip
     cas_init: TKR[CompleteActiveSpace]  # noqa: F821 # fmt: skip
     cas_hsim: TKR[CompleteActiveSpace]  # noqa: F821 # fmt: skip
@@ -51,8 +54,8 @@ class circuits_from_hamiltonians(NamedTuple):
     max_cx_gates: TKR[int]  # noqa: F821 # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]]:  # noqa: F821 # fmt: skip
-        return TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[list[Circuit]]]:  # noqa: F821 # fmt: skip
+        return TKR[list[Circuit]]  # noqa: F821 # fmt: skip
 
     @property
     def namespace(self) -> str:
@@ -61,7 +64,7 @@ class circuits_from_hamiltonians(NamedTuple):
 
 class energy_from_results(NamedTuple):
     ham_hsim: TKR[Hamiltonian]  # noqa: F821 # fmt: skip
-    backend_results: TKR[list[OpaqueType["pytket.backends.backendresult.BackendResult"]]]  # noqa: F821 # fmt: skip
+    backend_results: TKR[list[BackendResult]]  # noqa: F821 # fmt: skip
     mo_occ: TKR[list[int]]  # noqa: F821 # fmt: skip
     cas_init: TKR[CompleteActiveSpace]  # noqa: F821 # fmt: skip
     cas_hsim: TKR[CompleteActiveSpace]  # noqa: F821 # fmt: skip
