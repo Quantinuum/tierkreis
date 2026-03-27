@@ -13,7 +13,6 @@ from typing import (
     get_args,
     get_origin,
     overload,
-    runtime_checkable,
 )
 
 from typing_extensions import TypeIs
@@ -29,7 +28,7 @@ from tierkreis.controller.data.types import PType
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
 
-@runtime_checkable
+# @runtime_checkable # ALAN no, as we cannot distinguish between this and TNamedModel
 class PNamedModel(RestrictedNamedTuple[PType], Protocol):
     """A struct whose members are restricted to being PTypes.
 
@@ -56,7 +55,7 @@ class TKR[T: PModel]:
         return (self.node_index, self.port_id)
 
 
-@runtime_checkable
+# @runtime_checkable # ALAN no, as we cannot distinguish between this and PNamedModel
 class TNamedModel(RestrictedNamedTuple[TKR[PType] | None], Protocol):
     """A struct whose members are restricted to being references to PTypes.
 
@@ -93,7 +92,9 @@ def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:  # noqa: ANN001 inherited fr
     origin = get_origin(o)
     if origin is not None:
         return is_tnamedmodel(origin)
-    return isclass(o) and issubclass(o, TNamedModel)
+    # We cannot check whether fields are TNamedModel-compliant at runtime.
+    # So this overapproximates.
+    return isclass(o) and issubclass(o, RestrictedNamedTuple)
 
 
 def dict_from_pmodel(pmodel: PModel) -> dict[PortID, PType]:
@@ -112,7 +113,8 @@ def annotations_from_pmodel(pmodel: type) -> dict[PortID, Any]:
 
 
 def dict_from_tmodel(tmodel: TModel) -> dict[PortID, ValueRef]:
-    if isinstance(tmodel, TNamedModel):
+    # We can't do the ideal: if isinstance(tmodel, TNamedModel):
+    if not isinstance(tmodel, TKR):
         return {k: (v.node_index, v.port_id) for k, v in tmodel._asdict().items() if v}
 
     return {"value": (tmodel.node_index, tmodel.port_id)}
