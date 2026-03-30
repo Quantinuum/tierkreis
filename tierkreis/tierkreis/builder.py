@@ -23,9 +23,8 @@ from tierkreis.controller.data.models import (
     TNamedModel,
     dict_from_tmodel,
     init_tmodel,
-    Workflow,
 )
-from tierkreis.controller.data.types import PType
+from tierkreis.controller.data.types import PType, Workflow
 
 
 @dataclass
@@ -152,7 +151,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :type outputs: Outputs
         """
         self.data.output(inputs=dict_from_tmodel(outputs))
-        return Workflow(data=self.data, outputs_type=self.outputs_type)
+        return Workflow(self.data, self.outputs_type)
 
     def embed[A: TModel, B: TModel](
         self, other_fg: Workflow[A, B], inputs: A, outputs_type: type[B]

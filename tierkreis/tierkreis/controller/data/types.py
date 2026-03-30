@@ -7,6 +7,7 @@ import pickle
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from inspect import Parameter, _empty, isclass
 from types import NoneType, UnionType
 from typing import (
@@ -21,6 +22,7 @@ from typing import (
     get_args,
     get_origin,
     runtime_checkable,
+    TYPE_CHECKING,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -33,6 +35,10 @@ from tierkreis.controller.data.core import (
     get_serializer,
 )
 from tierkreis.exceptions import TierkreisError
+
+if TYPE_CHECKING:
+    from tierkreis.controller.data.graph import GraphData
+    from tierkreis.controller.data.models import TModel
 
 
 @runtime_checkable
@@ -106,6 +112,7 @@ type ElementaryType = (
     | ListConvertible
     | NdarraySurrogate
     | BaseModel  # Includes GraphData
+    | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
 )
 type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
@@ -221,10 +228,12 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
             annotation,
             (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
         )
+        or (isclass(origin) and issubclass(origin, Workflow))
         or annotation in get_args(ElementaryType.__value__)
     ):
         return True
 
+    origin = get_origin(annotation)
     if origin is not None:
         return is_ptype(origin) and all(is_ptype(x) for x in get_args(annotation))
 
@@ -243,15 +252,12 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
     :return: The serialized ptype.
     :rtype: JsonType
     """
-
-    # ALAN from tierkreis.controller.data.models import Workflow
     if sr := get_serializer(annotation):
         return sr.serializer(ptype)
 
     match ptype:
-        # ALAN shouldn't need this right?
-        # case Workflow():
-        #    return ser_from_ptype(ptype.data, annotation)
+        case Workflow():
+            return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
@@ -312,7 +318,6 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
     :rtype: T
     """
     from tierkreis.controller.data.graph import GraphData
-    from tierkreis.controller.data.models import Workflow
 
     if annotation is None:
         return ser
@@ -364,16 +369,15 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
     if issubclass(origin, NdarraySurrogate):
         return pickle.loads(ser)
 
-    if issubclass(origin, Workflow):  # Also a BaseModel so do this first
-        # Serialized as GraphData - reinstate erased output type
-        _inputs, outputs = get_args(annotation)
-        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
-
     if issubclass(origin, BaseModel):
         if not issubclass(annotation, origin):
             msg = "Invalid subclass relation encountered."
             raise TypeError(msg)
         return annotation(**ser)
+
+    if issubclass(origin, Workflow):
+        _inputs, outputs = get_args(annotation)
+        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
 
     if issubclass(origin, Struct):
         d = {
@@ -463,3 +467,9 @@ def has_default(t: Parameter) -> bool:
     :rtype: bool
     """
     return not (isclass(t.default) and issubclass(t.default, _empty))
+
+
+@dataclass(frozen=True)
+class Workflow[Inputs: TModel, Outputs: TModel]:
+    data: "GraphData"
+    outputs_type: type[Outputs]

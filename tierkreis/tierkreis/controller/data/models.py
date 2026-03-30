@@ -24,10 +24,7 @@ from tierkreis.controller.data.core import (
     RestrictedNamedTuple,
     ValueRef,
 )
-from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
-
-from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
@@ -145,16 +142,3 @@ def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef])
         return cast("T", model(*args))
     (ref,) = fields.values()
     return tmodel(*ref)
-
-
-class Workflow[Inputs: TModel, Outputs: TModel](BaseModel):
-    data: GraphData
-    outputs_type: type[Outputs]
-
-    @model_serializer(mode="wrap")
-    def serialize_model(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, object]:
-        # Just serialize the underlying GraphData, not this frontend/builder type.
-        # We'll reinstate the Workflow wrapper and outputs_type on deserialization.
-        return handler(self.data)
