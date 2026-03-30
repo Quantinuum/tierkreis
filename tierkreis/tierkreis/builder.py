@@ -284,11 +284,13 @@ class Graph[Inputs: TModel, Outputs: TModel]:
 
         This will evaluate a nested graph with the given inputs.
 
-        :param A the input type of the graph.
-        :param B the output type of the graph.
         :param body: The graph to evaluate.
+        :type body: TypedGraphRef[A, B] | Workflow[A, B],
+            where A are the input type and B the output type of the graph.
         :param eval_inputs: The inputs to the graph.
+        :type eval_inputs: A
         :return: The outputs of the evaluation.
+        :rtype: B
         """
         if isinstance(body, Workflow):
             body = self._graph_const(body)
@@ -310,12 +312,15 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         To trace intermediate values, use the name attribute in conjunction with
         read_loop_trace.
 
-        :param A the input type of the graph.
-        :param B the output type of the graph.
         :param body: The graph to loop.
+        :type body: TypedGraphRef[A, B] | Workflow[A, B],
+            where A are the input type and B the output type of the graph.
         :param loop_inputs: The inputs to the loop graph.
+        :type loop_inputs: A
         :param name: An optional name for the loop.
+        :type name: str | None
         :return: The outputs of the loop.
+        :rtype: B
         """
         if isinstance(body, Workflow):
             body = self._graph_const(body)
@@ -407,8 +412,11 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """Add a map node to the graph.
 
         :param body: The graph to map over.
+        :type body: TypedGraphRef | Callable | Workflow
         :param map_inputs: The values to map over.
+        :type map_inputs: TKR | TList
         :return: The outputs of the map.
+        :rtype: Any
         """
         if isinstance(body, Workflow):
             body = self._graph_const(body)
