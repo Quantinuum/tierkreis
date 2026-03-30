@@ -4,15 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Graph inputs and outputs
-
-To create this graph we need only to install the `tierkreis` package:
-
-```
-pip install tierkreis
-```
-
-# Graphs
+# Inputs and Output
 
 ## Single input and single output
 
@@ -139,7 +131,7 @@ g = Graph(TKR[str], MultiPortOutputData)
 g = Graph(MultiPortInputData, TKR[str])
 ```
 
-# Execution
+## Execution
 
 Since we still only use built-in functions, we execute the graph in the same way as before.
 For the examples with graph inputs, we provide the input in the third argument of `run_graph`.

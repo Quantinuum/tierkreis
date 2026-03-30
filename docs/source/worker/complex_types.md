@@ -152,7 +152,7 @@ Similarly to the `bytes` type, a top-level `ndarray` will produce a file contain
 If an `ndarray` is present within a nested Tierkreis structure then it will be serialized in the same way as `bytes` above (i.e. using the `__tkr_bytes__` discriminator).
 Unlike bytes, the stub generation process will produce `TKR[OpaqueType["numpy.ndarray"]]` for use in graph builder code.
 
-# Custom serializers
+## Custom serializers
 
 If the worker author would like to customize the (de)serialization functions they may use Python `Annotated` types.
 The Tierkreis Python library will look for subclasses of `tierkreis.controller.data.core.Serializer` and `tierkreis.controller.data.core.Deserializer` in the annotations.

@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Nested graphs using Eval
+# Eval: Using nested graphs
 
 To create this graph we need only to install the `tierkreis` package:
 
@@ -61,7 +61,7 @@ workflow = fib4.finish_with_outputs(fourth.b)
 
 In the [next tutorial](./loop.md) we will see how to iterate programmatically.
 
-# Execution
+## Execution
 
 Since we still only use built-in functions, we execute the graph in the same way as before.
 

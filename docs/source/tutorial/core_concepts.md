@@ -1,5 +1,8 @@
 # Core Concepts in Tierkreis
 
+This documents covers the basics of tierkreis.
+If you want to immediately write you first graph, you can immediately skip to the [next page](../examples/first_graph.ipynb).
+
 ## Program model
 
 In Tierkreis, a computation is represented as a sequence of tasks comprising a workflow.
@@ -31,6 +34,10 @@ From the data dependencies, the runtime environment can infer which tasks it nee
 
 In Tierkreis, it is possible to associate types with edges (data) at construction.
 Type information can be used while building the `Graph` to detect and prevent runtime errors.
+Tierkreis values correspond to the edges in the graph.
+These values can have a type assigned to them at construction time.
+The set of available types is a subset of all python types, e.g. we require serialization; see more in [complex types](../worker/complex_types.md) how to add your own serialization.
+As result we use the `TKR` container to promote the python types into Tierkreis compatible types.
 
 ## Execution model
 
@@ -63,7 +70,7 @@ The storage base class is defined in [](#tierkreis.controller.storage.protocol).
 
 A worker implements _atomic_ functionalities that will not be broken further by the controller.
 These functionalities are unrestricted and can be implemented in any language as long as they correctly implement the interface defined by the storage layer.
-To facilitate the interface, workers have access to their own storage layer, see [](tierkreis.worker.storage.protocol).
+To facilitate the interface, workers have access to their own storage layer, see the [API](#tierkreis.worker.storage.protocol).
 Typically, workers represent more expensive operations that run asynchronously.
 See [Workers](#tierkreis.worker.worker.Worker).
 Tierkreis can automatically generate type stubs for python workers.

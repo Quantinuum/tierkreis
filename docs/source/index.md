@@ -9,18 +9,33 @@ Tierkreis combines task-based workers with context dependent execution on variou
 
 ## Quick Start
 
+To get up to speed with tierkreis we recommend the [Beginners Tutorial](./tutorial/index.md).
+It will guide you through the core concepts of Tierkreis, how to construct graphs, define workers, and execute them.
+For more advanced topics see the specific contents below.
+
 ## Contents
 
 ```{toctree}
 :maxdepth: 3
 installation.md
-core_concepts.md
-getting_started.md
+tutorial/index
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: User guide
+tutorial/core_concepts.md
+tutorial/visualization.md
+tutorial/logging_and_errors.md
+tutorial/cli
 graphs/index
-visualization.md
-logging_and_errors.md
 worker/index
 executors/index
-examples/index
+tutorial/tutorials.md
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: API Reference
 apidocs/index
 ```

@@ -20,7 +20,7 @@ Tierkreis is restricted to a subset of the full specification:
 
 For example you could define the following interface in `TestNamespace/namespace.tsp`
 
-```tsp
+```rust
 @portmapping
 model Person {
   name: string;
@@ -86,7 +86,7 @@ This is indicated with an `_error` file in the node location.
 
 This example shows how to parse the following interface:
 
-```tsp
+```rust
 
 interface MyWorker {
     double(value: Array<integer>): Array<integer>;

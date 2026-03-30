@@ -4,10 +4,10 @@ Executors are fundamental in running graph nodes in different environments.
 They also ensure that the workers can fulfill their contracts by preparing inputs and outputs.
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
+:hidden:
 shell.md
 hpc.md
-hpc/index
 ```
 
 ## The worker contract
@@ -30,14 +30,14 @@ The controller is aware of the following files, if not specified otherwise they 
 - The `definition` file contains the serialized `WorkerCallArgs`, the worker needs to parse this to find out about the locations inputs, outputs and the here listed files.
 - Completion is indicated by the `_done` file, workers must set this once they have written all outputs
 - Failures is indicated by the `_error` file, workers must set this if they can not complete normal execution
-- In case of failure error messages should be written to the `errors_path` location of its call arguments, typically `<checkpoints_dir>/<workflow_id>/<node_location>/errors`.
+- In case of failure error messages should be written to the `errors_path` location of its call arguments, typically `<checkpoints_dir>/<workflow_id>/<node_location>/logs`.
   Currently as a fallback it is also possible to write to the `<checkpoints_dir>/<workflow_id>/<node_location>/_errors` file.
 
 ### Task, Inputs and Outputs
 
 `WorkerCallArgs` contain the information of the function name of the task to call and it's inputs and the location to write outputs to.
 To supply workers with their inputs the `WorkerCallArgs` specify a mapping of input name to a location where the input is stored.
-For example, the `greet` task of the [`hello_world_worker`](../worker/hello_world.md) expects two string inputs and outputs one file.
+For example, the `greet` task of the [`hello_world_worker`](../examples/hello_world_graph.ipynb) expects two string inputs and outputs one file.
 The inputs are can be looked up by port name (`greeting`, `subject`) their values are stored in the output of other nodes in a a file `<checkpoints_dir>/<workflow_id>/<node_location>/outputs/<port_name>`.
 The outputs of a worker follow the same pattern and are stored in the `output_dir` directory specified in the call args.
 For each value to output, there is an entry for it in the caller arguments output mapping.

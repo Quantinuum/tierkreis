@@ -4,7 +4,7 @@ kernelspec:
   name: python3
 ---
 
-# Graph using built-in tasks
+# Tasks: Using Builtins
 
 To create this graph we need only to install the `tierkreis` package:
 
@@ -62,7 +62,7 @@ workflow = g.finish_with_outputs(three)
 
 ## Running the graph
 
-To run a general Tierkreis graph (`Workflow`) we need to set up:-
+To run a general Tierkreis graph (`Workflow`) we need to set up:
 
 - a way to store and share inputs and outputs (the 'storage' interface)
 - a way to run tasks (the 'executor' interface)

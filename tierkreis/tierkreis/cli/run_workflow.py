@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import PType
+from tierkreis.controller.data.types import PType, Workflow
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_workflow(  # noqa: PLR0913
-    graph: GraphData,
+    workflow: GraphData | Workflow,
     inputs: dict[str, PType],
     name: str | None = None,
     run_id: int | None = None,
@@ -33,8 +33,8 @@ def run_workflow(  # noqa: PLR0913
     Wrapper for :py:func:`tierkreis.controller.run_graph` to run a workflow.
     Adds some sensible defaults.
 
-    :param graph: The graph to run.
-    :type graph: GraphData
+    :param workflow: The workflow to run.
+    :type workflow: Workflow[A, B]
     :param inputs: The inputs to the workflow.
     :type inputs: dict[str, PType]
     :param name: The name of the workflow, defaults to None
@@ -71,13 +71,13 @@ def run_workflow(  # noqa: PLR0913
     run_graph(
         storage,
         executor,
-        graph,
+        workflow,
         inputs,
         n_iterations,
         polling_interval_seconds,
     )
     if print_output:
-        all_outputs = read_outputs(graph, storage)
+        all_outputs = read_outputs(workflow, storage)
         if isinstance(all_outputs, dict):
             for output_name, output_value in all_outputs.items():
                 print(f"'{output_name}': {output_value!r}")  # noqa: T201

@@ -1,3 +1,9 @@
+---
+file_format: mystnb
+kernelspec:
+  name: python3
+---
+
 # Workers
 
 A worker implements _atomic_ functionalities that will not be broken further by the controller.
@@ -13,12 +19,17 @@ As long as there is a runnable binary, you can provide a thin wrapper which allo
 ```
 
 ```{toctree}
-:maxdepth: 2
+:hidden:
+:maxdepth: 1
 complex_types.md
 external_workers.md
-hello_world.md
 ../examples/multiple_outputs.ipynb
-native_workers/index
+native_workers/aer_worker.md
+native_workers/ibmq_worker.md
+native_workers/nexus_worker.md
+native_workers/pytket_worker.md
+native_workers/quantinuum_worker.md
+native_workers/qulacs_worker.md
 ```
 
 ## Generating workers from the cli
@@ -28,7 +39,7 @@ By default, we assume workers are stored in a directory `<project_root>/tkr/work
 
 You can generate a new worker by running:
 
-```
+```bash
 tkr init worker --worker-name <worker-name>
 ```
 
@@ -65,13 +76,13 @@ When writing a workflow you don't need to call this function directly.
 Instead you need to provide the so-called function **stubs** to the task definition, which are available in `api.py`
 You can generate the stubs from the cli:
 
-```
+```bash
 tkr init stubs
 ```
 
 or running
 
-```
+```bash
 uv run <worker_dir>/tkr_<worker_name>_impl/main.py --stubs-path <path to stubs>.py
 ```
 
@@ -80,6 +91,12 @@ You can then import them using python:
 
 ```python
 from worker_name import worker_function
+```
+
+For example we can run the following to generate the api for the `hello_world_worker`
+
+```{code-cell}
+!cd ../examples/example_workers/hello_world_worker && uv run tkr_hello_world_worker_impl/main.py --stubs-path ../../../worker/hello_stubs.py > /dev/null 2>&1
 ```
 
 ### Using workers in multiple projects
@@ -93,6 +110,58 @@ When running you need to specify the correct registry for the executor or add th
 
 As alternative, you are free to publish the worker packages on pypi and add them as a prepackaged worker.
 
+## Worker code
+
+Writing workers requires adding the `task` decorator.
+Here we will provide a simple example, the full code is in [](../examples/hello_world_graph.ipynb)
+Our worker will consist of a single function returning a string.
+We first instantiate a `Worker` class, which is constructed using the name of the worker.
+The name of the worker tells the executor which worker a task comes from.
+Therefore all of the different workers used in a single graph should have distinct names.
+
+```{code} ipython3
+from tierkreis import Worker
+
+worker = Worker("hello_world_worker")
+```
+
+The `Worker.task` method is used as a decorator to add functions to the worker.
+
+```{code} ipython3
+@worker.task()
+def greet(greeting: str, subject: str) -> str: ...
+```
+
+```{note}
+There are restrictions on the types of functions that `Worker.task` will accept.
+If the function arguments and return types correspond to JSON types then the function will be accepted.
+In addition there are a few ways of using more complex data structures,
+but for now we keep things simple.
+For more information please see [Complex types in Tierkreis Python workers](complex_types.md).
+```
+
+### Logging and Errors
+
+The Tierkreis controller will automatically collect logs and errors from workers by adding a file handler, additionally redirecting any worker output from `stdout` and `stderr` to `errors_path` and `logs_path` automatically.
+Any other output, e.g. writing debug information to a log file won't be captured.
+For convenience you can use the builtin logging functionality `worker.logger` which is an instance of a `logging.Logger`.
+Raising an exception in a worker task will terminate the graph execution.
+An example of this can be found in the [advanced examples](../examples/errors_and_debugging.ipynb)
+
+## Using worker tasks
+
+We can import tasks (here the `greet`) function from the api file and use it in `Graph.task`.
+
+```{code-cell} ipython3
+from tierkreis.builder import Graph
+from tierkreis.models import TKR
+from hello_stubs import greet
+
+g = Graph(TKR[str], TKR[str])
+output = g.task(greet(greeting=g.const("hello "), subject=g.inputs))
+g.finish_with_outputs(output)
+```
+
 ## Running Workers
 
 In general, running workers is associated with an executor.
@@ -105,6 +174,10 @@ Running workers can happen in two flavors, which have different appropriate exec
 If you used the cli to generate the worker layout described above, both cases apply to your worker.
 This is due to worker being also added as a package to the root project.
 ```
+
+Configuring an executor requires sharing the storage interface (typically `FileStorage`) and setting the registry path.
+This is typically in a shared location e.g., the `workers` directotry where each worker has its own folder.
+The folder name must correspond to the name of the worker.
 
 ### Running self defined workers
 
@@ -199,7 +272,7 @@ will install an executable Python script `tkr_pytket_worker` into your virtual e
 
 **Example**
 
-See the example `hamiltonian_graph.py`.
+See the [example](../examples/hamiltonian.ipynb)
 
 #### Quantinuum Nexus
 

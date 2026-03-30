@@ -61,7 +61,7 @@ In both cases, the controller will stop the execution, raising a `TierkreisError
 
 Error information is available in two places.
 When running [`run_graph`](#tierkreis.controller.run_graph) or [`run_workflow`](#tierkreis.cli.run_workflow.run_workflow), error information including a stack trace will be printed to `stdout`.
-For example running the [Errors and Debugging](./examples/errors_and_debugging.ipynb) example will produce the following output
+For example running the [Errors and Debugging](../examples/errors_and_debugging.ipynb) example will produce the following output
 
 ```
 Graph finished with errors.
@@ -123,4 +123,4 @@ If you're using the visualize to debug workflow, error information will be immed
 On the landing page, the workflows table will show you all nodes containing an error.
 In then workflow view a red node indicates an error.
 Logging information is available by double clicking a node; error information by pressing the "!" button on errored nodes.
-For a guide to the visualize please refer to [this document](./visualization.md)
+For a guide to the visualize please refer to [this document](../tutorial//visualization.md)
