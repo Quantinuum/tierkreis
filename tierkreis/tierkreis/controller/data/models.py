@@ -1,4 +1,4 @@
-"""Models for type structures used in the graphbuilder."""
+"""Models for type structures used for building the graph."""
 
 from dataclasses import dataclass
 from inspect import isclass

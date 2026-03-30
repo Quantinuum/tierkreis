@@ -7,6 +7,7 @@ kernelspec:
 # Map: Parallel computation
 
 An example of how to run several CPU intensive nodes in parallel and aggregate the results.
+There is also an example notebook available [here](../examples/parallelism.ipynb)
 
 ## Example worker
 

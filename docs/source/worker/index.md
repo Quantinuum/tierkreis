@@ -150,16 +150,16 @@ An example of this can be found in the [advanced examples](../examples/errors_an
 
 ## Using worker tasks
 
-We can import tasks (here the `greet`) function from the api file and use it in `GraphBuilder.task`.
+We can import tasks (here the `greet`) function from the api file and use it in `Graph.task`.
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.models import TKR
 from hello_stubs import greet
 
-g = GraphBuilder(TKR[str], TKR[str])
+g = Graph(TKR[str], TKR[str])
 output = g.task(greet(greeting=g.const("hello "), subject=g.inputs))
-g.outputs(output)
+g.finish_with_outputs(output)
 ```
 
 ## Running Workers

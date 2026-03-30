@@ -18,7 +18,7 @@ def graph() -> GraphData:
 
 def test_run_workflow(graph: GraphData) -> None:
     inputs = {}
-    run_workflow(inputs=inputs, graph=graph, run_id=31415)
+    run_workflow(inputs=inputs, workflow=graph, run_id=31415)  # type:ignore
     with Path.open(
         Path.home()
         / ".tierkreis"
@@ -34,7 +34,7 @@ def test_run_workflow(graph: GraphData) -> None:
 
 def test_run_workflow_with_output(graph: GraphData, capfd) -> None:  # noqa: ANN001
     inputs = {}
-    run_workflow(inputs=inputs, graph=graph, run_id=31415, print_output=True)
+    run_workflow(inputs=inputs, workflow=graph, run_id=31415, print_output=True)
     out, _ = capfd.readouterr()
     assert "'simple_eval_output': 12" in out
 
@@ -48,7 +48,7 @@ def _patch_uuid4() -> mock.Mock:
 @pytest.mark.usefixtures("_patch_uuid4", "graph")
 def test_run_workflow_default_run_id(graph: GraphData) -> None:
     inputs = {}
-    run_workflow(inputs=inputs, graph=graph)
+    run_workflow(inputs=inputs, workflow=graph)
     with Path.open(
         Path.home()
         / ".tierkreis"
@@ -65,7 +65,7 @@ def test_run_workflow_uv_executor(graph: GraphData) -> None:
     inputs = {}
     run_workflow(
         inputs=inputs,
-        graph=graph,
+        workflow=graph,
         run_id=31415,
         use_uv_executor=True,
         registry_path=Path(),

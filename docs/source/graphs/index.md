@@ -26,14 +26,14 @@ This tutorial will guide you through using the basic nodes for constructing a gr
 The available node types are:
 - Input
 - Output
-- [const](#tierkreis.builder.GraphBuilder.const): constant values
-- [ifelse](#tierkreis.builder.GraphBuilder.ifelse): **lazy** evaluated conditional statement with two branches
-- [eifelse](#tierkreis.builder.GraphBuilder.eifelse): **eager** evaluated conditional statement with two branches
-- [task](#tierkreis.builder.GraphBuilder.task): worker tasks, shell scripts etc...
-- [eval](#tierkreis.builder.GraphBuilder.eval): *higher-order* graph evaluation; evaluating a subgraph
-- [loop](#tierkreis.builder.GraphBuilder.loop): *higher-order* loop; iterate over a graph until a boolean termination criterion is met
-- [map](#tierkreis.builder.GraphBuilder.map): *higher-order* map; evaluate the same graph over a collection of independent inputs
-- [embed](#tierkreis.builder.GraphBuilder.embed): *higher-order* graph embedding; embeds a graph into another graph inplace. 
+- [const](#tierkreis.builder.Graph.const): constant values
+- [ifelse](#tierkreis.builder.Graph.ifelse): **lazy** evaluated conditional statement with two branches
+- [eifelse](#tierkreis.builder.Graph.eifelse): **eager** evaluated conditional statement with two branches
+- [task](#tierkreis.builder.Graph.task): worker tasks, shell scripts etc...
+- [eval](#tierkreis.builder.Graph.eval): *higher-order* graph evaluation; evaluating a subgraph
+- [loop](#tierkreis.builder.Graph.loop): *higher-order* loop; iterate over a graph until a boolean termination criterion is met
+- [map](#tierkreis.builder.Graph.map): *higher-order* map; evaluate the same graph over a collection of independent inputs
+- [embed](#tierkreis.builder.Graph.embed): *higher-order* graph embedding; embeds a graph into another graph inplace. 
 
 ```{note}
 Higher-order in this context means that the node expects one of the inputs to be a graph in the form of `Workflow`s  where inputs and and ouptus are defined.

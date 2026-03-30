@@ -6,6 +6,7 @@ Once you have completed the beginners tutorial, you can look at advanced topics.
 :hidden:
 :maxdepth: 1
 ../examples/types_and_defaults.ipynb
+../examples/parallelism.ipynb
 ../examples/polling_and_dir.ipynb
 ../examples/errors_and_debugging.ipynb
 ../examples/restart.ipynb
