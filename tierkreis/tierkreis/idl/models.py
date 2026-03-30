@@ -24,12 +24,14 @@ class GenericType:
         origin (ElementaryType): The base type, e.g., str in list[str].
         args:  (Sequence[GenericType | str]) The nested types.
             e.g., list[str] in set[list[str]]
+        is_ptype (bool): true if the type was either
+            (a) constructed from a `type` that was a PType,
+            (b) not constructed from a `type` at all (e.g. from a string in the parser).
     """
 
     origin: ElementaryType
     args: "Sequence[GenericType | str]"
-    is_ptype: bool = True  # Assume yes if not constructed from a `type`
-    # This might be a dangerous default but seems right for the parser.
+    is_ptype: bool = True
 
     @classmethod
     def from_type(cls, t: type) -> "Self":
