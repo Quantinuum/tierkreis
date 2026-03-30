@@ -27,7 +27,7 @@ from tierkreis.controller.data.core import (
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 
-from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer
+from pydantic import BaseModel, SerializerFunctionWrapHandler, model_serializer, SkipValidation
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
@@ -149,7 +149,19 @@ def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef])
 
 class Workflow[Inputs: TModel, Outputs: TModel](BaseModel):
     data: GraphData
-    outputs_type: type[Outputs]
+    outputs_type: SkipValidation[type[Outputs]]
+
+    def __class_getitem__(cls, item):
+        #try:
+        inp, out = item
+        if get_origin(inp) == TKR:
+            inp = TKR
+        if get_origin(out) == TKR:
+            out = TKR
+        item = (inp, out)
+        #except ValueError:
+        #    pass
+        return super().__class_getitem__(item)
 
     @model_serializer(mode="wrap")
     def serialize_model(
