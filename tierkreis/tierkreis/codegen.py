@@ -106,20 +106,11 @@ def format_model(model: Model) -> str:
     outs.sort()
     outs_str = "\n    ".join(outs)
 
-    def is_tmodel() -> bool:
-        has_ptypes = False
-        has_tkrs = False
-        for decl in model.decls:
-            if decl.t.is_ptype:
-                has_ptypes = True
-            else:
-                has_tkrs = True
-        assert not (has_ptypes and has_tkrs), (
-            "Model decls should be all PTypes or all TKRs"
-        )
-        return has_tkrs
-
-    bases = ["NamedTuple"] if is_portmapping or is_tmodel() else ["Struct", "Protocol"]
+    bases = (
+        ["NamedTuple"]
+        if is_portmapping or not model.is_pmodel()
+        else ["Struct", "Protocol"]
+    )
     bases_str = ", ".join(bases)
     generic_type_str = format_generic_type(model.t, include_bound=True, is_tkr=False)
 

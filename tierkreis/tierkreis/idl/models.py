@@ -175,3 +175,20 @@ class Model:
         :rtype: bool
         """
         return str(self.t.origin) < str(other.t.origin)
+
+    def is_pmodel(self) -> bool:
+        """Check if the model is known to be a PModel, i.e. if all fields have types
+        that were known to be PModels.
+
+        Raises an exception if some types are PModels and others not.
+        """
+        has_ptypes = False
+        has_tkrs = False
+        for decl in self.decls:
+            if decl.t.is_ptype:
+                has_ptypes = True
+            else:
+                has_tkrs = True
+        if has_ptypes and has_tkrs:
+            raise ValueError("Model decls should be all PTypes or all TKRs")
+        return has_ptypes
