@@ -174,7 +174,7 @@ def workflow() -> Workflow[GraphInputs, GraphOutputs]:
 
 def main() -> None:
     graph = workflow()
-    storage = FileStorage(workflow_id=UUID(int=12345), name=your_workflow")
+    storage = FileStorage(workflow_id=UUID(int=12345), name="your_workflow")
     executor = UvExecutor(
         Path(__file__).parent.parent / "workers", storage.logs_path
     )
