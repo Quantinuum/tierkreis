@@ -8,7 +8,6 @@ from typing import (
     Literal,
     Protocol,
     Union,
-    Self,
     cast,
     dataclass_transform,
     get_args,
@@ -25,14 +24,7 @@ from tierkreis.controller.data.core import (
     RestrictedNamedTuple,
     ValueRef,
 )
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import (
-    PType,
-    ModelConvertible,
-    coerce_from_annotation,
-)
-
-from pydantic import BaseModel
+from tierkreis.controller.data.types import PType
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
@@ -150,19 +142,3 @@ def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef])
         return cast("T", model(*args))
     (ref,) = fields.values()
     return tmodel(*ref)
-
-
-@dataclass(frozen=True)
-class Workflow[Inputs: TModel, Outputs: TModel](ModelConvertible):
-    data: GraphData
-    outputs_type: type[Outputs]
-
-    def to_model(self) -> BaseModel:
-        return self.data
-
-    @classmethod
-    def from_model(cls, annot: type[Self], arg: BaseModel, /) -> Self:
-        from tierkreis.controller.data.graph import GraphData
-
-        _inputs, outputs = get_args(annot)
-        return cls(coerce_from_annotation(arg, GraphData), outputs)

@@ -12,9 +12,10 @@ from tierkreis.controller.data.types import (
     bytes_from_ptype,
     is_ptype,
     ptype_from_bytes,
+    Workflow,
 )
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.models import TKR, Workflow
+from tierkreis.controller.data.models import TKR
 from tests.controller.typed_graphdata import typed_doubler
 
 

@@ -23,9 +23,8 @@ from tierkreis.controller.data.models import (
     TNamedModel,
     dict_from_tmodel,
     init_tmodel,
-    Workflow,
 )
-from tierkreis.controller.data.types import PType
+from tierkreis.controller.data.types import PType, Workflow
 
 
 @dataclass
