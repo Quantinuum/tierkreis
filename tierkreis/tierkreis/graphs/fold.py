@@ -89,7 +89,7 @@ def fold_graph[A_co: PType, B_co: PType](
     :rtype: Graph[FoldGraphInputs[A_co, B_co], TKR[B_co]]
     """
     g = Graph(FoldGraphInputs[A_co, B_co], TKR[B_co])
-    foldfunc = g._graph_const(func)  # noqa: SLF001
+    foldfunc = g.graph_const(func)
     # TODO @mwpb: include the computation inside the fold
     ins = _FoldGraphOuterInputs(
         foldfunc.graph_ref,

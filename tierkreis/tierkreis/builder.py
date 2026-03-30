@@ -188,6 +188,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
     def const[T: PType](self, value: T) -> TKR[T]:
         """Add a constant node to the graph.
 
+        Note if the value is a Workflow, use `graph_const` instead to preserve type information.
+
         :return: The constant value.
         :rtype: TKR[T]
         """
@@ -251,11 +253,15 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         )("value")
         return TKR(idx, port)
 
-    def _graph_const[A: TModel, B: TModel](
+    def graph_const[A: TModel, B: TModel](
         self,
         graph: Workflow[A, B],
     ) -> TypedGraphRef[A, B]:
-        # TODO @philipp-seitz: Turn this into a public method?
+        """Add a graph constant to the graph.
+        Returns a typed reference to the graph that can be used in eval and loop nodes.
+
+        :param graph: The graph to add as a constant.
+        """
         return TypedGraphRef(
             self.const(graph),
             graph.outputs_type,
@@ -293,7 +299,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :rtype: B
         """
         if isinstance(body, Workflow):
-            body = self._graph_const(body)
+            body = self.graph_const(body)
 
         idx, _ = self.data.eval(
             body.graph_ref.value_ref(), dict_from_tmodel(eval_inputs)
@@ -323,7 +329,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :rtype: B
         """
         if isinstance(body, Workflow):
-            body = self._graph_const(body)
+            body = self.graph_const(body)
 
         idx, _ = self.data.loop(
             body.graph_ref.value_ref(),
@@ -419,7 +425,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :rtype: Any
         """
         if isinstance(body, Workflow):
-            body = self._graph_const(body)
+            body = self.graph_const(body)
 
         if isinstance(body, Callable):
             if isinstance(map_inputs, TList):

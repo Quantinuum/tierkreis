@@ -29,7 +29,7 @@ def graph_of_graph(
     The graph contains the argument graph `f` as a constant."""
     g = Graph(TKR[int], TKR[int])
     v = g.inputs
-    ref: TypedGraphRef[TKR[int], TKR[int]] = g._graph_const(f)
+    ref: TypedGraphRef[TKR[int], TKR[int]] = g.graph_const(f)
     for _ in range(n):
         v = g.eval(ref, v)
     return g.finish_with_outputs(v)
