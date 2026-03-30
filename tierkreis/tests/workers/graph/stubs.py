@@ -1,8 +1,7 @@
 """Code generated from graph namespace. Please do not edit."""
 
 from typing import NamedTuple
-from tierkreis.controller.data.models import TKR
-from tierkreis.controller.data.types import Workflow
+from tierkreis.controller.data.models import TKR, Workflow
 
 
 class ApplyTwiceInput(NamedTuple):
