@@ -9,7 +9,7 @@ import logging
 from time import sleep
 from typing import TYPE_CHECKING
 
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Workflow
 from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 def run_graph[A: TModel, B: TModel](
     storage: ControllerStorage,
     executor: ControllerExecutor,
-    g: GraphData | GraphBuilder[A, B],
+    g: GraphData | Workflow[A, B],
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
@@ -48,7 +48,7 @@ def run_graph[A: TModel, B: TModel](
     :param executor: The executor backend for the controller.
     :type executor: ControllerExecutor
     :param g: The graph to run.
-    :type g: GraphData | GraphBuilder[A, B]
+    :type g: GraphData | Workflow[A, B]
     :param graph_inputs: The inputs to the graph.
      If a single PType is provided, it will be provided as the input "value".
     :type graph_inputs: dict[str, PType] | PType
@@ -61,8 +61,8 @@ def run_graph[A: TModel, B: TModel](
     :type enable_logging: bool, optional
     :raises TierkreisError: If the graph encounters errors during execution.
     """
-    if isinstance(g, GraphBuilder):
-        g = g.get_data()
+    if isinstance(g, Workflow):
+        g = g.data
 
     if not isinstance(graph_inputs, dict):
         graph_inputs = {"value": graph_inputs}

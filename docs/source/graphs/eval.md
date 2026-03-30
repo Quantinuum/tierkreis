@@ -14,13 +14,13 @@ pip install tierkreis
 
 ## Graph
 
-We can run graphs from within other graphs by using `GraphBuilder.eval`.
+We can run graphs from within other graphs by using `Graph.eval`.
 Recall the `fib_step` graph that we wrote in the [previous tutorial](./loop.md)
 
 ```{code-cell} ipython3
 from typing import NamedTuple
 
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.builtins import iadd
 from tierkreis.models import TKR
 
@@ -30,9 +30,9 @@ class FibData(NamedTuple):
     b: TKR[int]
 
 
-fib_step = GraphBuilder(FibData, FibData)
-sum = fib_step.task(iadd(fib_step.inputs.a, fib_step.inputs.b))
-fib_step.outputs(FibData(fib_step.inputs.b, sum))
+builder = Graph(FibData, FibData)
+sum = builder.task(iadd(builder.inputs.a, builder.inputs.b))
+fib_step = builder.finish_with_outputs(FibData(builder.inputs.b, sum))
 ```
 
 We create a graph `fib4` that calls `fib_step` three times.
@@ -41,10 +41,10 @@ The graph will have no inputs and gives a single integer as output:
 ```{code-cell} ipython3
 from tierkreis.models import EmptyModel
 
-fib4 = GraphBuilder(EmptyModel, TKR[int])
+fib4 = Graph(EmptyModel, TKR[int])
 ```
 
-The `GraphBuilder.eval` method takes a `GraphBuilder` object as its first argument
+The `Graph.eval` method takes a `Workflow` object as its first argument
 and the appropriately typed input data as the second object.
 
 ```{code-cell} ipython3
@@ -56,7 +56,7 @@ We can iterate manually as follows:
 ```{code-cell} ipython3
 third = fib4.eval(fib_step, second)
 fourth = fib4.eval(fib_step, third)
-fib4.outputs(fourth.b)
+workflow = fib4.finish_with_outputs(fourth.b)
 ```
 
 In the [next tutorial](./loop.md) we will see how to iterate programmatically.
@@ -77,6 +77,6 @@ storage = FileStorage(UUID(int=99), name="Nested graphs using Eval")
 executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
 
 storage.clean_graph_files()
-run_graph(storage, executor, fib4.get_data(), {})
-print(read_outputs(fib4, storage))
+run_graph(storage, executor, workflow, {})
+print(read_outputs(workflow, storage))
 ```

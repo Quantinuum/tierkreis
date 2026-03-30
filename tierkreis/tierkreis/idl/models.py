@@ -6,7 +6,7 @@ from types import NoneType
 from typing import Annotated, Self, get_args, get_origin
 
 from tierkreis.controller.data.core import RestrictedNamedTuple
-from tierkreis.controller.data.types import _is_generic
+from tierkreis.controller.data.types import _is_generic, is_ptype
 
 type ElementaryType = (
     type[int | float | bytes | str | bool | NoneType | Mapping | Sequence]
@@ -24,10 +24,14 @@ class GenericType:
         origin (ElementaryType): The base type, e.g., str in list[str].
         args:  (Sequence[GenericType | str]) The nested types.
             e.g., list[str] in set[list[str]]
+        is_ptype (bool): true if the type was either
+            (a) constructed from a `type` that was a PType,
+            (b) not constructed from a `type` at all (e.g. from a string in the parser).
     """
 
     origin: ElementaryType
     args: "Sequence[GenericType | str]"
+    is_ptype: bool = True
 
     @classmethod
     def from_type(cls, t: type) -> "Self":
@@ -47,7 +51,7 @@ class GenericType:
         subargs = []
         [subargs.append(str(x)) for x in args if _is_generic(x)]
         [subargs.append(cls.from_type(x)) for x in args if not _is_generic(x)]
-        return cls(origin, subargs)
+        return cls(origin, subargs, is_ptype(t))
 
     @classmethod
     def _included_structs(cls, t: "GenericType") -> "set[GenericType]":
@@ -173,3 +177,20 @@ class Model:
         :rtype: bool
         """
         return str(self.t.origin) < str(other.t.origin)
+
+    def is_pmodel(self) -> bool:
+        """Check if the model is known to be a PModel, i.e. if all fields have types
+        that were known to be PModels.
+
+        Raises an exception if some types are PModels and others not.
+        """
+        has_ptypes = False
+        has_tkrs = False
+        for decl in self.decls:
+            if decl.t.is_ptype:
+                has_ptypes = True
+            else:
+                has_tkrs = True
+        if has_ptypes and has_tkrs:
+            raise ValueError("Model decls should be all PTypes or all TKRs")
+        return has_ptypes

@@ -75,7 +75,7 @@ Now as graph definition in `main.py`:
 ```py
 from first_worker import some_task
 
-graph = GraphBuilder(TKR[NoneType], TKR[NoneType])
+graph = Graph(TKR[NoneType], TKR[NoneType])
 graph.task(some_task)
 ```
 
@@ -120,7 +120,7 @@ If different executors are necessary they can be combined using the [`MultipleEx
 ```py
 def multiple_graph():
     # Both tasks are the same, we just use different names to test the task executor
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     first_call = g.data.func(
         "shell_worker.meet",
         {"greeting": g.inputs.value_ref()},
@@ -131,8 +131,7 @@ def multiple_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
 
 
 def main():
@@ -160,7 +159,7 @@ Alternativerly if you need control on task level, e.g., to execute the same work
 ```py
 def task_graph():
     # Both tasks are the same, we just use different names to test the task executor
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     first_call = g.data.func(
         "shell_worker.meet",
         {"greeting": g.inputs.value_ref()},
@@ -171,8 +170,8 @@ def task_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
+
 def main():
     g = task_graph()
     storage = ControllerFileStorage(UUID(int=305), name="Task")

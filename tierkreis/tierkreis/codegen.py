@@ -106,7 +106,11 @@ def format_model(model: Model) -> str:
     outs.sort()
     outs_str = "\n    ".join(outs)
 
-    bases = ["NamedTuple"] if is_portmapping else ["Struct", "Protocol"]
+    bases = (
+        ["NamedTuple"]
+        if is_portmapping or not model.is_pmodel()
+        else ["Struct", "Protocol"]
+    )
     bases_str = ", ".join(bases)
     generic_type_str = format_generic_type(model.t, include_bound=True, is_tkr=False)
 

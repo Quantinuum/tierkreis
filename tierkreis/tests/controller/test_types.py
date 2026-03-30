@@ -12,7 +12,11 @@ from tierkreis.controller.data.types import (
     bytes_from_ptype,
     is_ptype,
     ptype_from_bytes,
+    Workflow,
 )
+from tierkreis.controller.data.graph import GraphData
+from tierkreis.controller.data.models import TKR
+from tests.controller.typed_graphdata import typed_doubler
 
 
 class UntupledModel[U, V](BaseModel):
@@ -65,6 +69,8 @@ type_list.append(int | bytes)
 type_list.append(tuple[int, str])
 type_list.append(tuple[int | str])
 type_list.append(Mapping[str, dict[str, bytes]])
+type_list.append(GraphData)
+type_list.append(Workflow[TKR[int], TKR[bool]])
 
 fail_list: Sequence[type] = []
 fail_list.append(UUID)
@@ -106,6 +112,7 @@ def test_bytes_roundtrip(ptype: PType) -> None:
 annotated_ptypes: Sequence[tuple[PType, type]] = [
     (ptype, type(ptype)) for ptype in ptypes
 ] + [  # Not possible to deserialise without annotations
+    (typed_doubler(), Workflow[TKR[int], TKR[int]]),
     (
         [DummyListConvertible(a=1), DummyListConvertible(a=2)],
         list[DummyListConvertible],

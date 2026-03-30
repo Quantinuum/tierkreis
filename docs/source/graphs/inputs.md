@@ -19,14 +19,14 @@ pip install tierkreis
 ### Elementary types
 
 Like Python functions, Tierkreis graphs can have input and output arguments.
-We use the constructor of `GraphBuilder` to indicate that our function takes a single integer to a single integer:
+We use the constructor of `Graph` to indicate that our function takes a single integer to a single integer:
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.models import TKR
 
 # f(x) = 2x + 1
-f = GraphBuilder(TKR[int], TKR[int])
+f = Graph(TKR[int], TKR[int])
 ```
 
 The implementation of this graph can be done entirely using Tierkreis built-in functions:
@@ -36,7 +36,7 @@ from tierkreis.builtins import iadd, itimes
 
 double = f.task(itimes(f.const(2), f.inputs))
 f_out = f.task(iadd(double, f.const(1)))
-f.outputs(f_out)
+f = f.finish_with_outputs(f_out)
 ```
 
 ### Nested types within a single output
@@ -60,8 +60,8 @@ The contents of `A` will not in general be accessible to the graph builder code.
 ```{code-cell} ipython3
 from tierkreis.models import EmptyModel
 
-init_data = GraphBuilder(EmptyModel, TKR[FibDataStruct])
-init_data.outputs(init_data.const(FibDataStruct(a=0, b=1)))
+init_data = Graph(EmptyModel, TKR[FibDataStruct])
+init_workflow = init_data.finish_with_outputs(init_data.const(FibDataStruct(a=0, b=1)))
 ```
 
 ## Multiple inputs and multiple outputs
@@ -80,13 +80,13 @@ To use this in the signature of a graph, we pass it directly in.
 This way Tierkreis will interpret the different attributes of the `NamedTuple` as different inputs/outputs.
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.builtins import iadd
 from tierkreis.models import TKR
 
-fib_step = GraphBuilder(FibData, FibData)
+fib_step = Graph(FibData, FibData)
 sum = fib_step.task(iadd(fib_step.inputs.a, fib_step.inputs.b))
-fib_step.outputs(FibData(fib_step.inputs.b, sum))
+fib_step = fib_step.finish_with_outputs(FibData(fib_step.inputs.b, sum))
 ```
 
 Note that we are now able to access the contents of `FibData` in the graph builder.
@@ -103,7 +103,7 @@ class FibData(NamedTuple):
     a: int
     b: int
 
-fib_step_2 = GraphBuilder(TKR[FibData], TKR[FibData])
+fib_step_2 = Graph(TKR[FibData], TKR[FibData])
 ```
 
 However we would then not be able to access attributes of `FibData` in the graph builder code.
@@ -122,7 +122,7 @@ If some data is only used in workers and can be passed between them without the 
 ## Combinations of single and multiple inputs
 
 We can combine the various types of inputs and outputs in the natural way.
-For instance the following are all valid ways to construct a `GraphBuilder` object:
+For instance the following are all valid ways to construct a `Graph` object:
 
 ```{code-cell} ipython3
 class MultiPortInputData(NamedTuple):
@@ -133,10 +133,10 @@ class MultiPortOutputData(NamedTuple):
     a: TKR[str]
     b: TKR[list[int]]
 
-g = GraphBuilder(TKR[int], TKR[str])
-g = GraphBuilder(MultiPortInputData, MultiPortOutputData)
-g = GraphBuilder(TKR[str], MultiPortOutputData)
-g = GraphBuilder(MultiPortInputData, TKR[str])
+g = Graph(TKR[int], TKR[str])
+g = Graph(MultiPortInputData, MultiPortOutputData)
+g = Graph(TKR[str], MultiPortOutputData)
+g = Graph(MultiPortInputData, TKR[str])
 ```
 
 # Execution
@@ -156,14 +156,14 @@ storage = FileStorage(UUID(int=99), name="Graph inputs and outputs")
 executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
 
 storage.clean_graph_files()
-run_graph(storage, executor, f.get_data(), 10)
+run_graph(storage, executor, f, 10)
 print(read_outputs(f, storage))
 
 storage.clean_graph_files()
-run_graph(storage, executor, init_data.get_data(), {})
-print(read_outputs(init_data, storage))
+run_graph(storage, executor, init_workflow, {})
+print(read_outputs(init_workflow, storage))
 
 storage.clean_graph_files()
-run_graph(storage, executor, fib_step.get_data(), {'a': 0, 'b': 1})
+run_graph(storage, executor, fib_step, {'a': 0, 'b': 1})
 print(read_outputs(fib_step, storage))
 ```

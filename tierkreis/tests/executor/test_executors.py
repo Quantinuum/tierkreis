@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import UUID
 
 from tests.workers.hello_world_worker.stubs import greet
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Workflow, Graph
 from tierkreis.builtins import neg
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
@@ -22,15 +22,14 @@ WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 
 def shell_graph():
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     result = g.data.func(  # escape hatch into untyped builder
         "shell_worker.greet",
         {"greeting": g.inputs.value_ref()},
     )
     output: TKR[str] = TKR(*result("value"))  # unsafe cast
 
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
 
 
 def test_shell_executor():
@@ -78,10 +77,9 @@ def test_suppress_env():
     assert "main.sh" in exec_data.launch_command
 
 
-def builtin_graph() -> GraphBuilder[TKR[bool], TKR[bool]]:
-    g = GraphBuilder(TKR[bool], TKR[bool])
-    g.outputs(g.task(neg(g.inputs)))
-    return g
+def builtin_graph() -> Workflow[TKR[bool], TKR[bool]]:
+    g = Graph(TKR[bool], TKR[bool])
+    return g.finish_with_outputs(g.task(neg(g.inputs)))
 
 
 def test_builtin_executor():
@@ -105,13 +103,11 @@ def test_builtin_executor():
     assert exec_data.executor == "builtin"
 
 
-def hello_graph() -> GraphBuilder[TKR[str], TKR[str]]:
-    g = GraphBuilder(TKR[str], TKR[str])
+def hello_graph() -> Workflow[TKR[str], TKR[str]]:
+    g = Graph(TKR[str], TKR[str])
     hello = g.const("hello ")
     output = g.task(greet(greeting=hello, subject=g.inputs))
-    g.outputs(output)
-
-    return g
+    return g.finish_with_outputs(output)
 
 
 def test_uv_executor():
@@ -138,15 +134,14 @@ def test_uv_executor():
 
 
 def stdinout_graph():
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     result = g.data.func(  # escape hatch into untyped builder
         "stdinout_worker.greet",
         {"greeting": g.inputs.value_ref()},
     )
     output: TKR[str] = TKR(*result("value"))  # unsafe cast
 
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
 
 
 def test_stdinout_executor():
@@ -172,7 +167,7 @@ def test_stdinout_executor():
 
 def task_graph():
     # Both tasks are the same, we just use different names to test the task executor
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     first_call = g.data.func(
         "shell_worker.meet",
         {"greeting": g.inputs.value_ref()},
@@ -183,8 +178,7 @@ def task_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
 
 
 def test_task_executor():
@@ -225,7 +219,7 @@ def test_task_executor():
 
 def multiple_graph():
     # Both tasks are the same, we just use different names to test the task executor
-    g = GraphBuilder(TKR[str], TKR[str])
+    g = Graph(TKR[str], TKR[str])
     first_call = g.data.func(
         "shell_worker.meet",
         {"greeting": g.inputs.value_ref()},
@@ -236,8 +230,7 @@ def multiple_graph():
         {"greeting": out.value_ref()},
     )
     output: TKR[str] = TKR(*second_call("value"))
-    g.outputs(output)
-    return g
+    return g.finish_with_outputs(output)
 
 
 def test_multiple_executor():

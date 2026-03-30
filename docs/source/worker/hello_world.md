@@ -71,16 +71,16 @@ Since this worker uses the Tierkreis Python library, we can automatically genera
 
 ## Graph creation
 
-Now can we import the `greet` function from the stubs file and use it in `GraphBuilder.task`.
+Now can we import the `greet` function from the stubs file and use it in `Graph.task`.
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.models import TKR
 from hello_stubs import greet
 
-g = GraphBuilder(TKR[str], TKR[str])
+g = Graph(TKR[str], TKR[str])
 output = g.task(greet(greeting=g.const("hello "), subject=g.inputs))
-g.outputs(output)
+workflow = g.finish_with_outputs(output)
 ```
 
 ## Execution
@@ -103,6 +103,6 @@ storage = FileStorage(UUID(int=99), "hello_world_tutorial", do_cleanup=True)
 executor = UvExecutor(
     registry_path=Path("../examples/example_workers"), logs_path=storage.logs_path
 )
-run_graph(storage, executor, g.data, "world!")
-read_outputs(g, storage)
+run_graph(storage, executor, workflow, "world!")
+read_outputs(workflow, storage)
 ```

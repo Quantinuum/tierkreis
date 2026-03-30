@@ -30,7 +30,7 @@ From the data dependencies, the runtime environment can infer which tasks it nee
 ### Types
 
 In Tierkreis, it is possible to associate types with edges (data) at construction.
-Type information can be used by the `GraphBuilder` to infer additional information about the graph to prevent runtime errors.
+Type information can be used while building the `Graph` to detect and prevent runtime errors.
 
 ## Execution model
 

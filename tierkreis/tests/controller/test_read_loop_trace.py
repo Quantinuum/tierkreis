@@ -25,7 +25,7 @@ params: list[tuple[GraphData, list[dict[str, int]], str, int]] = [
         9,
     ),
     (
-        loop_multiple_acc().get_data(),
+        loop_multiple_acc().data,
         return_value,
         "multi_acc",
         9,

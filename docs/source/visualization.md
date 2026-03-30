@@ -48,10 +48,10 @@ If you delete the optional 'extra' output on line 62 then the browser will live 
 Programmatically this is available through:
 
 ```py
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis_visualization.visualize_graph import visualize_graph
 
-graph = GraphBuilder()
+graph = Graph()
 visualize_graph(graph)
 ```
 

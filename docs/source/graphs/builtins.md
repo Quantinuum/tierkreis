@@ -14,15 +14,15 @@ pip install tierkreis
 
 ## Constructing the graph
 
-First we instantiate a `GraphBuilder` object.
+First we instantiate a `Graph` object.
 The arguments to the constructor describe the inputs and outputs of the graph respectively.
 The following graph has no inputs and outputs a single integer.
 
 ```{code-cell} ipython3
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.models import EmptyModel, TKR
 
-g = GraphBuilder(EmptyModel, TKR[int])
+g = Graph(EmptyModel, TKR[int])
 ```
 
 In general a graph can have a multiple inputs and multiple outputs
@@ -33,7 +33,7 @@ In order to keep a clear separation between the types used in the Tierkreis grap
 (The `TKR[A]` wrapper type indicates that an edge in the graph contains a value of type `A`.)
 ```
 
-We can add constants to a graph using `GraphBuilder.const`.
+We can add constants to a graph using `Graph.const`.
 
 ```{code-cell} ipython3
 one = g.const(1)
@@ -43,7 +43,7 @@ two = g.const(2)
 The constants will be added into the data structure defining the graph.
 In particular if the graph is serialized then these constants will be hard-coded into that serialization.
 
-We can add tasks using `GraphBuilder.task`:
+We can add tasks using `Graph.task`:
 
 ```{code-cell} ipython3
 from tierkreis.builtins import iadd
@@ -54,15 +54,15 @@ three = g.task(iadd(g.const(1), g.const(2)))
 In this example we import the type stubs provided by the Tierkreis library for the built-in functions.
 This allows us to use the [pyright](https://github.com/microsoft/pyright) static analysis tool to check that the input and outputs types of the tasks are what we expect them to be.
 
-To finish, we specify the outputs of the graph.
+To finish, we convert the graph into a runnable `Workflow` by specifying the outputs:
 
 ```{code-cell} ipython3
-g.outputs(three)
+workflow = g.finish_with_outputs(three)
 ```
 
 ## Running the graph
 
-To run a general Tierkreis graph we need to set up:-
+To run a general Tierkreis graph (`Workflow`) we need to set up:-
 
 - a way to store and share inputs and outputs (the 'storage' interface)
 - a way to run tasks (the 'executor' interface)
@@ -103,6 +103,6 @@ With the storage and executor specified we can now run a graph using `run_graph`
 from tierkreis import run_graph
 from tierkreis.storage import read_outputs
 
-run_graph(storage, executor, g.get_data(), {})
-print(read_outputs(g, storage))
+run_graph(storage, executor, workflow, {})
+print(read_outputs(workflow, storage))
 ```

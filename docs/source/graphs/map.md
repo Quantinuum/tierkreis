@@ -33,24 +33,23 @@ The stub files will provide us with type hints in the graph building process lat
 We can import this stub file to help create our graph.
 
 The graph builder manipulates references to values, not the values themselves.
-(The one exception to this rule is when we add a constant value to a graph using `GraphBuilder.const`. Then the actual value is added to the graph definition and `GraphBuilder.const` returns a reference to this value.)
+(The one exception to this rule is when we add a constant value to a graph using `Graph.const`. Then the actual value is added to the graph definition and `Graph.const` returns a reference to this value.)
 The references are type checked using the `TKR` type.
 I.e. a reference to an `int` has the type `TKR[int]`.
 
 ```{code-cell}
 from typing import NamedTuple
 from tierkreis.models import EmptyModel, TKR
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.builtins import mean
 
 from auth_worker import encrypt, EncryptionResult
 
 
 def map_body():
-    g = GraphBuilder(TKR[str], EncryptionResult)
+    g = Graph(TKR[str], EncryptionResult)
     result = g.task(encrypt(plaintext=g.inputs, work_factor=g.const(2**14)))
-    g.outputs(result)
-    return g
+    return g.finish_with_outputs(result)
 
 
 class GraphOutputs(NamedTuple):
@@ -59,7 +58,7 @@ class GraphOutputs(NamedTuple):
 
 
 def graph():
-    g = GraphBuilder(EmptyModel, GraphOutputs)
+    g = Graph(EmptyModel, GraphOutputs)
     plaintexts = g.const([f"plaintext+{n}" for n in range(20)])
     results = g.map(map_body(), plaintexts)
 
@@ -69,8 +68,7 @@ def graph():
     av = g.task(mean(values=times))
     out = GraphOutputs(ciphertexts=ciphertexts, average_time_taken=av)
 
-    g.outputs(out)
-    return g
+    return g.finish_with_outputs(out)
 ```
 
 ## Running the graph
@@ -97,7 +95,7 @@ executor = UvExecutor(
     registry_path=Path("../examples/example_workers"), logs_path=storage.logs_path
 )
 start = time.time()
-run_graph(storage, executor, graph().data, {})
+run_graph(storage, executor, graph(), {})
 total_time = time.time() - start
 
 outputs = read_outputs(graph(), storage)

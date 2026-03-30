@@ -38,7 +38,7 @@ The full api is available in the {py:mod}`API Docs <nexus_worker>`.
 The Tierkreis Python package provides a couple of prepackaged graphs to make it easier to interact with the Nexus API.
 
 `tierkreis.graphs.nexus.submit_poll.nexus_submit_and_poll` is intended to automate the whole process of (parallelised) circuit upload, submission, status polling and result retrieval.
-It can be included within a custom graph using `GraphBuilder.eval` or run as a standalone graph.
+It can be included within a custom graph using `Graph.eval` or run as a standalone graph.
 The function `nexus_submit_and_poll` takes an optional argument to specify the minimum delay between successive polls in the status polling loop.
 The default is to poll every `30` seconds.
 

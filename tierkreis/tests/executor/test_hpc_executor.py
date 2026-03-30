@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 
 from tests.executor.stubs import mpi_rank_info
-from tierkreis.builder import GraphBuilder
+from tierkreis.builder import Graph
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
@@ -19,9 +19,9 @@ from tierkreis.storage import read_outputs
 
 
 def mpi_graph() -> GraphData:
-    builder = GraphBuilder(outputs_type=TKR[str | None])
+    builder = Graph(outputs_type=TKR[str | None])
     mpi_result = builder.task(mpi_rank_info())
-    builder.outputs(mpi_result)
+    builder.finish_with_outputs(mpi_result)
     return builder.data
 
 

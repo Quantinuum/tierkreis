@@ -43,7 +43,7 @@ class IBMQInput(NamedTuple):
 
 
 def compile_run_single():
-    g = GraphBuilder(
+    g = Graph(
         IBMQInput, TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]
     )
 
@@ -55,8 +55,7 @@ def compile_run_single():
         )
     )
     res = g.task(run_circuit(compiled_circuit, g.inputs.n_shots. g.inputs.backend))
-    g.outputs(res)
-    return g
+    return g.finish_with_outputs(res)
 
 circuit = ...your circuit here...
 
