@@ -3,26 +3,27 @@ from uuid import UUID
 
 import pytest
 from pytket._tket.circuit import Circuit
-from tierkreis.builder import GraphBuilder
+from pytket_worker import n_qubits
+
+from tierkreis.builder import Graph
 from tierkreis.builtins import iadd
 from tierkreis.controller import resume_graph, run_graph
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TKR
+from tierkreis.controller.data.types import Workflow
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.executor import ShellExecutor
-from pytket_worker import n_qubits
 from tierkreis.storage import read_outputs
 
 
-def breakpoint_graph() -> GraphBuilder[TKR[Circuit], TKR[int]]:
-    g = GraphBuilder(TKR[Circuit], TKR[int])
+def breakpoint_graph() -> Workflow[TKR[Circuit], TKR[int]]:
+    g = Graph(TKR[Circuit], TKR[int])
     test = g.const(5)
     nq = g.task(n_qubits(g.inputs), has_breakpoint=True)  # type: ignore
     out = g.task(iadd(test, nq), has_breakpoint=True)
-    g.outputs(out)
-    return g
+    return g.finish_with_outputs(out)
 
 
 storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]

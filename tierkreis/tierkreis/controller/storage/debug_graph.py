@@ -2,18 +2,17 @@
 
 from uuid import UUID
 
-from tierkreis.builder import GraphBuilder
 from tierkreis.consts import WORKERS_DIR
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TModel
-from tierkreis.controller.data.types import PType
+from tierkreis.controller.data.types import PType, Workflow
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 
 
 def debug_graph[A: TModel, B: TModel](
-    g: GraphData | GraphBuilder[A, B],
+    g: GraphData | Workflow[A, B],
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
@@ -24,8 +23,8 @@ def debug_graph[A: TModel, B: TModel](
     This also means that only python code can be run.
     All workers must be available locally, too.
 
-    :param g: The graph to run.
-    :type g: GraphData | GraphBuilder[A, B]
+    :param g: The workflow to debug.
+    :type g: GraphData | Workflow[A, B]
     :param graph_inputs: The inputs to the graph.
      If a single PType is provided, it will be provided as the input "value".
     :type graph_inputs: dict[str, PType] | PType
