@@ -24,7 +24,14 @@ from tierkreis.controller.data.core import (
     RestrictedNamedTuple,
     ValueRef,
 )
+from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
+
+from pydantic import (
+    BaseModel,
+    model_serializer,
+    SkipValidation,
+)
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 
@@ -142,3 +149,36 @@ def init_tmodel[T: TModel](tmodel: type[T], input_fn: Callable[[str], ValueRef])
         return cast("T", model(*args))
     (ref,) = fields.values()
     return tmodel(*ref)
+
+
+class Workflow[Inputs: TModel, Outputs: TModel](BaseModel):
+    data: GraphData
+    outputs_type: SkipValidation[type[Outputs]]
+
+    def __class_getitem__(cls, args):
+        inp, out = args
+        # Pydantic objects to passing in type arguments that are themselves parametrized,
+        # e.g. Workflow[TKR[int], TKR[int]]. The recommendation is to use just `TKR` but
+        # there seems to be caching (i.e. multiple calls with (TKR, TKR) produce the same object)
+        # - hence we use `str` to make sure we get separate instances, and then override
+        # the stored strings with the actual (parametrized) types.
+        if get_origin(inp) == TKR:
+            inp = str(inp)
+        if get_origin(out) == TKR:
+            out = str(out)
+        new_args = (inp, out)
+        annot = super().__class_getitem__(new_args)  # type: ignore # signature says type[Any], but str works ok
+        # This taken from
+        # https://github.com/pydantic/pydantic/blob/812516d71a8696d5e29c5bdab40336d82ccde412/pydantic/_internal/_generics.py#L214-L218
+        pydantic_generic_metadata = getattr(annot, "__pydantic_generic_metadata__")
+        # This assert fails because caching means the `super()` call may return an
+        # instance that we have already mutated
+        # assert pydantic_generic_metadata["args"] == new_args # No, due to caching
+        pydantic_generic_metadata["args"] = args
+        return annot
+
+    @model_serializer
+    def serialize_model(self) -> dict[str, object]:
+        # Just serialize the underlying GraphData, not this frontend/builder type.
+        # We'll reinstate the Workflow wrapper and outputs_type on deserialization.
+        return self.data.model_dump(mode="json")
