@@ -363,8 +363,13 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
 
     if issubclass(origin, Workflow):  # Also a BaseModel so do this first
         # Serialized as GraphData - reinstate erased output type
-        _inputs, outputs = get_args(annotation)
-        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
+        # This taken from
+        # https://github.com/pydantic/pydantic/blob/812516d71a8696d5e29c5bdab40336d82ccde412/pydantic/_internal/_generics.py#L214-L218
+        pydantic_generic_metadata = getattr(annotation, "__pydantic_generic_metadata__")
+        _inputs, outputs = pydantic_generic_metadata.get("args")
+        return Workflow(
+            data=coerce_from_annotation(ser, GraphData), outputs_type=outputs
+        )  # type: ignore
 
     if issubclass(origin, BaseModel):
         if not issubclass(annotation, origin):
