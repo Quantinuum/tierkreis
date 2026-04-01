@@ -1,6 +1,6 @@
 [project]
 name = "tkr-aer-worker-impl"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Tierkreis worker for Aer."
 authors = [ {name = "Quantinuum Tierkreis Team"} ]
 readme = "README.md"
