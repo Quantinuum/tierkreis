@@ -1,6 +1,7 @@
 """In memory implementation."""
 
 # ruff: noqa: D102 (class methods inherited from ControllerExecutor)
+from importlib.machinery import ModuleSpec
 import importlib.util
 import json
 import logging
@@ -42,8 +43,10 @@ class InMemoryExecutor:
         call_args = WorkerCallArgs(
             **json.loads(self.storage.read(worker_call_args_path)),
         )
-        launcher_path = check_and_set_launcher(self.registry_path, launcher_name, ".py")
-        spec = importlib.util.spec_from_file_location("in_memory", launcher_path)
+        launcher_path = check_and_set_launcher(
+            self.registry_path, launcher_name, ".py", check_shell=True
+        )
+        spec = _find_spec(launcher_path)
         if spec is None or spec.loader is None:
             msg = (
                 f"Couldn't load module main.py in {self.registry_path / launcher_name}"
@@ -64,3 +67,13 @@ class InMemoryExecutor:
             executor=str(__class__),
             launch_command=str(launcher_path),
         )
+
+
+def _find_spec(launcher_path: Path) -> ModuleSpec | None:
+    if launcher_path.suffix == ".py":
+        return importlib.util.spec_from_file_location("in_memory", launcher_path)
+    launcher = launcher_path.name
+    if not launcher.startswith("tkr"):
+        launcher = "tkr-" + launcher
+
+    return importlib.util.find_spec((launcher + "_impl").replace("-", "_"))

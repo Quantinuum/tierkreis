@@ -2,10 +2,9 @@ import json
 from typing import assert_never
 
 from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.graph import GraphData, IfElse
+from tierkreis.controller.data.graph import GraphData, IfElse, in_edges
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.storage.adjacency import in_edges
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import NodeStatus, PyEdge, PyNode
@@ -73,7 +72,6 @@ def get_eval_node(
 
     pynodes: list[PyNode] = []
     py_edges: list[PyEdge] = []
-
     for i, node in enumerate(graph.nodes):
         new_location = node_location.N(i)
 
@@ -120,8 +118,6 @@ def get_eval_node(
         pynodes.append(pynode)
 
         for p0, (idx, p1) in in_edges(node).items():
-            value: str | None = None
-
             try:
                 value = outputs_from_loc(storage, node_location.N(idx), p1)
             except (FileNotFoundError, TierkreisError, UnicodeDecodeError):

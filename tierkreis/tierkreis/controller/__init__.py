@@ -15,9 +15,10 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
 from tierkreis.controller.data.types import PType, bytes_from_ptype, ptype_from_bytes
 from tierkreis.controller.executor.protocol import ControllerExecutor
-from tierkreis.controller.start import NodeRunData, start, start_nodes
+from tierkreis.controller.start import start, start_nodes
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.controller.storage.walk import walk_node
+from tierkreis.controller.storage.walk_result import NodeRunData
 from tierkreis.exceptions import TierkreisError
 from tierkreis.logger_setup import set_tkr_logger
 
@@ -37,6 +38,7 @@ def run_graph[A: TModel, B: TModel](
     polling_interval_seconds: float = 0.01,
     *,
     enable_logging: bool = True,
+    enable_breakpoints: bool = False,
 ) -> None:
     """Start a graph execution.
 
@@ -59,6 +61,8 @@ def run_graph[A: TModel, B: TModel](
     :type polling_interval_seconds: float, optional
     :param enable_logging: Whether to enable logging, defaults to True
     :type enable_logging: bool, optional
+    :param enable_breakpoints: Whether to enable breakpoint nodes, defaults to False
+    :type enable_breakpoints: bool, optional
     :raises TierkreisError: If the graph encounters errors during execution.
     """
     if isinstance(g, Workflow):
@@ -86,9 +90,17 @@ def run_graph[A: TModel, B: TModel](
     inputs: dict[PortID, ValueRef] = {
         k: (-1, k) for k, _ in graph_inputs.items() if k != "body"
     }
-    node_run_data = NodeRunData(Loc(), Eval((-1, "body"), inputs), [])
+    node_run_data = NodeRunData(
+        node_location=Loc(), node=Eval((-1, "body"), inputs), output_list=[]
+    )
     start(storage, executor, node_run_data)
-    resume_graph(storage, executor, n_iterations, polling_interval_seconds)
+    resume_graph(
+        storage,
+        executor,
+        n_iterations,
+        polling_interval_seconds,
+        enable_breakpoints=enable_breakpoints,
+    )
 
 
 def resume_graph(
@@ -96,6 +108,8 @@ def resume_graph(
     executor: ControllerExecutor,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
+    *,
+    enable_breakpoints: bool = False,
 ) -> None:
     """Resume a graph after initial start.
 
@@ -113,16 +127,21 @@ def resume_graph(
     :type n_iterations: int, optional
     :param polling_interval_seconds: The polling interval in seconds, defaults to 0.01
     :type polling_interval_seconds: float, optional
+    :param enable_breakpoints: Whether to enable breakpoint nodes, defaults to False
+    :type enable_breakpoints: bool, optional
     :raises TierkreisError: If the graph encounters errors during execution.
     """
     message = storage.read_output(Loc().N(-1), "body")
     graph = ptype_from_bytes(message, GraphData)
 
     for _ in range(n_iterations):
-        walk_results = walk_node(storage, Loc(), graph.output_idx(), graph)
+        walk_results = None
+        if enable_breakpoints:
+            walk_results = storage.read_breakpoints()
+        if walk_results is None:
+            walk_results = walk_node(storage, Loc(), graph.output_idx(), graph)
         if walk_results.errored != []:
-            # TODO: add to base class after storage refactor
-            (storage.logs_path.parent / "-" / "_error").touch()
+            storage.touch(storage._error_path(Loc()))
             node_errors = "\n".join(x for x in walk_results.errored)
             storage.write_node_errors(Loc(), node_errors)
 
@@ -138,6 +157,10 @@ def resume_graph(
             logger.error("--- Tierkreis graph errors above this line. ---")
             msg = "Graph encountered errors"
             raise TierkreisError(msg)
+
+        if enable_breakpoints and (walk_results.breakpoints != []):
+            storage.write_breakpoint(walk_results)
+            break
 
         start_nodes(storage, executor, walk_results.inputs_ready)
         if storage.is_node_finished(Loc()):

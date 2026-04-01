@@ -24,6 +24,12 @@ from tierkreis.exceptions import TierkreisError
 logger = logging.getLogger(__name__)
 
 
+class NodeMetaData(BaseModel):
+    """Metadata stored for each node"""
+
+    has_breakpoint: bool = False
+
+
 @dataclass
 class NodeDefBase:
     """Map each out-port to the list of nodes that use it."""
@@ -285,31 +291,37 @@ class GraphData(BaseModel):
     graph_inputs: set[PortID] = set()
     graph_output_idx: NodeIndex | None = None
     named_nodes: dict[str, NodeIndex] = {}
+    node_metadata: dict[NodeIndex, NodeMetaData] = {}
 
-    def input(self, name: str) -> ValueRef:
+    def input(self, name: str, **kwargs) -> ValueRef:
         """Add an input name.
 
         :param name: The name of the input.
         :type name: str
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Input(name))(name)
+        return self.add(Input(name), **kwargs)(name)
 
-    def const(self, value: PType) -> ValueRef:
+    def const(self, value: PType, **kwargs) -> ValueRef:
         """Add a constant value.
 
         :param value: The value to add.
         :type value: PType
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Const(value))("value")
+        return self.add(Const(value), **kwargs)("value")
 
     def func(
         self,
         function_name: str,
         inputs: dict[PortID, ValueRef],
+        **kwargs,
     ) -> Callable[[PortID], ValueRef]:
         """Add a function node (task).
 
@@ -317,15 +329,18 @@ class GraphData(BaseModel):
         :type function_name: str
         :param inputs: The mapping of the input values.
         :type inputs: dict[PortID, ValueRef]
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Func(function_name, inputs))
+        return self.add(Func(function_name, inputs), **kwargs)
 
     def eval(
         self,
         graph: ValueRef,
         inputs: dict[PortID, ValueRef],
+        **kwargs,
     ) -> Callable[[PortID], ValueRef]:
         """Add an eval node.
 
@@ -333,10 +348,12 @@ class GraphData(BaseModel):
         :type graph: ValueRef
         :param inputs: The mapping of the input values.
         :type inputs: dict[PortID, ValueRef]
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Eval(graph, inputs))
+        return self.add(Eval(graph, inputs), **kwargs)
 
     def loop(
         self,
@@ -344,6 +361,7 @@ class GraphData(BaseModel):
         inputs: dict[PortID, ValueRef],
         continue_port: PortID,
         name: str | None = None,
+        **kwargs,
     ) -> Callable[[PortID], ValueRef]:
         """Add a loop node.
 
@@ -355,15 +373,18 @@ class GraphData(BaseModel):
         :type continue_port: PortID
         :param name: Name of the loop for tracing, defaults to None
         :type name: str | None, optional
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return: A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Loop(body, inputs, continue_port, name=name))
+        return self.add(Loop(body, inputs, continue_port, name=name), **kwargs)
 
     def map(
         self,
         body: ValueRef,
         inputs: dict[PortID, ValueRef],
+        **kwargs,
     ) -> Callable[[PortID], ValueRef]:
         """Add a map node.
 
@@ -371,16 +392,19 @@ class GraphData(BaseModel):
         :type body: ValueRef
         :param inputs: The mapping of the input values.
         :type inputs: dict[PortID, ValueRef]
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(Map(body, inputs))
+        return self.add(Map(body, inputs), **kwargs)
 
     def if_else(
         self,
         pred: ValueRef,
         if_true: ValueRef,
         if_false: ValueRef,
+        **kwargs,
     ) -> Callable[[PortID], ValueRef]:
         """Add an lazy if else node.
 
@@ -390,16 +414,19 @@ class GraphData(BaseModel):
         :type if_true: ValueRef
         :param if_false: The graph/value for the false branch.
         :type if_false: ValueRef
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(IfElse(pred, if_true, if_false))
+        return self.add(IfElse(pred, if_true, if_false), **kwargs)
 
     def eager_if_else(
         self,
         pred: ValueRef,
         if_true: ValueRef,
         if_false: ValueRef,
+        **kwargs,
     ) -> Callable[[PortID], ValueRef]:
         """Add an eager if else node.
 
@@ -409,26 +436,33 @@ class GraphData(BaseModel):
         :type if_true: ValueRef
         :param if_false: The graph/value for the false branch.
         :type if_false: ValueRef
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :return:  A function returning index given an output.
         :rtype: Callable[[PortID], ValueRef]
         """
-        return self.add(EagerIfElse(pred, if_true, if_false))
+        return self.add(EagerIfElse(pred, if_true, if_false), **kwargs)
 
-    def output(self, inputs: dict[PortID, ValueRef]) -> None:
+    def output(self, inputs: dict[PortID, ValueRef], **kwargs) -> None:
         """Add an output node.
 
         Computation -> output.
 
         :param inputs: The inputs of the outup node.
         :type inputs: dict[PortID, ValueRef]
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         """
-        _ = self.add(Output(inputs))
 
-    def add(self, node: NodeDef) -> Callable[[PortID], ValueRef]:
+        _ = self.add(Output(inputs), **kwargs)
+
+    def add(self, node: NodeDef, **kwargs) -> Callable[[PortID], ValueRef]:
         """Add a node to the graph.
 
         :param node: The node to add.
         :type node: NodeDef
+        :param kwargs: Optional metadata for the node (e.g., has_breakpoint=True)
+        :type kwargs: dict
         :raises TierkreisError: If multiple outputs are added.
         :return: A function given the output name of a node returns
             the index of the node it corresponds to.
@@ -454,6 +488,8 @@ class GraphData(BaseModel):
                     self.named_nodes[node.name] = idx
             case _:
                 assert_never(node)
+        if kwargs:
+            self.node_metadata[idx] = NodeMetaData(**kwargs)
 
         for i, port in in_edges(node).values():
             self.nodes[i].outputs.setdefault(port, []).append(idx)

@@ -6,7 +6,6 @@ By walking the graph we update nodes with new inputs from finished nodes until
 they can be started.
 """
 
-from dataclasses import dataclass, field
 from logging import getLogger
 from typing import assert_never
 
@@ -22,40 +21,12 @@ from tierkreis.controller.data.graph import (
 )
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.start import NodeRunData
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.walk_result import WalkResult, NodeRunData
 from tierkreis.labels import Labels
 
 logger = getLogger(__name__)
-
-
-@dataclass
-class WalkResult:
-    """Dataclass to keep track of the nodes we encounter during the walk.
-
-    :fields:
-        inputs_ready (list[NodeRunData]): A list of nodes that now have all inputs ready
-            and therefore can be started.
-        started (list[Loc]): A list of locations that have been started (on this walk).
-        errored (list[Loc]): A list of locations that have encountered an error.
-    """
-
-    inputs_ready: list[NodeRunData]
-    started: list[Loc]
-    errored: list[Loc] = field(default_factory=list[Loc])
-
-    def extend(self, walk_result: "WalkResult") -> None:
-        """Extend a current walk result with an existing one.
-
-        Simply extends all three list fields accordingly.
-
-        :param walk_result: The walk_result to update self with.
-        :type walk_result: WalkResult
-        """
-        self.inputs_ready.extend(walk_result.inputs_ready)
-        self.started.extend(walk_result.started)
-        self.errored.extend(walk_result.errored)
 
 
 def unfinished_results(
@@ -125,19 +96,25 @@ def walk_node(
         # we immediately stop if a node has an error and bubble the error up
         logger.error("Node %s has encountered an error.", loc)
         logger.debug("\n\n%s\n\n", storage.read_errors(loc))
-        return WalkResult([], [], [loc])
+        return WalkResult(inputs_ready=[], started=[], errored=[loc])
 
     node = graph.nodes[idx]
-    node_run_data = NodeRunData(loc, node, list(node.outputs))
+    node_run_data = NodeRunData(
+        node_location=loc, node=node, output_list=list(node.outputs)
+    )
 
-    result = WalkResult([], [])
+    result = WalkResult(inputs_ready=[], started=[])
     if unfinished_results(result, storage, parent, node, graph):
         # cannot start, don't have all inputs yet
         return result
 
     if not storage.is_node_started(loc):
         # have all inputs, start current node
-        return WalkResult([node_run_data], [])
+        if idx in graph.node_metadata and graph.node_metadata[idx].has_breakpoint:
+            return WalkResult(
+                inputs_ready=[node_run_data], started=[], breakpoints=[loc]
+            )
+        return WalkResult(inputs_ready=[node_run_data], started=[])
 
     # Handle cases where we have nested graphs.
     # Basically we have to forward the now available outputs from outer scope
@@ -151,10 +128,10 @@ def walk_node(
             return walk_node(storage, loc, g.output_idx(), g)
 
         case "output":
-            return WalkResult([node_run_data], [])
+            return WalkResult(inputs_ready=[node_run_data], started=[])
 
         case "const":
-            return WalkResult([node_run_data], [])
+            return WalkResult(inputs_ready=[node_run_data], started=[])
 
         case "loop":
             return walk_loop(storage, parent, idx, node)
@@ -170,7 +147,7 @@ def walk_node(
             if storage.is_node_finished(next_loc):
                 storage.link_outputs(loc, Labels.VALUE, next_loc, next_node[1])
                 storage.mark_node_finished(loc)
-                return WalkResult([], [])
+                return WalkResult(inputs_ready=[], started=[])
             return walk_node(storage, parent, next_node[0], graph)
 
         case "eifelse":
@@ -178,10 +155,10 @@ def walk_node(
 
         case "function":
             # Current node can start, done will be marked by executor.
-            return WalkResult([], [loc])
+            return WalkResult(inputs_ready=[], started=[loc])
 
         case "input":
-            return WalkResult([], [])
+            return WalkResult(inputs_ready=[], started=[])
         case _:
             assert_never(node)
 
@@ -219,7 +196,7 @@ def walk_loop(
     """
     loc = parent.N(idx)
     if storage.is_node_finished(loc):
-        return WalkResult([], [])
+        return WalkResult(inputs_ready=[], started=[])
 
     # find the last iteration
     new_location = storage.latest_loop_iteration(loc)
@@ -241,18 +218,18 @@ def walk_loop(
         for k in loop_outputs:
             storage.link_outputs(loc, k, new_location, k)
         storage.mark_node_finished(loc)
-        return WalkResult([], [])
+        return WalkResult(inputs_ready=[], started=[])
 
     # continue looping, provide the inputs for the next iter from the current
     ins = {k: (-1, k) for k in loop.inputs}
     ins.update(loop_outputs)
     # Mark the next node as ready
     node_run_data = NodeRunData(
-        loc.L(new_location.peek_index() + 1),
-        Eval((-1, BODY_PORT), ins, outputs=loop.outputs),
-        list(loop_outputs.keys()),
+        node_location=loc.L(new_location.peek_index() + 1),
+        node=Eval((-1, BODY_PORT), ins, outputs=loop.outputs),
+        output_list=list(loop_outputs.keys()),
     )
-    return WalkResult([node_run_data], [])
+    return WalkResult(inputs_ready=[node_run_data], started=[])
 
 
 def walk_map(
@@ -285,7 +262,7 @@ def walk_map(
     :rtype: WalkResult
     """
     loc = parent.N(idx)
-    result = WalkResult([], [])
+    result = WalkResult(inputs_ready=[], started=[])
     if storage.is_node_finished(loc):
         return result
 
@@ -343,4 +320,4 @@ def walk_eifelse(
     storage.link_outputs(loc, Labels.VALUE, next_loc, next_node[1])
     storage.mark_node_finished(loc)
 
-    return WalkResult([], [])
+    return WalkResult(inputs_ready=[], started=[])
