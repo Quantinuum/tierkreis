@@ -1,6 +1,6 @@
 [project]
 name = "tkr-nexus-worker"
-version = "0.2.0"
+version = "0.2.1"
 description = "The api for the Tierkreis nexus worker."
 requires-python = ">=3.12"
 authors = [ {name = "Quantinuum Tierkreis Team"} ]
