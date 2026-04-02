@@ -25,7 +25,10 @@ jobs:
         run: just prod
 
       - name: Build Python package
-        run: uv build --all-packages
+        run: |
+          uv build tierkreis
+          uv build tierkreis_visualization
+          uv build tierkreis_workers/*/
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
