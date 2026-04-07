@@ -145,7 +145,7 @@ class PJSUBExecutor:
         :type worker_call_args_path: Path
         """
         self.errors_path = (
-            self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
+            self.logs_path.parent.parent / worker_call_args_path.parent / "logs"
         )
         return run_hpc_executor(self, launcher_name, worker_call_args_path)
 
