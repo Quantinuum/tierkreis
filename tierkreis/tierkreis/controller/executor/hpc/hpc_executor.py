@@ -89,8 +89,7 @@ def run_hpc_executor(
         executor.logs_path,
         executor.errors_path,
         spec.command,
-    )
-
+    )[1:-1]  # remove the enclosing quotes
     submission_cmd = [executor.command]
     if spec.include_no_check_directory_flag:
         submission_cmd += ["--no-check-directory"]

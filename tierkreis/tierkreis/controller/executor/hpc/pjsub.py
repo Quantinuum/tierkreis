@@ -125,7 +125,7 @@ class PJSUBExecutor:
 
     def job_id(self, std_out: str) -> str:
         pattern = re.compile(r"(\d+)")
-        match = pattern.match(std_out)
+        match = pattern.search(std_out)
         if match:
             # should be similar to : pjsub Job <jobid> submitted.
             return match.group(0)

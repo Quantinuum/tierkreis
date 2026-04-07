@@ -87,7 +87,7 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
         env = ",".join(
             f"{key}={value or '""'}" for key, value in spec.environment.items()
         )
-        lines.append(f"--export={env}")
+        lines.append(f"export={env}")
     # 9. Container logic
 
     # 10. User Command, (prologue), command, (epilogue)
@@ -128,7 +128,7 @@ class SLURMExecutor:
 
     def job_id(self, std_out: str) -> str:
         pattern = re.compile(r"(\d+)")
-        match = pattern.match(std_out)
+        match = pattern.search(std_out)
         if match:
             # should be similar to : Submitted batch job <jobid>
             return match.group(0)
