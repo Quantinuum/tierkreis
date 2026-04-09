@@ -1,6 +1,7 @@
 """Code generation utilities for Tierkreis stubs."""
 
 from inspect import isclass
+from types import NoneType
 
 from pydantic import BaseModel
 
@@ -34,7 +35,8 @@ def format_ptype(ptype: type | str) -> str:
 
     if _is_union(ptype):
         return "Union"
-
+    if type(ptype) is NoneType:
+        return "NoneType"
     return ptype.__qualname__
 
 

@@ -49,12 +49,10 @@ class PSIJExecutor:
             + str(worker_call_args_path)
         )
 
-        if not self.spec.stdout_path:
-            self.spec.stdout_path = self.logs_path
-        if not self.spec.stderr_path:
-            self.spec.stderr_path = self.errors_path
+        self.spec.stdout_path = self.logs_path
+        self.spec.stderr_path = self.errors_path
         self.spec.arguments = [
-            add_std_handlers(self.spec.stdout_path, self.spec.stderr_path, command)
+            add_std_handlers(self.logs_path, self.errors_path, command)
         ]
         if self.spec.environment is None:  # User can override by setting TKR_DIR
             self.spec.environment = {TKR_DIR_KEY: str(self.logs_path.parent.parent)}

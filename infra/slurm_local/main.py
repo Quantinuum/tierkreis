@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["tierkreis", "mpi4py"]
 # [tool.uv.sources]
-# tierkreis = { path = "/tierkreis", editable = true }
+# tierkreis = { path = "../../tierkreis", editable = true }
 # ///
 import logging
 import socket
@@ -39,6 +39,14 @@ def mpi_rank_info() -> str | None:
             for info in all_processes_info
         )
     return None
+
+
+@worker.task()
+def mpi_fail() -> None:
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    msg = f"Process {rank} is failing now..."
+    raise ValueError(msg)
 
 
 if __name__ == "__main__":
