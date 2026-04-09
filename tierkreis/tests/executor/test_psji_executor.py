@@ -80,7 +80,7 @@ def test_psij_with_mpi_fail() -> None:
     g = mpi_fail_graph()
     storage = ControllerFileStorage(
         UUID(int=24),
-        name="psij_mpi_graph",
+        name="psij_mpi_failing_graph",
         do_cleanup=True,
     )
     executor = PSIJExecutor(

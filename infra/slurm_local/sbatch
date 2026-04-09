@@ -1,23 +1,9 @@
 #!/bin/bash
 SCRIPT_FILE=$(basename "$1")
-if [[ "$SCRIPT_FILE" == test_job* ]]; then
-    NODE_PATH=$(sed -n -E '$ s#.*([0-9a-fA-F-]{36}/[^/]+)/definition$#\1#p' "$1")
-    WORKFLOW_ID=$(echo "$NODE_PATH" | cut -d'/' -f1)
-    docker cp "$1" slurmctld:/data/"$SCRIPT_FILE"
-    docker exec slurmctld sh -c 'rm -rf /data/*.log && \
-ln -s $HOME/.tierkreis/checkpoints/$2/logs /data/logs.log && \
-ln -s $HOME/.tierkreis/checkpoints/$3/logs /data/errors.log && \
-sbatch --output=logs.log --error=errors.log --chdir=/data /data/$1' sh "$SCRIPT_FILE" "$WORKFLOW_ID" "$NODE_PATH"
 
-else
-    SED=$(sed -n -E 's#.*([0-9a-fA-F-]{36}/[^/]+)/definition#\1#p' "$1")
-    NODE_PATH=$(echo "$SED" | cut -d " " -f1)
-    WORKFLOW_ID=$(echo "$NODE_PATH" | cut -d'/' -f1)
-    docker cp "$1" slurmctld:/data/"$SCRIPT_FILE"
-    docker exec slurmctld sh -c 'rm -rf /data/*.log && \
-sed -i "s|$4|/root|g" /data/$1 && \
-ln -s $HOME/.tierkreis/checkpoints/$2/logs /data/logs.log && \
-ln -s $HOME/.tierkreis/checkpoints/$3/logs /data/errors.log && \
-sbatch /data/$1' sh "$SCRIPT_FILE" "$WORKFLOW_ID" "$NODE_PATH" "$HOME"
-fi
-
+# This emulates the sbatch command assuming .tkr is in $HOME
+# Rewrites all occurrences of $HOME in the script to /root,
+# which is where the home directory is mounted in the container
+docker cp "$1" slurmctld:/data/"$SCRIPT_FILE"
+docker exec slurmctld sh -c 'sed -i "s|$2|/root|g" /data/$1 && \
+sbatch /data/$1' sh "$SCRIPT_FILE" "$HOME"
