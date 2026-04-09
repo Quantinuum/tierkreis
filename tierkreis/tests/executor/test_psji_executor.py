@@ -23,16 +23,20 @@ def mpi_graph() -> GraphData:
 
 
 def job_spec() -> JobSpec:
-    return JobSpec(  # Could use stdin/outpath similar to StdInOutExecutor
-        executable=("/root/.local/bin/uv run /slurm_mpi_worker/main.py"),
-        stdout_path=Path("./logs.log"),
-        stderr_path=Path("./errors.log"),
-        arguments=["--open-mode=append"],
+    return JobSpec(
+        executable=("/root/.local/bin/uv"),
+        arguments=["run", "/slurm_mpi_worker/main.py"],
         name="test_job",
+        directory=Path("/data"),
+        stdout_path=Path("/data/logs.log"),
+        stderr_path=Path("/data/errors.log"),
         resources=ResourceSpecV1(node_count=2, processes_per_node=1),
         attributes=JobAttributes(
             duration=timedelta(minutes=15),
             account="test_usr",
+            custom_attributes={
+                "slurm.open-mode": "append",
+            },
         ),
         environment={
             "OMPI_ALLOW_RUN_AS_ROOT": 1,

@@ -19,6 +19,6 @@ sed -i "s|$4|/root|g" /data/$1 && \
 ln -s $HOME/.tierkreis/checkpoints/$2/logs /data/logs.log && \
 echo "Error logs: $@ $HOME/.tierkreis/checkpoints/$3/logs" >> /data/out.file && \
 ln -s $HOME/.tierkreis/checkpoints/$3/logs /data/errors.log && \
-sbatch --chdir=/data /data/$1' sh "$SCRIPT_FILE" "$WORKFLOW_ID" "$NODE_PATH" "$HOME"
+sbatch /data/$1' sh "$SCRIPT_FILE" "$WORKFLOW_ID" "$NODE_PATH" "$HOME"
 fi
 
