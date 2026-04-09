@@ -25,8 +25,8 @@ dev = [
 build = ["build[uv]"]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [tool.ruff]
 target-version = "py312"
@@ -37,5 +37,5 @@ include = ["."]
 exclude = []
 ignore = []
 
-[project.scripts]
-tkr = "tierkreis.cli.tkr:main"
+# [project.scripts]
+# tkr = "tierkreis.cli.tkr:main"

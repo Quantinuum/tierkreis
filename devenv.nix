@@ -5,6 +5,8 @@
   packages = [
     pkgs.just
     pkgs.zlib
+    pkgs.maturin
+    pkgs.bacon
   ] ++ lib.optionals pkgs.stdenv.isDarwin [
     pkgs.apple-sdk
   ];
