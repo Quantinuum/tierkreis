@@ -28,7 +28,18 @@ jobs:
         run: |
           uv build tierkreis
           uv build tierkreis_visualization
-          uv build tierkreis_workers/*/
+          uv build tierkreis_workers/aer_worker
+          uv build tierkreis_workers/aer_worker/api
+          uv build tierkreis_workers/ibmq_worker
+          uv build tierkreis_workers/ibmq_worker/api
+          uv build tierkreis_workers/nexus_worker
+          uv build tierkreis_workers/nexus_worker/api
+          uv build tierkreis_workers/pytket_worker
+          uv build tierkreis_workers/pytket_worker/api
+          uv build tierkreis_workers/quantinuum_worker
+          uv build tierkreis_workers/quantinuum_worker/api
+          uv build tierkreis_workers/qulacs_worker
+          uv build tierkreis_workers/qulacs_worker/api
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
