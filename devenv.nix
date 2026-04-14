@@ -36,6 +36,9 @@
   scripts.squeue.exec = ''
     ./infra/slurm_local/squeue "$@";
   '';
+  scripts.qsub.exec = ''
+    ./infra/pbs_local/qsub "$@";
+  '';
 
   # This allows building the type-check (pyo3) module on MacOSX "Apple Silicon"
   enterShell =

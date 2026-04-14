@@ -12,7 +12,7 @@ class mpi_rank_info(NamedTuple):
 
     @property
     def namespace(self) -> str:
-        return "slurm_mpi_worker"
+        return "mpi_worker"
 
 
 class mpi_fail(NamedTuple):
@@ -22,4 +22,4 @@ class mpi_fail(NamedTuple):
 
     @property
     def namespace(self) -> str:
-        return "slurm_mpi_worker"
+        return "mpi_worker"

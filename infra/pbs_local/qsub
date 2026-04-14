@@ -1,0 +1,9 @@
+#!/bin/bash
+SCRIPT_FILE=$(basename "$1")
+
+# This emulates the sbatch command assuming .tkr is in $HOME
+# Rewrites all occurrences of $HOME in the script to /root,
+# which is where the home directory is mounted in the container
+docker cp "$1" pbs-server:/data/"$SCRIPT_FILE"
+docker exec pbs-server -u pbsuser sh -c 'sed -i "s|$2|/home/pbsuser|g" /data/$1 && \
+qsub /data/$1' sh "$SCRIPT_FILE" "$HOME"

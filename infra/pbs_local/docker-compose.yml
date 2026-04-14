@@ -1,0 +1,74 @@
+services:
+
+  server:
+    image: pbs-docker-cluster:${IMAGE_TAG}
+    init: true
+    build:
+      context: .
+      args:
+        PBS_TAG: ${PBS_TAG}
+    command: ["server"]
+    container_name: pbs-server
+    hostname: server
+    volumes:
+      - pbs_home:/var/spool/pbs
+      - ~/.tierkreis:/home/pbsuser/.tierkreis/
+      - ~/.psij:/home/pbsuser/.psij/
+      - ../../tierkreis:/tierkreis
+      - data:/data
+    expose:
+      - "15001"
+      - "15002"
+      - "15003"
+      - "15004"
+      - "15007"
+    networks:
+      - pbs-network
+
+  p1:
+    image: pbs-docker-cluster:${IMAGE_TAG}
+    init: true
+    command: ["mom"]
+    hostname: p1
+    container_name: p1
+    volumes:
+      - ~/.tierkreis:/home/pbsuser/.tierkreis/
+      - ~/.psij:/home/pbsuser/.psij/
+      - ../../tierkreis:/tierkreis
+      - data:/data
+    expose:
+      - "15002"
+      - "15003"
+      - "22"
+    depends_on:
+      - "server"
+    networks:
+      - pbs-network
+
+  p2:
+    image: pbs-docker-cluster:${IMAGE_TAG}
+    init: true
+    command: ["mom"]
+    hostname: p2
+    container_name: p2
+    volumes:
+      - ~/.tierkreis:/home/pbsuser/.tierkreis/
+      - ~/.psij:/home/pbsuser/.psij/
+      - ../../tierkreis:/tierkreis
+      - data:/data
+    expose:
+      - "15002"
+      - "15003"
+    depends_on:
+      - "server"
+    networks:
+      - pbs-network
+
+volumes:
+  pbs_home:
+  data:
+  
+
+networks:
+  pbs-network:
+    driver: bridge
