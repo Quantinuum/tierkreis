@@ -13,6 +13,7 @@ from tierkreis.controller.executor.hpc.job_spec import (
     MpiSpec,
     ResourceSpec,
 )
+from tierkreis.controller.executor.hpc.pbs import PBSExecutor
 from tierkreis.controller.executor.hpc.slurm import SLURMExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.storage import read_outputs
@@ -25,35 +26,68 @@ def mpi_graph() -> GraphData:
     return builder.data
 
 
-def job_spec() -> JobSpec:
+def slurm_spec() -> JobSpec:
     return JobSpec(
         job_name="test_job",
         account="test_usr",
-        command=(
-            "--allow-run-as-root /root/.local/bin/uv run /slurm_mpi_worker/main.py "
-        ),
+        command=("--allow-run-as-root /root/.local/bin/uv run /mpi_worker/main.py "),
         resource=ResourceSpec(nodes=2, memory_gb=None),
         walltime="00:15:00",
         mpi=MpiSpec(max_proc_per_node=1),
         extra_scheduler_args={"--open-mode=append": None},
-        output_path=Path("./logs.log"),
-        error_path=Path("./errors.log"),
     )
 
 
-@pytest.mark.skip(reason="Needs SLURM setup.")
+def pbs_spec() -> JobSpec:
+    return JobSpec(
+        job_name="test_job",
+        account="pbsuser",
+        command=("/home/pbsuser/.local/bin/uv run /mpi_worker/main.py "),
+        resource=ResourceSpec(nodes=2, memory_gb=None, gpus_per_node=None),
+        walltime="00:15:00",
+        mpi=MpiSpec(max_proc_per_node=1),
+        extra_scheduler_args={"-l place=scatter": None},
+    )
+
+
+@pytest.mark.skip(reason="Needs PBS setup.")
+def test_pbs_with_mpi() -> None:
+    g = mpi_graph()
+    storage = ControllerFileStorage(
+        UUID(int=24),
+        name="mpi_graph_pbs",
+        do_cleanup=True,
+    )
+    sbatch = str(
+        Path(__file__).parent.parent.parent.parent / "infra/pbs_local/qsub",
+    )
+    executor = PBSExecutor(
+        spec=pbs_spec(),
+        registry_path=None,
+        logs_path=storage.logs_path,
+        command=sbatch,
+    )
+    run_graph(storage, executor, g, {})
+
+    output = read_outputs(g, storage)
+
+    assert output is not None
+    assert output == "Rank 0 out of 2 on p1.\nRank 1 out of 2 on p2."
+
+
+# @pytest.mark.skip(reason="Needs SLURM setup.")
 def test_slurm_with_mpi() -> None:
     g = mpi_graph()
     storage = ControllerFileStorage(
         UUID(int=22),
-        name="mpi_graph",
+        name="mpi_graph_slurm",
         do_cleanup=True,
     )
     sbatch = str(
         Path(__file__).parent.parent.parent.parent / "infra/slurm_local/sbatch",
     )
     executor = SLURMExecutor(
-        spec=job_spec(),
+        spec=slurm_spec(),
         registry_path=None,
         logs_path=storage.logs_path,
         command=sbatch,
