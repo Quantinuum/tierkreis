@@ -8,7 +8,7 @@ In short:
   - make the local sbatch script executable `chmod +x sbatch squeue`
   - build the containers with `docker compose build`
   - ensure the containers are running `docker compose up -d`
-  - This will mount `~/.tierkreis` inside the containers on `/root/tierkreis/` and the tierkreis directory to `/tierkreis`
+  - This will mount `~/.tierkreis` and `~/.psij` inside the containers on `/root/tierkreis/` and the tierkreis directory to `/tierkreis`
   - To emulate the root node you can `docker exec -it slurmctld bash`
 
 To run the test we emulate `sbatch` and `squeue`.
@@ -24,3 +24,4 @@ pytest tierkreis/tests/executor/test_hpc_executor.py
 **Caveats**:
 
 - mpi workers is nondeterministic due to allocation from slurm
+- mpi is run as root and therefore needs additional variables

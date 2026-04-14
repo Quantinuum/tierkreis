@@ -16,16 +16,19 @@ To get up and running with PBS Pro in Docker, make sure you have the following t
 
 This setup consists of the following containers:
 
-- **server**: The PBS Pro server responsible for job scheduling and resource management.
-- **sched**: The PBS Pro scheduler daemon.
-- **c1, c2**: Compute nodes (running `pbs_mom`).
+- **server**: The PBS Pro server responsible for job scheduling and resource management. Also serves as a login node.
+- **p1, p2**: Compute nodes (running `pbs_mom`).
 
 ### Persistent Volumes:
 
 - `pbs_home`: Mounted to `/var/spool/pbs`
-- `pbs_logs`: Mounted to `/var/log/pbs`
-- `pbs_lib`: Mounted to `/var/lib/pbs`
 - `data`: Mounted to `/data`
+
+### Users
+
+There is a single user beside root called `pbsuser`.
+Submitting to the queue should happen through it since PBS doesn't allow root submission: `docker exec -u pbsuser...`
+
 
 ## 🛠️  Building the Docker Image
 
@@ -113,7 +116,7 @@ In short:
 - From `infra/pbs_local`
   - build the containers with `docker compose build`
   - ensure the containers are running `docker compose up -d`
-  - This will mount `~/.tierkreis` inside the containers on `/root/.tierkreis/` and the tierkreis directory to `/tierkreis`
+  - This will mount `~/.tierkreis` and `~/.psij` inside the containers on `/home/pbsuser/` and the tierkreis directory to `/tierkreis`
   - To interact with the PBS cluster you can `docker exec -it pbs-server bash`
 
 To run MPI-based tests, you can submit jobs using PBS commands or use the provided
