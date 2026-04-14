@@ -31,10 +31,10 @@ def mpi_fail_graph() -> GraphData:
     return builder.data
 
 
-def job_spec() -> JobSpec:
+def slurm_spec() -> JobSpec:
     return JobSpec(
         executable=("/root/.local/bin/uv"),
-        arguments=["run", "/slurm_mpi_worker/main.py"],
+        arguments=["run", "/mpi_worker/main.py"],
         name="test_job",
         directory=Path("/data"),
         resources=ResourceSpecV1(node_count=2, processes_per_node=1),
@@ -53,16 +53,31 @@ def job_spec() -> JobSpec:
     )
 
 
+def pbs_spec() -> JobSpec:
+    return JobSpec(
+        executable=("/home/pbsuser/.local/bin/uv"),
+        arguments=["run", "/mpi_worker/main.py"],
+        name="test_job",
+        directory=Path("/data"),
+        resources=ResourceSpecV1(node_count=2, processes_per_node=1),
+        attributes=JobAttributes(
+            duration=timedelta(minutes=15),
+            account="pbsuser",
+        ),
+        launcher="mpirun",
+    )
+
+
 @pytest.mark.skip(reason="Needs SLURM setup.")
-def test_psij_with_mpi() -> None:
+def test_psij_slurm_mpi() -> None:
     g = mpi_graph()
     storage = ControllerFileStorage(
-        UUID(int=23),
+        UUID(int=24),
         name="psij_mpi_graph",
         do_cleanup=True,
     )
     executor = PSIJExecutor(
-        spec=job_spec(),
+        spec=slurm_spec(),
         launchers_path=None,
         logs_path=storage.logs_path,
         psij_executor=JobExecutor.get_instance("slurm"),
@@ -76,18 +91,60 @@ def test_psij_with_mpi() -> None:
 
 
 @pytest.mark.skip(reason="Needs SLURM setup.")
-def test_psij_with_mpi_fail() -> None:
+def test_psij_slurm_mpi_fail() -> None:
     g = mpi_fail_graph()
     storage = ControllerFileStorage(
-        UUID(int=24),
+        UUID(int=25),
         name="psij_mpi_failing_graph",
         do_cleanup=True,
     )
     executor = PSIJExecutor(
-        spec=job_spec(),
+        spec=slurm_spec(),
         launchers_path=None,
         logs_path=storage.logs_path,
         psij_executor=JobExecutor.get_instance("slurm"),
+    )
+    with pytest.raises(TierkreisError):
+        run_graph(storage, executor, g, {})
+
+    assert storage.exists(storage.workflow_dir / "-.N0/_error")
+
+
+@pytest.mark.skip(reason="Needs PBS setup.")
+def test_psij_pbs_mpi() -> None:
+    g = mpi_graph()
+    storage = ControllerFileStorage(
+        UUID(int=24),
+        name="psij_mpi_graph",
+        do_cleanup=True,
+    )
+    executor = PSIJExecutor(
+        spec=pbs_spec(),
+        launchers_path=None,
+        logs_path=storage.logs_path,
+        psij_executor=JobExecutor.get_instance("pbs"),
+    )
+    run_graph(storage, executor, g, {})
+
+    output = read_outputs(g, storage)
+
+    assert output is not None
+    assert output == "Rank 0 out of 2 on p1.\nRank 1 out of 2 on p2."
+
+
+@pytest.mark.skip(reason="Needs PBS setup.")
+def test_psij_pbs_mpi_fail() -> None:
+    g = mpi_fail_graph()
+    storage = ControllerFileStorage(
+        UUID(int=25),
+        name="psij_mpi_failing_graph",
+        do_cleanup=True,
+    )
+    executor = PSIJExecutor(
+        spec=pbs_spec(),
+        launchers_path=None,
+        logs_path=storage.logs_path,
+        psij_executor=JobExecutor.get_instance("pbs"),
     )
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g, {})

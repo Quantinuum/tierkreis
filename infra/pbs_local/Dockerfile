@@ -112,7 +112,7 @@ RUN set -eux \
     && cd .. \
     && rm -rf openmpi-* openmpi-4.1.5.tar.gz
 
-ENV LD_LIBRARY_PATH /usr/lib64/openmpi/lib:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH /usr/lib64/openmpi/lib:/usr/local/lib/$LD_LIBRARY_PATH
 ENV PATH /usr/lib64/openmpi/bin:$PATH
 
 COPY pbs.conf /etc/pbs.conf
@@ -124,9 +124,8 @@ COPY main.py /mpi_worker/main.py
 
 RUN groupadd -g 1001 pbsuser && useradd -u 1001 -g 1001 -m pbsuser
 RUN chmod 777 /data && chown -R pbsuser:pbsuser /data
+
 USER pbsuser
-
-
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 USER root
 

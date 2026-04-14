@@ -75,7 +75,7 @@ def test_pbs_with_mpi() -> None:
     assert output == "Rank 0 out of 2 on p1.\nRank 1 out of 2 on p2."
 
 
-# @pytest.mark.skip(reason="Needs SLURM setup.")
+@pytest.mark.skip(reason="Needs SLURM setup.")
 def test_slurm_with_mpi() -> None:
     g = mpi_graph()
     storage = ControllerFileStorage(
