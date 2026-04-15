@@ -54,7 +54,7 @@ pub fn run(path: &Path) -> miette::Result<()> {
         )
         .into_diagnostic()?;
 
-        let module = PyModule::from_code(py, &code, &file_name_cstr, &module_name_cstr).map_err(
+        let module = PyModule::from_code(py, code, &file_name_cstr, &module_name_cstr).map_err(
             |err: PyErr| {
                 if err.is_instance_of::<PySyntaxError>(py) {
                     let err_value = err.value(py);

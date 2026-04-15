@@ -7,6 +7,7 @@
     pkgs.zlib
     pkgs.maturin
     pkgs.bacon
+    pkgs.cargo-nextest
   ] ++ lib.optionals pkgs.stdenv.isDarwin [
     pkgs.apple-sdk
   ];
