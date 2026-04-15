@@ -1,7 +1,7 @@
 #!/bin/bash
 SCRIPT_FILE=$(basename "$1")
 
-# This emulates the sbatch command assuming .tkr is in $HOME
+# This emulates the sbatch command assuming the checkpoints directory is in $HOME
 # Rewrites all occurrences of $HOME in the script to /root,
 # which is where the home directory is mounted in the container
 docker cp "$1" slurmctld:/data/"$SCRIPT_FILE"

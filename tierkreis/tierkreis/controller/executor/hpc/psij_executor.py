@@ -1,5 +1,6 @@
 """Executor for HPC schedulers through psij."""
 
+from copy import deepcopy
 import logging
 import os
 import tempfile
@@ -37,30 +38,30 @@ class PSIJExecutor:
             self.logs_path.parent.parent / worker_call_args_path.parent / "logs"
         )
         logger.info("START %s %s", launcher_name, worker_call_args_path)
-
-        command = self.spec.executable or "uv"
-        if self.spec.arguments is None:
-            self.spec.arguments = ["run", "main.py"]
+        local_spec = deepcopy(self.spec)
+        command = local_spec.executable or "uv"
+        if local_spec.arguments is None:
+            local_spec.arguments = ["run", "main.py"]
         command = (
             command
             + " "
-            + " ".join(self.spec.arguments)
+            + " ".join(local_spec.arguments)
             + " "
             + str(worker_call_args_path)
         )
 
-        self.spec.stdout_path = self.logs_path
-        self.spec.stderr_path = self.errors_path
-        self.spec.arguments = [
+        local_spec.stdout_path = self.logs_path
+        local_spec.stderr_path = self.errors_path
+        local_spec.arguments = [
             add_std_handlers(self.logs_path, self.errors_path, command)
         ]
-        if self.spec.environment is None:  # User can override by setting TKR_DIR
-            self.spec.environment = {TKR_DIR_KEY: str(self.logs_path.parent.parent)}
-        elif TKR_DIR_KEY not in self.spec.environment:
-            self.spec.environment[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
+        if local_spec.environment is None:  # User can override by setting TKR_DIR
+            local_spec.environment = {TKR_DIR_KEY: str(self.logs_path.parent.parent)}
+        elif TKR_DIR_KEY not in local_spec.environment:
+            local_spec.environment[TKR_DIR_KEY] = str(self.logs_path.parent.parent)
 
         # Create temporary eval script in TKR_DIR
-        tkr_dir = Path(self.spec.environment[TKR_DIR_KEY])
+        tkr_dir = Path(local_spec.environment[TKR_DIR_KEY])
         with tempfile.NamedTemporaryFile(
             mode="w", dir=str(tkr_dir), prefix="tkr_eval_", suffix=".sh", delete=False
         ) as exec_file:
@@ -68,9 +69,8 @@ class PSIJExecutor:
             exec_file.close()
             os.chmod(exec_file.name, 0o755)
 
-        job = Job(self.spec)
-        self.spec.executable = exec_file.name
-
+        local_spec.executable = exec_file.name
+        job = Job(local_spec)
         try:
             self.psij_executor.submit(job)
             with Path.open(self.logs_path, "a+") as fh:
@@ -88,8 +88,8 @@ class PSIJExecutor:
 
         return ExecutorDebugData(
             executor=f"{str(self.__class__)}:{str(self.psij_executor.__class__)}",
-            launch_command=self.spec.executable
+            launch_command=local_spec.executable
             + " "
-            + " ".join(self.spec.arguments or []),
+            + " ".join(local_spec.arguments or []),
             job_id=job.native_id,
         )

@@ -14,8 +14,12 @@ authors = [
 
 requires-python = ">=3.12"
 dependencies = [
-    "psij-python>=0.9.11",
     "pydantic~=2.5",
+]
+
+[optional-dependencies]
+hpc = [
+    "psij-python>=0.9.11",
 ]
 
 [dependency-groups]

@@ -96,8 +96,7 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
         if spec.mpi.max_proc_per_node is None:
             spec.mpi.max_proc_per_node = 1
         lines.append(
-            f"mpirun -n {spec.resource.nodes * spec.mpi.max_proc_per_node}"
-            f" {spec.command}",
+            f"eval mpiexec {spec.command}",
         )
     else:
         lines.append(spec.command)

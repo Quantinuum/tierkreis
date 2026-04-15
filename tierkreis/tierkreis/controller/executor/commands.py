@@ -3,7 +3,9 @@
 from pathlib import Path
 
 
-def add_std_handlers(workflow_logs: Path, node_logs: Path, command: str) -> str:
+def add_std_handlers(
+    workflow_logs: Path, node_logs: Path, command: str, *, with_parentheses: bool = True
+) -> str:
     """Pipe stdout and stderr to `workflow_logs` and `node_logs`.
 
     If the `command` returns with a non-zero exit code,
@@ -11,4 +13,6 @@ def add_std_handlers(workflow_logs: Path, node_logs: Path, command: str) -> str:
     """
     _error_path = node_logs.parent / "_error"
     tee_str = f">(tee -a {node_logs!s} {workflow_logs!s} >/dev/null)"
-    return f"({command} > {tee_str} 2> {tee_str} || touch {_error_path})"
+    if with_parentheses:
+        return f"({command} > {tee_str} 2> {tee_str} || touch {_error_path})"
+    return f"{command} > {tee_str} 2> {tee_str} || touch {_error_path}"

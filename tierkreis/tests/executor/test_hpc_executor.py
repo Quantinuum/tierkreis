@@ -30,11 +30,15 @@ def slurm_spec() -> JobSpec:
     return JobSpec(
         job_name="test_job",
         account="test_usr",
-        command=("--allow-run-as-root /root/.local/bin/uv run /mpi_worker/main.py "),
+        command=("/root/.local/bin/uv run /mpi_worker/main.py "),
         resource=ResourceSpec(nodes=2, memory_gb=None),
         walltime="00:15:00",
         mpi=MpiSpec(max_proc_per_node=1),
         extra_scheduler_args={"--open-mode=append": None},
+        environment={
+            "OMPI_ALLOW_RUN_AS_ROOT": "1",
+            "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": "1",
+        },
     )
 
 
@@ -50,7 +54,6 @@ def pbs_spec() -> JobSpec:
     )
 
 
-@pytest.mark.skip(reason="Needs PBS setup.")
 def test_pbs_with_mpi() -> None:
     g = mpi_graph()
     storage = ControllerFileStorage(

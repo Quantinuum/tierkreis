@@ -21,6 +21,7 @@ RUN set -ex \
        perl \
        postgresql-devel \
        postgresql-contrib \
+       postgresql-server \
        python3-devel \
        tcl-devel \
        tk-devel \
@@ -34,25 +35,17 @@ RUN set -ex \
        gcc-c++ \
        git \
        wget \
-    && yum -y install \
        expat \
        libedit \
-       postgresql-server \
-       postgresql-contrib \
-       python3 \
        sendmail \
        sudo \
        tcl \
        tk \
        libical \
        procps-ng \
-       openssh-server \
-       openssh-clients \
     && yum clean all \
     && rm -rf /var/cache/yum
 
-
-RUN pip3 install Cython pytest
 ENV GOSU_VERSION 1.19
 
 RUN set -eux; \
