@@ -83,11 +83,8 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
 
     # 8. Environment
     lines.append("\n# --- Environment Setup ---")
-    if spec.environment != {}:
-        env = ",".join(
-            f"{key}={value or '""'}" for key, value in spec.environment.items()
-        )
-        lines.append(f"export={env}")
+    for key, value in spec.environment.items():
+        lines.append(f"export {key}={value or '""'}")
     # 9. Container logic
 
     # 10. User Command, (prologue), command, (epilogue)

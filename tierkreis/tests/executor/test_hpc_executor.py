@@ -54,6 +54,7 @@ def pbs_spec() -> JobSpec:
     )
 
 
+@pytest.mark.skip(reason="Needs PBS setup.")
 def test_pbs_with_mpi() -> None:
     g = mpi_graph()
     storage = ControllerFileStorage(
