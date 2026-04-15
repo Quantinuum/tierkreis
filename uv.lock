@@ -3161,8 +3161,12 @@ name = "tierkreis"
 version = "2.0.12"
 source = { editable = "tierkreis" }
 dependencies = [
-    { name = "psij-python" },
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+hpc = [
+    { name = "psij-python" },
 ]
 
 [package.dev-dependencies]
@@ -3176,9 +3180,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "psij-python", specifier = ">=0.9.11" },
+    { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
     { name = "pydantic", specifier = "~=2.5" },
 ]
+provides-extras = ["hpc"]
 
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]
