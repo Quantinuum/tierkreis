@@ -71,7 +71,7 @@ def spec_to_psij(spec: JobSpec, target_scheduler: str | None = None) -> psij.Job
         else:
             custom_attrs.update(
                 {
-                    target_scheduler + k.strip("-"): v
+                    target_scheduler + "." + k.strip("-"): v
                     for k, v in spec.extra_scheduler_args.items()
                 }
             )
@@ -129,7 +129,7 @@ def psij_to_spec(psij_spec: psij.JobSpec) -> JobSpec:
 
     command = psij_spec.executable or ""
     if psij_spec.arguments:
-        command = shlex.join([command] + psij_spec.arguments)
+        command = shlex.join([command] + psij_spec.arguments).strip()
 
     if psij_spec.resources is not None and isinstance(
         psij_spec.resources, psij.ResourceSpecV1
