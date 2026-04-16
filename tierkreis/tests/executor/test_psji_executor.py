@@ -1,20 +1,21 @@
-from datetime import timedelta
-from pathlib import Path
 from uuid import UUID
 
-
 import pytest
+
 from tests.executor.stubs import mpi_fail, mpi_rank_info
 from tierkreis.builder import Graph
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.models import TKR
+from tierkreis.controller.executor.hpc.job_spec import (
+    JobSpec,
+    MpiSpec,
+    ResourceSpec,
+)
 from tierkreis.controller.executor.hpc.psij_executor import PSIJExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.exceptions import TierkreisError
 from tierkreis.storage import read_outputs
-
-from psij import JobAttributes, JobExecutor, JobSpec, ResourceSpecV1
 
 
 def mpi_graph() -> GraphData:
@@ -33,38 +34,29 @@ def mpi_fail_graph() -> GraphData:
 
 def slurm_spec() -> JobSpec:
     return JobSpec(
-        executable=("/root/.local/bin/uv"),
-        arguments=["run", "/mpi_worker/main.py"],
-        name="test_job",
-        directory=Path("/data"),
-        resources=ResourceSpecV1(node_count=2, processes_per_node=1),
-        attributes=JobAttributes(
-            duration=timedelta(minutes=15),
-            account="test_usr",
-            custom_attributes={
-                "slurm.open-mode": "append",
-            },
-        ),
+        job_name="test_job",
+        account="test_usr",
+        command=("/root/.local/bin/uv run /mpi_worker/main.py "),
+        resource=ResourceSpec(nodes=2, memory_gb=None),
+        walltime="00:15:00",
+        mpi=MpiSpec(max_proc_per_node=1),
+        extra_scheduler_args={"--open-mode=append": None},
         environment={
-            "OMPI_ALLOW_RUN_AS_ROOT": 1,
-            "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": 1,
+            "OMPI_ALLOW_RUN_AS_ROOT": "1",
+            "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM": "1",
         },
-        launcher="mpirun",
     )
 
 
 def pbs_spec() -> JobSpec:
     return JobSpec(
-        executable=("/home/pbsuser/.local/bin/uv"),
-        arguments=["run", "/mpi_worker/main.py"],
-        name="test_job",
-        directory=Path("/data"),
-        resources=ResourceSpecV1(node_count=2, processes_per_node=1),
-        attributes=JobAttributes(
-            duration=timedelta(minutes=15),
-            account="pbsuser",
-        ),
-        launcher="mpirun",
+        job_name="test_job",
+        account="pbsuser",
+        command=("/home/pbsuser/.local/bin/uv run /mpi_worker/main.py "),
+        resource=ResourceSpec(nodes=2, memory_gb=None, gpus_per_node=None),
+        walltime="00:15:00",
+        mpi=MpiSpec(max_proc_per_node=1),
+        extra_scheduler_args={"-l place=scatter": None},
     )
 
 
@@ -80,7 +72,7 @@ def test_psij_slurm_mpi() -> None:
         spec=slurm_spec(),
         launchers_path=None,
         logs_path=storage.logs_path,
-        psij_executor=JobExecutor.get_instance("slurm"),
+        psij_executor="slurm",
     )
     run_graph(storage, executor, g, {})
 
@@ -102,7 +94,7 @@ def test_psij_slurm_mpi_fail() -> None:
         spec=slurm_spec(),
         launchers_path=None,
         logs_path=storage.logs_path,
-        psij_executor=JobExecutor.get_instance("slurm"),
+        psij_executor="slurm",
     )
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g, {})
@@ -122,7 +114,7 @@ def test_psij_pbs_mpi() -> None:
         spec=pbs_spec(),
         launchers_path=None,
         logs_path=storage.logs_path,
-        psij_executor=JobExecutor.get_instance("pbs"),
+        psij_executor="pbs",
     )
     run_graph(storage, executor, g, {})
 
@@ -144,7 +136,7 @@ def test_psij_pbs_mpi_fail() -> None:
         spec=pbs_spec(),
         launchers_path=None,
         logs_path=storage.logs_path,
-        psij_executor=JobExecutor.get_instance("pbs"),
+        psij_executor="pbs",
     )
     with pytest.raises(TierkreisError):
         run_graph(storage, executor, g, {})

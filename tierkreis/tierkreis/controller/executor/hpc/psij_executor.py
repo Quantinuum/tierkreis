@@ -5,11 +5,16 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import Literal
 
-from psij import InvalidJobException, Job, JobExecutor, JobSpec, SubmitException
+from psij import InvalidJobException, Job, JobExecutor, SubmitException
+from tierkreis.controller.executor.hpc.job_spec import (
+    JobSpec,
+)
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.commands import add_std_handlers
+from tierkreis.controller.executor.hpc.psij_conversion import spec_to_psij
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.exceptions import TierkreisError
 
@@ -22,12 +27,14 @@ class PSIJExecutor:
         launchers_path: Path | None,
         logs_path: Path,
         spec: JobSpec,
-        psij_executor: JobExecutor,
+        psij_executor: Literal["pbs", "slurm"],
     ) -> None:
         self.logs_path = logs_path
         self.errors_path = logs_path
-        self.spec = spec
-        self.psij_executor = psij_executor
+        self.spec = spec_to_psij(
+            spec,
+        )
+        self.psij_executor = JobExecutor.get_instance(psij_executor)
 
     def run(
         self,
