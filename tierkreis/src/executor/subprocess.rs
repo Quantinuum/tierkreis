@@ -121,12 +121,15 @@ impl SubprocessExecutor {
                 .into_diagnostic()?
                 .into_os_string();
 
+            let done_file = NamedTempFile::new().into_diagnostic()?;
+
             serde_json::to_writer(
                 &worker_args,
                 &WorkerCallArgs {
                     function_name: task_plan.task_name,
                     inputs,
                     outputs: output_paths,
+                    done_path: done_file.path().to_path_buf(),
                     ..Default::default()
                 },
             )
