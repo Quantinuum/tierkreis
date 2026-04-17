@@ -83,11 +83,8 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
 
     # 8. Environment
     lines.append("\n# --- Environment Setup ---")
-    if spec.environment != {}:
-        env = ",".join(
-            f"{key}={value or '""'}" for key, value in spec.environment.items()
-        )
-        lines.append(f"--export={env}")
+    for key, value in spec.environment.items():
+        lines.append(f"export {key}={value or '""'}")
     # 9. Container logic
 
     # 10. User Command, (prologue), command, (epilogue)
@@ -96,8 +93,7 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
         if spec.mpi.max_proc_per_node is None:
             spec.mpi.max_proc_per_node = 1
         lines.append(
-            f"mpirun -n {spec.resource.nodes * spec.mpi.max_proc_per_node}"
-            f" {spec.command}",
+            f"eval mpiexec {spec.command}",
         )
     else:
         lines.append(spec.command)
@@ -128,7 +124,7 @@ class SLURMExecutor:
 
     def job_id(self, std_out: str) -> str:
         pattern = re.compile(r"(\d+)")
-        match = pattern.match(std_out)
+        match = pattern.search(std_out)
         if match:
             # should be similar to : Submitted batch job <jobid>
             return match.group(0)
@@ -148,6 +144,6 @@ class SLURMExecutor:
         :type worker_call_args_path: Path
         """
         self.errors_path = (
-            self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
+            self.logs_path.parent.parent / worker_call_args_path.parent / "logs"
         )
         return run_hpc_executor(self, launcher_name, worker_call_args_path)

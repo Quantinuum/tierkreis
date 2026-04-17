@@ -32,8 +32,8 @@ Providing `None` can be used to supply flags like
 ```py
 env = {"EDITOR": "/usr/bin/emacs"}
 args = {
-  "--set-arg": "1",
-  "--set-flag": None,
+    "--set-arg": "1",
+    "--set-flag": None,
 }
 ```
 
@@ -88,4 +88,5 @@ On the following pages you can find system-specific information.
 :maxdepth: 1
 :hidden:
 ./hpc/pjsub-fugaku.md
+./hpc/psij_executors.md
 ```

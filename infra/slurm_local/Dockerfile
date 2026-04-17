@@ -95,13 +95,13 @@ RUN set -x \
 
 COPY slurm.conf /etc/slurm/slurm.conf
 COPY slurmdbd.conf /etc/slurm/slurmdbd.conf
-RUN mkdir /slurm_mpi_worker
-COPY main.py /slurm_mpi_worker/main.py
+RUN mkdir /mpi_worker
+COPY main.py /mpi_worker/main.py
 
 RUN set -x \
     && chown slurm:slurm /etc/slurm/slurmdbd.conf \
     && chmod 600 /etc/slurm/slurmdbd.conf \
-    && chmod +x /slurm_mpi_worker/main.py
+    && chmod +x /mpi_worker/main.py
 
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

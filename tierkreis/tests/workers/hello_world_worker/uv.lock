@@ -149,7 +149,11 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = "~=2.5" }]
+requires-dist = [
+    { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
+    { name = "pydantic", specifier = "~=2.5" },
+]
+provides-extras = ["hpc"]
 
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]

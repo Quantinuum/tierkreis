@@ -17,6 +17,11 @@ dependencies = [
     "pydantic~=2.5",
 ]
 
+[project.optional-dependencies]
+hpc = [
+    "psij-python>=0.9.11",
+]
+
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
@@ -31,6 +36,7 @@ build-backend = "hatchling.build"
 [tool.ruff]
 target-version = "py312"
 extend-exclude = []
+format.preview = true
 
 [tool.pyright]
 include = ["."]

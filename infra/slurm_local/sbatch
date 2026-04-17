@@ -1,15 +1,9 @@
 #!/bin/bash
-if [ -z "$5" ]; then
-    echo "Usage: sbatch <path_to_slurm_script>" -o output.log -e error.log script_file
-    echo "Any further arguments will be discarded"
-    exit 1
-fi
-SCRIPT_FILE=$(basename "$5")
+SCRIPT_FILE=$(basename "$1")
 
-NODE_PATH=$(sed -n -E '$ s#.*([0-9a-fA-F-]{36}/[^/]+)/definition$#\1#p' "$5")
-WORKFLOW_ID=$(echo "$NODE_PATH" | cut -d'/' -f1)
-docker cp "$5" slurmctld:/data/"$SCRIPT_FILE"
-docker exec slurmctld sh -c 'rm -rf /data/*.log && \
-ln -s $HOME/.tierkreis/checkpoints/$2/logs /data/logs.log && \
-ln -s $HOME/.tierkreis/checkpoints/$3/errors /data/errors.log  && \
-sbatch --output=logs.log --error=errors.log --chdir=/data /data/$1' sh "$SCRIPT_FILE" "$WORKFLOW_ID" "$NODE_PATH"
+# This emulates the sbatch command assuming the checkpoints directory is in $HOME
+# Rewrites all occurrences of $HOME in the script to /root,
+# which is where the home directory is mounted in the container
+docker cp "$1" slurmctld:/data/"$SCRIPT_FILE"
+docker exec slurmctld sh -c 'sed -i "s|$2|/root|g" /data/$1 && \
+sbatch /data/$1' sh "$SCRIPT_FILE" "$HOME"

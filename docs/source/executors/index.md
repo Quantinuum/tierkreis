@@ -107,7 +107,8 @@ Currently the following basic executors are available:
 | InMemoryExecutor |                 Python                  |    ✔    | Runs in the same memory spaces as the controller, does not work for external workers | [link](#tierkreis.controller.executor.in_memory_executor.InMemoryExecutor) |
 | SLURMExecutor    |                   Any                   |    ✔    |                        Wraps a command in a SLURM submission                         |       [link](#tierkreis.controller.executor.hpc.slurm.SLURMExecutor)       |
 | PJSUBExecutor    |                   Any                   |    ✔    |                        Wraps a command in a PJSUB submission                         |       [link](#tierkreis.controller.executor.hpc.pjsub.PJSUBExecutor)       |
-| PBSExecutor      |                   Any                   |   ❌    |                         Wraps a command in a PBS submission                          |                                                                            |
+| PBSExecutor      |                   Any                   |    ✔    |                         Wraps a command in a PBS submission                          |         [link](#tierkreis.controller.executor.hpc.pbs.PBSExecutor)         |
+| PSIJExecutor     |                   Any                   |    ✔    |     Alternative HPC submission through [psij](https://exaworks.org/psij-python/)     |   [link](#tierkreis.controller.executor.hpc.psij_executor.PSIJExecutor)    |
 
 ## Combining Executors
 
@@ -172,6 +173,7 @@ def task_graph():
     output: TKR[str] = TKR(*second_call("value"))
     return g.finish_with_outputs(output)
 
+
 def main():
     g = task_graph()
     storage = ControllerFileStorage(UUID(int=305), name="Task")
@@ -199,8 +201,7 @@ In some instances it might be necessary to write a custom executor which can be 
 The executor protocol defines a single function
 
 ```py
-def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
-    ...
+def run(self, launcher_name: str, worker_call_args_path: Path) -> None: ...
 ```
 
 - `launcher_name` identifies the worker to be run

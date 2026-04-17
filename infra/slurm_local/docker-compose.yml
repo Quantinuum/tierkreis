@@ -43,6 +43,7 @@ services:
       - etc_munge:/etc/munge
       - etc_slurm:/etc/slurm
       - ~/.tierkreis:/root/.tierkreis/
+      - ~/.psij:/root/.psij/
       - var_log_slurm:/var/log/slurm
       - ../../tierkreis:/tierkreis
       - data:/data
@@ -62,6 +63,7 @@ services:
       - etc_munge:/etc/munge
       - etc_slurm:/etc/slurm
       - ~/.tierkreis:/root/.tierkreis/
+      - ~/.psij:/root/.psij/
       - var_log_slurm:/var/log/slurm
       - ../../tierkreis:/tierkreis
       - data:/data
@@ -81,6 +83,7 @@ services:
       - etc_munge:/etc/munge
       - etc_slurm:/etc/slurm
       - ~/.tierkreis:/root/.tierkreis/
+      - ~/.psij:/root/.psij/
       - var_log_slurm:/var/log/slurm
       - ../../tierkreis:/tierkreis
       - data:/data

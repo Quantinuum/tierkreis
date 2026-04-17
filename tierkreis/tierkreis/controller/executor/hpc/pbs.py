@@ -1,11 +1,14 @@
 """Template and Executor for PBS."""
 
 # ruff: noqa: ERA001
+import re
 from pathlib import Path
+from typing import Callable
 
-# from typing import Callable
-# from tierkreis.controller.executor.hpc.hpc_executor import run_hpc_executor
+from tierkreis.controller.executor.hpc.hpc_executor import run_hpc_executor
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
+from tierkreis.controller.storage.data import ExecutorDebugData
+from tierkreis.exceptions import TierkreisError
 
 _COMMAND_PREFIX = "#PBS"
 
@@ -69,7 +72,7 @@ def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity
     # 6. MPI
     if spec.mpi is not None:
         lines.append("\n# --- MPI ---")
-        lines.append("\n MPI is covered in -l resource declaration")
+        lines.append("\n# MPI is covered in -l resource declaration")
 
     # 7. User specific
     lines.append("\n# --- User-Specific Arguments ---")
@@ -78,11 +81,12 @@ def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity
 
     # 8. Environment
     lines.append("\n# --- Environment Setup ---")
+    lines.append(f"{_COMMAND_PREFIX} -V")  # export all env variables by default
     if spec.environment != {}:
         env = ",".join(
             f"{key}={value or '""'}" for key, value in spec.environment.items()
         )
-        lines.append(f"-v w{env}")
+        lines.append(f"{_COMMAND_PREFIX} -v {env}")
     # 9. Container logic # taken from nscc docs for enroot:
     if spec.container is not None:
         lines.append(f"{_COMMAND_PREFIX} -l container_image={spec.container.image}")
@@ -98,30 +102,45 @@ def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity
 
     # 10. User Command, (prologue), command, (epilogue)
     lines.append("\n# --- User Command ---")
-    lines.append(spec.command)
+    if spec.mpi is not None:
+        lines.append(f"mpiexec {spec.command}")
+    else:
+        lines.append(spec.command)
 
     return "\n".join(lines)
 
 
-# Disabled for now, needs testing with a PBS system, will be re-enabled later
-# See: TODO@philipp-seitz: Issue #182
-# class PBSExecutor:
-#     def __init__(
-#         self,
-#         registry_path: Path | None,
-#         logs_path: Path,
-#         spec: JobSpec,
-#         command: str = "qsub",
-#     ) -> None:
-#         self.launchers_path = registry_path
-#         self.logs_path = logs_path
-#         self.errors_path = logs_path
-#         self.spec = spec
-#         self.script_fn: Callable[[JobSpec], str] = generate_pbs_script
-#         self.command = command
+class PBSExecutor:
+    def __init__(
+        self,
+        registry_path: Path | None,
+        logs_path: Path,
+        spec: JobSpec,
+        command: str = "qsub",
+    ) -> None:
+        """An executor for the PBS submission system.
 
-#     def run(self, launcher_name: str, worker_call_args_path: Path) -> None:
-#         self.errors_path = (
-#             self.logs_path.parent.parent / worker_call_args_path.parent / "errors"
-#         )
-#         run_hpc_executor(self, launcher_name, worker_call_args_path)
+        Implements: :py:class:`tierkreis.controller.executor.protocol.ControllerExecutor`
+        Implements: :py:class:`tierkreis.controller.executor.hpc.hpc_executor.HPCExecutor`
+        """
+        self.launchers_path = registry_path
+        self.logs_path = logs_path
+        self.errors_path = logs_path
+        self.spec = spec
+        self.script_fn: Callable[[JobSpec], str] = generate_pbs_script
+        self.command = command
+
+    def job_id(self, std_out: str) -> str:
+        pattern = re.compile(r"(\d+)")
+        match = pattern.search(std_out)
+        if match:
+            # should be similar to :  <jobid>.servername
+            return match.group(0)
+        message = f"PBS submission doesn't contain job id in \n {std_out}"
+        raise TierkreisError(message)
+
+    def run(self, launcher_name: str, worker_call_args_path: Path) -> ExecutorDebugData:
+        self.errors_path = (
+            self.logs_path.parent.parent / worker_call_args_path.parent / "logs"
+        )
+        return run_hpc_executor(self, launcher_name, worker_call_args_path)
