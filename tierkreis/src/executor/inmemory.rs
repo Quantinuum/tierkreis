@@ -129,7 +129,7 @@ impl<'a> InMemoryExecutor<'a> {
                 _ => Err(miette!("Unknown worker name: {}", task_plan.worker_name)),
             }?;
 
-            let (abort_handle, abort_regsitration) = AbortHandle::new_pair();
+            let (abort_handle, abort_registration) = AbortHandle::new_pair();
             ids.push(id);
             work_queue.push_back((
                 TaskInfo {
@@ -138,7 +138,7 @@ impl<'a> InMemoryExecutor<'a> {
                         .output_storage_name
                         .unwrap_or_else(|| self.output_storage_name.clone()),
                 },
-                Abortable::new(fut.boxed(), abort_regsitration),
+                Abortable::new(fut.boxed(), abort_registration),
             ));
             abort_handles.insert(id, abort_handle);
         }
@@ -542,7 +542,7 @@ mod tests {
     // Test that we can pass a non-existent ID to cancel and
     // it will not error.
     #[tokio::test]
-    async fn execute_inmemory_cancel_non_existant() -> miette::Result<()> {
+    async fn execute_inmemory_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]);
         let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 

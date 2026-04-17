@@ -7,7 +7,8 @@ setup:
     uv sync --all-extras
 
 test:
-    cd tierkreis && cargo test
+    # We need to run cargo test in the environment to provide access to the workers.
+    cd tierkreis && {{uvrun}} cargo test
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term
 
 test-workers:

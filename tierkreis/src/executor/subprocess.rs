@@ -578,7 +578,7 @@ mod tests {
     // Test that we can pass a non-existent ID to cancel and
     // it will not error.
     #[tokio::test]
-    async fn execute_subprocess_cancel_non_existant() -> miette::Result<()> {
+    async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]);
         let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
