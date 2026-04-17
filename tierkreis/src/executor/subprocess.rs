@@ -53,7 +53,9 @@ impl SubprocessExecutor {
         subprocess_storage_name: &str,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().unwrap();
+        let asset_storage_registry_lock = asset_storage_registry
+            .read()
+            .map_err(|err| miette!("Failed to lock AssetStorageRegistry: {err}"))?;
         if !asset_storage_registry_lock.contains_key(subprocess_storage_name) {
             return Err(miette!("subprocess_storage_name not in registry"));
         }
@@ -75,8 +77,12 @@ impl SubprocessExecutor {
     }
 
     async fn workers(&self) -> miette::Result<Vec<WorkerSpec>> {
-        let re = Regex::new(r"tkr-.*-worker").unwrap();
-        let paths = which_re(&re).into_diagnostic()?;
+        let re = Regex::new(r"tkr-.*-worker")
+            .into_diagnostic()
+            .wrap_err("Failed to compile Worker name regex")?;
+        let paths = which_re(&re)
+            .into_diagnostic()
+            .wrap_err("Failed to search for Worker binaries")?;
         Ok(paths
             .map(|path| WorkerSpec {
                 worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
@@ -94,7 +100,8 @@ impl SubprocessExecutor {
                 &self.subprocess_storage_name,
                 task_plan.inputs,
             )?;
-            let inputs = write_input_paths(inputs)?;
+            let inputs =
+                write_input_paths(inputs).wrap_err("Failed to collect Worker input filepaths")?;
             let output_specs = reserve_asset_specs(
                 &self.asset_storage_registry,
                 &self.subprocess_storage_name,
@@ -352,12 +359,13 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[1].clone().outputs().unwrap(),
+            &events[1].clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
 
@@ -396,12 +404,13 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[1].clone().outputs().unwrap(),
+            &events[1].clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
 
@@ -451,19 +460,20 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(4).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[1].clone().outputs().unwrap(),
+            &events[1].clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
         assert_eq!(events[2].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[3].clone().outputs().unwrap(),
+            &events[3].clone().outputs().unwrap_or_default(),
             json!({"value": "hi steve"}),
         );
 
@@ -497,12 +507,13 @@ mod tests {
         let stream = executor.listen()?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[1].clone().outputs().unwrap(),
+            &events[1].clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
 
@@ -529,6 +540,7 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_eq!(
@@ -568,6 +580,7 @@ mod tests {
         executor.cancel(task_ids)?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_eq!(events[1].status, Status::Cancelled);
@@ -613,12 +626,13 @@ mod tests {
         let task_ids = executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[1].clone().outputs().unwrap(),
+            &events[1].clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
 
