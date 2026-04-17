@@ -151,9 +151,10 @@ def default_graph(worker_name: str) -> str:
 from pathlib import Path
 from uuid import UUID
 
-from tierkreis.builder import Workflow, Graph
+from tierkreis.builder import Graph
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.models import TKR, OpaqueType
+from tierkreis.controller.data.types import Workflow
 from tierkreis.executor import ShellExecutor, UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
@@ -183,7 +184,7 @@ def main() -> None:
     # To use both look at the following:
     # https://quantinuum.github.io/tierkreis/executors/index.html#combining-executors
     storage.clean_graph_files()
-    run_graph(storage, executor, graph.get_data(), {{"value": 1}})
+    run_graph(storage, executor, graph, {{"value": 1}})
     result = read_outputs(graph, storage)
     print("Value is: ", result)
 
