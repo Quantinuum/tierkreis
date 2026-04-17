@@ -208,13 +208,13 @@ impl SubprocessExecutor {
                                         })
                                         .expect("Failed to send Complete event.")
                                 } else {
-                                    let stdout = read_stdout.await.ok();
-                                    let _stderr = read_stderr.await.ok();
+                                    let _stdout = read_stdout.await.ok();
+                                    let stderr = read_stderr.await.ok();
                                     event_sender
                                         .try_send(Event {
                                             id,
                                             status: Status::Error {error: format!("Subprocess failed with exit code: {}", status) },
-                                            detail: stdout,
+                                            detail: stderr,
                                         })
                                         .expect("Failed to send Error event.");
                                 }
