@@ -145,7 +145,6 @@ def psij_to_spec(psij_spec: psij.JobSpec) -> JobSpec:
     else:
         resource = ResourceSpec()
 
-    # 3. Map MPI
     mpi = None
     if psij_spec.launcher in ["mpirun", "srun", "aprun"]:
         max_ppn = 1
@@ -177,7 +176,6 @@ def psij_to_spec(psij_spec: psij.JobSpec) -> JobSpec:
                 else:
                     extra_args[f"--{new_key[1]}"] = str(v) if v is not None else None
 
-    # 5. Construct custom.JobSpec
     return JobSpec(
         job_name=psij_spec.name or "psij_job",
         command=command,
