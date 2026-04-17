@@ -23,14 +23,14 @@ def test_pbs_with_mpi() -> None:
         name="mpi_graph_pbs",
         do_cleanup=True,
     )
-    sbatch = str(
+    qsub = str(
         Path(__file__).parent.parent.parent.parent / "infra/pbs_local/qsub",
     )
     executor = PBSExecutor(
         spec=pbs_spec(),
         registry_path=None,
         logs_path=storage.logs_path,
-        command=sbatch,
+        command=qsub,
     )
     run_graph(storage, executor, g, {})
 
