@@ -65,16 +65,14 @@ def spec_to_psij(spec: JobSpec, target_scheduler: str | None = None) -> psij.Job
                 "extra_scheduler_args provided without target_scheduler."
                 " These will be included as custom attributes but may not be correctly interpreted by psij."
             )
-            custom_attrs.update(
-                {k.strip("-"): v for k, v in spec.extra_scheduler_args.items()}
-            )
+            custom_attrs.update({
+                k.strip("-"): v for k, v in spec.extra_scheduler_args.items()
+            })
         else:
-            custom_attrs.update(
-                {
-                    target_scheduler + "." + k.strip("-"): v
-                    for k, v in spec.extra_scheduler_args.items()
-                }
-            )
+            custom_attrs.update({
+                target_scheduler + "." + k.strip("-"): v
+                for k, v in spec.extra_scheduler_args.items()
+            })
 
     if spec.user and spec.user.mail:
         logger.warning("User email is not natively supported in psij.")
