@@ -57,7 +57,6 @@ def spec_to_psij(spec: JobSpec, target_scheduler: str | None = None) -> psij.Job
         else None,
     )
 
-    # 2. Map Attributes and capture custom fields that psij doesn't natively support
     custom_attrs: dict[str, Any] = {}
     if spec.extra_scheduler_args:
         if target_scheduler is None:
