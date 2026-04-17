@@ -126,6 +126,7 @@ impl Orchestrator {
                     .try_send(Event {
                         id: 0,
                         status: Status::Complete { outputs },
+                        detail: None,
                     })
                     .into_diagnostic()?;
             }
@@ -142,6 +143,7 @@ impl Orchestrator {
                     .try_send(Event {
                         id: 0,
                         status: Status::Complete { outputs },
+                        detail: None,
                     })
                     .into_diagnostic()?;
             }
@@ -169,6 +171,7 @@ impl Orchestrator {
                     .try_send(Event {
                         id: 0,
                         status: Status::Complete { outputs },
+                        detail: None,
                     })
                     .into_diagnostic()?;
             }

@@ -214,6 +214,7 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                 return std::task::Poll::Ready(Some(Event {
                     id,
                     status: Status::Running,
+                    detail: None,
                 }));
             } else {
                 cx.waker().wake_by_ref();
@@ -247,12 +248,14 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                             Ok(outputs) => Some(Event {
                                 id,
                                 status: Status::Complete { outputs },
+                                detail: None,
                             }),
                             Err(err) => Some(Event {
                                 id,
                                 status: Status::Error {
                                     error: err.to_string(),
                                 },
+                                detail: None,
                             }),
                         }
                     }
@@ -261,10 +264,12 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                         status: Status::Error {
                             error: err.to_string(),
                         },
+                        detail: None,
                     }),
                     Err(_aborted) => Some(Event {
                         id,
                         status: Status::Cancelled,
+                        detail: None,
                     }),
                 }
             })

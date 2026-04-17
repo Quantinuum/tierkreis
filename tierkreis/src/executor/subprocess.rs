@@ -15,7 +15,7 @@ use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
-use tokio::process::Command;
+use tokio::{io::AsyncReadExt, process::Command};
 use which::which_re;
 
 use crate::{
@@ -134,8 +134,8 @@ impl SubprocessExecutor {
 
             let mut child = Command::new(format!("tkr-{}", task_plan.worker_name))
                 .arg(worker_args_path)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
                 .spawn()
                 .into_diagnostic()
                 .wrap_err(miette!("Could not spawn worker"))?;
@@ -160,8 +160,25 @@ impl SubprocessExecutor {
                     .try_send(Event {
                         id,
                         status: Status::Running,
+                        detail: None,
                     })
                     .expect("Failed to send Running event.");
+
+                let mut stdout = child.stdout.take().unwrap();
+                let read_stdout = tokio::spawn(async move {
+                    let mut stdout_out = String::new();
+                    let _ = stdout.read_to_string(&mut stdout_out).await;
+
+                    stdout_out
+                });
+
+                let mut stderr = child.stderr.take().unwrap();
+                let read_stderr = tokio::spawn(async move {
+                    let mut stderr_out = String::new();
+                    let _ = stderr.read_to_string(&mut stderr_out).await;
+
+                    stderr_out
+                });
 
                 tokio::select! {
                     Ok(()) = cancel_receiver => {
@@ -170,6 +187,7 @@ impl SubprocessExecutor {
                             .try_send(Event {
                                 id,
                                 status: Status::Cancelled,
+                                detail: None,
                             })
                             .expect("Failed to send Cancelled event.")
                     }
@@ -186,13 +204,17 @@ impl SubprocessExecutor {
                                         .try_send(Event {
                                             id,
                                             status: Status::Complete { outputs },
+                                            detail: None,
                                         })
                                         .expect("Failed to send Complete event.")
                                 } else {
+                                    let stdout = read_stdout.await.ok();
+                                    let _stderr = read_stderr.await.ok();
                                     event_sender
                                         .try_send(Event {
                                             id,
                                             status: Status::Error {error: format!("Subprocess failed with exit code: {}", status) },
+                                            detail: stdout,
                                         })
                                         .expect("Failed to send Error event.");
                                 }
@@ -202,6 +224,7 @@ impl SubprocessExecutor {
                                     .try_send(Event {
                                         id,
                                         status: Status::Error {error: err.to_string()},
+                                        detail: None,
                                     })
                                     .expect("Failed to send Error event.");
                             }

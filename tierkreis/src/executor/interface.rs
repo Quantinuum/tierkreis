@@ -10,6 +10,7 @@ use crate::asset_storage::interface::AssetSpec;
 pub struct Event<ID> {
     pub id: ID,
     pub status: Status,
+    pub detail: Option<String>,
 }
 
 impl<ID> Event<ID> {
