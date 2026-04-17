@@ -1,3 +1,8 @@
+/*!
+This module defines the [FileAssetStorage] struct which implements [AssetStorage]
+by storing files in a single directory.
+**/
+
 use std::{
     fs::File,
     path::{Path, PathBuf},
@@ -8,12 +13,15 @@ use serde_json::Value;
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 
+/// [FileAssetStorage] is an implementation of [AssetStorage] that stores
+/// Assets in a single directory using file names derived from [AssetKey]s.
 #[derive(Clone, Debug)]
 pub struct FileAssetStorage {
     base_dir: PathBuf,
 }
 
 impl FileAssetStorage {
+    /// Create a new [FileAssetStorage] backed by a folder define by `path`.
     pub fn new(path: &Path) -> Self {
         Self {
             base_dir: path.to_path_buf(),
@@ -22,7 +30,7 @@ impl FileAssetStorage {
 
     fn location(&self, key: &AssetKey) -> PathBuf {
         let mut path = self.base_dir.clone();
-        path.push(key.0.to_string());
+        path.push(key.to_string());
         path
     }
 }

@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use miette::miette;
 use serde_json::Value;
 
 use crate::asset_storage::interface::{AssetKey, AssetSpec, AssetStorage};
@@ -19,30 +20,40 @@ pub fn load_inputs(
     registry: &AssetStorageRegistry,
     inputs: HashMap<String, AssetSpec>,
 ) -> miette::Result<HashMap<String, Value>> {
-    let registry = registry.read().unwrap();
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
     inputs
         .into_iter()
         .map(|(k, v)| {
-            let storage = registry.get(&v.storage_name).unwrap();
+            let storage_name = &v.storage_name;
+            let storage = registry.get(storage_name).ok_or(miette!(
+                "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+            ))?;
             let asset = storage.load(&v.asset_key)?;
             Ok((k, asset))
         })
         .collect()
 }
 
-// Save outputs into a specified storage and return a HashMap of the
-// port names with the specification of the asset.
+/// Save outputs into a specified storage and return a HashMap of the
+/// port names with the specification of the asset.
 pub fn save_outputs(
     registry: &AssetStorageRegistry,
     storage_name: &str,
     outputs: HashMap<String, Value>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
-    let registry = registry.read().unwrap();
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+    let storage = registry.get(storage_name).ok_or(miette!(
+        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+    ))?;
+
     outputs
         .into_iter()
         .map(|(k, v)| {
             let asset_key = AssetKey::new();
-            let storage = registry.get(storage_name).unwrap();
             storage.save(&asset_key, v)?;
             Ok((
                 k,
@@ -56,18 +67,28 @@ pub fn save_outputs(
         .collect()
 }
 
+/// Transfer Assets from various [AssetStorage] implementations using
+/// [AssetSpec]s and an [AssetStorageRegistry] into a single [AssetStorage].
 pub fn transfer_assets(
     registry: &AssetStorageRegistry,
     storage_name_to: &str,
     assets_from: HashMap<String, AssetSpec>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
-    let registry = registry.read().unwrap();
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+    let storage_to = registry.get(storage_name_to).ok_or(miette!(
+        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_to}"
+    ))?;
+
     assets_from
         .into_iter()
         .map(|(k, v)| {
             if v.storage_name != storage_name_to {
-                let storage_from = registry.get(&v.storage_name).unwrap();
-                let storage_to = registry.get(storage_name_to).unwrap();
+                let storage_name_from = &v.storage_name;
+                let storage_from = registry.get(storage_name_from).ok_or(miette!(
+                    "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_from}"
+                ))?;
 
                 let asset = storage_from.load(&v.asset_key)?;
 
@@ -88,15 +109,21 @@ pub fn transfer_assets(
         .collect()
 }
 
+/// Generate a `total` number of [AssetSpec]s for use as Task outputs or similar.
 pub fn reserve_asset_specs(
     registry: &AssetStorageRegistry,
     storage_name: &str,
     total: usize,
 ) -> miette::Result<Vec<AssetSpec>> {
-    let registry = registry.read().unwrap();
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+    let storage = registry.get(storage_name).ok_or(miette!(
+        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+    ))?;
+
     let mut asset_specs = Vec::new();
     for _ in 0..total {
-        let storage = registry.get(storage_name).unwrap();
         let asset_key = AssetKey::new();
         asset_specs.push(AssetSpec {
             kind: storage.kind(),
@@ -188,7 +215,8 @@ pub fn assert_registry_contains_values(
     let registry = registry.read().unwrap();
     let storage = registry.get(storage_name).unwrap();
 
-    let expected: HashMap<String, Value> = serde_json::from_value(expected).unwrap();
+    let expected: HashMap<String, Value> =
+        serde_json::from_value(expected).expect("Failed to deserialize expected Value.");
     for (k, _) in expected.iter() {
         assert!(outputs.contains_key(k), "missing key: {k}");
     }
@@ -197,6 +225,12 @@ pub fn assert_registry_contains_values(
         let asset = storage
             .load(&v.asset_key)
             .unwrap_or_else(|err| panic!("Failed to load: {err}"));
-        assert_eq!(asset, expected.get(k).cloned().unwrap());
+        assert_eq!(
+            asset,
+            expected
+                .get(k)
+                .cloned()
+                .expect("Failed to extract expected value.")
+        );
     }
 }

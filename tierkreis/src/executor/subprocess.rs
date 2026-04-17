@@ -121,6 +121,9 @@ impl SubprocessExecutor {
                 .into_diagnostic()?
                 .into_os_string();
 
+            // Redirect the done_file to a temporary file as we
+            // do not need it to figure out if a process has
+            // completed currently.
             let done_file = NamedTempFile::new().into_diagnostic()?;
 
             serde_json::to_writer(
