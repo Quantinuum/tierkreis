@@ -7,6 +7,7 @@ setup:
     uv sync --all-extras
 
 test:
+    cd tierkreis && cargo test
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term
 
 test-workers:
@@ -16,11 +17,15 @@ test-slow:
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
 
 lint:
+  cd tierkreis && cargo fmt --check
+  cd tierkreis && cargo clippy --all-features --all-targets -- -D warnings
   {{uvrun}} ruff format --check
   {{uvrun}} ruff check
   {{uvrun}} pyright .
 
 fix:
+  cd tierkreis && cargo fmt
+  cd tierkreis && cargo clippy --all-features --all-targets --fix
   {{uvrun}} ruff format
   {{uvrun}} ruff check --fix
 
