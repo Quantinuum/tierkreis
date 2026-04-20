@@ -3452,6 +3452,7 @@ name = "tkr-nexus-worker-impl"
 version = "0.2.1"
 source = { editable = "tierkreis_workers/nexus_worker" }
 dependencies = [
+    { name = "hugr" },
     { name = "qnexus" },
     { name = "tierkreis" },
     { name = "tkr-nexus-worker" },
@@ -3459,6 +3460,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "hugr" },
     { name = "qnexus", specifier = "==0.37.1" },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-nexus-worker", editable = "tierkreis_workers/nexus_worker/api" },
