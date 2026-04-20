@@ -33,6 +33,11 @@ macro_rules! getattr_or_early_return {
 }
 
 /// Placeholder function for running a Workflow using the legacy python runtime.
+///
+/// # Errors
+///
+/// Will return Err if various I/O issues occur, if the python runtime is unusable
+/// or if the provided filepath includes invalid python.
 pub fn run(path: &Path) -> miette::Result<()> {
     Python::attach(|py| {
         let path = path.canonicalize().into_diagnostic()?;
@@ -44,29 +49,29 @@ pub fn run(path: &Path) -> miette::Result<()> {
 
         let code = CStr::from_bytes_until_nul(code_buf.as_bytes()).into_diagnostic()?;
 
-        let file_name = path.file_name().ok_or(miette!("no file name"))?;
-        let file_name_str = file_name
+        let source_file_name = path.file_name().ok_or(miette!("no file name"))?;
+        let source_file_name_str = source_file_name
             .to_str()
             .ok_or(miette!("failed to convert to cstring"))?;
-        let file_name_cstr = CString::new(file_name_str).into_diagnostic()?;
+        let source_file_name_cstring = CString::new(source_file_name_str).into_diagnostic()?;
 
         let module = path.file_stem().ok_or(miette!("no file stem"))?;
-        let module_name_cstr = CString::new(
+        let module_name_cstring = CString::new(
             module
                 .to_str()
                 .ok_or(miette!("failed to convert to cstring"))?,
         )
         .into_diagnostic()?;
 
-        let module = PyModule::from_code(py, code, &file_name_cstr, &module_name_cstr).map_err(
-            |err: PyErr| {
+        let module = PyModule::from_code(py, code, &source_file_name_cstring, &module_name_cstring)
+            .map_err(|err: PyErr| {
                 if err.is_instance_of::<PySyntaxError>(py) {
                     let err_value = err.value(py);
                     let message: String = getattr_or_early_return!(err_value, "msg");
                     let lineno: usize = getattr_or_early_return!(err_value, "lineno");
                     let offset: usize = getattr_or_early_return!(err_value, "offset");
                     let end_offset: usize = getattr_or_early_return!(err_value, "end_offset");
-                    let filename: String = getattr_or_early_return!(err_value, "filename");
+                    let error_filename: String = getattr_or_early_return!(err_value, "filename");
 
                     let labels = vec![LabeledSpan::new_primary_with_span(
                         Some(message.clone()),
@@ -80,14 +85,13 @@ pub fn run(path: &Path) -> miette::Result<()> {
                     );
 
                     let source_code =
-                        NamedSource::new(filename, code_buf.clone()).with_language("Python");
+                        NamedSource::new(error_filename, code_buf.clone()).with_language("Python");
 
                     return Error::new(diagnostic).with_source_code(source_code);
                 }
 
                 miette!("Failed to load python module: {}", err.to_string())
-            },
-        )?;
+            })?;
 
         let workflow = module
             .getattr("workflow")
@@ -96,7 +100,8 @@ pub fn run(path: &Path) -> miette::Result<()> {
                 let diagnostic = MietteDiagnostic::new("No 'workflow' attribute found in module")
                     .with_help("Tierkreis requires an attribute called 'workflow'");
                 let rich_error = Error::new(diagnostic).with_source_code(
-                    NamedSource::new(file_name_str, code_buf.clone()).with_language("Python"),
+                    NamedSource::new(source_file_name_str, code_buf.clone())
+                        .with_language("Python"),
                 );
                 rich_error.wrap_err(err)
             })?;
@@ -114,7 +119,7 @@ pub fn run(path: &Path) -> miette::Result<()> {
             .into_diagnostic()
             .map_err(|err| {
                 err.with_source_code(
-                    NamedSource::new(file_name_str, code_buf).with_language("Python"),
+                    NamedSource::new(source_file_name_str, code_buf).with_language("Python"),
                 )
             })?;
 

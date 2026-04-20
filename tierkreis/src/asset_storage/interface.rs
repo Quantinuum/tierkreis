@@ -14,6 +14,7 @@ use uuid::Uuid;
 /// For instance the [`SubprocessExecutor`][crate::executor::SubprocessExecutor] struct requires that
 /// Task inputs and outputs are of [`AssetKind::File`].
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum AssetKind {
     /// An Asset that is stored in memory during Workflow execution.
     ///
@@ -48,6 +49,10 @@ pub struct AssetSpec {
 
 impl AssetSpec {
     /// Return a filesystem path if the Asset is of [`AssetKind::File`].
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the `kind` field is not of [`AssetKind::File`]
     pub fn path(&self) -> miette::Result<PathBuf> {
         match &self.kind {
             AssetKind::File { root: parent } => Ok(parent.join(self.asset_key.0.to_string())),
@@ -62,9 +67,16 @@ pub struct AssetKey(Uuid);
 
 impl AssetKey {
     /// Generate a new [`AssetKey`] using the current system time.
-    #[must_use] 
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the `SystemTime` cannot be converted into a Timestamp that can
+    /// be used for Uuid generation.
+    #[must_use]
     pub fn new() -> Self {
-        let timestamp = SystemTime::now().try_into().unwrap();
+        let timestamp = SystemTime::now()
+            .try_into()
+            .expect("Could not convert SystemTime to a Timestamp for AssetKey generation");
         Self(uuid::Uuid::new_v7(timestamp))
     }
 }
@@ -102,9 +114,21 @@ pub trait AssetStorage: Send + Sync {
     /// Retrieve the [`AssetKind`] for the [`AssetStorage`].
     fn kind(&self) -> AssetKind;
     /// Determine if an Asset exists in the storage for the [`AssetKey`].
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
     fn exists(&self, key: &AssetKey) -> miette::Result<bool>;
     /// Save an Asset to the [`AssetStorage`] using an [`AssetKey`].
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
     fn save(&self, key: &AssetKey, value: Value) -> miette::Result<()>;
     /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
     fn load(&self, key: &AssetKey) -> miette::Result<Value>;
 }

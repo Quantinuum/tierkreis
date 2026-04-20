@@ -60,10 +60,18 @@ pub trait Executor: Send + Sync {
     ///
     /// Typically this method should only be called once and the stream should be only
     /// end once the [Executor] is dropped.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the method has already been called.
     fn listen(&self) -> miette::Result<BoxStream<'_, Event>>;
     /// Signal that the Tasks with the specified ids should be cancelled when possible.
     ///
     /// There is no guarantee that the Tasks will not run, but the [Executor] should
     /// make best-effort to avoid running them if possible.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the [Executor] is unreachable.
     fn cancel(&self, task_ids: Vec<u32>) -> miette::Result<()>;
 }

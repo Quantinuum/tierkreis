@@ -33,12 +33,19 @@ struct WorkflowRun {
 }
 
 #[utoipa::path(get, path = "/workflows/{workflow_id}/runs", responses((status = OK, body = Vec<WorkflowRun>)))]
-async fn get_workflow_runs(workflow_id: Path<Uuid>) -> Json<Vec<WorkflowRun>> {
-    let _workflow_id = workflow_id;
+async fn get_workflow_runs(_workflow_id: Path<Uuid>) -> Json<Vec<WorkflowRun>> {
     Json(vec![])
 }
 
 /// Start the webserver and listen for incoming HTTP requests until cancelled.
+///
+/// # Panics
+///
+/// Will panic if a `tokio` runtime is already active.
+///
+/// # Errors
+///
+/// Will return Err if the port is already in use or if the server terminates unexpectedly.
 #[tokio::main]
 pub async fn serve() -> miette::Result<()> {
     let api_router = OpenApiRouter::new()
@@ -54,5 +61,6 @@ pub async fn serve() -> miette::Result<()> {
         .await
         .into_diagnostic()?;
     axum::serve(listener, router).await.into_diagnostic()?;
+
     Ok(())
 }

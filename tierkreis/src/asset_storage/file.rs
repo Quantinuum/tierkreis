@@ -22,7 +22,7 @@ pub struct FileAssetStorage {
 
 impl FileAssetStorage {
     /// Create a new [`FileAssetStorage`] backed by a folder define by `path`.
-    #[must_use] 
+    #[must_use]
     pub fn new(path: &Path) -> Self {
         Self {
             base_dir: path.to_path_buf(),

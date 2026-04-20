@@ -12,7 +12,7 @@ use std::{
 
 use futures::{
     FutureExt, StreamExt,
-    future::BoxFuture,
+    future::{self, BoxFuture},
     stream::{AbortHandle, Abortable, BoxStream},
 };
 use miette::miette;
@@ -63,7 +63,9 @@ impl InMemoryExecutor<'_> {
     /// a configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// in the registry that determines where Assets are saved by default.
     ///
-    /// This function will Error if the specified `output_storage_name` does not exist
+    /// # Errors
+    ///
+    /// This function will return Err if the specified `output_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
@@ -89,6 +91,8 @@ impl InMemoryExecutor<'_> {
         })
     }
 
+    // TODO: This probably doesn't need to be async.
+    #[allow(clippy::unused_async)]
     async fn run_builtin(
         task_name: String,
         inputs: HashMap<String, Value>,
@@ -129,7 +133,7 @@ impl InMemoryExecutor<'_> {
 
     // Internal implementation for the Executor trait so that we can use `async fn` syntax
     // before we need to Box the result for the trait.
-    async fn execute(&self, task_plans: Vec<TaskPlan>) -> miette::Result<Vec<u32>> {
+    fn internal_execute(&self, task_plans: Vec<TaskPlan>) -> miette::Result<Vec<u32>> {
         let mut ids = Vec::new();
 
         let mut work_queue = self
@@ -178,7 +182,7 @@ impl Executor for InMemoryExecutor<'_> {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
-        self.execute(task_plans).boxed()
+        future::ready(self.internal_execute(task_plans)).boxed()
     }
 
     fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {

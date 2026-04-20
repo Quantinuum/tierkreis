@@ -11,6 +11,7 @@ pub use crate::asset_storage::file::FileAssetStorage;
 pub use crate::asset_storage::inmemory::InMemoryStorage;
 pub use crate::asset_storage::interface::{AssetKey, AssetKind, AssetSpec, AssetStorage};
 
+use std::hash::BuildHasher;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -29,9 +30,14 @@ pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>
 
 /// Load inputs into a `HashMap` from the various [`AssetStorage`] implementations that
 /// contain them as described in each [`AssetSpec`].
-pub fn load_inputs(
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
+pub fn load_inputs<S: BuildHasher>(
     registry: &AssetStorageRegistry,
-    inputs: HashMap<String, AssetSpec>,
+    inputs: HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, Value>> {
     let registry = registry
         .read()
@@ -52,10 +58,15 @@ pub fn load_inputs(
 /// Save outputs into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
 /// and return a [`HashMap`] containing output names and the [`AssetSpec`]s that describe
 /// where the Assets were saved.
-pub fn save_outputs(
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
+pub fn save_outputs<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name: &str,
-    outputs: HashMap<String, Value>,
+    outputs: HashMap<String, Value, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let registry = registry
         .read()
@@ -83,10 +94,16 @@ pub fn save_outputs(
 
 /// Transfer Assets from various [`AssetStorage`] implementations using
 /// [`AssetSpec`]s and an [`AssetStorageRegistry`] into a single [`AssetStorage`].
-pub fn transfer_assets(
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry
+/// or if the [`AssetSpec`]s provided cannot be retrieved from the [`AssetStorageRegistry`].
+pub fn transfer_assets<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name_to: &str,
-    assets_from: HashMap<String, AssetSpec>,
+    assets_from: HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let registry = registry
         .read()
@@ -124,6 +141,11 @@ pub fn transfer_assets(
 }
 
 /// Generate a `total` number of [`AssetSpec`]s for use as Task outputs or similar.
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
 pub fn reserve_asset_specs(
     registry: &AssetStorageRegistry,
     storage_name: &str,
@@ -233,7 +255,7 @@ pub fn assert_registry_contains_values(
 
     let expected: HashMap<String, Value> =
         serde_json::from_value(expected).expect("Failed to deserialize expected Value.");
-    for (k, _) in &expected {
+    for k in expected.keys() {
         assert!(outputs.contains_key(k), "missing key: {k}");
     }
 

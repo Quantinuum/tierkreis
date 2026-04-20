@@ -3,7 +3,7 @@ This module defines the [`SubprocessExecutor`] struct which implements [Executor
 by running subprocesses.
 */
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     process::Stdio,
     sync::{Arc, Mutex},
@@ -12,7 +12,7 @@ use std::{
 use futures::{
     FutureExt, StreamExt,
     channel::{mpsc, oneshot},
-    future::BoxFuture,
+    future::{self, BoxFuture},
     stream::{self, BoxStream},
 };
 use miette::{Context, IntoDiagnostic, miette};
@@ -55,6 +55,8 @@ pub struct SubprocessExecutor {
     asset_storage_registry: AssetStorageRegistry,
 }
 
+type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
+
 impl SubprocessExecutor {
     /// Try to create a new [`SubprocessExecutor`] with an [`AssetStorageRegistry`], a
     /// configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
@@ -63,7 +65,9 @@ impl SubprocessExecutor {
     /// [`AssetStorage`][crate::asset_storage::AssetStorage] in the registry that
     /// determines where Assets are saved by default.
     ///
-    /// This function will Error if the specified `subprocess_storage_name` or
+    /// # Errors
+    ///
+    /// This function will return Err if the specified `subprocess_storage_name` or
     /// `output_storage_name` does not exist inside the [`AssetStorageRegistry`].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
@@ -94,42 +98,29 @@ impl SubprocessExecutor {
     }
 
     async fn workers(&self) -> miette::Result<Vec<WorkerSpec>> {
-        let re = Regex::new(r"tkr-.*-worker")
-            .into_diagnostic()
-            .wrap_err("Failed to compile Worker name regex")?;
-        let paths = which_re(&re)
-            .into_diagnostic()
-            .wrap_err("Failed to search for Worker binaries")?;
-        Ok(paths
-            .map(|path| WorkerSpec {
-                worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
-            })
-            .collect())
+        let task = tokio::task::spawn_blocking(|| {
+            let re = Regex::new(r"tkr-.*-worker")
+                .into_diagnostic()
+                .wrap_err("Failed to compile Worker name regex")?;
+            let paths = which_re(&re)
+                .into_diagnostic()
+                .wrap_err("Failed to search for Worker binaries")?;
+            Ok(paths
+                .map(|path| WorkerSpec {
+                    worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
+                })
+                .collect())
+        });
+        task.await.into_diagnostic()?
     }
 
-    async fn execute(&self, task_plans: Vec<TaskPlan>) -> miette::Result<Vec<u32>> {
+    fn internal_execute(&self, task_plans: Vec<TaskPlan>) -> miette::Result<Vec<u32>> {
         let mut pids = Vec::new();
         let mut tasks = Vec::new();
 
         for task_plan in task_plans {
-            let inputs = transfer_assets(
-                &self.asset_storage_registry,
-                &self.subprocess_storage_name,
-                task_plan.inputs,
-            )?;
-            let inputs =
-                write_input_paths(inputs).wrap_err("Failed to collect Worker input filepaths")?;
-            let output_specs = reserve_asset_specs(
-                &self.asset_storage_registry,
-                &self.subprocess_storage_name,
-                task_plan.outputs.len(),
-            )?;
-            let outputs: HashMap<String, AssetSpec> =
-                task_plan.outputs.into_iter().zip(output_specs).collect();
-            let output_paths = outputs
-                .iter()
-                .map(|(k, v)| Ok((k.clone(), v.path()?)))
-                .collect::<Result<HashMap<_, _>, miette::Error>>()?;
+            let inputs = self.build_inputs(task_plan.inputs)?;
+            let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
 
             let worker_args = NamedTempFile::new().into_diagnostic()?;
             let worker_args_path = worker_args
@@ -155,13 +146,7 @@ impl SubprocessExecutor {
             )
             .into_diagnostic()?;
 
-            let mut child = Command::new(format!("tkr-{}", task_plan.worker_name))
-                .arg(worker_args_path)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .into_diagnostic()
-                .wrap_err(miette!("Could not spawn worker"))?;
+            let mut child = spawn_worker(&task_plan.worker_name, worker_args_path)?;
 
             let id = child.id().ok_or(miette!("Could not get process id."))?;
             pids.push(id);
@@ -186,21 +171,9 @@ impl SubprocessExecutor {
                     })
                     .expect("Failed to send Running event.");
 
-                let mut stdout = child.stdout.take().unwrap();
-                let read_stdout = tokio::spawn(async move {
-                    let mut stdout_out = String::new();
-                    let _ = stdout.read_to_string(&mut stdout_out).await;
+                let read_stdout = read_stdout(&mut child);
 
-                    stdout_out
-                });
-
-                let mut stderr = child.stderr.take().unwrap();
-                let read_stderr = tokio::spawn(async move {
-                    let mut stderr_out = String::new();
-                    let _ = stderr.read_to_string(&mut stderr_out).await;
-
-                    stderr_out
-                });
+                let read_stderr = read_stderr(&mut child);
 
                 tokio::select! {
                     Ok(()) = cancel_receiver => {
@@ -262,6 +235,68 @@ impl SubprocessExecutor {
 
         Ok(pids)
     }
+
+    fn build_inputs(
+        &self,
+        inputs: HashMap<String, AssetSpec>,
+    ) -> Result<HashMap<String, PathBuf>, miette::Error> {
+        let inputs = transfer_assets(
+            &self.asset_storage_registry,
+            &self.subprocess_storage_name,
+            inputs,
+        )?;
+        let inputs =
+            write_input_paths(inputs).wrap_err("Failed to collect Worker input filepaths")?;
+        Ok(inputs)
+    }
+
+    fn build_outputs(&self, outputs: HashSet<String>) -> Result<OutputSpecs, miette::Error> {
+        let output_specs = reserve_asset_specs(
+            &self.asset_storage_registry,
+            &self.subprocess_storage_name,
+            outputs.len(),
+        )?;
+        let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
+        let output_paths = outputs
+            .iter()
+            .map(|(k, v)| Ok((k.clone(), v.path()?)))
+            .collect::<Result<HashMap<_, _>, miette::Error>>()?;
+        Ok((outputs, output_paths))
+    }
+}
+
+fn spawn_worker(
+    worker_name: &str,
+    worker_args_path: std::ffi::OsString,
+) -> Result<tokio::process::Child, miette::Error> {
+    let child = Command::new(format!("tkr-{worker_name}"))
+        .arg(worker_args_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .into_diagnostic()
+        .wrap_err(miette!("Could not spawn worker"))?;
+    Ok(child)
+}
+
+fn read_stdout(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
+    let mut stdout = child.stdout.take().unwrap();
+    tokio::spawn(async move {
+        let mut stdout_out = String::new();
+        let _ = stdout.read_to_string(&mut stdout_out).await;
+
+        stdout_out
+    })
+}
+
+fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
+    let mut stderr = child.stderr.take().unwrap();
+    tokio::spawn(async move {
+        let mut stderr_out = String::new();
+        let _ = stderr.read_to_string(&mut stderr_out).await;
+
+        stderr_out
+    })
 }
 
 // Json format expected for subprocess workers.
@@ -296,7 +331,7 @@ impl Executor for SubprocessExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
-        self.execute(task_plans).boxed()
+        future::ready(self.internal_execute(task_plans)).boxed()
     }
 
     fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
@@ -321,13 +356,10 @@ impl Executor for SubprocessExecutor {
             .lock()
             .map_err(|err| miette!("Failed to lock cancel channels: {}", err))?;
         for task_id in task_ids {
-            match cancel_senders.remove(&task_id) {
-                Some(cancel_sender) => {
-                    // We can ignore send errors as they mean the other side
-                    // of the channel has closed.
-                    let _res = cancel_sender.send(());
-                }
-                None => continue,
+            if let Some(cancel_sender) = cancel_senders.remove(&task_id) {
+                // We can ignore send errors as they mean the other side
+                // of the channel has closed.
+                let _res = cancel_sender.send(());
             }
         }
         Ok(())

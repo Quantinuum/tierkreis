@@ -13,7 +13,7 @@ use futures::{
     channel::mpsc,
     stream::{BoxStream, select_all},
 };
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic, miette};
 
 use crate::{
     asset_storage::{
@@ -45,6 +45,12 @@ impl Orchestrator {
     /// [`ExecutorRegistry`], as well as default options for the [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// and [Executor][crate::executor::Executor] to use for each registry unless specified otherwise
     /// in the Workflow definition.
+    ///
+    /// # Errors
+    ///
+    /// This function will return Err if the specified `default_storage_name` does not exist
+    /// inside the [`AssetStorageRegistry`] or if the specified `default_executor_name` does
+    /// not exist inside the [`ExecutorRegistry`].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         executor_registry: &ExecutorRegistry,
@@ -55,7 +61,7 @@ impl Orchestrator {
 
         let asset_storage_registry_lock = asset_storage_registry
             .read()
-            .map_err(|err| miette!("Failed to lock AssetStorageRegistry: {err}"))?;
+            .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
         if !asset_storage_registry_lock.contains_key(default_storage_name) {
             return Err(miette!("default_storage_name not in registry"));
         }
@@ -77,6 +83,10 @@ impl Orchestrator {
     }
 
     /// Dispatch a single [Node] for execution.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if a Node cannot be run or dispatched.
     // TODO: This should really be a list of Nodes or similar.
     pub async fn start_node(
         &self,
@@ -97,17 +107,24 @@ impl Orchestrator {
                     output_storage_name: Some(self.default_storage_name.clone()),
                     ..Default::default()
                 }];
+                let default_executor_name = &self.default_executor_name;
                 let executor = self
                     .executor_registry
                     .get(&self.default_executor_name)
-                    .unwrap();
-                executor.execute(task_plans).await?;
+                    .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Node")?;
+                executor
+                    .execute(task_plans)
+                    .await
+                    .wrap_err("Could not run Task Node")?;
             }
             Node::Input { name } => {
                 // Assume the inputs are the inputs to the graph.
                 //
                 // Just pull out the named input and assign it to the "value" output.
-                let value_spec = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+                let value_spec = inputs
+                    .get(name)
+                    .ok_or(miette!("Missing input: {name}"))
+                    .wrap_err("Could not run Input Node")?;
                 let mut outputs = HashMap::new();
                 outputs.insert("value".to_string(), value_spec.clone());
 
@@ -136,7 +153,8 @@ impl Orchestrator {
                     &self.asset_storage_registry,
                     &self.default_storage_name,
                     inputs,
-                )?;
+                )
+                .wrap_err("Could not run Output Node")?;
                 event_sender
                     .try_send(Event {
                         id: 0,
@@ -146,10 +164,14 @@ impl Orchestrator {
             }
             Node::Const { value } => {
                 // Load the constant value into the correct storage.
-                let asset_storage_registry = self.asset_storage_registry.read().unwrap();
-                let asset_storage = asset_storage_registry
-                    .get(&self.default_storage_name)
-                    .unwrap();
+                let asset_storage_registry_lock =
+                    self.asset_storage_registry.read().map_err(|err| {
+                        miette!("Failed to lock AssetStorageRegistry for reading: {err}")
+                    })?;
+                let default_storage_name = &self.default_storage_name;
+                let asset_storage = asset_storage_registry_lock
+                    .get(default_storage_name)
+                    .ok_or_else(|| miette!("Could not find a storage with name '{default_storage_name}' in AssetStorageRegistry"))?;
                 let asset_key = AssetKey::new();
                 asset_storage.save(&asset_key, value.clone())?;
 
@@ -184,6 +206,10 @@ impl Orchestrator {
     ///
     /// This method should only be called once and the stream will exist
     /// for the duration of the Workflow execution.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the method has already been called.
     pub fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
         let orchestrator_events = {
             let mut receiver = self
