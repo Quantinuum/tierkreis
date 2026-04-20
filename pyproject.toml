@@ -21,14 +21,14 @@ dev = [
 ]
 lint = [
     "isort>=6.0.1",
-    "ruff>=0.12.5",
+    "ruff>=0.15.11",
     "pyright>=1.1.400",
 ]
 test = [
-    "pytest>=6.2,<10",
+    "pytest>=9.0.3,<10",
     "pytest-asyncio>=0.16,<1.4",
     "pytest-cov>=5.0,<8",
-    "pydantic>=2.9.2",
+    "pydantic>=2.13.2",
 ]
 docs = [
     "sphinx>=8.2",
