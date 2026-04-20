@@ -4,6 +4,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "friday"
     labels:
       - "python"
       - "dependencies"
+    groups:
+      third-party-minor:
+        update-types:
+          - "minor"
+          - "patch"
+      third-party-major:
+        update-types:
+          - "major"
