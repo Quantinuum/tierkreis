@@ -1,6 +1,6 @@
 /*!
-This module defines the interface and some standard implementations of [AssetStorage]
-as well as some utility functions and an [AssetStorageRegistry] type.
+This module defines the interface and some standard implementations of [`AssetStorage`]
+as well as some utility functions and an [`AssetStorageRegistry`] type.
 */
 
 pub mod file;
@@ -19,16 +19,16 @@ use std::{
 use miette::miette;
 use serde_json::Value;
 
-/// [AssetStorageRegistry] is sharable mapping of configured [AssetStorage] names
+/// [`AssetStorageRegistry`] is sharable mapping of configured [`AssetStorage`] names
 /// to various implementations.
 ///
-/// Note that it is possible to have multiple instances of the same [AssetStorage]
+/// Note that it is possible to have multiple instances of the same [`AssetStorage`]
 /// implementation with different names in order to further separate the storage
 /// of Assets as required by the user.
 pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>>>>;
 
-/// Load inputs into a HashMap from the various [AssetStorage] implementations that
-/// contain them as described in each [AssetSpec].
+/// Load inputs into a `HashMap` from the various [`AssetStorage`] implementations that
+/// contain them as described in each [`AssetSpec`].
 pub fn load_inputs(
     registry: &AssetStorageRegistry,
     inputs: HashMap<String, AssetSpec>,
@@ -49,8 +49,8 @@ pub fn load_inputs(
         .collect()
 }
 
-/// Save outputs into an [AssetStorage] in the [AssetStorageRegistry] with a given name
-/// and return a [HashMap] containing output names and the [AssetSpec]s that describe
+/// Save outputs into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
+/// and return a [`HashMap`] containing output names and the [`AssetSpec`]s that describe
 /// where the Assets were saved.
 pub fn save_outputs(
     registry: &AssetStorageRegistry,
@@ -81,8 +81,8 @@ pub fn save_outputs(
         .collect()
 }
 
-/// Transfer Assets from various [AssetStorage] implementations using
-/// [AssetSpec]s and an [AssetStorageRegistry] into a single [AssetStorage].
+/// Transfer Assets from various [`AssetStorage`] implementations using
+/// [`AssetSpec`]s and an [`AssetStorageRegistry`] into a single [`AssetStorage`].
 pub fn transfer_assets(
     registry: &AssetStorageRegistry,
     storage_name_to: &str,
@@ -98,7 +98,9 @@ pub fn transfer_assets(
     assets_from
         .into_iter()
         .map(|(k, v)| {
-            if v.storage_name != storage_name_to {
+            if v.storage_name == storage_name_to {
+                Ok((k, v))
+            } else {
                 let storage_name_from = &v.storage_name;
                 let storage_from = registry.get(storage_name_from).ok_or(miette!(
                     "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_from}"
@@ -116,14 +118,12 @@ pub fn transfer_assets(
                         storage_name: storage_name_to.to_string(),
                     },
                 ))
-            } else {
-                Ok((k, v))
             }
         })
         .collect()
 }
 
-/// Generate a `total` number of [AssetSpec]s for use as Task outputs or similar.
+/// Generate a `total` number of [`AssetSpec`]s for use as Task outputs or similar.
 pub fn reserve_asset_specs(
     registry: &AssetStorageRegistry,
     storage_name: &str,
@@ -148,7 +148,7 @@ pub fn reserve_asset_specs(
     Ok(asset_specs)
 }
 
-/// Initialize an [AssetStorageRegistry] with predefined Assets for use in tests.
+/// Initialize an [`AssetStorageRegistry`] with predefined Assets for use in tests.
 #[cfg(test)]
 pub fn test_storage_registry(
     assets_for_memory: impl IntoIterator<Item = Value>,
@@ -220,7 +220,7 @@ pub fn test_storage_registry(
     (registry, input_asset_sets, temp_dir)
 }
 
-/// Check that an [AssetStorageRegistry] contain an expected Asset, for use in tests.
+/// Check that an [`AssetStorageRegistry`] contain an expected Asset, for use in tests.
 #[cfg(test)]
 pub fn assert_registry_contains_values(
     registry: &AssetStorageRegistry,
@@ -233,7 +233,7 @@ pub fn assert_registry_contains_values(
 
     let expected: HashMap<String, Value> =
         serde_json::from_value(expected).expect("Failed to deserialize expected Value.");
-    for (k, _) in expected.iter() {
+    for (k, _) in &expected {
         assert!(outputs.contains_key(k), "missing key: {k}");
     }
 

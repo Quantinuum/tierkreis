@@ -1,5 +1,5 @@
 /*!
-This module defines the [InMemoryExecutor] struct which implements [Executor]
+This module defines the [`InMemoryExecutor`] struct which implements [Executor]
 by running small tasks from a small work queue.
 */
 use std::{
@@ -24,13 +24,13 @@ use crate::{
     executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
 
-/// [InMemoryResourceSpec] determines what Resources should be available to the
-/// [InMemoryExecutor] or what is requested as part of a [TaskPlan].
+/// [`InMemoryResourceSpec`] determines what Resources should be available to the
+/// [`InMemoryExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct InMemoryResourceSpec {}
 
-/// [InMemoryEnvironmentSpec] determines the default execution environment of
-/// [InMemoryExecutor] or what is requested as part of a [TaskPlan].
+/// [`InMemoryEnvironmentSpec`] determines the default execution environment of
+/// [`InMemoryExecutor`] or what is requested as part of a [`TaskPlan`].
 // TODO: It's perhaps a bit unclear what this means for in-memory execution?
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct InMemoryEnvironmentSpec {}
@@ -45,7 +45,7 @@ type TaskFuture<'a> = BoxFuture<'a, miette::Result<HashMap<String, Value>>>;
 type AbortHandles = Arc<Mutex<BTreeMap<u32, AbortHandle>>>;
 type WorkQueue<'a> = Arc<Mutex<VecDeque<(TaskInfo, Abortable<TaskFuture<'a>>)>>>;
 
-/// [InMemoryExecutor] defines an [Executor] that performs Task Nodes in the same runtime.
+/// [`InMemoryExecutor`] defines an [Executor] that performs Task Nodes in the same runtime.
 ///
 /// These Tasks should be short lived Tasks where we want to avoid the overhead of spinning
 /// up an entirely new process.
@@ -58,13 +58,13 @@ pub struct InMemoryExecutor<'a> {
     asset_storage_registry: AssetStorageRegistry,
 }
 
-impl<'a> InMemoryExecutor<'a> {
-    /// Try to create a new [InMemoryExecutor] with an [AssetStorageRegistry] and
-    /// a configured name for an [AssetStorage][crate::asset_storage::AssetStorage]
+impl InMemoryExecutor<'_> {
+    /// Try to create a new [`InMemoryExecutor`] with an [`AssetStorageRegistry`] and
+    /// a configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// in the registry that determines where Assets are saved by default.
     ///
     /// This function will Error if the specified `output_storage_name` does not exist
-    /// inside the [AssetStorageRegistry].
+    /// inside the [`AssetStorageRegistry`].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
@@ -141,7 +141,7 @@ impl<'a> InMemoryExecutor<'a> {
             .lock()
             .map_err(|err| miette!("Failed to lock abort handles: {}", err))?;
 
-        for task_plan in task_plans.into_iter() {
+        for task_plan in task_plans {
             let id = self.id_source.fetch_add(1, Ordering::Relaxed);
 
             let inputs = load_inputs(&self.asset_storage_registry, task_plan.inputs.clone())?;
@@ -169,7 +169,7 @@ impl<'a> InMemoryExecutor<'a> {
     }
 }
 
-impl<'a> Executor for InMemoryExecutor<'a> {
+impl Executor for InMemoryExecutor<'_> {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         futures::future::ok(vec![WorkerSpec {
             worker_name: "builtin".to_string(),
@@ -199,8 +199,8 @@ impl<'a> Executor for InMemoryExecutor<'a> {
     }
 }
 
-/// [InMemoryEventStream] is a custom [Stream][futures::Stream] implementation that is used
-/// by the [InMemoryExecutor] to provide a stream of [Event]s by running Tasks and then
+/// [`InMemoryEventStream`] is a custom [Stream][futures::Stream] implementation that is used
+/// by the [`InMemoryExecutor`] to provide a stream of [Event]s by running Tasks and then
 /// yielding events.
 pub struct InMemoryEventStream<'a> {
     work_queue: WorkQueue<'a>,
@@ -220,7 +220,7 @@ impl<'a> InMemoryEventStream<'a> {
     }
 }
 
-impl<'a> futures::Stream for InMemoryEventStream<'a> {
+impl futures::Stream for InMemoryEventStream<'_> {
     type Item = Event;
 
     fn poll_next(
@@ -240,11 +240,10 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                     id,
                     status: Status::Running,
                 }));
-            } else {
-                // Signal that this stream can be polled again immediately.
-                cx.waker().wake_by_ref();
-                return std::task::Poll::Pending;
             }
+            // Signal that this stream can be polled again immediately.
+            cx.waker().wake_by_ref();
+            return std::task::Poll::Pending;
         }
 
         let first = {

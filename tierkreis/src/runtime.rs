@@ -83,7 +83,7 @@ pub fn run(path: &Path) -> miette::Result<()> {
                         NamedSource::new(filename, code_buf.clone()).with_language("Python");
 
                     return Error::new(diagnostic).with_source_code(source_code);
-                };
+                }
 
                 miette!("Failed to load python module: {}", err.to_string())
             },

@@ -1,5 +1,5 @@
 /*!
-This module defines the [SubprocessExecutor] struct which implements [Executor]
+This module defines the [`SubprocessExecutor`] struct which implements [Executor]
 by running subprocesses.
 */
 use std::{
@@ -28,17 +28,17 @@ use crate::{
     executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
 
-/// [SubprocessResourceSpec] determines what Resources should be available to the
-/// [SubprocessExecutor] or what is requested as part of a [TaskPlan].
+/// [`SubprocessResourceSpec`] determines what Resources should be available to the
+/// [`SubprocessExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SubprocessResourceSpec {}
 
-/// [SubprocessEnvironmentSpec] determines the default execution environment of
-/// [SubprocessExecutor] or what is requested as part of a [TaskPlan].
+/// [`SubprocessEnvironmentSpec`] determines the default execution environment of
+/// [`SubprocessExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SubprocessEnvironmentSpec {}
 
-/// [SubprocessExecutor] defines an [Executor] that performs Task Nodes using Worker subprocesses.
+/// [`SubprocessExecutor`] defines an [Executor] that performs Task Nodes using Worker subprocesses.
 pub struct SubprocessExecutor {
     event_sender: mpsc::Sender<Event>,
     event_receiver: Mutex<Option<mpsc::Receiver<Event>>>,
@@ -56,15 +56,15 @@ pub struct SubprocessExecutor {
 }
 
 impl SubprocessExecutor {
-    /// Try to create a new [SubprocessExecutor] with an [AssetStorageRegistry], a
-    /// configured name for an [AssetStorage][crate::asset_storage::AssetStorage]
-    /// of [AssetKind::File][crate::asset_storage::AssetKind::File] where files are written
+    /// Try to create a new [`SubprocessExecutor`] with an [`AssetStorageRegistry`], a
+    /// configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
+    /// of [`AssetKind::File`][crate::asset_storage::AssetKind::File] where files are written
     /// to for the subprocesses to consume and a configured name for an
-    /// [AssetStorage][crate::asset_storage::AssetStorage] in the registry that
+    /// [`AssetStorage`][crate::asset_storage::AssetStorage] in the registry that
     /// determines where Assets are saved by default.
     ///
     /// This function will Error if the specified `subprocess_storage_name` or
-    /// `output_storage_name` does not exist inside the [AssetStorageRegistry].
+    /// `output_storage_name` does not exist inside the [`AssetStorageRegistry`].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         subprocess_storage_name: &str,
@@ -111,7 +111,7 @@ impl SubprocessExecutor {
         let mut pids = Vec::new();
         let mut tasks = Vec::new();
 
-        for task_plan in task_plans.into_iter() {
+        for task_plan in task_plans {
             let inputs = transfer_assets(
                 &self.asset_storage_registry,
                 &self.subprocess_storage_name,
@@ -210,7 +210,7 @@ impl SubprocessExecutor {
                                 id,
                                 status: Status::Cancelled,
                             })
-                            .expect("Failed to send Cancelled event.")
+                            .expect("Failed to send Cancelled event.");
                     }
                     res = child.wait() => {
                         match res {
@@ -226,14 +226,14 @@ impl SubprocessExecutor {
                                             id,
                                             status: Status::Complete { outputs },
                                         })
-                                        .expect("Failed to send Complete event.")
+                                        .expect("Failed to send Complete event.");
                                 } else {
                                     let _stdout = read_stdout.await.ok();
                                     let stderr = read_stderr.await.ok();
                                     event_sender
                                         .try_send(Event {
                                             id,
-                                            status: Status::Error {error: format!("Subprocess failed with exit code: {}", status), detail: stderr },
+                                            status: Status::Error {error: format!("Subprocess failed with exit code: {status}"), detail: stderr },
                                         })
                                         .expect("Failed to send Error event.");
                                 }
@@ -284,7 +284,7 @@ fn write_input_paths(
     let mut input_paths = HashMap::with_capacity(inputs_len);
     for (key, value) in inputs {
         let path = value.path()?;
-        input_paths.insert(key.to_string(), path);
+        input_paths.insert(key.clone(), path);
     }
 
     Ok(input_paths)
@@ -320,7 +320,7 @@ impl Executor for SubprocessExecutor {
             .cancel_senders
             .lock()
             .map_err(|err| miette!("Failed to lock cancel channels: {}", err))?;
-        for task_id in task_ids.into_iter() {
+        for task_id in task_ids {
             match cancel_senders.remove(&task_id) {
                 Some(cancel_sender) => {
                     // We can ignore send errors as they mean the other side

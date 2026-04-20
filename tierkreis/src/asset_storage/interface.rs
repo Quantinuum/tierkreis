@@ -1,5 +1,5 @@
 /*!
-This module defines the interface contracts that the various [AssetStorage]
+This module defines the interface contracts that the various [`AssetStorage`]
 implementations must satify.
 */
 use std::{fmt::Display, path::PathBuf, time::SystemTime};
@@ -8,11 +8,11 @@ use miette::miette;
 use serde_json::Value;
 use uuid::Uuid;
 
-/// [AssetKind] is used to categorize [AssetSpec] and [AssetStorage] implementations
+/// [`AssetKind`] is used to categorize [`AssetSpec`] and [`AssetStorage`] implementations
 /// as some [Executor][crate::executor::Executor] implementations may make use of this detail.
 ///
-/// For instance the [SubprocessExecutor][crate::executor::SubprocessExecutor] struct requires that
-/// Task inputs and outputs are of [AssetKind::File].
+/// For instance the [`SubprocessExecutor`][crate::executor::SubprocessExecutor] struct requires that
+/// Task inputs and outputs are of [`AssetKind::File`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum AssetKind {
     /// An Asset that is stored in memory during Workflow execution.
@@ -31,23 +31,23 @@ pub enum AssetKind {
     },
 }
 
-/// [AssetSpec] describes how an Asset should be stored.
+/// [`AssetSpec`] describes how an Asset should be stored.
 ///
 /// The Asset may not have been persisted yet depending on the Workflow execution
-/// and Executors may wish to reserve [AssetSpec]s for Tasks.
+/// and Executors may wish to reserve [`AssetSpec`]s for Tasks.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssetSpec {
     /// The kind of Asset that should be saved.
     pub kind: AssetKind,
-    /// The name of the [AssetStorage] in an [super::AssetStorageRegistry] that the
+    /// The name of the [`AssetStorage`] in an [`super::AssetStorageRegistry`] that the
     /// Asset should be saved with.
     pub storage_name: String,
-    /// A unique key for the Asset in the [AssetStorage].
+    /// A unique key for the Asset in the [`AssetStorage`].
     pub asset_key: AssetKey,
 }
 
 impl AssetSpec {
-    /// Return a filesystem path if the Asset is of [AssetKind::File].
+    /// Return a filesystem path if the Asset is of [`AssetKind::File`].
     pub fn path(&self) -> miette::Result<PathBuf> {
         match &self.kind {
             AssetKind::File { root: parent } => Ok(parent.join(self.asset_key.0.to_string())),
@@ -56,12 +56,13 @@ impl AssetSpec {
     }
 }
 
-/// [AssetKey] is a unique key for storing Assets.
+/// [`AssetKey`] is a unique key for storing Assets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AssetKey(Uuid);
 
 impl AssetKey {
-    /// Generate a new [AssetKey] using the current system time.
+    /// Generate a new [`AssetKey`] using the current system time.
+    #[must_use] 
     pub fn new() -> Self {
         let timestamp = SystemTime::now().try_into().unwrap();
         Self(uuid::Uuid::new_v7(timestamp))
@@ -94,16 +95,16 @@ impl Display for AssetKey {
     }
 }
 
-/// The [AssetStorage] defines the minimum methods required for Assets to be stored.
+/// The [`AssetStorage`] defines the minimum methods required for Assets to be stored.
 ///
-/// The interface is essentially a key-value store, keyed by [AssetKey]s.
+/// The interface is essentially a key-value store, keyed by [`AssetKey`]s.
 pub trait AssetStorage: Send + Sync {
-    /// Retrieve the [AssetKind] for the [AssetStorage].
+    /// Retrieve the [`AssetKind`] for the [`AssetStorage`].
     fn kind(&self) -> AssetKind;
-    /// Determine if an Asset exists in the storage for the [AssetKey].
+    /// Determine if an Asset exists in the storage for the [`AssetKey`].
     fn exists(&self, key: &AssetKey) -> miette::Result<bool>;
-    /// Save an Asset to the [AssetStorage] using an [AssetKey].
+    /// Save an Asset to the [`AssetStorage`] using an [`AssetKey`].
     fn save(&self, key: &AssetKey, value: Value) -> miette::Result<()>;
-    /// Load an Asset from the [AssetStorage] using an [AssetKey].
+    /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
     fn load(&self, key: &AssetKey) -> miette::Result<Value>;
 }

@@ -1,6 +1,6 @@
 /*!
 This module defines the interface and some standard implementations of [Executor]
-as well as some utility functions and an [ExecutorRegistry] type.
+as well as some utility functions and an [`ExecutorRegistry`] type.
 */
 pub mod inmemory;
 pub mod interface;
@@ -12,7 +12,7 @@ pub use crate::executor::subprocess::SubprocessExecutor;
 
 use std::{collections::HashMap, sync::Arc};
 
-/// [ExecutorRegistry] is sharable mapping of configured [Executor] names
+/// [`ExecutorRegistry`] is sharable mapping of configured [Executor] names
 /// to various implementations.
 ///
 /// Note that it is possible to have multiple instances of the same [Executor]

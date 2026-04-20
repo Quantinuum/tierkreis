@@ -1,6 +1,6 @@
 /*!
 This module defines the [Orchestrator] struct that combines multiple [Executor][crate::executor::Executor]
-and [AssetStorage][crate::asset_storage::AssetStorage] implementations to drive Workflow execution and return a stream
+and [`AssetStorage`][crate::asset_storage::AssetStorage] implementations to drive Workflow execution and return a stream
 of [Event]s with updates about each node in the Workflow.
 */
 use std::{
@@ -27,7 +27,7 @@ use crate::{
 };
 
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
-/// [Executor][crate::executor::Executor] as well as managing a shared [AssetStorageRegistry]
+/// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
 /// for the Workflow.
 pub struct Orchestrator {
     event_sender: mpsc::Sender<Event>,
@@ -41,8 +41,8 @@ pub struct Orchestrator {
 }
 
 impl Orchestrator {
-    /// Try to create a new [Orchestrator] with an [AssetStorageRegistry] and an
-    /// [ExecutorRegistry], as well as default options for the [AssetStorage][crate::asset_storage::AssetStorage]
+    /// Try to create a new [Orchestrator] with an [`AssetStorageRegistry`] and an
+    /// [`ExecutorRegistry`], as well as default options for the [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// and [Executor][crate::executor::Executor] to use for each registry unless specified otherwise
     /// in the Workflow definition.
     pub fn try_new(

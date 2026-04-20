@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::asset_storage::interface::AssetSpec;
 use crate::event::Event;
 
-/// [TaskPlan] describes how a Task should be executed on an Executor.
+/// [`TaskPlan`] describes how a Task should be executed on an Executor.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct TaskPlan {
     /// The name of the Worker to invoke.
@@ -23,12 +23,12 @@ pub struct TaskPlan {
     /// The names of the outputs of the task.
     // TODO: We can find this out from the workers
     pub outputs: HashSet<String>,
-    /// A specific [AssetStorage][crate::asset_storage::AssetStorage]
-    /// from an [AssetStorageRegistry][crate::asset_storage::AssetStorageRegistry]
+    /// A specific [`AssetStorage`][crate::asset_storage::AssetStorage]
+    /// from an [`AssetStorageRegistry`][crate::asset_storage::AssetStorageRegistry]
     /// to save outputs to.
     ///
     /// If not specified the [Executor] will save the outputs to a default
-    /// [AssetStorage][crate::asset_storage::AssetStorage] instead.
+    /// [`AssetStorage`][crate::asset_storage::AssetStorage] instead.
     pub output_storage_name: Option<String>,
     /// An arbitrary Resource specification for the Task. [Executor]s
     /// should validate this and convert it to a usable representation.
@@ -38,8 +38,8 @@ pub struct TaskPlan {
     pub environment: HashMap<String, Value>,
 }
 
-/// [WorkerSpec] defines the information about a Worker returned by an
-/// [Executor] from the [Executor::workers] method.
+/// [`WorkerSpec`] defines the information about a Worker returned by an
+/// [Executor] from the [`Executor::workers`] method.
 #[derive(Debug, PartialEq)]
 pub struct WorkerSpec {
     /// The name of the Worker.
@@ -50,11 +50,11 @@ pub struct WorkerSpec {
 pub trait Executor: Send + Sync {
     /// Return a list of the Workers available to the Executor with their metadata.
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>>;
-    /// Dispatch a list of [TaskPlan]s to be run on an [Executor], returning a list of Task
+    /// Dispatch a list of [`TaskPlan`]s to be run on an [Executor], returning a list of Task
     /// ids that can be used to cancel the Tasks if needed.
     ///
     /// This method does not block and updates about the Tasks will appear in the
-    /// stream provided by the [Executor::listen] method.
+    /// stream provided by the [`Executor::listen`] method.
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>>;
     /// Listen to a stream of [Event]s from the [Executor] about changes in Task state.
     ///
