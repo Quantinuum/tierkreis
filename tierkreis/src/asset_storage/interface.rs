@@ -1,6 +1,6 @@
 /*!
 This module defines the interface contracts that the various [`AssetStorage`]
-implementations must satify.
+implementations must satisfy.
 */
 use std::{fmt::Display, path::PathBuf, time::SystemTime};
 
@@ -23,7 +23,7 @@ pub enum AssetKind {
     Memory,
     /// An asset that is stored in a file on disk during Workflow Execution.
     ///
-    /// Contains a `root` file path that can be used to contruct the full
+    /// Contains a `root` file path that can be used to construct the full
     /// path to the asset in the filesystem.
     File {
         /// The root directory for constructing the full path to an Asset

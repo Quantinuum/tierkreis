@@ -1,6 +1,6 @@
 /*!
 This module defines the interface contracts that the various [Executor]
-implementations must satify.
+implementations must satisfy.
 */
 use std::collections::{HashMap, HashSet};
 
