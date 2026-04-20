@@ -4,13 +4,19 @@ from datetime import datetime
 from time import sleep
 
 import qnexus as qnx
+from hugr.package import Package
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.backends.status import StatusEnum
 from qnexus import BackendConfig
 from qnexus.exceptions import ResourceFetchFailed
 from qnexus.models import QuantinuumConfig
-from qnexus.models.references import ExecuteJobRef, ExecutionProgram, ExecutionResultRef
+from qnexus.models.references import (
+    ExecuteJobRef,
+    ExecutionProgram,
+    ExecutionResultRef,
+    HUGRRef,
+)
 
 from tierkreis import Worker
 from tierkreis.exceptions import TierkreisError
@@ -108,6 +114,36 @@ def get_results(execute_ref: ExecuteJobRef) -> list[BackendResult]:
     return backend_results
 
 
+@worker.task()
+def upload_hugr(
+    hugr_package: Package,
+    project_name: str,
+    name: str | None = None,
+) -> HUGRRef:
+    if name is None:
+        name = f"tkr HUGR Package from {datetime.now()}"
+    my_project_ref = qnx.projects.get_or_create(name=project_name)
+    qnx.context.set_active_project(my_project_ref)
+    return qnx.hugr.upload(hugr_package, name=name)
+
+
+@worker.task()
+def cost(hugr_ref: HUGRRef | list[HUGRRef], n_shots: int) -> float:
+    return qnx.hugr.cost(hugr_ref, n_shots)
+
+
+def start_execute_hugr(
+    project_name: str,
+    job_name: str,
+    hugrs: list[HUGRRef],
+    n_shots: list[int],
+    backend_config: BackendConfig,
+) -> ExecuteJobRef:
+    my_project_ref = qnx.projects.get_or_create(name=project_name)
+    qnx.context.set_active_project(my_project_ref)
+    return qnx.start_execute_job(hugrs, n_shots, backend_config, job_name)  # type: ignore list is not covariant here
+
+
 ## DEPRECATED TASKS ##
 
 
@@ -122,12 +158,16 @@ def check_status(execute_ref: ExecuteJobRef) -> str:
 
 
 @worker.task()
-def submit(circuits: list[Circuit], n_shots: int) -> ExecuteJobRef:
+def submit(
+    circuits: list[Circuit], n_shots: int, project_name: str | None = None
+) -> ExecuteJobRef:
     warnings.warn(
         "submit is deprecated, use upload_circuit and start_execute_job instead",
         stacklevel=2,
     )
-    my_project_ref = qnx.projects.get_or_create(name="Riken-Test")
+    if project_name is None:
+        project_name = "Riken-Test"
+    my_project_ref = qnx.projects.get_or_create(name=project_name)
     qnx.context.set_active_project(my_project_ref)
 
     my_circuit_refs: list[ExecutionProgram] = []

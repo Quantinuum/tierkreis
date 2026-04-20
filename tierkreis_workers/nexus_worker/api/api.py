@@ -1,6 +1,7 @@
 """Code generated from nexus_worker namespace. Please do not edit."""
 
 from typing import NamedTuple, Union
+from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
@@ -57,6 +58,33 @@ class get_results(NamedTuple):
         return "nexus_worker"
 
 
+class upload_hugr(NamedTuple):
+    hugr_package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    project_name: TKR[str]  # noqa: F821 # fmt: skip
+    name: TKR[Union[str, NoneType]] | None = None  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[OpaqueType["qnexus.models.references.HUGRRef"]]]:  # noqa: F821 # fmt: skip
+        return TKR[OpaqueType["qnexus.models.references.HUGRRef"]]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "nexus_worker"
+
+
+class cost(NamedTuple):
+    hugr_ref: TKR[Union[OpaqueType["qnexus.models.references.HUGRRef"], list[OpaqueType["qnexus.models.references.HUGRRef"]]]]  # noqa: F821 # fmt: skip
+    n_shots: TKR[int]  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[float]]:  # noqa: F821 # fmt: skip
+        return TKR[float]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "nexus_worker"
+
+
 class check_status(NamedTuple):
     execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]  # noqa: F821 # fmt: skip
 
@@ -72,6 +100,7 @@ class check_status(NamedTuple):
 class submit(NamedTuple):
     circuits: TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]  # noqa: F821 # fmt: skip
     n_shots: TKR[int]  # noqa: F821 # fmt: skip
+    project_name: TKR[Union[str, NoneType]] | None = None  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]]:  # noqa: F821 # fmt: skip
