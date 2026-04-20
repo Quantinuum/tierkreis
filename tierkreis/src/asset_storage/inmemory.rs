@@ -19,7 +19,7 @@ pub struct InMemoryStorage {
 
 impl InMemoryStorage {
     /// Create a new [`InMemoryStorage`] backed by a [`dashmap::DashMap`].
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             store: DashMap::new(),

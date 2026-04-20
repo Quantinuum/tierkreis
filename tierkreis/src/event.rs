@@ -25,14 +25,14 @@ pub struct Event {
 
 impl Event {
     /// Returns `true` if the status field of the event is [`Status::Complete`]
-    #[must_use] 
+    #[must_use]
     pub fn is_complete(&self) -> bool {
         matches!(self.status, Status::Complete { .. })
     }
 
     /// Returns the `outputs` field of a [`Status::Complete`] `status` and
     /// None if the `status` field is any other variant.
-    #[must_use] 
+    #[must_use]
     pub fn outputs(self) -> Option<HashMap<String, AssetSpec>> {
         match self.status {
             Status::Complete { outputs } => Some(outputs),

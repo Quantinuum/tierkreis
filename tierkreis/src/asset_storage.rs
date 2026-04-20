@@ -171,6 +171,10 @@ pub fn reserve_asset_specs(
 }
 
 /// Initialize an [`AssetStorageRegistry`] with predefined Assets for use in tests.
+///
+/// # Panics
+///
+/// Will panic if the input assets are not dictionaries or they cannot be saved.
 #[cfg(test)]
 pub fn test_storage_registry(
     assets_for_memory: impl IntoIterator<Item = Value>,
@@ -191,7 +195,8 @@ pub fn test_storage_registry(
     let memory_storage = InMemoryStorage::new();
 
     for input_set in assets_for_memory {
-        let inputs: HashMap<String, Value> = serde_json::from_value(input_set).unwrap();
+        let inputs: HashMap<String, Value> = serde_json::from_value(input_set)
+            .expect("Inputs must be convertible to a HashMap<String, Value>");
         let mut input_assets = HashMap::new();
 
         for (name, value) in inputs {
@@ -243,11 +248,15 @@ pub fn test_storage_registry(
 }
 
 /// Check that an [`AssetStorageRegistry`] contain an expected Asset, for use in tests.
+///
+/// # Panics
+///
+/// Will panic if outputs do not match the expected Value.
 #[cfg(test)]
-pub fn assert_registry_contains_values(
+pub fn assert_registry_contains_values<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name: &str,
-    outputs: &HashMap<String, AssetSpec>,
+    outputs: &HashMap<String, AssetSpec, S>,
     expected: Value,
 ) {
     let registry = registry.read().unwrap();
