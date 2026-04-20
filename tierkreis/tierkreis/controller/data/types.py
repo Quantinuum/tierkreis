@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from inspect import Parameter, _empty, isclass
 from types import NoneType, UnionType
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Protocol,
@@ -22,9 +23,9 @@ from typing import (
     get_args,
     get_origin,
     runtime_checkable,
-    TYPE_CHECKING,
 )
 
+from hugr.package import Package
 from pydantic import BaseModel, ValidationError
 from typing_extensions import TypeIs
 
@@ -113,6 +114,7 @@ type ElementaryType = (
     | NdarraySurrogate
     | BaseModel  # Includes GraphData
     | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
+    | Package
 )
 type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
@@ -260,6 +262,8 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
             return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
+        case Package():
+            return ptype.to_bytes()
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
             return ptype
         case Struct():
@@ -353,6 +357,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
 
     if issubclass(origin, (bool, int, float, complex, str, bytes, NoneType)):
         return ser
+    if origin is Package:
+        return Package.from_bytes(ser)  # type: ignore Package is T
 
     if issubclass(origin, DictConvertible):
         if not issubclass(annotation, origin):

@@ -5,6 +5,8 @@ from types import NoneType
 
 from pydantic import BaseModel
 
+from hugr.package import Package
+
 from tierkreis.controller.data.types import (
     DictConvertible,
     ListConvertible,
@@ -35,8 +37,10 @@ def format_ptype(ptype: type | str) -> str:
 
     if _is_union(ptype):
         return "Union"
-    if type(ptype) is NoneType:
+    if ptype is NoneType:
         return "NoneType"
+    if ptype is Package:
+        return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     return ptype.__qualname__
 
 
