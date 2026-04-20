@@ -1,3 +1,7 @@
+/*!
+This module defines the [InMemoryExecutor] struct which implements [Executor]
+by running small tasks from a small work queue.
+*/
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     sync::{
@@ -16,12 +20,18 @@ use serde_json::Value;
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_inputs, save_outputs},
-    executor::interface::{Event, Executor, Status, TaskPlan, WorkerSpec},
+    event::{Event, Status},
+    executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
 
+/// [InMemoryResourceSpec] determines what Resources should be available to the
+/// [InMemoryExecutor] or what is requested as part of a [TaskPlan].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct InMemoryResourceSpec {}
 
+/// [InMemoryEnvironmentSpec] determines the default execution environment of
+/// [InMemoryExecutor] or what is requested as part of a [TaskPlan].
+// TODO: It's perhaps a bit unclear what this means for in-memory execution?
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct InMemoryEnvironmentSpec {}
 
@@ -35,6 +45,10 @@ type TaskFuture<'a> = BoxFuture<'a, miette::Result<HashMap<String, Value>>>;
 type AbortHandles = Arc<Mutex<BTreeMap<u32, AbortHandle>>>;
 type WorkQueue<'a> = Arc<Mutex<VecDeque<(TaskInfo, Abortable<TaskFuture<'a>>)>>>;
 
+/// [InMemoryExecutor] defines an [Executor] that performs Task Nodes in the same runtime.
+///
+/// These Tasks should be short lived Tasks where we want to avoid the overhead of spinning
+/// up an entirely new process.
 pub struct InMemoryExecutor<'a> {
     id_source: AtomicU32,
     work_queue: WorkQueue<'a>,
@@ -45,11 +59,19 @@ pub struct InMemoryExecutor<'a> {
 }
 
 impl<'a> InMemoryExecutor<'a> {
+    /// Try to create a new [InMemoryExecutor] with an [AssetStorageRegistry] and
+    /// a configured name for an [AssetStorage][crate::asset_storage::AssetStorage]
+    /// in the registry that determines where Assets are saved by default.
+    ///
+    /// This function will Error if the specified `output_storage_name` does not exist
+    /// inside the [AssetStorageRegistry].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().unwrap();
+        let asset_storage_registry_lock = asset_storage_registry
+            .read()
+            .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
         if !asset_storage_registry_lock.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
@@ -159,7 +181,7 @@ impl<'a> Executor for InMemoryExecutor<'a> {
         self.execute(task_plans).boxed()
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'_, Event<u32>>> {
+    fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
         Ok(InMemoryEventStream::new(&self.work_queue, &self.asset_storage_registry).boxed())
     }
 
@@ -177,6 +199,9 @@ impl<'a> Executor for InMemoryExecutor<'a> {
     }
 }
 
+/// [InMemoryEventStream] is a custom [Stream][futures::Stream] implementation that is used
+/// by the [InMemoryExecutor] to provide a stream of [Event]s by running Tasks and then
+/// yielding events.
 pub struct InMemoryEventStream<'a> {
     work_queue: WorkQueue<'a>,
     asset_storage_registry: AssetStorageRegistry,
@@ -196,7 +221,7 @@ impl<'a> InMemoryEventStream<'a> {
 }
 
 impl<'a> futures::Stream for InMemoryEventStream<'a> {
-    type Item = super::interface::Event<u32>;
+    type Item = Event;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
@@ -214,9 +239,9 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                 return std::task::Poll::Ready(Some(Event {
                     id,
                     status: Status::Running,
-                    detail: None,
                 }));
             } else {
+                // Signal that this stream can be polled again immediately.
                 cx.waker().wake_by_ref();
                 return std::task::Poll::Pending;
             }
@@ -248,14 +273,13 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                             Ok(outputs) => Some(Event {
                                 id,
                                 status: Status::Complete { outputs },
-                                detail: None,
                             }),
                             Err(err) => Some(Event {
                                 id,
                                 status: Status::Error {
                                     error: err.to_string(),
+                                    detail: None,
                                 },
-                                detail: None,
                             }),
                         }
                     }
@@ -263,17 +287,17 @@ impl<'a> futures::Stream for InMemoryEventStream<'a> {
                         id,
                         status: Status::Error {
                             error: err.to_string(),
+                            detail: None,
                         },
-                        detail: None,
                     }),
                     Err(_aborted) => Some(Event {
                         id,
                         status: Status::Cancelled,
-                        detail: None,
                     }),
                 }
             })
         } else {
+            // Signal that this stream can be polled again immediately.
             cx.waker().wake_by_ref();
             std::task::Poll::Pending
         }
@@ -508,7 +532,8 @@ mod tests {
         assert_eq!(
             events[1].status,
             Status::Error {
-                error: "Unknown task".to_string()
+                error: "Unknown task".to_string(),
+                detail: None,
             }
         );
 

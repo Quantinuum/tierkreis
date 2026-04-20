@@ -1,3 +1,6 @@
+/*!
+The runtime module defines the entrypoint to running Workflows.
+*/
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
@@ -29,6 +32,7 @@ macro_rules! getattr_or_early_return {
     }};
 }
 
+/// Placeholder function for running a Workflow using the legacy python runtime.
 pub fn run(path: &Path) -> miette::Result<()> {
     Python::attach(|py| {
         let path = path.canonicalize().into_diagnostic()?;

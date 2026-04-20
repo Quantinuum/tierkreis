@@ -1,3 +1,7 @@
+/*!
+This module defines the [SubprocessExecutor] struct which implements [Executor]
+by running subprocesses.
+*/
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -19,21 +23,25 @@ use tokio::{io::AsyncReadExt, process::Command};
 use which::which_re;
 
 use crate::{
-    asset_storage::{
-        AssetStorageRegistry, interface::AssetSpec, reserve_asset_specs, transfer_assets,
-    },
-    executor::interface::{Event, Executor, Status, TaskPlan, WorkerSpec},
+    asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets},
+    event::{Event, Status},
+    executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
 
+/// [SubprocessResourceSpec] determines what Resources should be available to the
+/// [SubprocessExecutor] or what is requested as part of a [TaskPlan].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SubprocessResourceSpec {}
 
+/// [SubprocessEnvironmentSpec] determines the default execution environment of
+/// [SubprocessExecutor] or what is requested as part of a [TaskPlan].
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SubprocessEnvironmentSpec {}
 
+/// [SubprocessExecutor] defines an [Executor] that performs Task Nodes using Worker subprocesses.
 pub struct SubprocessExecutor {
-    event_sender: mpsc::Sender<Event<u32>>,
-    event_receiver: Mutex<Option<mpsc::Receiver<Event<u32>>>>,
+    event_sender: mpsc::Sender<Event>,
+    event_receiver: Mutex<Option<mpsc::Receiver<Event>>>,
     cancel_senders: Mutex<HashMap<u32, oneshot::Sender<()>>>,
 
     // The name of the storage that the subprocess will read
@@ -48,6 +56,15 @@ pub struct SubprocessExecutor {
 }
 
 impl SubprocessExecutor {
+    /// Try to create a new [SubprocessExecutor] with an [AssetStorageRegistry], a
+    /// configured name for an [AssetStorage][crate::asset_storage::AssetStorage]
+    /// of [AssetKind::File][crate::asset_storage::AssetKind::File] where files are written
+    /// to for the subprocesses to consume and a configured name for an
+    /// [AssetStorage][crate::asset_storage::AssetStorage] in the registry that
+    /// determines where Assets are saved by default.
+    ///
+    /// This function will Error if the specified `subprocess_storage_name` or
+    /// `output_storage_name` does not exist inside the [AssetStorageRegistry].
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         subprocess_storage_name: &str,
@@ -55,7 +72,7 @@ impl SubprocessExecutor {
     ) -> miette::Result<Self> {
         let asset_storage_registry_lock = asset_storage_registry
             .read()
-            .map_err(|err| miette!("Failed to lock AssetStorageRegistry: {err}"))?;
+            .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
         if !asset_storage_registry_lock.contains_key(subprocess_storage_name) {
             return Err(miette!("subprocess_storage_name not in registry"));
         }
@@ -166,7 +183,6 @@ impl SubprocessExecutor {
                     .try_send(Event {
                         id,
                         status: Status::Running,
-                        detail: None,
                     })
                     .expect("Failed to send Running event.");
 
@@ -193,7 +209,6 @@ impl SubprocessExecutor {
                             .try_send(Event {
                                 id,
                                 status: Status::Cancelled,
-                                detail: None,
                             })
                             .expect("Failed to send Cancelled event.")
                     }
@@ -210,7 +225,6 @@ impl SubprocessExecutor {
                                         .try_send(Event {
                                             id,
                                             status: Status::Complete { outputs },
-                                            detail: None,
                                         })
                                         .expect("Failed to send Complete event.")
                                 } else {
@@ -219,8 +233,7 @@ impl SubprocessExecutor {
                                     event_sender
                                         .try_send(Event {
                                             id,
-                                            status: Status::Error {error: format!("Subprocess failed with exit code: {}", status) },
-                                            detail: stderr,
+                                            status: Status::Error {error: format!("Subprocess failed with exit code: {}", status), detail: stderr },
                                         })
                                         .expect("Failed to send Error event.");
                                 }
@@ -229,8 +242,7 @@ impl SubprocessExecutor {
                                 event_sender
                                     .try_send(Event {
                                         id,
-                                        status: Status::Error {error: err.to_string()},
-                                        detail: None,
+                                        status: Status::Error {error: err.to_string(), detail: None},
                                     })
                                     .expect("Failed to send Error event.");
                             }
@@ -287,7 +299,7 @@ impl Executor for SubprocessExecutor {
         self.execute(task_plans).boxed()
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'_, Event<u32>>> {
+    fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
         // Explicit block to allow us to drop the MutexGuard after we
         // take the receiver.
         let channel = {
@@ -572,11 +584,12 @@ mod tests {
         dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
-        assert_eq!(
-            events[1].status,
+        matches!(
+            &events[1].status,
             Status::Error {
-                error: "Subprocess failed with exit code: exit status: 1".to_string()
-            }
+                error,
+                ..
+            } if error == "Subprocess failed with exit code: exit status: 1",
         );
 
         Ok(())

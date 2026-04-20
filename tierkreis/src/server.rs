@@ -1,3 +1,6 @@
+/*!
+The server module defines the HTTP interface to the Workflow server.
+*/
 use axum::{Json, extract::Path};
 use chrono::Utc;
 use miette::IntoDiagnostic;
@@ -35,6 +38,7 @@ async fn get_workflow_runs(workflow_id: Path<Uuid>) -> Json<Vec<WorkflowRun>> {
     Json(vec![])
 }
 
+/// Start the webserver and listen for incoming HTTP requests until cancelled.
 #[tokio::main]
 pub async fn serve() -> miette::Result<()> {
     let api_router = OpenApiRouter::new()

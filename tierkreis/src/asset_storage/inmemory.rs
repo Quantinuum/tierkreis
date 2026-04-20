@@ -1,7 +1,7 @@
 /*!
 This module defines the [InMemoryStorage] struct which implements [AssetStorage]
 by storing files in concurrent map data structure implemented by [dashmap::DashMap].
-**/
+*/
 use dashmap::DashMap;
 use miette::miette;
 use serde_json::Value;

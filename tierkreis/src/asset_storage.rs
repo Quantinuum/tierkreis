@@ -1,6 +1,15 @@
+/*!
+This module defines the interface and some standard implementations of [AssetStorage]
+as well as some utility functions and an [AssetStorageRegistry] type.
+*/
+
 pub mod file;
 pub mod inmemory;
 pub mod interface;
+
+pub use crate::asset_storage::file::FileAssetStorage;
+pub use crate::asset_storage::inmemory::InMemoryStorage;
+pub use crate::asset_storage::interface::{AssetKey, AssetKind, AssetSpec, AssetStorage};
 
 use std::{
     collections::HashMap,
@@ -10,12 +19,16 @@ use std::{
 use miette::miette;
 use serde_json::Value;
 
-use crate::asset_storage::interface::{AssetKey, AssetSpec, AssetStorage};
-
+/// [AssetStorageRegistry] is sharable mapping of configured [AssetStorage] names
+/// to various implementations.
+///
+/// Note that it is possible to have multiple instances of the same [AssetStorage]
+/// implementation with different names in order to further separate the storage
+/// of Assets as required by the user.
 pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>>>>;
 
-/// Load inputs into a HashMap from whichever registry they are currently
-/// being stored in.
+/// Load inputs into a HashMap from the various [AssetStorage] implementations that
+/// contain them as described in each [AssetSpec].
 pub fn load_inputs(
     registry: &AssetStorageRegistry,
     inputs: HashMap<String, AssetSpec>,
@@ -36,8 +49,9 @@ pub fn load_inputs(
         .collect()
 }
 
-/// Save outputs into a specified storage and return a HashMap of the
-/// port names with the specification of the asset.
+/// Save outputs into an [AssetStorage] in the [AssetStorageRegistry] with a given name
+/// and return a [HashMap] containing output names and the [AssetSpec]s that describe
+/// where the Assets were saved.
 pub fn save_outputs(
     registry: &AssetStorageRegistry,
     storage_name: &str,
@@ -134,6 +148,7 @@ pub fn reserve_asset_specs(
     Ok(asset_specs)
 }
 
+/// Initialize an [AssetStorageRegistry] with predefined Assets for use in tests.
 #[cfg(test)]
 pub fn test_storage_registry(
     assets_for_memory: impl IntoIterator<Item = Value>,
@@ -205,6 +220,7 @@ pub fn test_storage_registry(
     (registry, input_asset_sets, temp_dir)
 }
 
+/// Check that an [AssetStorageRegistry] contain an expected Asset, for use in tests.
 #[cfg(test)]
 pub fn assert_registry_contains_values(
     registry: &AssetStorageRegistry,

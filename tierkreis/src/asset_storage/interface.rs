@@ -1,9 +1,8 @@
 /*!
 This module defines the interface contracts that the various [AssetStorage]
 implementations must satify.
-
-**/
-use std::{path::PathBuf, time::SystemTime};
+*/
+use std::{fmt::Display, path::PathBuf, time::SystemTime};
 
 use miette::miette;
 use serde_json::Value;
@@ -23,9 +22,13 @@ pub enum AssetKind {
     Memory,
     /// An asset that is stored in a file on disk during Workflow Execution.
     ///
-    /// Contains a parent file path that can be used to contruct the full
+    /// Contains a `root` file path that can be used to contruct the full
     /// path to the asset in the filesystem.
-    File { parent: PathBuf },
+    File {
+        /// The root directory for constructing the full path to an Asset
+        /// in the filesystem.
+        root: PathBuf,
+    },
 }
 
 /// [AssetSpec] describes how an Asset should be stored.
@@ -47,7 +50,7 @@ impl AssetSpec {
     /// Return a filesystem path if the Asset is of [AssetKind::File].
     pub fn path(&self) -> miette::Result<PathBuf> {
         match &self.kind {
-            AssetKind::File { parent } => Ok(parent.join(self.asset_key.0.to_string())),
+            AssetKind::File { root: parent } => Ok(parent.join(self.asset_key.0.to_string())),
             _ => Err(miette!("Cannot build a path from a non-File asset!")),
         }
     }
@@ -85,9 +88,9 @@ impl TryFrom<&str> for AssetKey {
     }
 }
 
-impl ToString for AssetKey {
-    fn to_string(&self) -> String {
-        self.0.to_string()
+impl Display for AssetKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

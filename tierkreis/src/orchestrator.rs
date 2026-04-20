@@ -1,3 +1,8 @@
+/*!
+This module defines the [Orchestrator] struct that combines multiple [Executor][crate::executor::Executor]
+and [AssetStorage][crate::asset_storage::AssetStorage] implementations to drive Workflow execution and return a stream
+of [Event]s with updates about each node in the Workflow.
+*/
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -9,7 +14,6 @@ use futures::{
     stream::{BoxStream, select_all},
 };
 use miette::{IntoDiagnostic, miette};
-use serde_json::Value;
 
 use crate::{
     asset_storage::{
@@ -17,30 +21,17 @@ use crate::{
         interface::{AssetKey, AssetSpec},
         transfer_assets,
     },
-    executor::{
-        ExecutorRegistry,
-        interface::{Event, Status, TaskPlan},
-    },
+    event::{Event, Status},
+    executor::{ExecutorRegistry, interface::TaskPlan},
+    graph::Node,
 };
 
-pub enum Node {
-    Task {
-        worker_name: String,
-        task_name: String,
-    },
-    Input {
-        name: String,
-    },
-    Output {},
-    Const {
-        value: Value,
-    },
-    Eval {},
-}
-
+/// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
+/// [Executor][crate::executor::Executor] as well as managing a shared [AssetStorageRegistry]
+/// for the Workflow.
 pub struct Orchestrator {
-    event_sender: mpsc::Sender<Event<u32>>,
-    event_receiver: Mutex<Option<mpsc::Receiver<Event<u32>>>>,
+    event_sender: mpsc::Sender<Event>,
+    event_receiver: Mutex<Option<mpsc::Receiver<Event>>>,
 
     default_executor_name: String,
     executor_registry: ExecutorRegistry,
@@ -50,6 +41,10 @@ pub struct Orchestrator {
 }
 
 impl Orchestrator {
+    /// Try to create a new [Orchestrator] with an [AssetStorageRegistry] and an
+    /// [ExecutorRegistry], as well as default options for the [AssetStorage][crate::asset_storage::AssetStorage]
+    /// and [Executor][crate::executor::Executor] to use for each registry unless specified otherwise
+    /// in the Workflow definition.
     pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         executor_registry: &ExecutorRegistry,
@@ -58,7 +53,9 @@ impl Orchestrator {
     ) -> miette::Result<Self> {
         let (sender, receiver) = mpsc::channel(128);
 
-        let asset_storage_registry_lock = asset_storage_registry.read().unwrap();
+        let asset_storage_registry_lock = asset_storage_registry
+            .read()
+            .map_err(|err| miette!("Failed to lock AssetStorageRegistry: {err}"))?;
         if !asset_storage_registry_lock.contains_key(default_storage_name) {
             return Err(miette!("default_storage_name not in registry"));
         }
@@ -79,6 +76,8 @@ impl Orchestrator {
         })
     }
 
+    /// Dispatch a single [Node] for execution.
+    // TODO: This should really be a list of Nodes or similar.
     pub async fn start_node(
         &self,
         node: &Node,
@@ -126,7 +125,6 @@ impl Orchestrator {
                     .try_send(Event {
                         id: 0,
                         status: Status::Complete { outputs },
-                        detail: None,
                     })
                     .into_diagnostic()?;
             }
@@ -143,7 +141,6 @@ impl Orchestrator {
                     .try_send(Event {
                         id: 0,
                         status: Status::Complete { outputs },
-                        detail: None,
                     })
                     .into_diagnostic()?;
             }
@@ -171,7 +168,6 @@ impl Orchestrator {
                     .try_send(Event {
                         id: 0,
                         status: Status::Complete { outputs },
-                        detail: None,
                     })
                     .into_diagnostic()?;
             }
@@ -183,7 +179,12 @@ impl Orchestrator {
         Ok(())
     }
 
-    pub fn listen(&self) -> miette::Result<BoxStream<'_, Event<u32>>> {
+    /// Listen to a combined stream events from the Orchestrator and the
+    /// Executors in the registry.
+    ///
+    /// This method should only be called once and the stream will exist
+    /// for the duration of the Workflow execution.
+    pub fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
         let orchestrator_events = {
             let mut receiver = self
                 .event_receiver
@@ -202,7 +203,7 @@ impl Orchestrator {
                 let stream = executor.listen()?;
                 Ok(stream)
             })
-            .collect::<miette::Result<Vec<BoxStream<Event<u32>>>>>()?;
+            .collect::<miette::Result<Vec<BoxStream<Event>>>>()?;
 
         streams.push(orchestrator_events.boxed());
         Ok(select_all(streams).boxed())

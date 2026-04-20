@@ -1,7 +1,7 @@
 /*!
 This module defines the [FileAssetStorage] struct which implements [AssetStorage]
 by storing files in a single directory.
-**/
+*/
 
 use std::{
     fs::File,
@@ -38,7 +38,7 @@ impl FileAssetStorage {
 impl AssetStorage for FileAssetStorage {
     fn kind(&self) -> AssetKind {
         AssetKind::File {
-            parent: self.base_dir.clone(),
+            root: self.base_dir.clone(),
         }
     }
 
