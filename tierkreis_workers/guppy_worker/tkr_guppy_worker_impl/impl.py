@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from guppylang import guppy
+from guppylang import comptime, guppy
 from guppylang.emulator import EmulatorResult, EmulatorBuilder
 
 from hugr.package import Package
@@ -10,6 +10,9 @@ from pytket.backends.backendresult import BackendResult
 
 from tierkreis import Worker
 from tierkreis.controller.data.core import Deserializer, Serializer
+
+from guppylang.std.builtins import array, result
+from guppylang.std.quantum import cx, h, measure_array, qubit
 
 
 worker = Worker("guppy_worker")
@@ -56,3 +59,23 @@ def from_circuit(circuit: Circuit, name: str, use_arrays: bool = True) -> Packag
 @worker.task()
 def to_backend_result(results: Result) -> BackendResult:
     return results.to_pytket()
+
+
+@worker.task()
+def ghz(size: int) -> Package:
+    n = guppy.nat_var("n")
+
+    @guppy
+    def build_ghz_state(q: array[qubit, n]) -> None:  # type: ignore
+        h(q[0])
+        for i in range(n - 1):  # type: ignore
+            cx(q[i], q[i + 1])
+
+    @guppy
+    def main() -> None:
+        q = array(qubit() for _ in range(comptime(size)))  # type: ignore
+        build_ghz_state(q)
+
+        result("c", measure_array(q))
+
+    return main.compile()

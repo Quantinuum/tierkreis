@@ -37,7 +37,7 @@ def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     if _is_union(ptype):
         return "Union"
-    if ptype is NoneType:
+    if ptype is NoneType or ptype is None:
         return "NoneType"
     if has_serialization:
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
