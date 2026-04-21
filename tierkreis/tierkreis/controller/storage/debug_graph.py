@@ -33,7 +33,7 @@ def debug_graph[A: TModel, B: TModel](
     :type n_iterations: int, optional
     :param polling_interval_seconds: The polling interval in seconds, defaults to 0.01
     :type polling_interval_seconds: float, optional
-    :return: The storage for reuse
+    :return: The storage for reuse.
     :rtype: ControllerInMemoryStorage
     """
     storage = ControllerInMemoryStorage(UUID(int=0))
