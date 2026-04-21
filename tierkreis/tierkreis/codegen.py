@@ -3,9 +3,8 @@
 from inspect import isclass
 from types import NoneType
 
-from pydantic import BaseModel
-
 from hugr.package import Package
+from pydantic import BaseModel
 
 from tierkreis.controller.data.types import (
     DictConvertible,
@@ -18,11 +17,13 @@ from tierkreis.idl.models import GenericType, Method, Model, TypedArg
 NO_QA_STR = " # noqa: F821 # fmt: skip"
 
 
-def format_ptype(ptype: type | str) -> str:
+def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
     """Format a ptype to a string.
 
     :param ptype: The type to format.
     :type ptype: type | str
+    :param has_serialization: If it was a custom serialized type.
+    :type has_serialization: bool, defaults to False.
     :return: The formatted string representation of the type.
     :rtype: str
     """
@@ -31,15 +32,14 @@ def format_ptype(ptype: type | str) -> str:
 
     if isclass(ptype) and issubclass(
         ptype,
-        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel),
+        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Package),
     ):
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
-
     if _is_union(ptype):
         return "Union"
     if ptype is NoneType:
         return "NoneType"
-    if ptype is Package:
+    if has_serialization:
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     return ptype.__qualname__
 
@@ -66,7 +66,9 @@ def format_generic_type(
         out = generictype + bound_str
         return f"TKR[{out}]" if is_tkr else out
 
-    origin_str = format_ptype(generictype.origin)
+    origin_str = format_ptype(
+        generictype.origin, has_serialization=generictype.has_serialization
+    )
 
     generics = [
         format_generic_type(x, include_bound=include_bound, is_tkr=False)

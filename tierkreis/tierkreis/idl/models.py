@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from types import NoneType
 from typing import Annotated, Self, get_args, get_origin
 
-from tierkreis.controller.data.core import RestrictedNamedTuple
+from tierkreis.controller.data.core import (
+    Deserializer,
+    RestrictedNamedTuple,
+    Serializer,
+)
 from tierkreis.controller.data.types import _is_generic, is_ptype
 
 type ElementaryType = (
@@ -27,22 +31,34 @@ class GenericType:
         is_ptype (bool): true if the type was either
             (a) constructed from a `type` that was a PType,
             (b) not constructed from a `type` at all (e.g. from a string in the parser).
+        has_serialization (bool): true if the type has custom serialization.
+
     """
 
     origin: ElementaryType
     args: "Sequence[GenericType | str]"
     is_ptype: bool = True
+    has_serialization: bool = False
 
     @classmethod
-    def from_type(cls, t: type) -> "Self":
+    def from_type(cls, t: type, *, has_serialization: bool = False) -> "Self":
         """Construct a generic type from a python type.
 
         :param t: The python type.
         :type t: type
+        :param has_serialization: If the type has custom serialization.
+        :type has_serialization: bool, defaults to False.
         :return: The Tierkreis type.
         :rtype: Self
         """
         if get_origin(t) is Annotated:
+            args = get_args(t)
+            if (
+                len(args) == 3
+                and isinstance(args[1], Serializer)
+                and isinstance(args[2], Deserializer)
+            ):
+                return cls.from_type(args[0], has_serialization=True)
             return cls.from_type(get_args(t)[0])
 
         args = get_args(t)
@@ -51,7 +67,7 @@ class GenericType:
         subargs = []
         [subargs.append(str(x)) for x in args if _is_generic(x)]
         [subargs.append(cls.from_type(x)) for x in args if not _is_generic(x)]
-        return cls(origin, subargs, is_ptype(t))
+        return cls(origin, subargs, is_ptype(t), has_serialization)
 
     @classmethod
     def _included_structs(cls, t: "GenericType") -> "set[GenericType]":

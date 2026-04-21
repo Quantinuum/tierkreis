@@ -30,8 +30,10 @@ from pydantic import BaseModel, ValidationError
 from typing_extensions import TypeIs
 
 from tierkreis.controller.data.core import (
+    Deserializer,
     RestrictedNamedTuple,
     SerializationFormat,
+    Serializer,
     get_deserializer,
     get_serializer,
 )
@@ -211,7 +213,16 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     """
     origin = get_origin(annotation)
     if origin is Annotated:
-        return is_ptype(get_args(annotation)[0])
+        args = get_args(annotation)
+        if (
+            len(args) == 3
+            and isinstance(args[1], Serializer)
+            and isinstance(args[2], Deserializer)
+        ):
+            # User specified serialized types are treated as ptype
+            return True
+
+        return is_ptype(args[0])
 
     if _is_generic(annotation):
         return True
@@ -432,6 +443,9 @@ def get_serialization_format[T: PType](
 
     unannotated = get_args(hint)[0] if get_origin(hint) is Annotated else hint
     if isclass(unannotated) and issubclass(unannotated, (bytes, NdarraySurrogate)):
+        return "bytes"
+
+    elif isclass(unannotated) and issubclass(unannotated, Package):
         return "bytes"
 
     return "json"
