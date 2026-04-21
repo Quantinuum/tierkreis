@@ -132,18 +132,6 @@ def cost(hugr_ref: HUGRRef | list[HUGRRef], n_shots: int) -> float:
     return qnx.hugr.cost(hugr_ref, n_shots)
 
 
-def start_execute_hugr(
-    project_name: str,
-    job_name: str,
-    hugrs: list[HUGRRef],
-    n_shots: list[int],
-    backend_config: BackendConfig,
-) -> ExecuteJobRef:
-    my_project_ref = qnx.projects.get_or_create(name=project_name)
-    qnx.context.set_active_project(my_project_ref)
-    return qnx.start_execute_job(hugrs, n_shots, backend_config, job_name)  # type: ignore list is not covariant here
-
-
 ## DEPRECATED TASKS ##
 
 

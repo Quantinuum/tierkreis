@@ -842,5 +842,12 @@ def drop[T: PType](values: list[T], n: int) -> list[T]:
     return values[n:]
 
 
+@worker.task()
+def at[T: PType](values: list[T], n: int) -> T:
+    if len(values) > n:
+        raise IndexError
+    return values[n]
+
+
 if __name__ == "__main__":
     worker.app(argv)
