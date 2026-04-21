@@ -1,0 +1,26 @@
+[project]
+name = "tkr-guppy-worker-impl"
+description = "A Tierkreis worker for Guppy."
+version = "0.2.1"
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
+requires-python = ">=3.12"
+dependencies = [
+    "guppylang",
+    "hugr",
+    "pytket",
+    "tierkreis",
+    "tkr-guppy-worker"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+
+[tool.uv.sources]
+tierkreis = { workspace = true }
+tkr-guppy-worker = { workspace = true }
+
+[project.scripts]
+tkr-guppy-worker = "tkr_guppy_worker_impl.main:main"

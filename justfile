@@ -51,6 +51,7 @@ generate:
   just stubs-generate 'tierkreis/tests/workers/graph'
 
   just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'
+  just stubs-generate-api 'tierkreis_workers/guppy_worker/tkr_guppy_worker_impl'
   just stubs-generate-api 'tierkreis_workers/ibmq_worker/tkr_ibmq_worker_impl'
   just stubs-generate-api 'tierkreis_workers/nexus_worker/tkr_nexus_worker_impl'
   just stubs-generate-api 'tierkreis_workers/pytket_worker/tkr_pytket_worker_impl'

@@ -14,8 +14,8 @@ authors = [
 
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic~=2.5",
     "hugr",
+    "pydantic~=2.5",
 ]
 
 [project.optional-dependencies]
