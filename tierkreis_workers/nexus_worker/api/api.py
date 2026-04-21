@@ -75,6 +75,7 @@ class upload_hugr(NamedTuple):
 class cost(NamedTuple):
     hugr_ref: TKR[Union[OpaqueType["qnexus.models.references.HUGRRef"], list[OpaqueType["qnexus.models.references.HUGRRef"]]]]  # noqa: F821 # fmt: skip
     n_shots: TKR[int]  # noqa: F821 # fmt: skip
+    project_name: TKR[str]  # noqa: F821 # fmt: skip
 
     @staticmethod
     def out() -> type[TKR[float]]:  # noqa: F821 # fmt: skip

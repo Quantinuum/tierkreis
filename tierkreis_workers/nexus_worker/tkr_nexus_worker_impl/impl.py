@@ -128,7 +128,9 @@ def upload_hugr(
 
 
 @worker.task()
-def cost(hugr_ref: HUGRRef | list[HUGRRef], n_shots: int) -> float:
+def cost(hugr_ref: HUGRRef | list[HUGRRef], n_shots: int, project_name: str) -> float:
+    my_project_ref = qnx.projects.get_or_create(name=project_name)
+    qnx.context.set_active_project(my_project_ref)
     return qnx.hugr.cost(hugr_ref, n_shots)
 
 
