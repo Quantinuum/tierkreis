@@ -649,15 +649,16 @@ mod tests {
         }];
         let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
-        let stream = executor.listen()?;
+        let mut stream = executor.listen()?;
         let task_ids = executor.execute(task_plans).await?;
+
+        let event = stream.next().await.unwrap();
+        assert_eq!(event.status, Status::Running);
+
         executor.cancel(task_ids)?;
 
-        let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
-        assert_eq!(events[1].status, Status::Cancelled);
+        let event = stream.next().await.unwrap();
+        assert_eq!(event.status, Status::Cancelled);
 
         Ok(())
     }

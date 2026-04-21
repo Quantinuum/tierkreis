@@ -3,20 +3,24 @@ This module defines the [`InMemoryExecutor`] struct which implements [Executor]
 by running small tasks from a small work queue.
 */
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::HashMap,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     },
+    thread::sleep,
+    time::Duration,
 };
 
 use futures::{
     FutureExt, StreamExt,
+    channel::mpsc,
     future::{self, BoxFuture},
-    stream::{AbortHandle, Abortable, BoxStream},
+    stream::{AbortHandle, Abortable, BoxStream, FuturesUnordered},
 };
-use miette::miette;
+use miette::{IntoDiagnostic, miette};
 use serde_json::Value;
+use tokio::task::JoinHandle;
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_inputs, save_outputs},
@@ -35,30 +39,190 @@ pub struct InMemoryResourceSpec {}
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct InMemoryEnvironmentSpec {}
 
-#[derive(Clone, Debug, PartialEq, Default)]
-struct TaskInfo {
-    pub id: u32,
-    pub output_storage_name: String,
+type TaskSender = mpsc::Sender<(u32, TaskPlan, String)>;
+type TaskReceiver = mpsc::Receiver<(u32, TaskPlan, String)>;
+type EventSender = mpsc::Sender<Event>;
+type EventReceiver = mpsc::Receiver<Event>;
+type CancelSender = mpsc::Sender<u32>;
+type CancelReceiver = mpsc::Receiver<u32>;
+
+fn extract_i64(inputs: &HashMap<String, Value>, name: &str) -> miette::Result<i64> {
+    let val = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+
+    if let Value::Number(val) = val {
+        if let Some(val) = val.as_i64() {
+            Ok(val)
+        } else {
+            Err(miette!("Range error: {val} is not representable as i64"))
+        }
+    } else {
+        Err(miette!("Type error: {val} is not a Number"))
+    }
 }
 
-type TaskFuture<'a> = BoxFuture<'a, miette::Result<HashMap<String, Value>>>;
-type AbortHandles = Arc<Mutex<BTreeMap<u32, AbortHandle>>>;
-type WorkQueue<'a> = Arc<Mutex<VecDeque<(TaskInfo, Abortable<TaskFuture<'a>>)>>>;
+fn extract_f64(inputs: &HashMap<String, Value>, name: &str) -> miette::Result<f64> {
+    let val = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+
+    if let Value::Number(val) = val {
+        if let Some(val) = val.as_f64() {
+            Ok(val)
+        } else {
+            Err(miette!("Range error: {val} is not representable as f64"))
+        }
+    } else {
+        Err(miette!("Type error: {val} is not a Number"))
+    }
+}
+
+fn output_value(outputs: &mut HashMap<String, Value>, value: impl Into<Value>) {
+    outputs.insert("value".to_string(), value.into());
+}
+
+fn run_builtin(
+    task_name: &str,
+    inputs: &HashMap<String, Value>,
+) -> miette::Result<HashMap<String, Value>> {
+    let mut outputs = HashMap::new();
+    match task_name {
+        "iadd" => {
+            let a = extract_i64(inputs, "a")?;
+            let b = extract_i64(inputs, "b")?;
+
+            output_value(&mut outputs, a + b);
+        }
+        "isub" => {
+            let a = extract_i64(inputs, "a")?;
+            let b = extract_i64(inputs, "b")?;
+
+            output_value(&mut outputs, a - b);
+        }
+        "sleep" => {
+            let delay_seconds = extract_f64(inputs, "delay_seconds")?;
+            sleep(Duration::from_secs_f64(delay_seconds));
+
+            output_value(&mut outputs, true);
+        }
+        _ => return Err(miette!("Unknown task")),
+    }
+    Ok(outputs)
+}
+
+type RunningFutures = FuturesUnordered<
+    Abortable<JoinHandle<(u32, String, Result<HashMap<String, Value>, miette::Error>)>>,
+>;
+
+async fn process_tasks(
+    mut task_receiver: TaskReceiver,
+    mut cancel_receiver: CancelReceiver,
+    mut event_sender: EventSender,
+    asset_storage_registry: AssetStorageRegistry,
+) {
+    let mut abort_handles: HashMap<u32, AbortHandle> = HashMap::new();
+    let mut running: RunningFutures = FuturesUnordered::new();
+
+    loop {
+        tokio::select! {
+            Some(id) = cancel_receiver.next() => {
+                let handle = abort_handles.get(&id);
+                if let Some(handle) = handle {
+                    handle.abort();
+                    event_sender
+                        .try_send(Event {
+                            id,
+                            status: Status::Cancelled {},
+                        })
+                        .expect("Failed to send update");
+                }
+            }
+            Some(res) = running.next() => {
+                // Ignore Aborted and JoinError
+                let Ok(Ok((id, output_storage_name, outputs))) = res else { continue };
+                let outputs = match outputs {
+                    Ok(outputs) => outputs,
+                    Err(err) => {
+                        event_sender
+                            .try_send(Event {
+                                id,
+                                status: Status::Error {
+                                    error: err.to_string(),
+                                    detail: None,
+                                },
+                            })
+                            .expect("Failed to send update");
+                        continue;
+                    }
+                };
+                let outputs = save_outputs(&asset_storage_registry, &output_storage_name, outputs);
+                match outputs {
+                    Ok(outputs) => event_sender
+                        .try_send(Event {
+                            id,
+                            status: Status::Complete { outputs },
+                        })
+                        .expect("Failed to send update"),
+                    Err(err) => event_sender
+                        .try_send(Event {
+                            id,
+                            status: Status::Error {
+                                error: err.to_string(),
+                                detail: None,
+                            },
+                        })
+                        .expect("Failed to send update"),
+                }
+            }
+            Some((id, task_plan, output_storage_name)) = task_receiver.next() => {
+                event_sender
+                    .try_send(Event {
+                        id,
+                        status: Status::Running {},
+                    })
+                    .expect("Failed to send update");
+                let res = load_inputs(&asset_storage_registry, task_plan.inputs);
+                let inputs = match res {
+                    Ok(inputs) => inputs,
+                    Err(err) => {
+                        event_sender
+                            .try_send(Event {
+                                id,
+                                status: Status::Error {
+                                    error: err.to_string(),
+                                    detail: None,
+                                },
+                            })
+                            .expect("Failed to send update");
+                        continue;
+                    }
+                };
+
+                let task = tokio::task::spawn_blocking(move || {
+                    let inputs = inputs;
+                    let task_name = task_plan.task_name;
+                    (id, output_storage_name, run_builtin(&task_name, &inputs))
+                });
+                let (abort_handle, abort_registration) = AbortHandle::new_pair();
+                let task = Abortable::new(task, abort_registration);
+                abort_handles.insert(id, abort_handle);
+                running.push(task);
+            }
+        }
+    }
+}
 
 /// [`InMemoryExecutor`] defines an [Executor] that performs Task Nodes in the same runtime.
 ///
 /// These Tasks should be short lived Tasks where we want to avoid the overhead of spinning
 /// up an entirely new process.
-pub struct InMemoryExecutor<'a> {
+pub struct InMemoryExecutor {
     id_source: AtomicU32,
-    work_queue: WorkQueue<'a>,
-    abort_handles: AbortHandles,
 
+    task_sender: TaskSender,
+    cancel_sender: CancelSender,
+    event_receiver: Mutex<Option<EventReceiver>>,
     output_storage_name: String,
-    asset_storage_registry: AssetStorageRegistry,
 }
 
-impl InMemoryExecutor<'_> {
+impl InMemoryExecutor {
     /// Try to create a new [`InMemoryExecutor`] with an [`AssetStorageRegistry`] and
     /// a configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// in the registry that determines where Assets are saved by default.
@@ -78,102 +242,30 @@ impl InMemoryExecutor<'_> {
             return Err(miette!("output_storage_name not in registry"));
         }
 
-        let work_queue = Arc::new(Mutex::new(VecDeque::new()));
-        let abort_handles = Arc::new(Mutex::new(BTreeMap::new()));
         let asset_storage_registry = Arc::clone(asset_storage_registry);
+
+        let (task_sender, task_receiver) = mpsc::channel(64);
+        let (event_sender, event_receiver) = mpsc::channel(64);
+        let (cancel_sender, cancel_receiver) = mpsc::channel(64);
+        tokio::spawn(process_tasks(
+            task_receiver,
+            cancel_receiver,
+            event_sender,
+            asset_storage_registry,
+        ));
 
         Ok(Self {
             id_source: AtomicU32::new(0),
-            work_queue,
-            abort_handles,
+
+            task_sender,
+            cancel_sender,
+            event_receiver: Mutex::new(Some(event_receiver)),
             output_storage_name: output_storage_name.to_string(),
-            asset_storage_registry,
         })
-    }
-
-    // TODO: This probably doesn't need to be async.
-    #[allow(clippy::unused_async)]
-    async fn run_builtin(
-        task_name: String,
-        inputs: HashMap<String, Value>,
-    ) -> miette::Result<HashMap<String, Value>> {
-        let mut out = HashMap::new();
-        match &*task_name {
-            "iadd" => {
-                let a = inputs.get("a").ok_or(miette!("Missing input: a"))?;
-                let b = inputs.get("b").ok_or(miette!("Missing input: b"))?;
-
-                let a = if let Value::Number(a) = a {
-                    if let Some(a) = a.as_i64() {
-                        Ok(a)
-                    } else {
-                        Err(miette!("Range error: {} is not representable as i64", a))
-                    }
-                } else {
-                    Err(miette!("Type error: {} is not a number", a))
-                }?;
-
-                let b = if let Value::Number(b) = b {
-                    if let Some(b) = b.as_i64() {
-                        Ok(b)
-                    } else {
-                        Err(miette!("Range error: {} is not representable as i64", b))
-                    }
-                } else {
-                    Err(miette!("Type error: {} is not a number", b))
-                }?;
-
-                out.insert("value".to_string(), Value::Number((a + b).into()));
-
-                Ok(out)
-            }
-            _ => Err(miette!("Unknown task")),
-        }
-    }
-
-    // Internal implementation for the Executor trait so that we can use `async fn` syntax
-    // before we need to Box the result for the trait.
-    fn internal_execute(&self, task_plans: Vec<TaskPlan>) -> miette::Result<Vec<u32>> {
-        let mut ids = Vec::new();
-
-        let mut work_queue = self
-            .work_queue
-            .lock()
-            .map_err(|err| miette!("Failed to lock work queue: {}", err))?;
-        let mut abort_handles = self
-            .abort_handles
-            .lock()
-            .map_err(|err| miette!("Failed to lock abort handles: {}", err))?;
-
-        for task_plan in task_plans {
-            let id = self.id_source.fetch_add(1, Ordering::Relaxed);
-
-            let inputs = load_inputs(&self.asset_storage_registry, task_plan.inputs.clone())?;
-
-            let fut = match &*task_plan.worker_name {
-                "builtin" => Ok(Self::run_builtin(task_plan.task_name.clone(), inputs)),
-                _ => Err(miette!("Unknown worker name: {}", task_plan.worker_name)),
-            }?;
-
-            let (abort_handle, abort_registration) = AbortHandle::new_pair();
-            ids.push(id);
-            work_queue.push_back((
-                TaskInfo {
-                    id,
-                    output_storage_name: task_plan
-                        .output_storage_name
-                        .unwrap_or_else(|| self.output_storage_name.clone()),
-                },
-                Abortable::new(fut.boxed(), abort_registration),
-            ));
-            abort_handles.insert(id, abort_handle);
-        }
-
-        Ok(ids)
     }
 }
 
-impl Executor for InMemoryExecutor<'_> {
+impl Executor for InMemoryExecutor {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         futures::future::ok(vec![WorkerSpec {
             worker_name: "builtin".to_string(),
@@ -182,133 +274,51 @@ impl Executor for InMemoryExecutor<'_> {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
-        future::ready(self.internal_execute(task_plans)).boxed()
+        let res = || {
+            let mut ids = Vec::new();
+            let mut task_sender = self.task_sender.clone();
+
+            for task_plan in task_plans {
+                let id = self.id_source.fetch_add(1, Ordering::Relaxed);
+                let output_storage_name = task_plan
+                    .output_storage_name
+                    .clone()
+                    .unwrap_or_else(|| self.output_storage_name.clone());
+
+                task_sender
+                    .try_send((id, task_plan, output_storage_name))
+                    .into_diagnostic()?;
+
+                ids.push(id);
+            }
+            Ok(ids)
+        };
+
+        future::ready(res()).boxed()
     }
 
     fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
-        Ok(InMemoryEventStream::new(&self.work_queue, &self.asset_storage_registry).boxed())
+        // Explicit block to allow us to drop the MutexGuard after we
+        // take the receiver.
+        let channel = {
+            let mut receiver = self
+                .event_receiver
+                .try_lock()
+                .map_err(|err| miette!("Failed to listen: {}", err))?;
+
+            receiver.take().ok_or(miette!(
+                "Failed to listen: Executor is already being listened to."
+            ))?
+        };
+        Ok(channel.boxed())
     }
 
     fn cancel(&self, task_ids: Vec<u32>) -> miette::Result<()> {
-        let mut abort_handles = self
-            .abort_handles
-            .lock()
-            .map_err(|err| miette!("Failed to lock abort handles: {}", err))?;
+        let mut cancel_sender = self.cancel_sender.clone();
         for task_id in task_ids {
-            if let Some(handle) = abort_handles.remove(&task_id) {
-                handle.abort();
-            }
+            cancel_sender.try_send(task_id).into_diagnostic()?;
         }
         Ok(())
-    }
-}
-
-/// [`InMemoryEventStream`] is a custom [Stream][futures::Stream] implementation that is used
-/// by the [`InMemoryExecutor`] to provide a stream of [Event]s by running Tasks and then
-/// yielding events.
-pub struct InMemoryEventStream<'a> {
-    work_queue: WorkQueue<'a>,
-    asset_storage_registry: AssetStorageRegistry,
-    running: bool,
-}
-
-impl<'a> InMemoryEventStream<'a> {
-    fn new(work_queue: &WorkQueue<'a>, asset_storage_registry: &AssetStorageRegistry) -> Self {
-        let work_queue = Arc::clone(work_queue);
-        let asset_storage_registry = Arc::clone(asset_storage_registry);
-        Self {
-            work_queue,
-            asset_storage_registry,
-            running: false,
-        }
-    }
-}
-
-impl futures::Stream for InMemoryEventStream<'_> {
-    type Item = Event;
-
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        if !self.running {
-            let task_info = {
-                let work_queue_locked = self.work_queue.lock().unwrap();
-                work_queue_locked
-                    .front()
-                    .map(|(task_info, _)| task_info.clone())
-            };
-            if let Some(TaskInfo { id, .. }) = task_info {
-                self.running = true;
-                return std::task::Poll::Ready(Some(Event {
-                    id,
-                    status: Status::Running,
-                }));
-            }
-            // Signal that this stream can be polled again immediately.
-            cx.waker().wake_by_ref();
-            return std::task::Poll::Pending;
-        }
-
-        let first = {
-            let mut work_queue_locked = self.work_queue.lock().unwrap();
-            work_queue_locked.pop_front()
-        };
-        if let Some((
-            TaskInfo {
-                id,
-                output_storage_name,
-            },
-            mut fut,
-        )) = first
-        {
-            let res = fut.poll_unpin(cx);
-            res.map(|res| {
-                self.running = false;
-                match res {
-                    Ok(Ok(outputs)) => {
-                        let outputs = save_outputs(
-                            &self.asset_storage_registry,
-                            &output_storage_name,
-                            outputs,
-                        );
-                        match outputs {
-                            Ok(outputs) => Some(Event {
-                                id,
-                                status: Status::Complete { outputs },
-                            }),
-                            Err(err) => Some(Event {
-                                id,
-                                status: Status::Error {
-                                    error: err.to_string(),
-                                    detail: None,
-                                },
-                            }),
-                        }
-                    }
-                    Ok(Err(err)) => Some(Event {
-                        id,
-                        status: Status::Error {
-                            error: err.to_string(),
-                            detail: None,
-                        },
-                    }),
-                    Err(_aborted) => Some(Event {
-                        id,
-                        status: Status::Cancelled,
-                    }),
-                }
-            })
-        } else {
-            // Signal that this stream can be polled again immediately.
-            cx.waker().wake_by_ref();
-            std::task::Poll::Pending
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let work_queue = self.work_queue.lock().unwrap();
-        (work_queue.len(), None)
     }
 }
 
@@ -455,15 +465,16 @@ mod tests {
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].status, Status::Running);
-        assert!(events[1].is_complete());
+        assert_eq!(events[1].status, Status::Running);
+
+        assert!(events[2].is_complete());
         assert_registry_contains_values(
             &registry,
             default_storage_name,
-            &events[1].clone().outputs().unwrap(),
+            &events[2].clone().outputs().unwrap(),
             json!({"value": 4}),
         );
 
-        assert_eq!(events[2].status, Status::Running);
         assert!(events[3].is_complete());
         assert_registry_contains_values(
             &registry,
@@ -548,11 +559,11 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_cancel() -> miette::Result<()> {
         let (registry, input_sets, _) =
-            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]);
+            test_storage_registry(vec![json!({"delay_seconds": 1})], vec![]);
 
         let task_plans = vec![TaskPlan {
             worker_name: "builtin".to_string(),
-            task_name: "iadd".to_string(),
+            task_name: "sleep".to_string(),
 
             inputs: input_sets[0].clone(),
 
@@ -560,14 +571,16 @@ mod tests {
         }];
         let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
-        let stream = executor.listen()?;
+        let mut stream = executor.listen()?;
         let task_ids = executor.execute(task_plans).await?;
+
+        let event = stream.next().await.unwrap();
+        assert_eq!(event.status, Status::Running);
+
         executor.cancel(task_ids)?;
 
-        let events = stream.take(2).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
-        assert_eq!(events[1].status, Status::Cancelled);
+        let event = stream.next().await.unwrap();
+        assert_eq!(event.status, Status::Cancelled);
 
         Ok(())
     }
