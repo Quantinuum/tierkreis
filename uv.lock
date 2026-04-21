@@ -3391,8 +3391,10 @@ build = [
     { name = "build", extra = ["uv"] },
 ]
 dev = [
+    { name = "guppylang" },
     { name = "ipykernel" },
     { name = "pytest" },
+    { name = "qnexus" },
 ]
 
 [package.metadata]
@@ -3406,8 +3408,10 @@ provides-extras = ["hpc"]
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]
 dev = [
+    { name = "guppylang" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "pytest" },
+    { name = "qnexus" },
 ]
 
 [[package]]
