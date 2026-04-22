@@ -25,6 +25,7 @@ complex_types.md
 external_workers.md
 ../examples/multiple_outputs.ipynb
 native_workers/aer_worker.md
+native_workers/guppy_worker.md
 native_workers/ibmq_worker.md
 native_workers/nexus_worker.md
 native_workers/pytket_worker.md
@@ -184,9 +185,7 @@ The folder name must correspond to the name of the worker.
 For self defined python workers (using `main.py`) we use the `UvExecutor` as follows:
 
 ```python
-executor = UvExecutor(
-    Path("<project_root>/tkr/workers/"), storage.logs_path
-)
+executor = UvExecutor(Path("<project_root>/tkr/workers/"), storage.logs_path)
 ```
 
 When running the graph with this executor, tierkreis will search for the directory `<project_root>/tkr/workers/worker_name/tkr_<worker_name>_impl` and inside execute the command

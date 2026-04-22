@@ -11,7 +11,13 @@ In addition to the elementary tasks exposed, there are also prepackaged graphs t
 pip install tkr-qulacs-worker
 ```
 
-will install an executable Python script `tkr_qulacs_worker` into your virtual environment.
+will install the `qulacs_worker` api into your virtual environment.
+
+```sh
+pip install tkr-qulacs-worker-impl
+```
+
+will install the `tkr-qulacs-worker` script into your virtual environment.
 
 ## Elementary tasks
 

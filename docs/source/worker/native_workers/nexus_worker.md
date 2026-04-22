@@ -27,9 +27,11 @@ will put the a token in the appropriate filesystem location for subsequent opera
 
 The Nexus worker exposes the following elementary tasks to the user.
 
-- `upload_circuit`. A wrapper around `qnexus.circuits.upload`, which is intended to be parallelised using a Tierkreis `map`.
+- `upload_circuit`. A wrapper around `qnexus.upload`, which is intended to be parallelised using a Tierkreis `map`.
 - `start_execute_job`. A wrapper around `qnuexs.jobs.start_execute_job` that takes a `BackendConfig` to specify what hardware the circuits should be run on.
 - `is_running`. A wrapper around `qnexus.jobs.status` that will fail if an unsuccessful terminal state is received, return `False` if the job is successfully completed and return `True` otherwise.
+- `upload_hugr`. Similar to `upload_circuit` using the Hugr representation instead.
+- `cost`. A wrapper around `qnexus.cost` estimating the cost of running a provided Hugr for number of shots.
 
 The full api is available in the {py:mod}`API Docs <nexus_worker>`.
 
@@ -37,6 +39,7 @@ The full api is available in the {py:mod}`API Docs <nexus_worker>`.
 
 The Tierkreis Python package provides a couple of prepackaged graphs to make it easier to interact with the Nexus API.
 
+### Circuits
 `tierkreis.graphs.nexus.submit_poll.nexus_submit_and_poll` is intended to automate the whole process of (parallelised) circuit upload, submission, status polling and result retrieval.
 It can be included within a custom graph using `Graph.eval` or run as a standalone graph.
 The function `nexus_submit_and_poll` takes an optional argument to specify the minimum delay between successive polls in the status polling loop.
@@ -69,3 +72,7 @@ print(res)
 ```
 
 The subgraphs `tierkreis.graphs.nexus.submit_poll.upload_circuit_graph` and `tierkreis.graphs.nexus.submit_poll.polling_loop_body` can also be used if the user wants to customise the main submit and poll graph.
+
+### Hugr
+
+There are equivalent graphs using Hugr in [](#tierkreis.graphs.nexus.submit_poll_hugr.nexus_submit_and_poll_hugr`)

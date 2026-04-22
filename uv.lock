@@ -3705,6 +3705,8 @@ name = "tkr-my-example-worker-impl"
 version = "0.1.0"
 source = { editable = "docs/source/examples/example_workers/my_example_worker" }
 dependencies = [
+    { name = "guppylang" },
+    { name = "hugr" },
     { name = "pydantic" },
     { name = "pytket" },
     { name = "pytket-qiskit" },
@@ -3716,6 +3718,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "guppylang" },
+    { name = "hugr" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pytket", specifier = ">=2.9.3" },
     { name = "pytket-qiskit" },

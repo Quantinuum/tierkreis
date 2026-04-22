@@ -8,7 +8,13 @@ A Tierkreis worker that provides convenient features to compile and run circuits
 pip install tkr-ibmq-worker
 ```
 
-will install an executable Python script `tkr_ibmq_worker` into your virtual environment.
+will install the `ibmq_worker` api into your virtual environment.
+
+```sh
+pip install tkr-ibmq-worker-impl
+```
+
+will install the `tkr-ibmq-worker` script into your virtual environment.
 
 ## Authentication
 

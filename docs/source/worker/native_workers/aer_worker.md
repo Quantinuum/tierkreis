@@ -11,7 +11,13 @@ In addition to the elementary tasks exposed, there are also prepackaged graphs t
 pip install tkr-aer-worker
 ```
 
-will install an executable Python script `tkr_aer_worker` into your virtual environment.
+will install the `aer_worker` api into your virtual environment.
+
+```sh
+pip install tkr-aer-worker-impl
+```
+
+will install the `tkr-aer-worker` script into your virtual environment.
 
 ## Elementary tasks
 

@@ -8,7 +8,13 @@ A Tierkreis worker that provides convenient features to compile and run circuits
 pip install tkr-quantinuum-worker
 ```
 
-will install an executable Python script `tkr_quantinuum_worker` into your virtual environment.
+will install the `quantinuum_worker` api into your virtual environment.
+
+```sh
+pip install tkr-quantinuum-worker-impl
+```
+
+will install the `tkr-quantinuum-worker` script into your virtual environment.
 
 ## Authentication
 
