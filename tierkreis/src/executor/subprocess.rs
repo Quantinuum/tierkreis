@@ -432,7 +432,6 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
@@ -477,7 +476,6 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
@@ -580,7 +578,6 @@ mod tests {
         let stream = executor.listen()?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
@@ -613,7 +610,6 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         matches!(
@@ -701,7 +697,6 @@ mod tests {
         let task_ids = executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(

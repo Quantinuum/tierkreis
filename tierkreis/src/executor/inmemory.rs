@@ -16,11 +16,11 @@ use futures::{
     FutureExt, StreamExt,
     channel::mpsc,
     future::{self, BoxFuture},
-    stream::{AbortHandle, Abortable, BoxStream, FuturesUnordered},
+    stream::{BoxStream, FuturesUnordered},
 };
 use miette::{IntoDiagnostic, miette};
 use serde_json::Value;
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_inputs, save_outputs},
@@ -107,9 +107,8 @@ fn run_builtin(
     Ok(outputs)
 }
 
-type RunningFutures = FuturesUnordered<
-    Abortable<JoinHandle<(u32, String, Result<HashMap<String, Value>, miette::Error>)>>,
->;
+type RunningFutures =
+    FuturesUnordered<JoinHandle<(u32, String, Result<HashMap<String, Value>, miette::Error>)>>;
 
 async fn process_tasks(
     mut task_receiver: TaskReceiver,
@@ -123,7 +122,7 @@ async fn process_tasks(
     loop {
         tokio::select! {
             Some(id) = cancel_receiver.next() => {
-                let handle = abort_handles.get(&id);
+                let handle = abort_handles.remove(&id);
                 if let Some(handle) = handle {
                     handle.abort();
                     event_sender
@@ -135,8 +134,10 @@ async fn process_tasks(
                 }
             }
             Some(res) = running.next() => {
-                // Ignore Aborted and JoinError
-                let Ok(Ok((id, output_storage_name, outputs))) = res else { continue };
+                // Ignore JoinError
+                let Ok((id, output_storage_name, outputs)) = res else { continue };
+                abort_handles.remove(&id);
+
                 let outputs = match outputs {
                     Ok(outputs) => outputs,
                     Err(err) => {
@@ -200,9 +201,7 @@ async fn process_tasks(
                     let task_name = task_plan.task_name;
                     (id, output_storage_name, run_builtin(&task_name, &inputs))
                 });
-                let (abort_handle, abort_registration) = AbortHandle::new_pair();
-                let task = Abortable::new(task, abort_registration);
-                abort_handles.insert(id, abort_handle);
+                abort_handles.insert(id, task.abort_handle());
                 running.push(task);
             }
         }
