@@ -27,3 +27,15 @@ class symbolic_circuit(NamedTuple):
     @property
     def namespace(self) -> str:
         return "my_example_worker"
+
+
+class ghz(NamedTuple):
+    size: TKR[int]  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
+        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "my_example_worker"

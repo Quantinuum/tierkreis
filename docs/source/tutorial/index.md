@@ -14,6 +14,7 @@ please refer to the [User Guide](core_concepts.md) or the [API Reference](../api
 :maxdepth: 1
 ../examples/first_graph.ipynb
 ../examples/pytket_graph.ipynb
+../examples/guppy_graph.ipynb
 ../examples/storage_and_executors.ipynb
 ../examples/hamiltonian.ipynb
 whatnext.md
