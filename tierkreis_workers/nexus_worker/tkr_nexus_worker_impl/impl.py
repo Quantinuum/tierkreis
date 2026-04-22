@@ -120,6 +120,17 @@ def upload_hugr(
     project_name: str,
     name: str | None = None,
 ) -> HUGRRef:
+    """Upload a Hugr to nexus
+
+    :param hugr_package: The Hugr package to upload.
+    :type hugr_package: Package
+    :param project_name: The name of the nexus project to upload the Hugr to.
+    :type project_name: str
+    :param name: The name of the Hugr, defaults to a fallback name with timestamp.
+    :type name: str | None, optional
+    :return: The reference to the uploaded Hugr.
+    :rtype: HUGRRef
+    """
     if name is None:
         name = f"tkr HUGR Package from {datetime.now()}"
     my_project_ref = qnx.projects.get_or_create(name=project_name)
@@ -129,6 +140,17 @@ def upload_hugr(
 
 @worker.task()
 def cost(hugr_ref: HUGRRef | list[HUGRRef], n_shots: int, project_name: str) -> float:
+    """Estimate the cost of running the Hugrs.
+
+    :param hugr_ref: The reference(s) to the Hugr(s) to estimate the cost for.
+    :type hugr_ref: HUGRRef | list[HUGRRef]
+    :param n_shots: The number of shots to estimate the cost for.
+    :type n_shots: int
+    :param project_name: The name of the nexus project to estimate the cost in.
+    :type project_name: str
+    :return: The estimated cost.
+    :rtype: float
+    """
     my_project_ref = qnx.projects.get_or_create(name=project_name)
     qnx.context.set_active_project(my_project_ref)
     return qnx.hugr.cost(hugr_ref, n_shots)
