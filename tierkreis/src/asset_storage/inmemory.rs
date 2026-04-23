@@ -4,7 +4,6 @@ by storing files in concurrent map data structure implemented by [`dashmap::Dash
 */
 use dashmap::DashMap;
 use miette::miette;
-use serde_json::Value;
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 
@@ -14,7 +13,7 @@ use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 pub struct InMemoryStorage {
     // DashMap is a concurrent HashMap that lets us avoid locking the entire
     // storage when saving/loading values.
-    store: DashMap<AssetKey, Value>,
+    store: DashMap<AssetKey, Vec<u8>>,
 }
 
 impl InMemoryStorage {
@@ -42,12 +41,12 @@ impl AssetStorage for InMemoryStorage {
         Ok(self.store.contains_key(key))
     }
 
-    fn save(&self, key: &AssetKey, value: Value) -> miette::Result<()> {
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()> {
         self.store.insert(*key, value);
         Ok(())
     }
 
-    fn load(&self, key: &AssetKey) -> miette::Result<Value> {
+    fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>> {
         let value = self
             .store
             .get(key)

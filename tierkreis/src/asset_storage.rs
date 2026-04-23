@@ -18,7 +18,6 @@ use std::{
 };
 
 use miette::miette;
-use serde_json::Value;
 
 /// [`AssetStorageRegistry`] is sharable mapping of configured [`AssetStorage`] names
 /// to various implementations.
@@ -38,7 +37,7 @@ pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>
 pub fn load_inputs<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     inputs: HashMap<String, AssetSpec, S>,
-) -> miette::Result<HashMap<String, Value>> {
+) -> miette::Result<HashMap<String, Vec<u8>>> {
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
@@ -66,7 +65,7 @@ pub fn load_inputs<S: BuildHasher>(
 pub fn save_outputs<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name: &str,
-    outputs: HashMap<String, Value, S>,
+    outputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let registry = registry
         .read()
@@ -177,8 +176,8 @@ pub fn reserve_asset_specs(
 /// Will panic if the input assets are not dictionaries or they cannot be saved.
 #[cfg(test)]
 pub fn test_storage_registry(
-    assets_for_memory: impl IntoIterator<Item = Value>,
-    assets_for_files: impl IntoIterator<Item = Value>,
+    assets_for_memory: impl IntoIterator<Item = serde_json::Value>,
+    assets_for_files: impl IntoIterator<Item = serde_json::Value>,
 ) -> (
     AssetStorageRegistry,
     Vec<HashMap<String, AssetSpec>>,
@@ -195,13 +194,14 @@ pub fn test_storage_registry(
     let memory_storage = InMemoryStorage::new();
 
     for input_set in assets_for_memory {
-        let inputs: HashMap<String, Value> = serde_json::from_value(input_set)
+        let inputs: HashMap<String, serde_json::Value> = serde_json::from_value(input_set)
             .expect("Inputs must be convertible to a HashMap<String, Value>");
         let mut input_assets = HashMap::new();
 
         for (name, value) in inputs {
             let asset_key = AssetKey::new();
-            memory_storage.save(&asset_key, value).unwrap();
+            let asset = serde_json::to_vec(&value).unwrap();
+            memory_storage.save(&asset_key, asset).unwrap();
             input_assets.insert(
                 name,
                 AssetSpec {
@@ -220,12 +220,13 @@ pub fn test_storage_registry(
     let file_storage = FileAssetStorage::new(temp_dir.path());
 
     for input_set in assets_for_files {
-        let inputs: HashMap<String, Value> = serde_json::from_value(input_set).unwrap();
+        let inputs: HashMap<String, serde_json::Value> = serde_json::from_value(input_set).unwrap();
         let mut input_assets = HashMap::new();
 
         for (name, value) in inputs {
             let asset_key = AssetKey::new();
-            file_storage.save(&asset_key, value).unwrap();
+            let asset = serde_json::to_vec(&value).unwrap();
+            file_storage.save(&asset_key, asset).unwrap();
             input_assets.insert(
                 name,
                 AssetSpec {
@@ -257,12 +258,12 @@ pub fn assert_registry_contains_values<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name: &str,
     outputs: &HashMap<String, AssetSpec, S>,
-    expected: Value,
+    expected: serde_json::Value,
 ) {
     let registry = registry.read().unwrap();
     let storage = registry.get(storage_name).unwrap();
 
-    let expected: HashMap<String, Value> =
+    let expected: HashMap<String, serde_json::Value> =
         serde_json::from_value(expected).expect("Failed to deserialize expected Value.");
     for k in expected.keys() {
         assert!(outputs.contains_key(k), "missing key: {k}");
@@ -272,8 +273,9 @@ pub fn assert_registry_contains_values<S: BuildHasher>(
         let asset = storage
             .load(&v.asset_key)
             .unwrap_or_else(|err| panic!("Failed to load: {err}"));
+        let value: serde_json::Value = serde_json::from_slice(&asset).unwrap();
         assert_eq!(
-            asset,
+            value,
             expected
                 .get(k)
                 .cloned()

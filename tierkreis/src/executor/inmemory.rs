@@ -46,8 +46,9 @@ type EventReceiver = mpsc::Receiver<Event>;
 type CancelSender = mpsc::Sender<u32>;
 type CancelReceiver = mpsc::Receiver<u32>;
 
-fn extract_i64(inputs: &HashMap<String, Value>, name: &str) -> miette::Result<i64> {
-    let val = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+fn extract_i64(inputs: &HashMap<String, Vec<u8>>, name: &str) -> miette::Result<i64> {
+    let asset = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+    let val = serde_json::from_slice(asset).into_diagnostic()?;
 
     if let Value::Number(val) = val {
         if let Some(val) = val.as_i64() {
@@ -60,8 +61,9 @@ fn extract_i64(inputs: &HashMap<String, Value>, name: &str) -> miette::Result<i6
     }
 }
 
-fn extract_f64(inputs: &HashMap<String, Value>, name: &str) -> miette::Result<f64> {
-    let val = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+fn extract_f64(inputs: &HashMap<String, Vec<u8>>, name: &str) -> miette::Result<f64> {
+    let asset = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+    let val = serde_json::from_slice(asset).into_diagnostic()?;
 
     if let Value::Number(val) = val {
         if let Some(val) = val.as_f64() {
@@ -74,33 +76,41 @@ fn extract_f64(inputs: &HashMap<String, Value>, name: &str) -> miette::Result<f6
     }
 }
 
-fn output_value(outputs: &mut HashMap<String, Value>, value: impl Into<Value>) {
-    outputs.insert("value".to_string(), value.into());
+fn output_value(
+    outputs: &mut HashMap<String, Vec<u8>>,
+    value: impl Into<Value>,
+) -> miette::Result<()> {
+    let value: Value = value.into();
+    outputs.insert(
+        "value".to_string(),
+        serde_json::to_vec(&value).into_diagnostic()?,
+    );
+    Ok(())
 }
 
 fn run_builtin(
     task_name: &str,
-    inputs: &HashMap<String, Value>,
-) -> miette::Result<HashMap<String, Value>> {
+    inputs: &HashMap<String, Vec<u8>>,
+) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut outputs = HashMap::new();
     match task_name {
         "iadd" => {
             let a = extract_i64(inputs, "a")?;
             let b = extract_i64(inputs, "b")?;
 
-            output_value(&mut outputs, a + b);
+            output_value(&mut outputs, a + b)?;
         }
         "isub" => {
             let a = extract_i64(inputs, "a")?;
             let b = extract_i64(inputs, "b")?;
 
-            output_value(&mut outputs, a - b);
+            output_value(&mut outputs, a - b)?;
         }
         "sleep" => {
             let delay_seconds = extract_f64(inputs, "delay_seconds")?;
             sleep(Duration::from_secs_f64(delay_seconds));
 
-            output_value(&mut outputs, true);
+            output_value(&mut outputs, true)?;
         }
         _ => return Err(miette!("Unknown task")),
     }
@@ -108,7 +118,7 @@ fn run_builtin(
 }
 
 type RunningFutures =
-    FuturesUnordered<JoinHandle<(u32, String, Result<HashMap<String, Value>, miette::Error>)>>;
+    FuturesUnordered<JoinHandle<(u32, String, Result<HashMap<String, Vec<u8>>, miette::Error>)>>;
 
 async fn process_tasks(
     mut task_receiver: TaskReceiver,
@@ -375,6 +385,7 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(

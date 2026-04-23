@@ -5,7 +5,6 @@ implementations must satisfy.
 use std::{fmt::Display, path::PathBuf, time::SystemTime};
 
 use miette::miette;
-use serde_json::Value;
 use uuid::Uuid;
 
 /// [`AssetKind`] is used to categorize [`AssetSpec`] and [`AssetStorage`] implementations
@@ -62,7 +61,7 @@ impl AssetSpec {
 }
 
 /// [`AssetKey`] is a unique key for storing Assets.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AssetKey(Uuid);
 
 impl AssetKey {
@@ -124,11 +123,11 @@ pub trait AssetStorage: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn save(&self, key: &AssetKey, value: Value) -> miette::Result<()>;
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()>;
     /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn load(&self, key: &AssetKey) -> miette::Result<Value>;
+    fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>>;
 }

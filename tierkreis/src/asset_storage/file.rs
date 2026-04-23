@@ -5,11 +5,11 @@ by storing files in a single directory.
 
 use std::{
     fs::File,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
 use miette::{Context, IntoDiagnostic, miette};
-use serde_json::Value;
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 
@@ -50,21 +50,22 @@ impl AssetStorage for FileAssetStorage {
         ))
     }
 
-    fn save(&self, key: &AssetKey, value: Value) -> miette::Result<()> {
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()> {
         let location = self.location(key);
         let mut file = File::create(self.location(key))
             .into_diagnostic()
             .wrap_err(miette!("Cannot find file at location: {location:?}"))?;
-        serde_json::to_writer(&mut file, &value).into_diagnostic()?;
+        file.write_all(&value).into_diagnostic()?;
         Ok(())
     }
 
-    fn load(&self, key: &AssetKey) -> miette::Result<Value> {
+    fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>> {
         let location = self.location(key);
-        let file = File::open(self.location(key))
+        let mut file = File::open(self.location(key))
             .into_diagnostic()
             .wrap_err(miette!("Cannot find file at location: {location:?}"))?;
-        let value: Value = serde_json::from_reader(&file).into_diagnostic()?;
+        let mut value = Vec::new();
+        file.read_to_end(&mut value).into_diagnostic()?;
         Ok(value)
     }
 }

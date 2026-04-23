@@ -173,7 +173,7 @@ impl Orchestrator {
                     .get(default_storage_name)
                     .ok_or_else(|| miette!("Could not find a storage with name '{default_storage_name}' in AssetStorageRegistry"))?;
                 let asset_key = AssetKey::new();
-                asset_storage.save(&asset_key, value.clone())?;
+                asset_storage.save(&asset_key, serde_json::to_vec(&value).into_diagnostic()?)?;
 
                 let mut outputs = HashMap::new();
                 outputs.insert(
