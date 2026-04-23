@@ -117,7 +117,7 @@ fn run_builtin(
     Ok(outputs)
 }
 
-fn send_error(event_sender: &mut EventSender, id: u32, err: miette::Error) {
+fn send_error(event_sender: &mut EventSender, id: u32, err: &miette::Error) {
     event_sender
         .try_send(Event {
             id,
@@ -166,7 +166,7 @@ async fn process_tasks(
                 let outputs = match outputs {
                     Ok(outputs) => outputs,
                     Err(err) => {
-                        send_error(&mut event_sender, id, err);
+                        send_error(&mut event_sender, id, &err);
                         continue;
                     }
                 };
@@ -178,7 +178,7 @@ async fn process_tasks(
                             status: Status::Complete { outputs },
                         })
                         .expect("Failed to send update"),
-                    Err(err) => send_error(&mut event_sender, id, err),
+                    Err(err) => send_error(&mut event_sender, id, &err),
                 }
             }
             Some((id, task_plan, output_storage_name)) = task_receiver.next() => {
@@ -194,7 +194,7 @@ async fn process_tasks(
                 let inputs = match res {
                     Ok(inputs) => inputs,
                     Err(err) => {
-                        send_error(&mut event_sender, id, err);
+                        send_error(&mut event_sender, id, &err);
                         continue;
                     }
                 };

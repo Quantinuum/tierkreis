@@ -266,8 +266,7 @@ mod tests {
         Arc::new(executor_registry)
     }
 
-    // Test that we can launch a single task and listen for
-    // the status changes.
+    // Test that we can run a task node that dispatches to an executor.
     #[rstest]
     #[case("memory")]
     #[case("file")]
@@ -304,8 +303,7 @@ mod tests {
         Ok(())
     }
 
-    // Test that we can launch a single task and listen for
-    // the status changes.
+    // Test that we can run an input node that copies a value into storage.
     #[rstest]
     #[case("memory")]
     #[case("file")]
@@ -352,8 +350,7 @@ mod tests {
         Ok(())
     }
 
-    // Test that we can launch a single task and listen for
-    // the status changes.
+    // Test that we can run an output node that emits a complete event with outputs.
     #[rstest]
     #[case("memory")]
     #[case("file")]
@@ -386,8 +383,7 @@ mod tests {
         Ok(())
     }
 
-    // Test that we can launch a single task and listen for
-    // the status changes.
+    // Test that we can run a const node that copies a value into storage.
     #[rstest]
     #[case("memory")]
     #[case("file")]
@@ -421,8 +417,8 @@ mod tests {
         Ok(())
     }
 
-    // Test that we can launch a single task and listen for
-    // the status changes.
+    // Test that we can run a series of nodes one at a time
+    // in a way that would be typical for a simple workflow.
     #[rstest]
     #[case("memory")]
     #[case("file")]
