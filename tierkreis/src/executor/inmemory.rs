@@ -117,6 +117,18 @@ fn run_builtin(
     Ok(outputs)
 }
 
+fn send_error(event_sender: &mut EventSender, id: u32, err: miette::Error) {
+    event_sender
+        .try_send(Event {
+            id,
+            status: Status::Error {
+                error: err.to_string(),
+                detail: None,
+            },
+        })
+        .expect("Failed to send update");
+}
+
 type RunningFutures =
     FuturesUnordered<JoinHandle<(u32, String, Result<HashMap<String, Vec<u8>>, miette::Error>)>>;
 
@@ -144,22 +156,17 @@ async fn process_tasks(
                 }
             }
             Some(res) = running.next() => {
-                // Ignore JoinError
-                let Ok((id, output_storage_name, outputs)) = res else { continue };
+                let (id, output_storage_name, outputs) = match res {
+                    Ok(ok) => ok,
+                    Err(err) => panic!("Failed to join to future: {err}"),
+                };
+
                 abort_handles.remove(&id);
 
                 let outputs = match outputs {
                     Ok(outputs) => outputs,
                     Err(err) => {
-                        event_sender
-                            .try_send(Event {
-                                id,
-                                status: Status::Error {
-                                    error: err.to_string(),
-                                    detail: None,
-                                },
-                            })
-                            .expect("Failed to send update");
+                        send_error(&mut event_sender, id, err);
                         continue;
                     }
                 };
@@ -171,15 +178,7 @@ async fn process_tasks(
                             status: Status::Complete { outputs },
                         })
                         .expect("Failed to send update"),
-                    Err(err) => event_sender
-                        .try_send(Event {
-                            id,
-                            status: Status::Error {
-                                error: err.to_string(),
-                                detail: None,
-                            },
-                        })
-                        .expect("Failed to send update"),
+                    Err(err) => send_error(&mut event_sender, id, err),
                 }
             }
             Some((id, task_plan, output_storage_name)) = task_receiver.next() => {
@@ -189,19 +188,13 @@ async fn process_tasks(
                         status: Status::Running {},
                     })
                     .expect("Failed to send update");
+
                 let res = load_inputs(&asset_storage_registry, task_plan.inputs);
+
                 let inputs = match res {
                     Ok(inputs) => inputs,
                     Err(err) => {
-                        event_sender
-                            .try_send(Event {
-                                id,
-                                status: Status::Error {
-                                    error: err.to_string(),
-                                    detail: None,
-                                },
-                            })
-                            .expect("Failed to send update");
+                        send_error(&mut event_sender, id, err);
                         continue;
                     }
                 };
@@ -211,6 +204,7 @@ async fn process_tasks(
                     let task_name = task_plan.task_name;
                     (id, output_storage_name, run_builtin(&task_name, &inputs))
                 });
+
                 abort_handles.insert(id, task.abort_handle());
                 running.push(task);
             }
