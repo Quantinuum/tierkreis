@@ -23,7 +23,9 @@ use tokio::{io::AsyncReadExt, process::Command};
 use which::which_re;
 
 use crate::{
-    asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets},
+    asset_storage::{
+        AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
+    },
     event::{Event, Status},
     executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
@@ -77,7 +79,13 @@ impl SubprocessExecutor {
         let asset_storage_registry_lock = asset_storage_registry
             .read()
             .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
-        if !asset_storage_registry_lock.contains_key(subprocess_storage_name) {
+        if let Some(subprocess_storage) = asset_storage_registry_lock.get(subprocess_storage_name) {
+            if !matches!(subprocess_storage.kind(), AssetKind::File { .. }) {
+                return Err(miette!(
+                    "subprocess_storage_name must be of AssetKind::File"
+                ));
+            }
+        } else {
             return Err(miette!("subprocess_storage_name not in registry"));
         }
 
