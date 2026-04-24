@@ -7,6 +7,10 @@ setup:
     uv sync --all-extras
 
 test:
+    # We need to run a sync in the python environment to provide access to the workers
+    # for the rust tests that use worker subprocesses.
+    @just setup
+    cargo test
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term
 
 test-workers:
@@ -16,11 +20,15 @@ test-slow:
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
 
 lint:
+  cargo fmt --check
+  cargo clippy --all-features --all-targets -- -D warnings
   {{uvrun}} ruff format --check
   {{uvrun}} ruff check
   {{uvrun}} pyright .
 
 fix:
+  cargo fmt
+  cargo clippy --all-features --all-targets --fix
   {{uvrun}} ruff format
   {{uvrun}} ruff check --fix
 
