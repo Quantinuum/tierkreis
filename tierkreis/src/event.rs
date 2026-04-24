@@ -3,7 +3,9 @@ This module defines the event format that is emitted by [Executor][crate::execut
 and the [Orchestrator][crate::orchestrator::Orchestrator] that is used to build up the execution
 state of the Workflow so it can be monitored and restarted.
 */
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::RandomState};
+
+use futures::channel::mpsc;
 
 use crate::asset_storage::interface::AssetSpec;
 
@@ -62,4 +64,79 @@ pub enum Status {
         /// A longer detailed context about the error.
         detail: Option<String>,
     },
+}
+
+/// [`EventSender`] is an multi-producer single-consumer producer for [`Event`] messages.
+///
+/// This alias is useful for [Executor][`crate::executor::Executor`] implementors who
+/// wish to produce [Event] messages that can be consumed by an [`EventReceiver`].
+pub type EventSender = mpsc::Sender<Event>;
+
+/// [`EventReceiver`] is an multi-producer single-consumer consumer for [Event] messages.
+///
+/// This alias is useful for [Executor][`crate::executor::Executor`] implementors who
+/// wish to forward [`Event`] messages as this type implements [`Stream`].
+pub type EventReceiver = mpsc::Receiver<Event>;
+
+/// Utility function to send a new [`Event`] with [`Status::Running`].
+///
+/// # Panics
+///
+/// Will panic if the channel is full or disconnected.
+pub fn send_running(event_sender: &mut EventSender, id: u32) {
+    event_sender
+        .try_send(Event {
+            id,
+            status: Status::Running {},
+        })
+        .expect("Failed to send update");
+}
+
+/// Utility function to send a new [`Event`] with [`Status::Cancelled`].
+///
+/// # Panics
+///
+/// Will panic if the channel is full or disconnected.
+pub fn send_cancelled(event_sender: &mut EventSender, id: u32) {
+    event_sender
+        .try_send(Event {
+            id,
+            status: Status::Cancelled {},
+        })
+        .expect("Failed to send update");
+}
+
+/// Utility function to send a new [`Event`] with [`Status::Complete`] and output [`AssetSpec`]s.
+///
+/// # Panics
+///
+/// Will panic if the channel is full or disconnected.
+pub fn send_complete(
+    event_sender: &mut EventSender,
+    id: u32,
+    outputs: HashMap<String, AssetSpec, RandomState>,
+) {
+    event_sender
+        .try_send(Event {
+            id,
+            status: Status::Complete { outputs },
+        })
+        .expect("Failed to send update");
+}
+
+/// Utility function to send a new [`Event`] with [`Status::Error`] and an error message.
+///
+/// # Panics
+///
+/// Will panic if the channel is full or disconnected.
+pub fn send_error(event_sender: &mut EventSender, id: u32, err: &miette::Error) {
+    event_sender
+        .try_send(Event {
+            id,
+            status: Status::Error {
+                error: err.to_string(),
+                detail: None,
+            },
+        })
+        .expect("Failed to send update");
 }

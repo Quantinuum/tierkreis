@@ -4,29 +4,33 @@ by running subprocesses.
 */
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
-    process::Stdio,
-    sync::{Arc, Mutex},
+    path::{Path, PathBuf},
+    process::{ExitStatus, Stdio},
+    sync::{Arc, Mutex, atomic::AtomicU32},
 };
 
 use futures::{
     FutureExt, StreamExt,
-    channel::{mpsc, oneshot},
+    channel::mpsc,
     future::{self, BoxFuture},
-    stream::{self, BoxStream},
+    stream::{BoxStream, FuturesUnordered},
 };
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
-use tokio::{io::AsyncReadExt, process::Command};
+use tokio::{
+    io::AsyncReadExt,
+    process::Command,
+    task::{AbortHandle, JoinHandle},
+};
 use which::which_re;
 
 use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
     },
-    event::{Event, Status},
+    event::{Event, Status, send_cancelled, send_complete, send_error, send_running},
     executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
 
@@ -40,11 +44,141 @@ pub struct SubprocessResourceSpec {}
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SubprocessEnvironmentSpec {}
 
+struct BackgroundTaskPlan {
+    id: u32,
+    worker_name: String,
+    output_storage_name: String,
+    worker_args: NamedTempFile,
+    done_file: NamedTempFile,
+    outputs: HashMap<String, AssetSpec>,
+}
+
+struct BackgroundTask {
+    id: u32,
+    output_storage_name: String,
+    exit_status: Result<ExitStatus, std::io::Error>,
+    outputs: HashMap<String, AssetSpec>,
+    stderr: JoinHandle<String>,
+
+    // Handles to temporary files to prevent deletion
+    // until the task is complete.
+    _worker_args: NamedTempFile,
+    _done_file: NamedTempFile,
+}
+
+type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
+type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
+type EventSender = mpsc::Sender<Event>;
+type EventReceiver = mpsc::Receiver<Event>;
+type CancelSender = mpsc::Sender<u32>;
+type CancelReceiver = mpsc::Receiver<u32>;
+
+type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
+
+async fn process_tasks(
+    mut task_receiver: TaskReceiver,
+    mut cancel_receiver: CancelReceiver,
+    mut event_sender: EventSender,
+    asset_storage_registry: AssetStorageRegistry,
+) {
+    let mut abort_handles: HashMap<u32, AbortHandle> = HashMap::new();
+    let mut running: RunningFutures = FuturesUnordered::new();
+
+    loop {
+        tokio::select! {
+            // A task has been cancelled
+            Some(id) = cancel_receiver.next() => {
+                let handle = abort_handles.remove(&id);
+                if let Some(handle) = handle {
+                    handle.abort();
+                    send_cancelled(&mut event_sender, id);
+                }
+            }
+            // A task has completed
+            Some(res) = running.next() => {
+                let background_task = match res {
+                    Ok(ok) => ok,
+                    Err(err) => panic!("Failed to join to future: {err}"),
+                };
+
+                let id = background_task.id;
+                let outputs = background_task.outputs;
+                let output_storage_name = background_task.output_storage_name;
+                let exit_status = background_task.exit_status;
+
+                abort_handles.remove(&id);
+                match exit_status {
+                    Ok(status) => {
+                        if status.success() {
+                            let outputs = transfer_assets(
+                                &asset_storage_registry,
+                                &output_storage_name,
+                                outputs,
+                            );
+                            match outputs {
+                                Ok(outputs) => send_complete(&mut event_sender, id, outputs),
+                                Err(err) => send_error(&mut event_sender, id, &err),
+                            }
+                        } else {
+                            let stderr = background_task.stderr.await.ok();
+                            event_sender
+                                .try_send(Event {
+                                    id,
+                                    status: Status::Error {error: format!("Subprocess failed with exit code: {status}"), detail: stderr },
+                                })
+                                .expect("Failed to send Error event.");
+                        }
+                    }
+                    Err(err) => send_error(&mut event_sender, id, &miette!("Failed to run worker: {err}")),
+                }
+
+            }
+            // A task has been submitted
+            Some(internal_task) = task_receiver.next() => {
+                let id = internal_task.id;
+                send_running(&mut event_sender, id);
+
+                let worker_args = internal_task.worker_args;
+                let worker_args_path = worker_args.path();
+                let done_file = internal_task.done_file;
+                let res = spawn_worker(&internal_task.worker_name, worker_args_path);
+                let mut child = match res {
+                    Ok(child) => child,
+                    Err(err) => {
+                        send_error(&mut event_sender, id, &err);
+                        continue;
+                    }
+                };
+                let stderr = read_stderr(&mut child);
+
+                let outputs = internal_task.outputs;
+                let output_storage_name = internal_task.output_storage_name;
+                let task = tokio::task::spawn(async move {
+                    let exit_status = child.wait().await;
+                    BackgroundTask {
+                        id,
+                        output_storage_name,
+                        exit_status,
+                        outputs,
+                        stderr,
+                        _worker_args: worker_args,
+                        _done_file: done_file,
+                    }
+                });
+
+                abort_handles.insert(id, task.abort_handle());
+                running.push(task);
+            }
+        }
+    }
+}
+
 /// [`SubprocessExecutor`] defines an [Executor] that performs Task Nodes using Worker subprocesses.
 pub struct SubprocessExecutor {
-    event_sender: mpsc::Sender<Event>,
-    event_receiver: Mutex<Option<mpsc::Receiver<Event>>>,
-    cancel_senders: Mutex<HashMap<u32, oneshot::Sender<()>>>,
+    id_source: AtomicU32,
+    task_sender: TaskSender,
+    cancel_sender: CancelSender,
+    event_receiver: Mutex<Option<EventReceiver>>,
 
     // The name of the storage that the subprocess will read
     // and write files from. Must be file based.
@@ -93,12 +227,24 @@ impl SubprocessExecutor {
             return Err(miette!("output_storage_name not in registry"));
         }
 
-        let (sender, receiver) = mpsc::channel(128);
+        let background_asset_storage_registry = Arc::clone(asset_storage_registry);
+        let (task_sender, task_receiver) = mpsc::channel(64);
+        let (event_sender, event_receiver) = mpsc::channel(64);
+        let (cancel_sender, cancel_receiver) = mpsc::channel(64);
+        tokio::spawn(process_tasks(
+            task_receiver,
+            cancel_receiver,
+            event_sender,
+            background_asset_storage_registry,
+        ));
+
         let asset_storage_registry = Arc::clone(asset_storage_registry);
         Ok(Self {
-            event_sender: sender,
-            event_receiver: Mutex::new(Some(receiver)),
-            cancel_senders: Mutex::new(HashMap::new()),
+            id_source: AtomicU32::new(0),
+
+            task_sender,
+            cancel_sender,
+            event_receiver: Mutex::new(Some(event_receiver)),
             subprocess_storage_name: subprocess_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
@@ -120,128 +266,6 @@ impl SubprocessExecutor {
                 .collect())
         });
         task.await.into_diagnostic()?
-    }
-
-    fn internal_execute(&self, task_plans: Vec<TaskPlan>) -> miette::Result<Vec<u32>> {
-        let mut pids = Vec::new();
-        let mut tasks = Vec::new();
-
-        for task_plan in task_plans {
-            let inputs = self.build_inputs(task_plan.inputs)?;
-            let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
-
-            let worker_args = NamedTempFile::new().into_diagnostic()?;
-            let worker_args_path = worker_args
-                .path()
-                .canonicalize()
-                .into_diagnostic()?
-                .into_os_string();
-
-            // Redirect the done_file to a temporary file as we
-            // do not need it to figure out if a process has
-            // completed currently.
-            let done_file = NamedTempFile::new().into_diagnostic()?;
-
-            serde_json::to_writer(
-                &worker_args,
-                &WorkerCallArgs {
-                    function_name: task_plan.task_name,
-                    inputs,
-                    outputs: output_paths,
-                    done_path: done_file.path().to_path_buf(),
-                    ..Default::default()
-                },
-            )
-            .into_diagnostic()?;
-
-            let mut child = spawn_worker(&task_plan.worker_name, worker_args_path)?;
-
-            let id = child.id().ok_or(miette!("Could not get process id."))?;
-            pids.push(id);
-
-            let (cancel_sender, cancel_receiver) = oneshot::channel();
-            let mut cancel_senders = self.cancel_senders.lock().unwrap();
-            cancel_senders.insert(id, cancel_sender);
-
-            let mut event_sender = self.event_sender.clone();
-            let asset_storage_registry = self.asset_storage_registry.clone();
-            let output_storage_name = task_plan
-                .output_storage_name
-                .unwrap_or_else(|| self.output_storage_name.clone());
-            let task = async move {
-                // Move the temporary file into this task so it will not be deleted
-                // until after the process has started properly.
-                let _worker_args = worker_args;
-                event_sender
-                    .try_send(Event {
-                        id,
-                        status: Status::Running,
-                    })
-                    .expect("Failed to send Running event.");
-
-                let read_stdout = read_stdout(&mut child);
-
-                let read_stderr = read_stderr(&mut child);
-
-                tokio::select! {
-                    Ok(()) = cancel_receiver => {
-                        child.kill().await.expect("Failed to kill child process.");
-                        event_sender
-                            .try_send(Event {
-                                id,
-                                status: Status::Cancelled,
-                            })
-                            .expect("Failed to send Cancelled event.");
-                    }
-                    res = child.wait() => {
-                        match res {
-                            Ok(status) => {
-                                if status.success() {
-                                    let outputs = transfer_assets(
-                                        &asset_storage_registry,
-                                        &output_storage_name,
-                                        outputs,
-                                    ).unwrap();
-                                    event_sender
-                                        .try_send(Event {
-                                            id,
-                                            status: Status::Complete { outputs },
-                                        })
-                                        .expect("Failed to send Complete event.");
-                                } else {
-                                    let _stdout = read_stdout.await.ok();
-                                    let stderr = read_stderr.await.ok();
-                                    event_sender
-                                        .try_send(Event {
-                                            id,
-                                            status: Status::Error {error: format!("Subprocess failed with exit code: {status}"), detail: stderr },
-                                        })
-                                        .expect("Failed to send Error event.");
-                                }
-                            }
-                            Err(err) => {
-                                event_sender
-                                    .try_send(Event {
-                                        id,
-                                        status: Status::Error {error: err.to_string(), detail: None},
-                                    })
-                                    .expect("Failed to send Error event.");
-                            }
-                        }
-                    }
-                }
-            };
-
-            tasks.push(task);
-        }
-
-        // This guarantees the tasks will complete in order as far as the runtime
-        // is concerned.
-        tokio::spawn(stream::iter(tasks).fold((), |(), x| async move {
-            x.await;
-        }));
-
-        Ok(pids)
     }
 
     fn build_inputs(
@@ -275,7 +299,7 @@ impl SubprocessExecutor {
 
 fn spawn_worker(
     worker_name: &str,
-    worker_args_path: std::ffi::OsString,
+    worker_args_path: &Path,
 ) -> Result<tokio::process::Child, miette::Error> {
     let child = Command::new(format!("tkr-{worker_name}"))
         .arg(worker_args_path)
@@ -285,16 +309,6 @@ fn spawn_worker(
         .into_diagnostic()
         .wrap_err(miette!("Could not spawn worker"))?;
     Ok(child)
-}
-
-fn read_stdout(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
-    let mut stdout = child.stdout.take().unwrap();
-    tokio::spawn(async move {
-        let mut stdout_out = String::new();
-        let _ = stdout.read_to_string(&mut stdout_out).await;
-
-        stdout_out
-    })
 }
 
 fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
@@ -339,7 +353,58 @@ impl Executor for SubprocessExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
-        future::ready(self.internal_execute(task_plans)).boxed()
+        let res = || {
+            let mut ids = Vec::new();
+            let mut task_sender = self.task_sender.clone();
+
+            for task_plan in task_plans {
+                let id = self
+                    .id_source
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let inputs = self.build_inputs(task_plan.inputs)?;
+                let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
+
+                let worker_args = NamedTempFile::new().into_diagnostic()?;
+
+                // Redirect the done_file to a temporary file as we
+                // do not need it to figure out if a process has
+                // completed currently.
+                let done_file = NamedTempFile::new().into_diagnostic()?;
+
+                serde_json::to_writer(
+                    &worker_args,
+                    &WorkerCallArgs {
+                        function_name: task_plan.task_name,
+                        inputs,
+                        outputs: output_paths,
+                        done_path: done_file.path().to_path_buf(),
+                        ..Default::default()
+                    },
+                )
+                .into_diagnostic()?;
+
+                let output_storage_name = task_plan
+                    .output_storage_name
+                    .clone()
+                    .unwrap_or_else(|| self.output_storage_name.clone());
+
+                task_sender
+                    .try_send(BackgroundTaskPlan {
+                        id,
+                        worker_name: task_plan.worker_name,
+                        output_storage_name,
+                        worker_args,
+                        done_file,
+                        outputs,
+                    })
+                    .into_diagnostic()?;
+
+                ids.push(id);
+            }
+
+            Ok(ids)
+        };
+        future::ready(res()).boxed()
     }
 
     fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
@@ -359,16 +424,9 @@ impl Executor for SubprocessExecutor {
     }
 
     fn cancel(&self, task_ids: Vec<u32>) -> miette::Result<()> {
-        let mut cancel_senders = self
-            .cancel_senders
-            .lock()
-            .map_err(|err| miette!("Failed to lock cancel channels: {}", err))?;
+        let mut cancel_sender = self.cancel_sender.clone();
         for task_id in task_ids {
-            if let Some(cancel_sender) = cancel_senders.remove(&task_id) {
-                // We can ignore send errors as they mean the other side
-                // of the channel has closed.
-                let _res = cancel_sender.send(());
-            }
+            cancel_sender.try_send(task_id).into_diagnostic()?;
         }
         Ok(())
     }
@@ -539,16 +597,15 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(4).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[1].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[1].clone().outputs().unwrap_or_default(),
+            &events[2].clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
-        assert_eq!(events[2].status, Status::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,

@@ -24,7 +24,7 @@ use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_inputs, save_outputs},
-    event::{Event, Status},
+    event::{Event, send_cancelled, send_complete, send_error, send_running},
     executor::interface::{Executor, TaskPlan, WorkerSpec},
 };
 
@@ -117,18 +117,6 @@ fn run_builtin(
     Ok(outputs)
 }
 
-fn send_error(event_sender: &mut EventSender, id: u32, err: &miette::Error) {
-    event_sender
-        .try_send(Event {
-            id,
-            status: Status::Error {
-                error: err.to_string(),
-                detail: None,
-            },
-        })
-        .expect("Failed to send update");
-}
-
 type RunningFutures =
     FuturesUnordered<JoinHandle<(u32, String, Result<HashMap<String, Vec<u8>>, miette::Error>)>>;
 
@@ -143,18 +131,15 @@ async fn process_tasks(
 
     loop {
         tokio::select! {
+            // A task has been cancelled
             Some(id) = cancel_receiver.next() => {
                 let handle = abort_handles.remove(&id);
                 if let Some(handle) = handle {
                     handle.abort();
-                    event_sender
-                        .try_send(Event {
-                            id,
-                            status: Status::Cancelled {},
-                        })
-                        .expect("Failed to send update");
+                    send_cancelled(&mut event_sender, id);
                 }
             }
+            // A task has completed
             Some(res) = running.next() => {
                 let (id, output_storage_name, outputs) = match res {
                     Ok(ok) => ok,
@@ -172,22 +157,13 @@ async fn process_tasks(
                 };
                 let outputs = save_outputs(&asset_storage_registry, &output_storage_name, outputs);
                 match outputs {
-                    Ok(outputs) => event_sender
-                        .try_send(Event {
-                            id,
-                            status: Status::Complete { outputs },
-                        })
-                        .expect("Failed to send update"),
+                    Ok(outputs) => send_complete(&mut event_sender, id, outputs),
                     Err(err) => send_error(&mut event_sender, id, &err),
                 }
             }
+            // A task has been submitted
             Some((id, task_plan, output_storage_name)) = task_receiver.next() => {
-                event_sender
-                    .try_send(Event {
-                        id,
-                        status: Status::Running {},
-                    })
-                    .expect("Failed to send update");
+                send_running(&mut event_sender, id);
 
                 let res = load_inputs(&asset_storage_registry, task_plan.inputs);
 
@@ -333,6 +309,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
+        event::Status,
         executor::interface::TaskPlan,
     };
 

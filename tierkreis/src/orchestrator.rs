@@ -21,7 +21,7 @@ use crate::{
         interface::{AssetKey, AssetSpec},
         transfer_assets,
     },
-    event::{Event, Status},
+    event::{Event, send_complete},
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::Node,
 };
@@ -138,12 +138,7 @@ impl Orchestrator {
                 }
 
                 let mut event_sender = self.event_sender.clone();
-                event_sender
-                    .try_send(Event {
-                        id: 0,
-                        status: Status::Complete { outputs },
-                    })
-                    .into_diagnostic()?;
+                send_complete(&mut event_sender, 0, outputs);
             }
             Node::Output {} => {
                 // Notify that the outputs are ready
@@ -155,12 +150,7 @@ impl Orchestrator {
                     inputs,
                 )
                 .wrap_err("Could not run Output Node")?;
-                event_sender
-                    .try_send(Event {
-                        id: 0,
-                        status: Status::Complete { outputs },
-                    })
-                    .into_diagnostic()?;
+                send_complete(&mut event_sender, 0, outputs);
             }
             Node::Const { value } => {
                 // Load the constant value into the correct storage.
@@ -186,12 +176,7 @@ impl Orchestrator {
                 );
 
                 let mut event_sender = self.event_sender.clone();
-                event_sender
-                    .try_send(Event {
-                        id: 0,
-                        status: Status::Complete { outputs },
-                    })
-                    .into_diagnostic()?;
+                send_complete(&mut event_sender, 0, outputs);
             }
             Node::Eval {} => {
                 // spawn a sub-orchestrator?
@@ -244,6 +229,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
+        event::Status,
         executor::{
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
         },
