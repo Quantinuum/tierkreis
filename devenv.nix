@@ -1,16 +1,19 @@
-{ pkgs, lib, ... }:
-
+{ pkgs, lib, inputs, config, pkgsHostHost, ... }:
+let
+  darwinRuntimeLibraries = with pkgs; [
+    libiconv
+  ];
+  darwinRuntimeLibraryPath = lib.makeLibraryPath darwinRuntimeLibraries;
+in
 {
-
+ config = {
   packages = [
     pkgs.just
     pkgs.zlib
     pkgs.maturin
     pkgs.bacon
     pkgs.cargo-nextest
-  ] ++ lib.optionals pkgs.stdenv.isDarwin [
-    pkgs.apple-sdk
-  ];
+  ] ++ lib.optionals pkgs.stdenv.isDarwin darwinRuntimeLibraries;
 
   git-hooks.hooks = {
     pyright.enable = true;
@@ -23,10 +26,17 @@
   # https://devenv.sh/languages/
   languages.python = {
     enable = true;
-    uv.enable = true;
+     uv = {
+        enable = true;
+        sync.enable = true;
+      };
   };
 
-  languages.rust.enable = true;
+    languages.rust = {
+
+      enable = true;
+      components = [ "rustc" "cargo" "clippy" "rustfmt" "rust-analyzer" ];
+    };
 
   languages.javascript = {
     enable = true;
@@ -46,7 +56,12 @@
   # This allows building the type-check (pyo3) module on MacOSX "Apple Silicon"
   enterShell =
     if pkgs.stdenv.isDarwin && pkgs.stdenv.isAarch64 then ''
-      export RUSTFLAGS="$RUSTFLAGS -C link-arg=-undefined -C link-arg=dynamic_lookup"
-    '' else '''';
-
+      unset UV_PYTHON;
+      export MATURIN_NO_PROGRESS=1
+      export RUST_LOG=error
+    '' else ''
+      export MATURIN_NO_PROGRESS=1
+      export RUST_LOG=error
+    '';
+ };
 }
