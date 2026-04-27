@@ -598,18 +598,34 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert_eq!(events[0].status, Status::Running);
-        assert_eq!(events[1].status, Status::Running);
+        assert!(events.contains(&Event {
+            id: 0,
+            status: Status::Running
+        }));
+        assert!(events.contains(&Event {
+            id: 1,
+            status: Status::Running
+        }));
+
+        // These may complete out of order, so find the correct events.
+        let complete0 = events
+            .iter()
+            .find(|event| event.is_complete() && event.id == 0)
+            .unwrap();
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[2].clone().outputs().unwrap_or_default(),
+            &complete0.clone().outputs().unwrap_or_default(),
             json!({"value": "hello dave"}),
         );
+        let complete1 = events
+            .iter()
+            .find(|event| event.is_complete() && event.id == 1)
+            .unwrap();
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[3].clone().outputs().unwrap_or_default(),
+            &complete1.clone().outputs().unwrap_or_default(),
             json!({"value": "hi steve"}),
         );
 
