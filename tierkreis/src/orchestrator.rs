@@ -382,7 +382,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
-        event::Status,
+        event::{NodeEvent, NodeStatus},
         executor::{
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
         },
@@ -431,7 +431,13 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(
+            events[0],
+            Event::Node(NodeEvent {
+                loc: Location::new("")?,
+                status: NodeStatus::Running { state_update: None }
+            })
+        );
         assert_registry_contains_values(
             &registry,
             &orchestrator.default_storage_name,
@@ -617,7 +623,13 @@ mod tests {
         orchestrator.perform_actions([(node, inputs)]).await?;
 
         let task_running_event = stream.next().await.unwrap();
-        assert_eq!(task_running_event.status, Status::Running);
+        assert_eq!(
+            task_running_event,
+            Event::Node(NodeEvent {
+                loc: Location::new("")?,
+                status: NodeStatus::Running { state_update: None }
+            })
+        );
         let task_complete_event = stream.next().await.unwrap();
         let mut task_complete_outputs = task_complete_event.outputs().unwrap();
         assert_registry_contains_values(

@@ -24,20 +24,24 @@ use futures::{
 use miette::miette;
 use uuid::Uuid;
 
-use crate::state::{
-    interface::RunAttemptUpdated,
-    queries::{
-        add_run_metadata, insert_default_node_state, insert_default_workflowrun, read_node_state,
-        read_run_metadata, read_workflowrun, set_cancelled_if_none, set_complete_if_none,
-        set_error_if_none, set_queued_if_none, set_running_if_none, set_scheduled_if_none,
-    },
-};
 use crate::{
-    event::Event,
+    event::{Event, NodeStatus},
     location::Location,
     state::{
         WorkflowState,
         interface::{NodeState, RuntimeState},
+    },
+};
+use crate::{
+    event::{NodeEvent, WorkflowRunEvent},
+    state::{
+        interface::RunAttemptUpdated,
+        queries::{
+            add_run_metadata, insert_default_node_state, insert_default_workflowrun,
+            read_node_state, read_run_metadata, read_workflowrun, set_cancelled_if_none,
+            set_complete_if_none, set_error_if_none, set_queued_if_none, set_running_if_none,
+            set_scheduled_if_none,
+        },
     },
 };
 
@@ -182,52 +186,20 @@ impl SqliteWorkflowState {}
 
 impl WorkflowState for SqliteWorkflowState {
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
+        let mut send_update = false;
         let mut send_workflow_stopped = false;
-        let loc = event.loc.clone();
-        if let Err(err) =
-            insert_default_node_state(&loc, self.run_id, self.attempt, &self.global_state)
-        {
-            return future::ready(Err(err)).boxed();
+
+        let res = match event {
+            Event::WorkflowRun(run_event) => {
+                let _: () = Self::handle_run_event(&mut send_workflow_stopped, &run_event);
+                Ok(())
+            }
+            Event::Node(node_event) => self.handle_node_event(node_event, &mut send_update),
+        };
+
+        if res.is_err() {
+            return future::ready(res).boxed();
         }
-
-        let send_update_result = match event.status {
-            crate::event::Status::Scheduled => {
-                set_scheduled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            crate::event::Status::Queued => {
-                set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            crate::event::Status::Running => {
-                set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            crate::event::Status::Complete {
-                outputs: _,
-                workflow_complete,
-            } => {
-                send_workflow_stopped = workflow_complete;
-                set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            crate::event::Status::Cancelled => {
-                send_workflow_stopped = true;
-                set_cancelled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            crate::event::Status::Error { error, detail } => {
-                send_workflow_stopped = true;
-                set_error_if_none(
-                    &loc,
-                    self.run_id,
-                    self.attempt,
-                    error,
-                    detail,
-                    &self.global_state,
-                )
-            }
-        };
-
-        let send_update = match send_update_result {
-            Ok(changed) => changed,
-            Err(err) => return future::ready(Err(err)).boxed(),
-        };
 
         let mut update_sender = self.update_sender.clone();
         async move {
@@ -272,10 +244,53 @@ impl WorkflowState for SqliteWorkflowState {
     }
 }
 
+impl SqliteWorkflowState {
+    fn handle_run_event(send_workflow_stopped: &mut bool, run_event: &WorkflowRunEvent) {
+        match run_event {
+            WorkflowRunEvent::Started {} => {}
+            WorkflowRunEvent::Cancelled {}
+            | WorkflowRunEvent::Errored {}
+            | WorkflowRunEvent::Completed {} => *send_workflow_stopped = true,
+        }
+    }
+
+    fn handle_node_event(&self, event: NodeEvent, send_update: &mut bool) -> miette::Result<()> {
+        let loc = event.loc.clone();
+        insert_default_node_state(&loc, self.run_id, self.attempt, &self.global_state)?;
+
+        *send_update = match event.status {
+            NodeStatus::Scheduled => {
+                set_scheduled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            NodeStatus::Queued => {
+                set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            NodeStatus::Running { .. } => {
+                set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            NodeStatus::Complete { outputs: _ } => {
+                set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            NodeStatus::Cancelled => {
+                set_cancelled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            NodeStatus::Error { error, detail } => set_error_if_none(
+                &loc,
+                self.run_id,
+                self.attempt,
+                error,
+                detail,
+                &self.global_state,
+            ),
+        }?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
-    use crate::event::Status;
+    use crate::event::NodeStatus;
 
     use super::*;
 
@@ -307,10 +322,10 @@ mod tests {
         let workflow_state = runtime_state.workflow_state(run_id, attempt);
 
         workflow_state
-            .write(Event {
+            .write(Event::Node(NodeEvent {
                 loc: Location::root(),
-                status: Status::Scheduled,
-            })
+                status: NodeStatus::Scheduled,
+            }))
             .await?;
 
         let updated = stream.take(1).collect::<Vec<_>>().await;
@@ -337,10 +352,10 @@ mod tests {
         let workflow_state = runtime_state.workflow_state(run_id, attempt);
 
         workflow_state
-            .write(Event {
+            .write(Event::Node(NodeEvent {
                 loc: Location::root(),
-                status: Status::Scheduled,
-            })
+                status: NodeStatus::Scheduled,
+            }))
             .await?;
 
         let node_state = workflow_state.read(&Location::root()).await?;
