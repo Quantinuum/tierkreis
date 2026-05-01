@@ -115,6 +115,12 @@ fn run_builtin(
 
             output_value(&mut outputs, a - b)?;
         }
+        "itimes" => {
+            let a = extract_i64(inputs, "a")?;
+            let b = extract_i64(inputs, "b")?;
+
+            output_value(&mut outputs, a * b)?;
+        }
         "sleep" => {
             let delay_seconds = extract_f64(inputs, "delay_seconds")?;
             sleep(Duration::from_secs_f64(delay_seconds));

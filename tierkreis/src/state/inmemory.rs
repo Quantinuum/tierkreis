@@ -154,7 +154,7 @@ impl WorkflowState for InMemoryWorkflowState {
             .or_default();
 
         let mut send_update = false;
-        let mut send_workflow_complete = false;
+        let mut send_workflow_stopped = false;
         let node_state = run_state.nodes.entry(event.loc).or_default();
 
         match event.status {
@@ -185,13 +185,15 @@ impl WorkflowState for InMemoryWorkflowState {
                     node_state.complete_time = Some(Utc::now());
                     node_state.outputs = Some(outputs);
 
-                    send_workflow_complete = workflow_complete;
+                    send_workflow_stopped = workflow_complete;
                 }
             }
             crate::event::Status::Cancelled => {
                 if node_state.cancelled_time.is_none() {
                     send_update = true;
                     node_state.cancelled_time = Some(Utc::now());
+
+                    send_workflow_stopped = true;
                 }
             }
             crate::event::Status::Error { error, detail } => {
@@ -200,6 +202,8 @@ impl WorkflowState for InMemoryWorkflowState {
                     node_state.error_time = Some(Utc::now());
                     node_state.error = Some(error);
                     node_state.error_detail = detail;
+
+                    send_workflow_stopped = true;
                 }
             }
         }
@@ -211,7 +215,7 @@ impl WorkflowState for InMemoryWorkflowState {
                     .send(RunAttemptUpdated {
                         run_id: self.run_id,
                         attempt: self.attempt,
-                        complete: send_workflow_complete,
+                        stopped: send_workflow_stopped,
                     })
                     .await
                     .map_err(|err| miette!("Send failed: {err}"))?;
@@ -307,7 +311,7 @@ mod tests {
             RunAttemptUpdated {
                 run_id,
                 attempt,
-                complete: false
+                stopped: false
             }
         );
 

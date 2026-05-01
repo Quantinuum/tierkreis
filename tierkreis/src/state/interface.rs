@@ -18,8 +18,8 @@ pub struct RunAttemptUpdated {
     pub run_id: Uuid,
     /// The number of the run attempt, typically sequential.
     pub attempt: u32,
-    /// Whether the workflow is complete and no further orchestration is required.
-    pub complete: bool,
+    /// Whether the workflow is complete/cancelled/errored and no further orchestration is required.
+    pub stopped: bool,
 }
 
 /// [`NodeState`] is a struct that stores the possible state that a node
