@@ -20,7 +20,7 @@ use serde_json::Value;
 use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::{
-    asset_storage::{AssetStorageRegistry, load_inputs, save_outputs},
+    asset_storage::{AssetStorageRegistry, load_assets, save_assets},
     event::{Event, send_cancelled, send_complete, send_error, send_running},
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
@@ -165,7 +165,7 @@ async fn process_finished_task(
             return Ok(());
         }
     };
-    let outputs = save_outputs(asset_storage_registry, &output_storage_name, outputs);
+    let outputs = save_assets(asset_storage_registry, &output_storage_name, outputs);
     match outputs {
         Ok(outputs) => send_complete(event_sender, loc, outputs).await?,
         Err(err) => send_error(event_sender, loc, &err).await?,
@@ -186,7 +186,7 @@ async fn start_task(
     let output_storage_name = internal_task.output_storage_name;
     send_running(event_sender, loc.clone()).await?;
 
-    let res = load_inputs(asset_storage_registry, &task_plan.inputs);
+    let res = load_assets(asset_storage_registry, &task_plan.inputs);
 
     let inputs = match res {
         Ok(inputs) => inputs,

@@ -45,16 +45,16 @@ impl AssetStorage for FileAssetStorage {
 
     fn exists(&self, key: &AssetKey) -> miette::Result<bool> {
         let location = self.location(key);
-        location.try_exists().into_diagnostic().wrap_err(miette!(
-            "Could not determine whether file exists at location: {location:?}"
-        ))
+        location.try_exists().into_diagnostic().wrap_err_with(|| {
+            miette!("Could not determine whether file exists at location: {location:?}")
+        })
     }
 
     fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()> {
         let location = self.location(key);
         let mut file = File::create(self.location(key))
             .into_diagnostic()
-            .wrap_err(miette!("Cannot find file at location: {location:?}"))?;
+            .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
         file.write_all(&value).into_diagnostic()?;
         Ok(())
     }
@@ -63,7 +63,7 @@ impl AssetStorage for FileAssetStorage {
         let location = self.location(key);
         let mut file = File::open(self.location(key))
             .into_diagnostic()
-            .wrap_err(miette!("Cannot find file at location: {location:?}"))?;
+            .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
         let mut value = Vec::new();
         file.read_to_end(&mut value).into_diagnostic()?;
         Ok(value)
