@@ -4,10 +4,7 @@ by running small tasks from a small work queue.
 */
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU32, Ordering},
-    },
+    sync::{Arc, Mutex},
     thread::sleep,
     time::Duration,
 };
@@ -26,6 +23,7 @@ use crate::{
     asset_storage::{AssetStorageRegistry, load_inputs, save_outputs},
     event::{Event, send_cancelled, send_complete, send_error, send_running},
     executor::interface::{Executor, TaskPlan, WorkerSpec},
+    location::Location,
 };
 
 /// [`InMemoryResourceSpec`] determines what Resources should be available to the
@@ -40,13 +38,12 @@ pub struct InMemoryResourceSpec {}
 pub struct InMemoryEnvironmentSpec {}
 
 struct BackgroundTaskPlan {
-    id: u32,
     task_plan: TaskPlan,
     output_storage_name: String,
 }
 
 struct BackgroundTask {
-    id: u32,
+    loc: Location,
     output_storage_name: String,
     task_output: miette::Result<HashMap<String, Vec<u8>>>,
 }
@@ -55,8 +52,8 @@ type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
 type EventSender = mpsc::Sender<Event>;
 type EventReceiver = mpsc::Receiver<Event>;
-type CancelSender = mpsc::Sender<u32>;
-type CancelReceiver = mpsc::Receiver<u32>;
+type CancelSender = mpsc::Sender<Location>;
+type CancelReceiver = mpsc::Receiver<Location>;
 
 fn extract_i64(inputs: &HashMap<String, Vec<u8>>, name: &str) -> miette::Result<i64> {
     let asset = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
@@ -133,39 +130,39 @@ type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
 
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<u32, AbortHandle>,
-    id: u32,
+    abort_handles: &mut HashMap<Location, AbortHandle>,
+    loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles.remove(&id);
+    let handle = abort_handles.remove(&loc);
     if let Some(handle) = handle {
         handle.abort();
-        send_cancelled(event_sender, id).await?;
+        send_cancelled(event_sender, loc).await?;
     }
     Ok(())
 }
 
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<u32, AbortHandle>,
+    abort_handles: &mut HashMap<Location, AbortHandle>,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
 ) -> miette::Result<()> {
-    let id = background_task.id;
+    let loc = background_task.loc;
     let task_outputs = background_task.task_output;
     let output_storage_name = background_task.output_storage_name;
-    abort_handles.remove(&id);
+    abort_handles.remove(&loc);
 
     let outputs = match task_outputs {
         Ok(outputs) => outputs,
         Err(err) => {
-            send_error(event_sender, id, &err).await?;
+            send_error(event_sender, loc, &err).await?;
             return Ok(());
         }
     };
     let outputs = save_outputs(asset_storage_registry, &output_storage_name, outputs);
     match outputs {
-        Ok(outputs) => send_complete(event_sender, id, outputs).await?,
-        Err(err) => send_error(event_sender, id, &err).await?,
+        Ok(outputs) => send_complete(event_sender, loc, outputs).await?,
+        Err(err) => send_error(event_sender, loc, &err).await?,
     }
 
     Ok(())
@@ -173,37 +170,38 @@ async fn process_finished_task(
 
 async fn start_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<u32, AbortHandle>,
+    abort_handles: &mut HashMap<Location, AbortHandle>,
     asset_storage_registry: &AssetStorageRegistry,
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
-    let id = internal_task.id;
     let task_plan = internal_task.task_plan;
+    let loc = task_plan.loc;
     let output_storage_name = internal_task.output_storage_name;
-    send_running(event_sender, id).await?;
+    send_running(event_sender, loc.clone()).await?;
 
     let res = load_inputs(asset_storage_registry, &task_plan.inputs);
 
     let inputs = match res {
         Ok(inputs) => inputs,
         Err(err) => {
-            send_error(event_sender, id, &err).await?;
+            send_error(event_sender, loc, &err).await?;
             return Ok(());
         }
     };
 
+    let task_loc = loc.clone();
     let task = tokio::task::spawn_blocking(move || {
         let inputs = inputs;
         let task_name = task_plan.task_name;
         BackgroundTask {
-            id,
+            loc: task_loc,
             output_storage_name,
             task_output: run_builtin(&task_name, &inputs),
         }
     });
 
-    abort_handles.insert(id, task.abort_handle());
+    abort_handles.insert(loc.clone(), task.abort_handle());
     running.push(task);
 
     Ok(())
@@ -215,14 +213,14 @@ async fn process_tasks(
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
 ) {
-    let mut abort_handles: HashMap<u32, AbortHandle> = HashMap::new();
+    let mut abort_handles: HashMap<Location, AbortHandle> = HashMap::new();
     let mut running: RunningFutures = FuturesUnordered::new();
 
     loop {
         tokio::select! {
             // A task has been cancelled
-            Some(id) = cancel_receiver.next() => {
-                process_cancelled_task(&mut event_sender, &mut abort_handles, id)
+            Some(loc) = cancel_receiver.next() => {
+                process_cancelled_task(&mut event_sender, &mut abort_handles, loc)
                     .await
                     .expect("Failed to cancel task");
             }
@@ -254,6 +252,7 @@ async fn process_tasks(
                 .await
                 .expect("Failed to start task");
             }
+            else => break
         }
     }
 }
@@ -263,8 +262,6 @@ async fn process_tasks(
 /// These Tasks should be short lived Tasks where we want to avoid the overhead of spinning
 /// up an entirely new process.
 pub struct InMemoryExecutor {
-    id_source: AtomicU32,
-
     task_sender: TaskSender,
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
@@ -304,8 +301,6 @@ impl InMemoryExecutor {
         ));
 
         Ok(Self {
-            id_source: AtomicU32::new(0),
-
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
@@ -322,13 +317,11 @@ impl Executor for InMemoryExecutor {
         .boxed()
     }
 
-    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
+    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
         let fut = async {
-            let mut ids = Vec::new();
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
-                let id = self.id_source.fetch_add(1, Ordering::Relaxed);
                 let output_storage_name = task_plan
                     .output_storage_name
                     .clone()
@@ -336,22 +329,19 @@ impl Executor for InMemoryExecutor {
 
                 task_sender
                     .send(BackgroundTaskPlan {
-                        id,
                         task_plan,
                         output_storage_name,
                     })
                     .await
                     .into_diagnostic()?;
-
-                ids.push(id);
             }
-            Ok(ids)
+            Ok(())
         };
 
         fut.boxed()
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
+    fn listen(&self) -> miette::Result<BoxStream<'static, Event>> {
         // Explicit block to allow us to drop the MutexGuard after we
         // take the receiver.
         let channel = {
@@ -367,11 +357,11 @@ impl Executor for InMemoryExecutor {
         Ok(channel.boxed())
     }
 
-    fn cancel(&self, task_ids: Vec<u32>) -> BoxFuture<'_, miette::Result<()>> {
-        let fut = async {
-            let mut cancel_sender = self.cancel_sender.clone();
-            for task_id in task_ids {
-                cancel_sender.send(task_id).await.into_diagnostic()?;
+    fn cancel(&self, task_locations: Vec<Location>) -> BoxFuture<'_, miette::Result<()>> {
+        let mut cancel_sender = self.cancel_sender.clone();
+        let fut = async move {
+            for task_location in task_locations {
+                cancel_sender.send(task_location).await.into_diagnostic()?;
             }
             Ok(())
         };
@@ -498,8 +488,11 @@ mod tests {
             vec![],
         );
 
+        let loc1 = Location::from_usize_iter([0]);
+        let loc2 = Location::from_usize_iter([1]);
         let task_plans = vec![
             TaskPlan {
+                loc: loc1.clone(),
                 worker_name: "builtin".to_string(),
                 task_name: "iadd".to_string(),
 
@@ -508,6 +501,7 @@ mod tests {
                 ..Default::default()
             },
             TaskPlan {
+                loc: loc2.clone(),
                 worker_name: "builtin".to_string(),
                 task_name: "iadd".to_string(),
 
@@ -524,18 +518,18 @@ mod tests {
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert!(events.contains(&Event {
-            id: 0,
+            loc: loc1.clone(),
             status: Status::Running
         }));
         assert!(events.contains(&Event {
-            id: 1,
+            loc: loc2.clone(),
             status: Status::Running
         }));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
             .iter()
-            .find(|event| event.is_complete() && event.id == 0)
+            .find(|event| event.is_complete() && event.loc == loc1)
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -545,7 +539,7 @@ mod tests {
         );
         let complete1 = events
             .iter()
-            .find(|event| event.is_complete() && event.id == 1)
+            .find(|event| event.is_complete() && event.loc == loc2)
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -632,7 +626,9 @@ mod tests {
         let (registry, input_sets, _) =
             test_storage_registry(vec![json!({"delay_seconds": 1})], vec![]);
 
+        let loc = Location::from_usize_iter([0]);
         let task_plans = vec![TaskPlan {
+            loc: loc.clone(),
             worker_name: "builtin".to_string(),
             task_name: "sleep".to_string(),
 
@@ -643,12 +639,12 @@ mod tests {
         let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let mut stream = executor.listen()?;
-        let task_ids = executor.execute(task_plans).await?;
+        executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
         assert_eq!(event.status, Status::Running);
 
-        executor.cancel(task_ids).await?;
+        executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
         assert_eq!(event.status, Status::Cancelled);
@@ -663,7 +659,8 @@ mod tests {
         let (registry, _, _) = test_storage_registry(vec![], vec![]);
         let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
-        executor.cancel(vec![0]).await?;
+        let loc = Location::from_usize_iter([0]);
+        executor.cancel(vec![loc]).await?;
 
         Ok(())
     }
@@ -675,7 +672,9 @@ mod tests {
         let (registry, input_sets, _) =
             test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]);
 
+        let loc = Location::from_usize_iter([0]);
         let task_plans = vec![TaskPlan {
+            loc: loc.clone(),
             worker_name: "builtin".to_string(),
             task_name: "iadd".to_string(),
 
@@ -686,7 +685,7 @@ mod tests {
         let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
-        let task_ids = executor.execute(task_plans).await?;
+        executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
@@ -699,7 +698,7 @@ mod tests {
             json!({"value": 4}),
         );
 
-        executor.cancel(task_ids).await?;
+        executor.cancel(vec![loc]).await?;
 
         Ok(())
     }

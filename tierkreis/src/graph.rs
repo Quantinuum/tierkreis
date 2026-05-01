@@ -13,7 +13,7 @@ use portgraph::{
 use serde::{Deserialize, Serialize};
 
 /// Possible definitions for Nodes in the [`WorkflowGraph`].
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeDefinition {
     /// A node that takes input values to the Graph.
     Input {
@@ -40,7 +40,7 @@ pub enum NodeDefinition {
 
 /// The [`WorkflowGraph`] defines a Workflow that can be evaluated
 /// by the Tierkreis runtime.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowGraph {
     graph: PortGraph,
     node_definitions: HashMap<NodeIndex, NodeDefinition>,
@@ -95,6 +95,11 @@ impl WorkflowGraph {
     #[must_use]
     pub fn node_definition(&self, node: NodeIndex) -> Option<&NodeDefinition> {
         self.node_definitions.get(&node)
+    }
+
+    /// Iterate over the indices of all the nodes in the grraph.
+    pub fn node_ids(&self) -> impl Iterator<Item = NodeIndex> {
+        self.graph.nodes_iter()
     }
 
     /// Add a node to the graph using a definition and the names of the input and output ports.
@@ -199,7 +204,7 @@ impl WorkflowGraph {
 
     /// Apply a function that returns a bool to all the input neighbours of a Node and return true
     /// if all the returned values are true and false otherwise.
-    pub fn all_inputs(&self, node: NodeIndex, f: impl FnMut(NodeIndex) -> bool) -> bool {
+    pub fn all_inputs(&self, node: NodeIndex, f: impl Fn(NodeIndex) -> bool) -> bool {
         self.graph.input_neighbours(node).all(f)
     }
 
@@ -208,7 +213,7 @@ impl WorkflowGraph {
     /// `output_node` of the graph and then in topologically sorted order.
     pub fn toposort_filtered_from_output_node<'a>(
         &'a self,
-        filter: impl FnMut(NodeIndex) -> bool + 'a,
+        filter: impl Fn(NodeIndex) -> bool + 'a,
     ) -> TopoSort<'a, &'a PortGraph> {
         toposort_filtered::<_, BitVec>(
             &self.graph,

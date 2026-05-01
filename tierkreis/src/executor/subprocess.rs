@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
-    sync::{Arc, Mutex, atomic::AtomicU32},
+    sync::{Arc, Mutex},
 };
 
 use futures::{
@@ -32,6 +32,7 @@ use crate::{
     },
     event::{Event, Status, send_cancelled, send_complete, send_error, send_running},
     executor::interface::{Executor, TaskPlan, WorkerSpec},
+    location::Location,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -45,7 +46,7 @@ pub struct SubprocessResourceSpec {}
 pub struct SubprocessEnvironmentSpec {}
 
 struct BackgroundTaskPlan {
-    id: u32,
+    loc: Location,
     worker_name: String,
     output_storage_name: String,
     worker_args: NamedTempFile,
@@ -54,7 +55,7 @@ struct BackgroundTaskPlan {
 }
 
 struct BackgroundTask {
-    id: u32,
+    loc: Location,
     output_storage_name: String,
     exit_status: Result<ExitStatus, std::io::Error>,
     outputs: HashMap<String, AssetSpec>,
@@ -70,50 +71,50 @@ type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
 type EventSender = mpsc::Sender<Event>;
 type EventReceiver = mpsc::Receiver<Event>;
-type CancelSender = mpsc::Sender<u32>;
-type CancelReceiver = mpsc::Receiver<u32>;
+type CancelSender = mpsc::Sender<Location>;
+type CancelReceiver = mpsc::Receiver<Location>;
 
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
 
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<u32, AbortHandle>,
-    id: u32,
+    abort_handles: &mut HashMap<Location, AbortHandle>,
+    loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles.remove(&id);
+    let handle = abort_handles.remove(&loc);
     if let Some(handle) = handle {
         handle.abort();
-        send_cancelled(event_sender, id).await?;
+        send_cancelled(event_sender, loc).await?;
     }
     Ok(())
 }
 
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<u32, AbortHandle>,
+    abort_handles: &mut HashMap<Location, AbortHandle>,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
 ) -> miette::Result<()> {
-    let id = background_task.id;
+    let loc = background_task.loc;
     let outputs = background_task.outputs;
     let output_storage_name = background_task.output_storage_name;
     let exit_status = background_task.exit_status;
 
-    abort_handles.remove(&id);
+    abort_handles.remove(&loc);
     match exit_status {
         Ok(status) => {
             if status.success() {
                 let outputs =
                     transfer_assets(asset_storage_registry, &output_storage_name, &outputs);
                 match outputs {
-                    Ok(outputs) => send_complete(event_sender, id, outputs).await?,
-                    Err(err) => send_error(event_sender, id, &err).await?,
+                    Ok(outputs) => send_complete(event_sender, loc, outputs).await?,
+                    Err(err) => send_error(event_sender, loc, &err).await?,
                 }
             } else {
                 let stderr = background_task.stderr.await.ok();
                 event_sender
                     .send(Event {
-                        id,
+                        loc,
                         status: Status::Error {
                             error: format!("Subprocess failed with exit code: {status}"),
                             detail: stderr,
@@ -123,7 +124,7 @@ async fn process_finished_task(
                     .map_err(|err| miette!("Failed to send error event: {err}"))?;
             }
         }
-        Err(err) => send_error(event_sender, id, &miette!("Failed to run worker: {err}")).await?,
+        Err(err) => send_error(event_sender, loc, &miette!("Failed to run worker: {err}")).await?,
     }
 
     Ok(())
@@ -131,12 +132,12 @@ async fn process_finished_task(
 
 async fn start_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<u32, AbortHandle>,
+    abort_handles: &mut HashMap<Location, AbortHandle>,
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
-    let id = internal_task.id;
-    send_running(event_sender, id).await?;
+    let loc = internal_task.loc;
+    send_running(event_sender, loc.clone()).await?;
 
     let worker_args = internal_task.worker_args;
     let worker_args_path = worker_args.path();
@@ -145,18 +146,19 @@ async fn start_task(
     let mut child = match res {
         Ok(child) => child,
         Err(err) => {
-            send_error(event_sender, id, &err).await?;
+            send_error(event_sender, loc, &err).await?;
             return Ok(());
         }
     };
     let stderr = read_stderr(&mut child);
 
+    let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
     let task = tokio::task::spawn(async move {
         let exit_status = child.wait().await;
         BackgroundTask {
-            id,
+            loc: background_loc,
             output_storage_name,
             exit_status,
             outputs,
@@ -166,7 +168,7 @@ async fn start_task(
         }
     });
 
-    abort_handles.insert(id, task.abort_handle());
+    abort_handles.insert(loc, task.abort_handle());
     running.push(task);
 
     Ok(())
@@ -178,7 +180,7 @@ async fn process_tasks(
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
 ) {
-    let mut abort_handles: HashMap<u32, AbortHandle> = HashMap::new();
+    let mut abort_handles: HashMap<Location, AbortHandle> = HashMap::new();
     let mut running: RunningFutures = FuturesUnordered::new();
 
     loop {
@@ -216,13 +218,13 @@ async fn process_tasks(
                 .await
                 .expect("Failed to start task");
             }
+            else => break
         }
     }
 }
 
 /// [`SubprocessExecutor`] defines an [Executor] that performs Task Nodes using Worker subprocesses.
 pub struct SubprocessExecutor {
-    id_source: AtomicU32,
     task_sender: TaskSender,
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
@@ -287,8 +289,6 @@ impl SubprocessExecutor {
 
         let asset_storage_registry = Arc::clone(asset_storage_registry);
         Ok(Self {
-            id_source: AtomicU32::new(0),
-
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
@@ -399,15 +399,11 @@ impl Executor for SubprocessExecutor {
         self.workers().boxed()
     }
 
-    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
+    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
         let fut = async {
-            let mut ids = Vec::new();
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
-                let id = self
-                    .id_source
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let inputs = self.build_inputs(&task_plan.inputs)?;
                 let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
 
@@ -437,7 +433,7 @@ impl Executor for SubprocessExecutor {
 
                 task_sender
                     .send(BackgroundTaskPlan {
-                        id,
+                        loc: task_plan.loc,
                         worker_name: task_plan.worker_name,
                         output_storage_name,
                         worker_args,
@@ -446,16 +442,14 @@ impl Executor for SubprocessExecutor {
                     })
                     .await
                     .into_diagnostic()?;
-
-                ids.push(id);
             }
 
-            Ok(ids)
+            Ok(())
         };
         fut.boxed()
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
+    fn listen(&self) -> miette::Result<BoxStream<'static, Event>> {
         // Explicit block to allow us to drop the MutexGuard after we
         // take the receiver.
         let channel = {
@@ -471,11 +465,11 @@ impl Executor for SubprocessExecutor {
         Ok(channel.boxed())
     }
 
-    fn cancel(&self, task_ids: Vec<u32>) -> BoxFuture<'_, miette::Result<()>> {
-        let fut = async {
-            let mut cancel_sender = self.cancel_sender.clone();
-            for task_id in task_ids {
-                cancel_sender.send(task_id).await.into_diagnostic()?;
+    fn cancel(&self, task_locations: Vec<Location>) -> BoxFuture<'_, miette::Result<()>> {
+        let mut cancel_sender = self.cancel_sender.clone();
+        let fut = async move {
+            for task_location in task_locations {
+                cancel_sender.send(task_location).await.into_diagnostic()?;
             }
             Ok(())
         };
@@ -622,8 +616,11 @@ mod tests {
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
+        let loc1 = Location::from_usize_iter([0]);
+        let loc2 = Location::from_usize_iter([1]);
         let task_plans = vec![
             TaskPlan {
+                loc: loc1.clone(),
                 worker_name: "hello-world-worker".to_string(),
                 task_name: "greet".to_string(),
 
@@ -633,6 +630,7 @@ mod tests {
                 ..Default::default()
             },
             TaskPlan {
+                loc: loc2.clone(),
                 worker_name: "hello-world-worker".to_string(),
                 task_name: "greet".to_string(),
 
@@ -650,18 +648,18 @@ mod tests {
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert!(events.contains(&Event {
-            id: 0,
+            loc: loc1.clone(),
             status: Status::Running
         }));
         assert!(events.contains(&Event {
-            id: 1,
+            loc: loc2.clone(),
             status: Status::Running
         }));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
             .iter()
-            .find(|event| event.is_complete() && event.id == 0)
+            .find(|event| event.is_complete() && event.loc == loc1)
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -671,7 +669,7 @@ mod tests {
         );
         let complete1 = events
             .iter()
-            .find(|event| event.is_complete() && event.id == 1)
+            .find(|event| event.is_complete() && event.loc == loc2)
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -766,7 +764,9 @@ mod tests {
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
+        let loc = Location::from_usize_iter([0]);
         let task_plans = vec![TaskPlan {
+            loc: loc.clone(),
             worker_name: "hello-world-worker".to_string(),
             task_name: "greet".to_string(),
 
@@ -778,12 +778,12 @@ mod tests {
         let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let mut stream = executor.listen()?;
-        let task_ids = executor.execute(task_plans).await?;
+        executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
         assert_eq!(event.status, Status::Running);
 
-        executor.cancel(task_ids).await?;
+        executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
         assert_eq!(event.status, Status::Cancelled);
@@ -798,7 +798,8 @@ mod tests {
         let (registry, _, _) = test_storage_registry(vec![], vec![]);
         let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
-        executor.cancel(vec![0]).await?;
+        let loc = Location::from_usize_iter([0]);
+        executor.cancel(vec![loc]).await?;
 
         Ok(())
     }
@@ -814,7 +815,9 @@ mod tests {
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
+        let loc = Location::from_usize_iter([0]);
         let task_plans = vec![TaskPlan {
+            loc: loc.clone(),
             worker_name: "hello-world-worker".to_string(),
             task_name: "greet".to_string(),
 
@@ -826,7 +829,7 @@ mod tests {
         let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let stream = executor.listen()?;
-        let task_ids = executor.execute(task_plans).await?;
+        executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
@@ -838,7 +841,7 @@ mod tests {
             json!({"value": "hello dave"}),
         );
 
-        executor.cancel(task_ids).await?;
+        executor.cancel(vec![loc]).await?;
 
         Ok(())
     }

@@ -10,10 +10,13 @@ use serde_json::Value;
 
 use crate::asset_storage::interface::AssetSpec;
 use crate::event::Event;
+use crate::location::Location;
 
 /// [`TaskPlan`] describes how a Task should be executed on an Executor.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct TaskPlan {
+    /// The location of the Node which this Task was created for.
+    pub loc: Location,
     /// The name of the Worker to invoke.
     pub worker_name: String,
     /// The name of the Worker's task to invoke.
@@ -55,7 +58,7 @@ pub trait Executor: Send + Sync {
     ///
     /// This method does not block and updates about the Tasks will appear in the
     /// stream provided by the [`Executor::listen`] method.
-    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>>;
+    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>>;
     /// Listen to a stream of [Event]s from the [Executor] about changes in Task state.
     ///
     /// Typically this method should only be called once and the stream should be only
@@ -64,7 +67,7 @@ pub trait Executor: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    fn listen(&self) -> miette::Result<BoxStream<'_, Event>>;
+    fn listen(&self) -> miette::Result<BoxStream<'static, Event>>;
     /// Signal that the Tasks with the specified ids should be cancelled when possible.
     ///
     /// There is no guarantee that the Tasks will not run, but the [Executor] should
@@ -73,5 +76,5 @@ pub trait Executor: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the [Executor] is unreachable.
-    fn cancel(&self, task_ids: Vec<u32>) -> BoxFuture<'_, miette::Result<()>>;
+    fn cancel(&self, task_locations: Vec<Location>) -> BoxFuture<'_, miette::Result<()>>;
 }
