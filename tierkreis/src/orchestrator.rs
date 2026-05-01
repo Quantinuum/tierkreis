@@ -196,6 +196,7 @@ impl Orchestrator {
                         )
                         .collect()
                     }
+                    _ => unimplemented!(),
                 }
             })
     }
@@ -354,8 +355,8 @@ fn collect_inputs(
     let inputs: HashMap<String, AssetSpec> = workflow_graph
         .input_links(n)
         .map(|(i, o)| {
-            let input_name = workflow_graph.get_port_name(&i)?;
-            let output_name = workflow_graph.get_port_name(&o)?;
+            let input_name = workflow_graph.get_port_name(&i.into())?;
+            let output_name = workflow_graph.get_port_name(&o.into())?;
             let linked_node = workflow_graph.port_node(o)?;
             let output_asset_spec = context
                 .node_outputs
