@@ -10,11 +10,13 @@ name = "tkr"
 
 [dependencies]
 axum = { version = "0.8.8", features = ["ws", "http2"] }
+bitvec = "1.0.1"
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.0", features = ["derive"] }
 dashmap = "6.1.0"
 futures = "0.3.32"
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
+portgraph = { version = "0.16.1", features = ["serde"] }
 pyo3 = { version = "0.28.2", features = ["auto-initialize", "anyhow", "abi3"] }
 regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }

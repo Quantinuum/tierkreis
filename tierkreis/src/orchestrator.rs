@@ -5,7 +5,7 @@ of [Event]s with updates about each node in the Workflow.
 */
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use futures::{
@@ -14,6 +14,8 @@ use futures::{
     stream::{BoxStream, select_all},
 };
 use miette::{Context, IntoDiagnostic, miette};
+use portgraph::NodeIndex;
+use serde_json::Value;
 
 use crate::{
     asset_storage::{
@@ -23,8 +25,42 @@ use crate::{
     },
     event::{Event, send_complete},
     executor::{ExecutorRegistry, interface::TaskPlan},
-    graph::Node,
+    graph::{NodeDefinition, WorkflowGraph},
 };
+
+static EMPTY_INPUTS: LazyLock<HashMap<String, AssetSpec>> = LazyLock::new(HashMap::new);
+
+/// [Action] is a placeholder enum for operation the Executor can perform
+/// when interpreting a Workflow graph.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Action {
+    /// An operation performed by a Worker.
+    Task {
+        /// The name of the Worker to call.
+        worker_name: String,
+        /// The name of the Task to call.
+        task_name: String,
+    },
+    /// An input to the Workflow.
+    Input {
+        /// The name of the Workflow input to capture.
+        name: String,
+    },
+    /// The output of the Workflow
+    Output {},
+    /// A constant Value in the Workflow.
+    Const {
+        /// The constant value to return.
+        value: Value,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+struct ExecutionContext<'a> {
+    graph_inputs: &'a HashMap<String, AssetSpec>,
+    node_outputs: &'a HashMap<NodeIndex, HashMap<String, AssetSpec>>,
+}
 
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
 /// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
@@ -82,110 +118,180 @@ impl Orchestrator {
         })
     }
 
-    /// Dispatch a single [Node] for execution.
+    #[allow(dead_code)]
+    fn build_actions<'a>(
+        &self,
+        context: &'a ExecutionContext<'a>,
+        workflow_graph: &'a WorkflowGraph,
+    ) -> impl Iterator<Item = (Action, HashMap<String, AssetSpec>)> {
+        workflow_graph
+            .toposort_filtered_from_output_node(|n| !context.node_outputs.contains_key(&n))
+            .filter(|n| {
+                workflow_graph
+                    .all_inputs(*n, |incoming| context.node_outputs.contains_key(&incoming))
+            })
+            .flat_map(move |n| {
+                let definition = workflow_graph.node_definition(n).unwrap();
+                match definition {
+                    NodeDefinition::Input { name } => {
+                        vec![(
+                            Action::Input { name: name.clone() },
+                            context.graph_inputs.clone(),
+                        )]
+                    }
+                    NodeDefinition::Const { value } => vec![(
+                        Action::Const {
+                            value: value.clone(),
+                        },
+                        EMPTY_INPUTS.clone(),
+                    )],
+                    NodeDefinition::Output {} => {
+                        let inputs = collect_inputs(context, workflow_graph, n).unwrap();
+                        vec![(Action::Output {}, inputs)]
+                    }
+                    NodeDefinition::Task {
+                        worker_name,
+                        task_name,
+                    } => {
+                        let inputs = collect_inputs(context, workflow_graph, n).unwrap();
+                        vec![(
+                            Action::Task {
+                                worker_name: worker_name.clone(),
+                                task_name: task_name.clone(),
+                            },
+                            inputs,
+                        )]
+                    }
+                    NodeDefinition::Eval {} => {
+                        let inputs = collect_inputs(context, workflow_graph, n).unwrap();
+                        let graph_asset_spec = inputs.get("thunk").unwrap();
+
+                        let asset_storage = self.asset_storage_registry.read().unwrap();
+                        let subgraph_storage =
+                            asset_storage.get(&graph_asset_spec.storage_name).unwrap();
+                        let subgraph_bytes =
+                            subgraph_storage.load(&graph_asset_spec.asset_key).unwrap();
+                        let subgraph: WorkflowGraph =
+                            serde_json::from_slice(&subgraph_bytes).unwrap();
+
+                        self.build_actions(
+                            &ExecutionContext {
+                                graph_inputs: &inputs,
+                                // TODO: We need to get the existing graph state somehow
+                                node_outputs: &HashMap::new(),
+                            },
+                            &subgraph,
+                        )
+                        .collect()
+                    }
+                }
+            })
+    }
+
+    /// Perform a series of actions, dispatching to [`Executor`]s when necessary.
     ///
     /// # Errors
     ///
     /// Will return Err if a Node cannot be run or dispatched.
-    // TODO: This should really be a list of Nodes or similar.
-    pub async fn start_node(
+    pub async fn perform_actions(
         &self,
-        node: &Node,
-        inputs: HashMap<String, AssetSpec>,
+        actions: impl IntoIterator<Item = (Action, HashMap<String, AssetSpec>)>,
     ) -> miette::Result<()> {
-        match node {
-            Node::Task {
-                worker_name,
-                task_name,
-            } => {
-                let task_plans = vec![TaskPlan {
-                    worker_name: worker_name.clone(),
-                    task_name: task_name.clone(),
-
-                    inputs,
-
+        // Build a list of tasks to dispatch to Executors and immediately
+        // process everything else.
+        let mut task_plans = Vec::new();
+        for (action, inputs) in actions {
+            match action {
+                Action::Task {
+                    worker_name,
+                    task_name,
+                } => task_plans.push(TaskPlan {
+                    worker_name,
+                    task_name,
+                    inputs: inputs.clone(),
                     output_storage_name: Some(self.default_storage_name.clone()),
                     ..Default::default()
-                }];
-                let default_executor_name = &self.default_executor_name;
-                let executor = self
-                    .executor_registry
-                    .get(&self.default_executor_name)
-                    .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Node")?;
-                executor
-                    .execute(task_plans)
-                    .await
-                    .wrap_err("Could not run Task Node")?;
-            }
-            Node::Input { name } => {
-                // Assume the inputs are the inputs to the graph.
-                //
-                // Just pull out the named input and assign it to the "value" output.
-                let value_spec = inputs
-                    .get(name)
-                    .ok_or(miette!("Missing input: {name}"))
-                    .wrap_err("Could not run Input Node")?;
-                let mut outputs = HashMap::new();
-                outputs.insert("value".to_string(), value_spec.clone());
+                }),
+                Action::Input { name } => {
+                    // Assume the inputs are the inputs to the graph.
+                    //
+                    // Just pull out the named input and assign it to the "value" output.
+                    let value_spec = inputs
+                        .get(&name)
+                        .ok_or(miette!("Missing input: {name}"))
+                        .wrap_err("Could not run Input Node")?;
+                    let mut outputs = HashMap::new();
+                    outputs.insert("value".to_string(), value_spec.clone());
 
-                // Move the value into storage if needed.
-                if value_spec.storage_name != self.default_storage_name {
+                    // Move the values if needed.
                     outputs = transfer_assets(
                         &self.asset_storage_registry,
                         &self.default_storage_name,
                         &outputs,
                     )?;
+
+                    let mut event_sender = self.event_sender.clone();
+                    send_complete(&mut event_sender, 0, outputs).await?;
                 }
+                Action::Output {} => {
+                    // Notify that the outputs are ready
+                    let mut event_sender = self.event_sender.clone();
 
-                let mut event_sender = self.event_sender.clone();
-                send_complete(&mut event_sender, 0, outputs).await?;
-            }
-            Node::Output {} => {
-                // Notify that the outputs are ready
-                let mut event_sender = self.event_sender.clone();
-
-                let outputs = transfer_assets(
-                    &self.asset_storage_registry,
-                    &self.default_storage_name,
-                    &inputs,
-                )
-                .wrap_err("Could not run Output Node")?;
-                send_complete(&mut event_sender, 0, outputs).await?;
-            }
-            Node::Const { value } => {
-                // Load the constant value into the correct storage.
-                let outputs = {
-                    let asset_storage_registry_lock =
-                        self.asset_storage_registry.read().map_err(|err| {
-                            miette!("Failed to lock AssetStorageRegistry for reading: {err}")
-                        })?;
-                    let default_storage_name = &self.default_storage_name;
-                    let asset_storage = asset_storage_registry_lock
+                    // Move the values if needed.
+                    let outputs = transfer_assets(
+                        &self.asset_storage_registry,
+                        &self.default_storage_name,
+                        &inputs,
+                    )
+                    .wrap_err("Could not run Output Node")?;
+                    send_complete(&mut event_sender, 0, outputs).await?;
+                }
+                Action::Const { value } => {
+                    // Load the constant value into the correct storage.
+                    //
+                    // `outputs` is explicitly scoped to manage the lifetime of the
+                    // `asset_storage_registry_lock` to avoid holding it across an `await`.
+                    let outputs = {
+                        let asset_storage_registry_lock =
+                            self.asset_storage_registry.read().map_err(|err| {
+                                miette!("Failed to lock AssetStorageRegistry for reading: {err}")
+                            })?;
+                        let default_storage_name = &self.default_storage_name;
+                        let asset_storage = asset_storage_registry_lock
                     .get(default_storage_name)
                     .ok_or_else(|| miette!("Could not find a storage with name '{default_storage_name}' in AssetStorageRegistry"))?;
-                    let asset_key = AssetKey::new();
-                    asset_storage
-                        .save(&asset_key, serde_json::to_vec(&value).into_diagnostic()?)?;
+                        let asset_key = AssetKey::new();
+                        asset_storage
+                            .save(&asset_key, serde_json::to_vec(&value).into_diagnostic()?)?;
 
-                    let mut outputs = HashMap::new();
-                    outputs.insert(
-                        "value".to_string(),
-                        AssetSpec {
-                            kind: asset_storage.kind(),
-                            storage_name: self.default_storage_name.clone(),
-                            asset_key,
-                        },
-                    );
-                    outputs
-                };
+                        let mut outputs = HashMap::new();
+                        outputs.insert(
+                            "value".to_string(),
+                            AssetSpec {
+                                kind: asset_storage.kind(),
+                                storage_name: self.default_storage_name.clone(),
+                                asset_key,
+                            },
+                        );
 
-                let mut event_sender = self.event_sender.clone();
-                send_complete(&mut event_sender, 0, outputs).await?;
-            }
-            Node::Eval {} => {
-                // spawn a sub-orchestrator?
+                        outputs
+                    };
+
+                    let mut event_sender = self.event_sender.clone();
+                    send_complete(&mut event_sender, 0, outputs).await?;
+                }
             }
         }
+
+        let default_executor_name = &self.default_executor_name;
+        let executor = self
+            .executor_registry
+            .get(default_executor_name)
+            .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Nodes")?;
+        executor
+            .execute(task_plans)
+            .await
+            .wrap_err("Could not run Task Nodes")?;
 
         Ok(())
     }
@@ -223,6 +329,30 @@ impl Orchestrator {
         streams.push(orchestrator_events.boxed());
         Ok(select_all(streams).boxed())
     }
+}
+
+fn collect_inputs(
+    context: &ExecutionContext<'_>,
+    workflow_graph: &WorkflowGraph,
+    n: NodeIndex,
+) -> miette::Result<HashMap<String, AssetSpec>> {
+    let inputs: HashMap<String, AssetSpec> = workflow_graph
+        .input_links(n)
+        .map(|(i, o)| {
+            let input_name = workflow_graph.get_port_name(&i)?;
+            let output_name = workflow_graph.get_port_name(&o)?;
+            let linked_node = workflow_graph.port_node(o)?;
+            let output_asset_spec = context
+                .node_outputs
+                .get(&linked_node)
+                .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?
+                .get(output_name)
+                .ok_or_else(|| miette!("Could not get node output for node: {linked_node:?} and port name: {output_name}"))?;
+            Ok((input_name.clone(), output_asset_spec.clone()))
+        })
+        .collect::<miette::Result<_>>()
+        .wrap_err(miette!("Could not collect inputs for node with id: {n:?}"))?;
+    Ok(inputs)
 }
 
 #[cfg(test)]
@@ -273,12 +403,12 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = &Node::Task {
+        let node = Action::Task {
             worker_name: "builtin".to_string(),
             task_name: "iadd".to_string(),
         };
         let inputs = input_sets[0].clone();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
@@ -310,17 +440,17 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = &Node::Input {
+        let node = Action::Input {
             name: "a".to_string(),
         };
         let inputs = input_sets[0].clone();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
-        let node = &Node::Input {
+        let node = Action::Input {
             name: "b".to_string(),
         };
         let inputs = input_sets[0].clone();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
@@ -357,9 +487,9 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = &Node::Output {};
+        let node = Action::Output {};
         let inputs = input_sets[0].clone();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let events = stream.take(1).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 1);
@@ -389,11 +519,11 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = &Node::Const {
+        let node = Action::Const {
             value: "hello there".into(),
         };
         let inputs = HashMap::new();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let events = stream.take(1).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 1);
@@ -413,7 +543,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn start_simple_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
+    async fn perform_simple_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
         let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
@@ -424,11 +554,11 @@ mod tests {
         )?;
         let mut stream = orchestrator.listen()?;
 
-        let node = &Node::Input {
+        let node = Action::Input {
             name: "a".to_string(),
         };
         let inputs = input_sets[0].clone();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let input_complete_event = stream.next().await.unwrap();
         dbg!(&input_complete_event);
@@ -440,9 +570,9 @@ mod tests {
             json!({"value": 1}),
         );
 
-        let node = &Node::Const { value: 3.into() };
+        let node = Action::Const { value: 3.into() };
         let inputs = HashMap::new();
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let const_complete_event = stream.next().await.unwrap();
         dbg!(&const_complete_event);
@@ -454,7 +584,7 @@ mod tests {
             json!({"value": 3}),
         );
 
-        let node = &Node::Task {
+        let node = Action::Task {
             worker_name: "builtin".to_string(),
             task_name: "iadd".to_string(),
         };
@@ -467,7 +597,7 @@ mod tests {
             "b".to_string(),
             const_complete_outputs.remove("value").unwrap(),
         );
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let task_running_event = stream.next().await.unwrap();
         dbg!(&task_running_event);
@@ -482,13 +612,13 @@ mod tests {
             json!({"value": 4}),
         );
 
-        let node = &Node::Output {};
+        let node = Action::Output {};
         let mut inputs = HashMap::new();
         inputs.insert(
             "value".to_string(),
             task_complete_outputs.remove("value").unwrap(),
         );
-        orchestrator.start_node(node, inputs).await?;
+        orchestrator.perform_actions([(node, inputs)]).await?;
 
         let output_complete_event = stream.next().await.unwrap();
         dbg!(&output_complete_event);
@@ -498,6 +628,156 @@ mod tests {
             &orchestrator.default_storage_name,
             &output_complete_outputs,
             json!({"value": 4}),
+        );
+
+        Ok(())
+    }
+
+    // Test that we can plan a workflow with two input nodes.
+    #[rstest]
+    #[case("memory")]
+    #[case("file")]
+    #[tokio::test]
+    async fn plan_two_input_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]);
+        let executor_registry = test_executor_registry(&registry);
+        let orchestrator = Orchestrator::try_new(
+            &registry,
+            &executor_registry,
+            default_storage_name,
+            "memory",
+        )?;
+
+        let mut workflow_graph = WorkflowGraph::new(["out1".to_string(), "out2".to_string()]);
+        let input1_idx = workflow_graph.add_node(
+            NodeDefinition::Input {
+                name: "a".to_string(),
+            },
+            [],
+            ["value".to_string()],
+        );
+        workflow_graph
+            .link_nodes_by_port_name(&input1_idx, "value", &workflow_graph.output_idx(), "out1")
+            .unwrap();
+        let input2_idx = workflow_graph.add_node(
+            NodeDefinition::Input {
+                name: "b".to_string(),
+            },
+            [],
+            ["value".to_string()],
+        );
+        workflow_graph
+            .link_nodes_by_port_name(&input2_idx, "value", &workflow_graph.output_idx(), "out2")
+            .unwrap();
+        dbg!(&workflow_graph);
+
+        let inputs = input_sets[0].clone();
+        let context = &ExecutionContext {
+            graph_inputs: &inputs.clone(),
+            node_outputs: &HashMap::new(),
+        };
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        assert_eq!(actions.len(), 2);
+        assert_eq!(
+            actions[0].0,
+            Action::Input {
+                name: "a".to_string()
+            }
+        );
+        assert_eq!(
+            actions[1].0,
+            Action::Input {
+                name: "b".to_string()
+            }
+        );
+
+        Ok(())
+    }
+
+    // Test that we can plan the first actions of a workflow and run them.
+    #[rstest]
+    #[case("memory")]
+    #[case("file")]
+    #[tokio::test]
+    async fn plan_and_run_simple_io_workflow(
+        #[case] default_storage_name: &str,
+    ) -> miette::Result<()> {
+        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
+        let executor_registry = test_executor_registry(&registry);
+        let orchestrator = Orchestrator::try_new(
+            &registry,
+            &executor_registry,
+            default_storage_name,
+            "memory",
+        )?;
+        let mut stream = orchestrator.listen()?;
+
+        let mut workflow_graph = WorkflowGraph::new(["out".to_string()]);
+        let input_idx = workflow_graph.add_node(
+            NodeDefinition::Input {
+                name: "a".to_string(),
+            },
+            [],
+            ["value".to_string()],
+        );
+
+        workflow_graph
+            .link_nodes_by_port_name(&input_idx, "value", &workflow_graph.output_idx(), "out")
+            .unwrap();
+        dbg!(&workflow_graph);
+
+        let inputs = input_sets[0].clone();
+        let context = &ExecutionContext {
+            graph_inputs: &inputs.clone(),
+            node_outputs: &HashMap::new(),
+        };
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].0,
+            Action::Input {
+                name: "a".to_string()
+            }
+        );
+
+        orchestrator.perform_actions(actions).await?;
+        let input_complete_event = stream.next().await.unwrap();
+        dbg!(&input_complete_event);
+        let input_complete_outputs = input_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &input_complete_outputs,
+            json!({"value": 1}),
+        );
+
+        let mut node_outputs = HashMap::new();
+        node_outputs.insert(input_idx, input_complete_outputs);
+        let context = &ExecutionContext {
+            graph_inputs: &inputs.clone(),
+            node_outputs: &node_outputs,
+        };
+
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].0, Action::Output {});
+
+        orchestrator.perform_actions(actions).await?;
+        let output_complete_event = stream.next().await.unwrap();
+        dbg!(&output_complete_event);
+        let output_complete_outputs = output_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &output_complete_outputs,
+            json!({"out": 1}),
         );
 
         Ok(())
