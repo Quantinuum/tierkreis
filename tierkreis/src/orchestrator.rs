@@ -133,12 +133,12 @@ impl Orchestrator {
                     outputs = transfer_assets(
                         &self.asset_storage_registry,
                         &self.default_storage_name,
-                        outputs,
+                        &outputs,
                     )?;
                 }
 
                 let mut event_sender = self.event_sender.clone();
-                send_complete(&mut event_sender, 0, outputs);
+                send_complete(&mut event_sender, 0, outputs).await?;
             }
             Node::Output {} => {
                 // Notify that the outputs are ready
@@ -147,36 +147,40 @@ impl Orchestrator {
                 let outputs = transfer_assets(
                     &self.asset_storage_registry,
                     &self.default_storage_name,
-                    inputs,
+                    &inputs,
                 )
                 .wrap_err("Could not run Output Node")?;
-                send_complete(&mut event_sender, 0, outputs);
+                send_complete(&mut event_sender, 0, outputs).await?;
             }
             Node::Const { value } => {
                 // Load the constant value into the correct storage.
-                let asset_storage_registry_lock =
-                    self.asset_storage_registry.read().map_err(|err| {
-                        miette!("Failed to lock AssetStorageRegistry for reading: {err}")
-                    })?;
-                let default_storage_name = &self.default_storage_name;
-                let asset_storage = asset_storage_registry_lock
+                let outputs = {
+                    let asset_storage_registry_lock =
+                        self.asset_storage_registry.read().map_err(|err| {
+                            miette!("Failed to lock AssetStorageRegistry for reading: {err}")
+                        })?;
+                    let default_storage_name = &self.default_storage_name;
+                    let asset_storage = asset_storage_registry_lock
                     .get(default_storage_name)
                     .ok_or_else(|| miette!("Could not find a storage with name '{default_storage_name}' in AssetStorageRegistry"))?;
-                let asset_key = AssetKey::new();
-                asset_storage.save(&asset_key, serde_json::to_vec(&value).into_diagnostic()?)?;
+                    let asset_key = AssetKey::new();
+                    asset_storage
+                        .save(&asset_key, serde_json::to_vec(&value).into_diagnostic()?)?;
 
-                let mut outputs = HashMap::new();
-                outputs.insert(
-                    "value".to_string(),
-                    AssetSpec {
-                        kind: asset_storage.kind(),
-                        storage_name: self.default_storage_name.clone(),
-                        asset_key,
-                    },
-                );
+                    let mut outputs = HashMap::new();
+                    outputs.insert(
+                        "value".to_string(),
+                        AssetSpec {
+                            kind: asset_storage.kind(),
+                            storage_name: self.default_storage_name.clone(),
+                            asset_key,
+                        },
+                    );
+                    outputs
+                };
 
                 let mut event_sender = self.event_sender.clone();
-                send_complete(&mut event_sender, 0, outputs);
+                send_complete(&mut event_sender, 0, outputs).await?;
             }
             Node::Eval {} => {
                 // spawn a sub-orchestrator?

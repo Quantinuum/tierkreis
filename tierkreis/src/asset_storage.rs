@@ -36,20 +36,20 @@ pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>
 /// an [`AssetStorage`] with the specified name does not exist in the registry.
 pub fn load_inputs<S: BuildHasher>(
     registry: &AssetStorageRegistry,
-    inputs: HashMap<String, AssetSpec, S>,
+    inputs: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
     inputs
-        .into_iter()
+        .iter()
         .map(|(k, v)| {
             let storage_name = &v.storage_name;
             let storage = registry.get(storage_name).ok_or(miette!(
                 "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
             ))?;
             let asset = storage.load(&v.asset_key)?;
-            Ok((k, asset))
+            Ok((k.clone(), asset))
         })
         .collect()
 }
@@ -102,7 +102,7 @@ pub fn save_outputs<S: BuildHasher>(
 pub fn transfer_assets<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name_to: &str,
-    assets_from: HashMap<String, AssetSpec, S>,
+    assets_from: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let registry = registry
         .read()
@@ -112,10 +112,10 @@ pub fn transfer_assets<S: BuildHasher>(
     ))?;
 
     assets_from
-        .into_iter()
+        .iter()
         .map(|(k, v)| {
             if v.storage_name == storage_name_to {
-                Ok((k, v))
+                Ok((k.clone(), v.clone()))
             } else {
                 let storage_name_from = &v.storage_name;
                 let storage_from = registry.get(storage_name_from).ok_or(miette!(
@@ -127,7 +127,7 @@ pub fn transfer_assets<S: BuildHasher>(
                 let asset_key = AssetKey::new();
                 storage_to.save(&asset_key, asset)?;
                 Ok((
-                    k,
+                    k.clone(),
                     AssetSpec {
                         kind: storage_to.kind(),
                         asset_key,
