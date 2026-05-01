@@ -5,15 +5,31 @@ use std::{
     collections::HashMap,
     ffi::{CStr, CString},
     fs::File,
+    hash::BuildHasher,
     io::Read,
     path::Path,
+    sync::{Arc, RwLock},
+    time::Duration,
 };
 
+use futures::StreamExt;
 use miette::{
     Error, IntoDiagnostic, LabeledSpan, MietteDiagnostic, NamedSource, SourceOffset, SourceSpan,
     miette,
 };
-use pyo3::{exceptions::PySyntaxError, prelude::*, types::IntoPyDict};
+use pyo3::{exceptions::PySyntaxError, prelude::*};
+use tracing::info;
+use uuid::Uuid;
+
+use crate::{
+    asset_storage::{AssetStorage, InMemoryStorage, load_assets, save_assets},
+    executor::{Executor, InMemoryExecutor},
+    graph::{LegacyWorkflowGraph, WorkflowGraph},
+    location::Location,
+    orchestrator::{OrchestrationContext, Orchestrator},
+    state::{InMemoryRuntimeState, RuntimeState},
+    updater::Updater,
+};
 
 /// Utility macro is make nicer diagnostics and return early when handling python exceptions.
 macro_rules! getattr_or_early_return {
@@ -30,6 +46,106 @@ macro_rules! getattr_or_early_return {
 
         attr
     }};
+}
+
+#[tokio::main]
+pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
+    workflow_graph: Arc<WorkflowGraph>,
+    inputs: HashMap<String, Vec<u8>, S>,
+) -> miette::Result<HashMap<String, Vec<u8>>> {
+    let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
+    let memory_storage = InMemoryStorage::new();
+    asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
+
+    let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
+    let inputs = save_assets(&asset_storage_registry, "memory", inputs)?;
+
+    let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
+
+    executor_registry.insert(
+        "memory".to_string(),
+        Box::new(InMemoryExecutor::try_new(
+            &asset_storage_registry,
+            "memory",
+        )?),
+    );
+    let executor_registry = Arc::new(executor_registry);
+
+    let orchestrator = Orchestrator::try_new(
+        &asset_storage_registry,
+        &executor_registry,
+        "memory",
+        "memory",
+    )?;
+
+    let state = InMemoryRuntimeState::new();
+
+    let state_events = state.listen()?;
+    let workflow_state = state.workflow_state(Uuid::now_v7(), 0);
+
+    let context = OrchestrationContext::new(&workflow_state, inputs);
+    let updater = Updater::new(Arc::clone(&workflow_state));
+    let stream = orchestrator.listen()?;
+    let _task = tokio::spawn(async move {
+        tokio::select! {
+            sig = tokio::signal::ctrl_c() => {
+                match sig {
+                    Ok(()) => std::process::exit(130),
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            res = updater.process(stream) => {
+                match res {
+                    Ok(()) => {},
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+    });
+    let actions = orchestrator
+        .build_actions(context.clone(), Arc::clone(&workflow_graph))
+        .await?;
+    orchestrator.perform_actions(actions).await?;
+
+    let mut state_chunks = state_events.ready_chunks(32);
+    while let Some(chunk) = state_chunks.next().await {
+        if chunk.iter().any(|updated| updated.stopped) {
+            break;
+        }
+        info!("building actions");
+        let actions = orchestrator
+            .build_actions(context.clone(), Arc::clone(&workflow_graph))
+            .await?;
+        info!("running actions");
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            orchestrator.perform_actions(actions),
+        )
+        .await
+        .into_diagnostic()??;
+        info!("actions done");
+    }
+
+    let output_state = workflow_state
+        .read(&Location::from_node_index_iter([
+            workflow_graph.output_idx()
+        ]))
+        .await?;
+
+    let outputs = load_assets(
+        &asset_storage_registry,
+        &output_state
+            .outputs
+            .ok_or_else(|| miette!("No output values on Output node."))?,
+    )?;
+
+    Ok(outputs)
 }
 
 /// Placeholder function for running a Workflow using the legacy python runtime.
@@ -49,17 +165,17 @@ pub fn run(path: &Path) -> miette::Result<()> {
 
         let code = CStr::from_bytes_until_nul(code_buf.as_bytes()).into_diagnostic()?;
 
-        let source_file_name = path.file_name().ok_or(miette!("no file name"))?;
+        let source_file_name = path.file_name().ok_or_else(|| miette!("no file name"))?;
         let source_file_name_str = source_file_name
             .to_str()
-            .ok_or(miette!("failed to convert to cstring"))?;
+            .ok_or_else(|| miette!("failed to convert to cstring"))?;
         let source_file_name_cstring = CString::new(source_file_name_str).into_diagnostic()?;
 
-        let module = path.file_stem().ok_or(miette!("no file stem"))?;
+        let module = path.file_stem().ok_or_else(|| miette!("no file stem"))?;
         let module_name_cstring = CString::new(
             module
                 .to_str()
-                .ok_or(miette!("failed to convert to cstring"))?,
+                .ok_or_else(|| miette!("failed to convert to cstring"))?,
         )
         .into_diagnostic()?;
 
@@ -93,7 +209,7 @@ pub fn run(path: &Path) -> miette::Result<()> {
                 miette!("Failed to load python module: {}", err.to_string())
             })?;
 
-        let workflow = module
+        let legacy_workflow_attr = module
             .getattr("workflow")
             .into_diagnostic()
             .map_err(|err| {
@@ -106,22 +222,23 @@ pub fn run(path: &Path) -> miette::Result<()> {
                 rich_error.wrap_err(err)
             })?;
 
-        let tierkreis_cli = PyModule::import(py, "tierkreis.cli.run_workflow").into_diagnostic()?;
-        let run_workflow = tierkreis_cli.getattr("run_workflow").into_diagnostic()?;
+        let workflow_dump: String = legacy_workflow_attr
+            .call_method0("model_dump_json")
+            .into_diagnostic()?
+            .to_string();
 
-        let inputs = HashMap::<String, String>::new();
-        let mut kwargs = HashMap::new();
-        kwargs.insert("print_output", true);
-        let kwargs = kwargs.into_py_dict(py).into_diagnostic()?;
+        let legacy_workflow: LegacyWorkflowGraph =
+            serde_json::from_str(&workflow_dump).into_diagnostic()?;
+        let workflow_graph = Arc::new(legacy_workflow.to_workflow_graph()?);
 
-        run_workflow
-            .call((workflow, inputs), Some(&kwargs))
-            .into_diagnostic()
-            .map_err(|err| {
-                err.with_source_code(
-                    NamedSource::new(source_file_name_str, code_buf).with_language("Python"),
-                )
-            })?;
+        let outputs = run_workflow_in_memory(workflow_graph, HashMap::new())?;
+
+        let outputs: HashMap<String, serde_json::Value> = outputs
+            .into_iter()
+            .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
+            .collect::<miette::Result<_>>()?;
+
+        println!("{outputs:?}");
 
         Ok(())
     })

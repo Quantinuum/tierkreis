@@ -61,6 +61,7 @@ in
       export MATURIN_NO_PROGRESS=1
       export RUST_LOG=error
     '' else ''
+      export LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH
       export MATURIN_NO_PROGRESS=1
       export RUST_LOG=error
     '';
