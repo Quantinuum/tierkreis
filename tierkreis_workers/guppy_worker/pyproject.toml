@@ -1,15 +1,17 @@
 [project]
-name = "tkr-nexus-worker-impl"
+name = "tkr-guppy-worker-impl"
+description = "A Tierkreis worker for Guppy."
 version = "0.2.1"
-description = "A Tierkreis worker for interacting with Nexus."
 authors = [ {name = "Quantinuum Tierkreis Team"} ]
-readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "guppylang",
+    "hugr",
+    "hugr-qir",
+    "pytket",
+    "tket",
     "tierkreis",
-    "qnexus==0.37.1",
-    "tkr-nexus-worker",
-    "hugr"
+    "tkr-guppy-worker"
 ]
 
 [build-system]
@@ -17,9 +19,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 
+
 [tool.uv.sources]
 tierkreis = { workspace = true }
-tkr-nexus-worker = { workspace = true }
+tkr-guppy-worker = { workspace = true }
 
 [project.scripts]
-tkr-nexus-worker = "tkr_nexus_worker_impl.main:main"
+tkr-guppy-worker = "tkr_guppy_worker_impl.main:main"

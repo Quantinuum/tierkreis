@@ -10,7 +10,13 @@ The pytket worker largely wraps the functionality from [tket](https://github.com
 pip install tkr-pytket-worker
 ```
 
-will install an executable Python script `tkr_pytket_worker` into your virtual environment.
+will install the `pytket_worker` api into your virtual environment.
+
+```sh
+pip install tkr-pytket-worker-impl
+```
+
+will install the `tkr-pytket-worker` script into your virtual environment.
 
 ## Authentication
 

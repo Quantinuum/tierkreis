@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from inspect import Parameter, _empty, isclass
 from types import NoneType, UnionType
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Protocol,
@@ -22,15 +23,17 @@ from typing import (
     get_args,
     get_origin,
     runtime_checkable,
-    TYPE_CHECKING,
 )
 
+from hugr.package import Package
 from pydantic import BaseModel, ValidationError
 from typing_extensions import TypeIs
 
 from tierkreis.controller.data.core import (
+    Deserializer,
     RestrictedNamedTuple,
     SerializationFormat,
+    Serializer,
     get_deserializer,
     get_serializer,
 )
@@ -113,6 +116,7 @@ type ElementaryType = (
     | NdarraySurrogate
     | BaseModel  # Includes GraphData
     | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
+    | Package
 )
 type JsonType = Container[ElementaryType]
 logger = logging.getLogger(__name__)
@@ -209,7 +213,16 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     """
     origin = get_origin(annotation)
     if origin is Annotated:
-        return is_ptype(get_args(annotation)[0])
+        args = get_args(annotation)
+        if (
+            len(args) == 3
+            and isinstance(args[1], Serializer)
+            and isinstance(args[2], Deserializer)
+        ):
+            # User specified serialized types are treated as ptype
+            return True
+
+        return is_ptype(args[0])
 
     if _is_generic(annotation):
         return True
@@ -260,6 +273,8 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
             return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
+        case Package():
+            return ptype.to_bytes()
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
             return ptype
         case Struct():
@@ -353,6 +368,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
 
     if issubclass(origin, (bool, int, float, complex, str, bytes, NoneType)):
         return ser
+    if origin is Package:
+        return Package.from_bytes(ser)  # type: ignore Package is T
 
     if issubclass(origin, DictConvertible):
         if not issubclass(annotation, origin):
@@ -426,6 +443,9 @@ def get_serialization_format[T: PType](
 
     unannotated = get_args(hint)[0] if get_origin(hint) is Annotated else hint
     if isclass(unannotated) and issubclass(unannotated, (bytes, NdarraySurrogate)):
+        return "bytes"
+
+    elif isclass(unannotated) and issubclass(unannotated, Package):
         return "bytes"
 
     return "json"

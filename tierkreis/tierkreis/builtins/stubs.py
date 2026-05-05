@@ -709,3 +709,16 @@ class drop[T: PType](NamedTuple):
     @property
     def namespace(self) -> str:
         return "builtins"
+
+
+class at[T: PType](NamedTuple):
+    values: TKR[list[T]]  # noqa: F821 # fmt: skip
+    n: TKR[int]  # noqa: F821 # fmt: skip
+
+    @staticmethod
+    def out() -> type[TKR[T]]:  # noqa: F821 # fmt: skip
+        return TKR[T]  # noqa: F821 # fmt: skip
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"

@@ -10,6 +10,8 @@ dependencies = [
     "sympy",
     "pytket-qiskit",
     "tkr-my-example-worker",
+    "guppylang",
+    "hugr"
 ]
 
 [tool.uv.sources]

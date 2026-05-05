@@ -16,7 +16,7 @@ def debug_graph[A: TModel, B: TModel](
     graph_inputs: dict[str, PType] | PType,
     n_iterations: int = 10000,
     polling_interval_seconds: float = 0.01,
-) -> None:
+) -> ControllerInMemoryStorage:
     """Start a graph execution in debugging mode,.
 
     Uses debugging mode by setting up in memory storage and executor.
@@ -33,6 +33,8 @@ def debug_graph[A: TModel, B: TModel](
     :type n_iterations: int, optional
     :param polling_interval_seconds: The polling interval in seconds, defaults to 0.01
     :type polling_interval_seconds: float, optional
+    :return: The storage for reuse.
+    :rtype: ControllerInMemoryStorage
     """
     storage = ControllerInMemoryStorage(UUID(int=0))
     executor = InMemoryExecutor(WORKERS_DIR, storage)
@@ -46,3 +48,4 @@ def debug_graph[A: TModel, B: TModel](
         enable_logging=True,
         enable_breakpoints=True,
     )
+    return storage

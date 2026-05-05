@@ -22,6 +22,10 @@ autodoc2_packages = [
         "module": "aer_worker",
     },
     {
+        "path": "../../tierkreis_workers/guppy_worker/tkr_guppy_worker_impl/impl.py",
+        "module": "guppy_worker",
+    },
+    {
         "path": "../../tierkreis_workers/ibmq_worker/tkr_ibmq_worker_impl/impl.py",
         "module": "ibmq_worker.tkr_ibmq_worker_impl.impl",
     },
@@ -43,6 +47,11 @@ autodoc2_packages = [
     },
 ]
 autodoc2_hidden_objects = ["private"]
+autodoc2_ignore_patterns = [
+    "stubs.py",
+    "api.py",
+]
+autodoc2_output_dir = "apidocs"
 source_suffix = {
     ".rst": "restructuredtext",
     ".ipynb": "myst-nb",

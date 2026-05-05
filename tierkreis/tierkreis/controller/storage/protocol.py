@@ -716,10 +716,10 @@ class ControllerStorage(ABC):
 
         Returns the invalidated nodes.
 
-        :param loc: _description_
+        :param loc: The loc to invalidate.
         :type loc: Loc
         :raises TierkreisError: If the node at the location is not a task.
-        :return: _description_
+        :return: A list of locs which are invalidated and need a restart.
         :rtype: list[Loc]
         """
         nodedef = self.read_node_def(loc)
@@ -743,6 +743,11 @@ class ControllerStorage(ABC):
         return list(deps)
 
     def write_breakpoint(self, walk_result: WalkResult) -> None:
+        """Write the current node state to the breakpoint file.
+
+        :param walk_result: Current node state from walking the graph.
+        :type walk_result: WalkResult
+        """
         if walk_result.breakpoints == []:
             return
         self.mkdir(self._breakpoint(Loc()).parent)
@@ -754,6 +759,12 @@ class ControllerStorage(ABC):
             )
 
     def read_breakpoints(self) -> WalkResult | None:
+        """Read the walked breakpoints from file.
+
+        :raises TierkreisError: If an invalid path is given.
+        :return: The node state before hitting the breakpoint.
+        :rtype: WalkResult | None
+        """
         result = WalkResult(inputs_ready=[], started=[])
         try:  # works with both inmemory and file storage
             if self.list_subpaths(self._breakpoint(Loc()).parent) == []:

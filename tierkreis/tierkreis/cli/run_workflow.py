@@ -27,7 +27,7 @@ def run_workflow(  # noqa: PLR0913
     *,
     print_output: bool = False,
     use_uv_executor: bool = False,
-) -> None:
+) -> ControllerFileStorage:
     """Run a workflow.
 
     Wrapper for :py:func:`tierkreis.controller.run_graph` to run a workflow.
@@ -54,6 +54,8 @@ def run_workflow(  # noqa: PLR0913
     :type n_iterations: int, optional
     :param polling_interval_seconds: The controller tickrate, defaults to 0.1
     :type polling_interval_seconds: float, optional
+    :return: The storage for reuse.
+    :rtype: ControllerStorage
     """
     logger.setLevel(log_level)
     workflow_id = uuid.uuid4() if run_id is None else uuid.UUID(int=run_id)
@@ -83,3 +85,4 @@ def run_workflow(  # noqa: PLR0913
                 print(f"'{output_name}': {output_value!r}")  # noqa: T201
         else:
             print(f"value: {all_outputs!r}")  # noqa: T201
+    return storage
