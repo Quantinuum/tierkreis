@@ -1,4 +1,4 @@
-# Pytket worker
+# Guppy worker
 
 A Tierkreis worker that interacts with the Quantinuums `guppylang` language infrastructure.
 
