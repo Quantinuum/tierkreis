@@ -8,7 +8,9 @@ from hugr.package import Package
 from hugr.qsystem.result import DataValue, QsysShot
 from pytket import Circuit
 from pytket.backends.backendresult import BackendResult
+from pytket.passes import BasePass, RemoveRedundancies, SquashRzPhasedX
 from tierkreis.controller.data.core import Deserializer, Serializer
+from tket.passes import NormalizeGuppy, PytketHugrPass
 
 from tierkreis import Worker
 
@@ -114,3 +116,133 @@ def ghz(size: int) -> Package:
         result("c", measure_array(q))
 
     return main.compile()
+
+
+@worker.task()
+def from_str(package_str: str) -> Package:
+    """Build a Hugr from a string representation of a quantum program.
+
+    :param package_str: The string representation of the quantum program.
+    :type package_str: str
+    :return: The compiled Hugr.
+    :rtype: Package
+    """
+    return Package.from_str(package_str)
+
+
+@worker.task()
+def to_str(package: Package) -> str:
+    """Convert a Hugr to a string representation of a quantum program.
+
+    :param package: The Hugr package to convert.
+    :type package: Package
+    :return: The string representation of the Hugr.
+    :rtype: str
+    """
+    return package.to_str()
+
+
+@worker.task()
+def from_bytes(package_bytes: bytes) -> Package:
+    """Build a Hugr from a bytes representation of a quantum program.
+
+    :param package_bytes: The bytes representation of the quantum program.
+    :type package_bytes: bytes
+    :return: The compiled Hugr.
+    :rtype: Package
+    """
+    return Package.from_bytes(package_bytes)
+
+
+@worker.task()
+def to_bytes(package: Package) -> bytes:
+    """Convert a Hugr to a bytes representation of a quantum program.
+
+    :param package: The Hugr package to convert.
+    :type package: Package
+    :return: The bytes representation of the Hugr.
+    :rtype: bytes
+    """
+    return package.to_bytes()
+
+
+@worker.task()
+def normalize(package: Package) -> Package:
+    """Normalize a Hugr package.
+
+    :param package: The Hugr package to normalize.
+    :type package: Package
+    :return: The normalized Hugr package.
+    :rtype: Package
+    """
+    normalize_pass = NormalizeGuppy()  # type: ignore
+    return normalize_pass(package.modules[0]).to_package()
+
+
+@worker.task()
+def apply_pytket_pass(package: Package, pytket_pass: BasePass) -> Package:
+    """Apply a pytket pass to a Hugr package.
+
+    :param package: The Hugr package to apply the pass to.
+    :type package: Package
+    :param pytket_pass: The pytket pass to apply.
+    :type pytket_pass: BasePass
+    :return: The Hugr package after applying the pass.
+    :rtype: Package
+    """
+    pass_ = PytketHugrPass(pytket_pass)  # type: ignore
+    result = pass_(package.modules[0])
+    return result.to_package()
+
+
+@worker.task()
+def remove_redundancies(package: Package) -> Package:
+    """Remove redundant operations from a Hugr package.
+
+    :param package: The Hugr package to optimize.
+    :type package: Package
+    :return: The optimized Hugr package.
+    :rtype: Package
+    """
+    pass_ = PytketHugrPass(RemoveRedundancies())  # type: ignore
+    result = pass_(package.modules[0])
+    return result.to_package()
+
+
+@worker.task()
+def squash_rz_phased_x(package: Package) -> Package:
+    """Squash Rz and PhasedX gates in a Hugr package.
+
+    :param package: The Hugr package to optimize.
+    :type package: Package
+    :return: The optimized Hugr package.
+    :rtype: Package
+    """
+    pass_ = PytketHugrPass(SquashRzPhasedX())  # type: ignore
+    result = pass_(package.modules[0])
+    return result.to_package()
+
+
+@worker.task()
+def to_qir(package: Package, format: str) -> bytes | str:
+    """Convert a Hugr package to a QIR representation.
+
+    :param package: The Hugr package to convert.
+    :type package: Package
+    :param format: The format of the QIR.
+    :type format: str
+    :return: The QIR representation of the Hugr package.
+    :rtype: bytes | str
+    """
+    try:
+        from hugr_qir.hugr_to_qir import hugr_to_qir
+        from hugr_qir.output import OutputFormat
+    except ImportError as e:
+        msg = "Failed to import hugr_qir module. Make sure it is installed."
+        raise ImportError(msg) from e
+
+    if format not in ["llvm-ir", "bitcode", "base64"]:
+        msg = f"Unsupported format: {format}"
+        raise ValueError(msg)
+    qir_bytes = hugr_to_qir(package, output_format=OutputFormat(format))
+    return qir_bytes
