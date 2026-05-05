@@ -73,5 +73,5 @@ pub trait Executor: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the [Executor] is unreachable.
-    fn cancel(&self, task_ids: Vec<u32>) -> miette::Result<()>;
+    fn cancel(&self, task_ids: Vec<u32>) -> BoxFuture<'_, miette::Result<()>>;
 }

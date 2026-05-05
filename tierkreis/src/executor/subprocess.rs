@@ -10,9 +10,9 @@ use std::{
 };
 
 use futures::{
-    FutureExt, StreamExt,
+    FutureExt, SinkExt, StreamExt,
     channel::mpsc,
-    future::{self, BoxFuture},
+    future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
 };
 use miette::{Context, IntoDiagnostic, miette};
@@ -75,6 +75,103 @@ type CancelReceiver = mpsc::Receiver<u32>;
 
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
 
+async fn process_cancelled_task(
+    event_sender: &mut EventSender,
+    abort_handles: &mut HashMap<u32, AbortHandle>,
+    id: u32,
+) -> miette::Result<()> {
+    let handle = abort_handles.remove(&id);
+    if let Some(handle) = handle {
+        handle.abort();
+        send_cancelled(event_sender, id).await?;
+    }
+    Ok(())
+}
+
+async fn process_finished_task(
+    event_sender: &mut EventSender,
+    abort_handles: &mut HashMap<u32, AbortHandle>,
+    asset_storage_registry: &AssetStorageRegistry,
+    background_task: BackgroundTask,
+) -> miette::Result<()> {
+    let id = background_task.id;
+    let outputs = background_task.outputs;
+    let output_storage_name = background_task.output_storage_name;
+    let exit_status = background_task.exit_status;
+
+    abort_handles.remove(&id);
+    match exit_status {
+        Ok(status) => {
+            if status.success() {
+                let outputs =
+                    transfer_assets(asset_storage_registry, &output_storage_name, &outputs);
+                match outputs {
+                    Ok(outputs) => send_complete(event_sender, id, outputs).await?,
+                    Err(err) => send_error(event_sender, id, &err).await?,
+                }
+            } else {
+                let stderr = background_task.stderr.await.ok();
+                event_sender
+                    .send(Event {
+                        id,
+                        status: Status::Error {
+                            error: format!("Subprocess failed with exit code: {status}"),
+                            detail: stderr,
+                        },
+                    })
+                    .await
+                    .map_err(|err| miette!("Failed to send error event: {err}"))?;
+            }
+        }
+        Err(err) => send_error(event_sender, id, &miette!("Failed to run worker: {err}")).await?,
+    }
+
+    Ok(())
+}
+
+async fn start_task(
+    event_sender: &mut EventSender,
+    abort_handles: &mut HashMap<u32, AbortHandle>,
+    running: &mut RunningFutures,
+    internal_task: BackgroundTaskPlan,
+) -> miette::Result<()> {
+    let id = internal_task.id;
+    send_running(event_sender, id).await?;
+
+    let worker_args = internal_task.worker_args;
+    let worker_args_path = worker_args.path();
+    let done_file = internal_task.done_file;
+    let res = spawn_worker(&internal_task.worker_name, worker_args_path);
+    let mut child = match res {
+        Ok(child) => child,
+        Err(err) => {
+            send_error(event_sender, id, &err).await?;
+            return Ok(());
+        }
+    };
+    let stderr = read_stderr(&mut child);
+
+    let outputs = internal_task.outputs;
+    let output_storage_name = internal_task.output_storage_name;
+    let task = tokio::task::spawn(async move {
+        let exit_status = child.wait().await;
+        BackgroundTask {
+            id,
+            output_storage_name,
+            exit_status,
+            outputs,
+            stderr,
+            _worker_args: worker_args,
+            _done_file: done_file,
+        }
+    });
+
+    abort_handles.insert(id, task.abort_handle());
+    running.push(task);
+
+    Ok(())
+}
+
 async fn process_tasks(
     mut task_receiver: TaskReceiver,
     mut cancel_receiver: CancelReceiver,
@@ -88,11 +185,9 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some(id) = cancel_receiver.next() => {
-                let handle = abort_handles.remove(&id);
-                if let Some(handle) = handle {
-                    handle.abort();
-                    send_cancelled(&mut event_sender, id);
-                }
+                process_cancelled_task(&mut event_sender, &mut abort_handles, id)
+                    .await
+                    .expect("Failed to cancel task");
             }
             // A task has completed
             Some(res) = running.next() => {
@@ -101,73 +196,25 @@ async fn process_tasks(
                     Err(err) => panic!("Failed to join to future: {err}"),
                 };
 
-                let id = background_task.id;
-                let outputs = background_task.outputs;
-                let output_storage_name = background_task.output_storage_name;
-                let exit_status = background_task.exit_status;
-
-                abort_handles.remove(&id);
-                match exit_status {
-                    Ok(status) => {
-                        if status.success() {
-                            let outputs = transfer_assets(
-                                &asset_storage_registry,
-                                &output_storage_name,
-                                outputs,
-                            );
-                            match outputs {
-                                Ok(outputs) => send_complete(&mut event_sender, id, outputs),
-                                Err(err) => send_error(&mut event_sender, id, &err),
-                            }
-                        } else {
-                            let stderr = background_task.stderr.await.ok();
-                            event_sender
-                                .try_send(Event {
-                                    id,
-                                    status: Status::Error {error: format!("Subprocess failed with exit code: {status}"), detail: stderr },
-                                })
-                                .expect("Failed to send Error event.");
-                        }
-                    }
-                    Err(err) => send_error(&mut event_sender, id, &miette!("Failed to run worker: {err}")),
-                }
-
+                process_finished_task(
+                    &mut event_sender,
+                    &mut abort_handles,
+                    &asset_storage_registry,
+                    background_task,
+                )
+                .await
+                .expect("Failed to complete task");
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
-                let id = internal_task.id;
-                send_running(&mut event_sender, id);
-
-                let worker_args = internal_task.worker_args;
-                let worker_args_path = worker_args.path();
-                let done_file = internal_task.done_file;
-                let res = spawn_worker(&internal_task.worker_name, worker_args_path);
-                let mut child = match res {
-                    Ok(child) => child,
-                    Err(err) => {
-                        send_error(&mut event_sender, id, &err);
-                        continue;
-                    }
-                };
-                let stderr = read_stderr(&mut child);
-
-                let outputs = internal_task.outputs;
-                let output_storage_name = internal_task.output_storage_name;
-                let task = tokio::task::spawn(async move {
-                    let exit_status = child.wait().await;
-                    BackgroundTask {
-                        id,
-                        output_storage_name,
-                        exit_status,
-                        outputs,
-                        stderr,
-                        _worker_args: worker_args,
-                        _done_file: done_file,
-                    }
-                });
-
-                abort_handles.insert(id, task.abort_handle());
-                running.push(task);
+                start_task(
+                    &mut event_sender,
+                    &mut abort_handles,
+                    &mut running,
+                    internal_task,
+                )
+                .await
+                .expect("Failed to start task");
             }
         }
     }
@@ -270,7 +317,7 @@ impl SubprocessExecutor {
 
     fn build_inputs(
         &self,
-        inputs: HashMap<String, AssetSpec>,
+        inputs: &HashMap<String, AssetSpec>,
     ) -> Result<HashMap<String, PathBuf>, miette::Error> {
         let inputs = transfer_assets(
             &self.asset_storage_registry,
@@ -278,7 +325,7 @@ impl SubprocessExecutor {
             inputs,
         )?;
         let inputs =
-            write_input_paths(inputs).wrap_err("Failed to collect Worker input filepaths")?;
+            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
         Ok(inputs)
     }
 
@@ -335,7 +382,7 @@ struct WorkerCallArgs {
 
 // Write the paths of the inputs to the worker.
 fn write_input_paths(
-    inputs: HashMap<String, AssetSpec>,
+    inputs: &HashMap<String, AssetSpec>,
 ) -> miette::Result<HashMap<String, PathBuf>> {
     let inputs_len = inputs.len();
     let mut input_paths = HashMap::with_capacity(inputs_len);
@@ -353,7 +400,7 @@ impl Executor for SubprocessExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {
-        let res = || {
+        let fut = async {
             let mut ids = Vec::new();
             let mut task_sender = self.task_sender.clone();
 
@@ -361,7 +408,7 @@ impl Executor for SubprocessExecutor {
                 let id = self
                     .id_source
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let inputs = self.build_inputs(task_plan.inputs)?;
+                let inputs = self.build_inputs(&task_plan.inputs)?;
                 let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
 
                 let worker_args = NamedTempFile::new().into_diagnostic()?;
@@ -389,7 +436,7 @@ impl Executor for SubprocessExecutor {
                     .unwrap_or_else(|| self.output_storage_name.clone());
 
                 task_sender
-                    .try_send(BackgroundTaskPlan {
+                    .send(BackgroundTaskPlan {
                         id,
                         worker_name: task_plan.worker_name,
                         output_storage_name,
@@ -397,6 +444,7 @@ impl Executor for SubprocessExecutor {
                         done_file,
                         outputs,
                     })
+                    .await
                     .into_diagnostic()?;
 
                 ids.push(id);
@@ -404,7 +452,7 @@ impl Executor for SubprocessExecutor {
 
             Ok(ids)
         };
-        future::ready(res()).boxed()
+        fut.boxed()
     }
 
     fn listen(&self) -> miette::Result<BoxStream<'_, Event>> {
@@ -423,12 +471,15 @@ impl Executor for SubprocessExecutor {
         Ok(channel.boxed())
     }
 
-    fn cancel(&self, task_ids: Vec<u32>) -> miette::Result<()> {
-        let mut cancel_sender = self.cancel_sender.clone();
-        for task_id in task_ids {
-            cancel_sender.try_send(task_id).into_diagnostic()?;
-        }
-        Ok(())
+    fn cancel(&self, task_ids: Vec<u32>) -> BoxFuture<'_, miette::Result<()>> {
+        let fut = async {
+            let mut cancel_sender = self.cancel_sender.clone();
+            for task_id in task_ids {
+                cancel_sender.send(task_id).await.into_diagnostic()?;
+            }
+            Ok(())
+        };
+        fut.boxed()
     }
 }
 
@@ -732,7 +783,7 @@ mod tests {
         let event = stream.next().await.unwrap();
         assert_eq!(event.status, Status::Running);
 
-        executor.cancel(task_ids)?;
+        executor.cancel(task_ids).await?;
 
         let event = stream.next().await.unwrap();
         assert_eq!(event.status, Status::Cancelled);
@@ -747,7 +798,7 @@ mod tests {
         let (registry, _, _) = test_storage_registry(vec![], vec![]);
         let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
-        executor.cancel(vec![0])?;
+        executor.cancel(vec![0]).await?;
 
         Ok(())
     }
@@ -787,7 +838,7 @@ mod tests {
             json!({"value": "hello dave"}),
         );
 
-        executor.cancel(task_ids)?;
+        executor.cancel(task_ids).await?;
 
         Ok(())
     }

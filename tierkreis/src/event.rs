@@ -5,7 +5,8 @@ state of the Workflow so it can be monitored and restarted.
 */
 use std::{collections::HashMap, hash::RandomState};
 
-use futures::channel::mpsc;
+use futures::{SinkExt, channel::mpsc};
+use miette::miette;
 
 use crate::asset_storage::interface::AssetSpec;
 
@@ -80,63 +81,71 @@ pub type EventReceiver = mpsc::Receiver<Event>;
 
 /// Utility function to send a new [`Event`] with [`Status::Running`].
 ///
-/// # Panics
+/// # Errors
 ///
-/// Will panic if the channel is full or disconnected.
-pub fn send_running(event_sender: &mut EventSender, id: u32) {
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_running(event_sender: &mut EventSender, id: u32) -> miette::Result<()> {
     event_sender
-        .try_send(Event {
+        .send(Event {
             id,
             status: Status::Running {},
         })
-        .expect("Failed to send update");
+        .await
+        .map_err(|err| miette!("Failed to send running event: {err}"))
 }
 
 /// Utility function to send a new [`Event`] with [`Status::Cancelled`].
 ///
-/// # Panics
+/// # Errors
 ///
-/// Will panic if the channel is full or disconnected.
-pub fn send_cancelled(event_sender: &mut EventSender, id: u32) {
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_cancelled(event_sender: &mut EventSender, id: u32) -> miette::Result<()> {
     event_sender
-        .try_send(Event {
+        .send(Event {
             id,
             status: Status::Cancelled {},
         })
-        .expect("Failed to send update");
+        .await
+        .map_err(|err| miette!("Failed to send cancelled event: {err}"))
 }
 
 /// Utility function to send a new [`Event`] with [`Status::Complete`] and output [`AssetSpec`]s.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Will panic if the channel is full or disconnected.
-pub fn send_complete(
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_complete(
     event_sender: &mut EventSender,
     id: u32,
     outputs: HashMap<String, AssetSpec, RandomState>,
-) {
+) -> miette::Result<()> {
     event_sender
-        .try_send(Event {
+        .send(Event {
             id,
             status: Status::Complete { outputs },
         })
-        .expect("Failed to send update");
+        .await
+        .map_err(|err| miette!("Failed to send complete event: {err}"))
 }
 
 /// Utility function to send a new [`Event`] with [`Status::Error`] and an error message.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Will panic if the channel is full or disconnected.
-pub fn send_error(event_sender: &mut EventSender, id: u32, err: &miette::Error) {
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_error(
+    event_sender: &mut EventSender,
+    id: u32,
+    err: &miette::Error,
+) -> miette::Result<()> {
     event_sender
-        .try_send(Event {
+        .send(Event {
             id,
             status: Status::Error {
                 error: err.to_string(),
                 detail: None,
             },
         })
-        .expect("Failed to send update");
+        .await
+        .map_err(|err| miette!("Failed to send error event: {err}"))
 }
