@@ -1,7 +1,5 @@
 import logging
-import warnings
 from datetime import datetime
-from time import sleep
 
 import qnexus as qnx
 from hugr.package import Package
@@ -10,7 +8,6 @@ from pytket.backends.backendresult import BackendResult
 from pytket.backends.status import StatusEnum
 from qnexus import BackendConfig
 from qnexus.exceptions import ResourceFetchFailed
-from qnexus.models import QuantinuumConfig
 from qnexus.models.references import (
     ExecuteJobRef,
     ExecutionProgram,
@@ -154,48 +151,3 @@ def cost(hugr_ref: HUGRRef | list[HUGRRef], n_shots: int, project_name: str) -> 
     my_project_ref = qnx.projects.get_or_create(name=project_name)
     qnx.context.set_active_project(my_project_ref)
     return qnx.hugr.cost(hugr_ref, n_shots)
-
-
-## DEPRECATED TASKS ##
-
-
-@worker.task()
-def check_status(execute_ref: ExecuteJobRef) -> str:
-    warnings.warn("check_status is deprecated, use is_running instead", stacklevel=2)
-    sleep(30)
-    try:
-        return str(qnx.jobs.status(execute_ref).status)
-    except ResourceFetchFailed:
-        return str(StatusEnum.SUBMITTED)
-
-
-@worker.task()
-def submit(
-    circuits: list[Circuit], n_shots: int, project_name: str | None = None
-) -> ExecuteJobRef:
-    warnings.warn(
-        "submit is deprecated, use upload_circuit and start_execute_job instead",
-        stacklevel=2,
-    )
-    if project_name is None:
-        project_name = "Riken-Test"
-    my_project_ref = qnx.projects.get_or_create(name=project_name)
-    qnx.context.set_active_project(my_project_ref)
-
-    my_circuit_refs: list[ExecutionProgram] = []
-    for circ in circuits:
-        my_circuit_refs.append(
-            qnx.circuits.upload(
-                name=f"My Circuit from {datetime.now()}",
-                circuit=circ,
-                project=my_project_ref,
-            ),
-        )
-
-    return qnx.start_execute_job(
-        programs=my_circuit_refs,
-        name=f"My Execute Job from {datetime.now()}",
-        n_shots=[n_shots] * len(my_circuit_refs),
-        backend_config=QuantinuumConfig(device_name="reimei-E"),
-        project=my_project_ref,
-    )

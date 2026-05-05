@@ -84,29 +84,3 @@ class cost(NamedTuple):
     @property
     def namespace(self) -> str:
         return "nexus_worker"
-
-
-class check_status(NamedTuple):
-    execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]  # noqa: F821 # fmt: skip
-
-    @staticmethod
-    def out() -> type[TKR[str]]:  # noqa: F821 # fmt: skip
-        return TKR[str]  # noqa: F821 # fmt: skip
-
-    @property
-    def namespace(self) -> str:
-        return "nexus_worker"
-
-
-class submit(NamedTuple):
-    circuits: TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]  # noqa: F821 # fmt: skip
-    n_shots: TKR[int]  # noqa: F821 # fmt: skip
-    project_name: TKR[Union[str, NoneType]] | None = None  # noqa: F821 # fmt: skip
-
-    @staticmethod
-    def out() -> type[TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]  # noqa: F821 # fmt: skip
-
-    @property
-    def namespace(self) -> str:
-        return "nexus_worker"
