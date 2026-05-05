@@ -35,21 +35,21 @@ static EMPTY_INPUTS: LazyLock<HashMap<String, AssetSpec>> = LazyLock::new(HashMa
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
     /// An operation performed by a Worker.
-    Task {
+    PerformTask {
         /// The name of the Worker to call.
         worker_name: String,
         /// The name of the Task to call.
         task_name: String,
     },
     /// An input to the Workflow.
-    Input {
+    LoadInput {
         /// The name of the Workflow input to capture.
         name: String,
     },
     /// The output of the Workflow
-    Output {},
+    NotifyOutput {},
     /// A constant Value in the Workflow.
-    Const {
+    LoadConst {
         /// The constant value to return.
         value: Value,
     },
@@ -135,19 +135,19 @@ impl Orchestrator {
                 match definition {
                     NodeDefinition::Input { name } => {
                         vec![(
-                            Action::Input { name: name.clone() },
+                            Action::LoadInput { name: name.clone() },
                             context.graph_inputs.clone(),
                         )]
                     }
                     NodeDefinition::Const { value } => vec![(
-                        Action::Const {
+                        Action::LoadConst {
                             value: value.clone(),
                         },
                         EMPTY_INPUTS.clone(),
                     )],
                     NodeDefinition::Output {} => {
                         let inputs = collect_inputs(context, workflow_graph, n).unwrap();
-                        vec![(Action::Output {}, inputs)]
+                        vec![(Action::NotifyOutput {}, inputs)]
                     }
                     NodeDefinition::Task {
                         worker_name,
@@ -155,7 +155,7 @@ impl Orchestrator {
                     } => {
                         let inputs = collect_inputs(context, workflow_graph, n).unwrap();
                         vec![(
-                            Action::Task {
+                            Action::PerformTask {
                                 worker_name: worker_name.clone(),
                                 task_name: task_name.clone(),
                             },
@@ -164,7 +164,7 @@ impl Orchestrator {
                     }
                     NodeDefinition::Eval {} => {
                         let inputs = collect_inputs(context, workflow_graph, n).unwrap();
-                        let graph_asset_spec = inputs.get("thunk").unwrap();
+                        let graph_asset_spec = inputs.get("graph").unwrap();
 
                         let asset_storage = self.asset_storage_registry.read().unwrap();
                         let subgraph_storage =
@@ -202,7 +202,7 @@ impl Orchestrator {
         let mut task_plans = Vec::new();
         for (action, inputs) in actions {
             match action {
-                Action::Task {
+                Action::PerformTask {
                     worker_name,
                     task_name,
                 } => task_plans.push(TaskPlan {
@@ -212,7 +212,7 @@ impl Orchestrator {
                     output_storage_name: Some(self.default_storage_name.clone()),
                     ..Default::default()
                 }),
-                Action::Input { name } => {
+                Action::LoadInput { name } => {
                     // Assume the inputs are the inputs to the graph.
                     //
                     // Just pull out the named input and assign it to the "value" output.
@@ -233,7 +233,7 @@ impl Orchestrator {
                     let mut event_sender = self.event_sender.clone();
                     send_complete(&mut event_sender, 0, outputs).await?;
                 }
-                Action::Output {} => {
+                Action::NotifyOutput {} => {
                     // Notify that the outputs are ready
                     let mut event_sender = self.event_sender.clone();
 
@@ -246,7 +246,7 @@ impl Orchestrator {
                     .wrap_err("Could not run Output Node")?;
                     send_complete(&mut event_sender, 0, outputs).await?;
                 }
-                Action::Const { value } => {
+                Action::LoadConst { value } => {
                     // Load the constant value into the correct storage.
                     //
                     // `outputs` is explicitly scoped to manage the lifetime of the
@@ -403,7 +403,7 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = Action::Task {
+        let node = Action::PerformTask {
             worker_name: "builtin".to_string(),
             task_name: "iadd".to_string(),
         };
@@ -440,13 +440,13 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = Action::Input {
+        let node = Action::LoadInput {
             name: "a".to_string(),
         };
         let inputs = input_sets[0].clone();
         orchestrator.perform_actions([(node, inputs)]).await?;
 
-        let node = Action::Input {
+        let node = Action::LoadInput {
             name: "b".to_string(),
         };
         let inputs = input_sets[0].clone();
@@ -487,7 +487,7 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = Action::Output {};
+        let node = Action::NotifyOutput {};
         let inputs = input_sets[0].clone();
         orchestrator.perform_actions([(node, inputs)]).await?;
 
@@ -519,7 +519,7 @@ mod tests {
         )?;
         let stream = orchestrator.listen()?;
 
-        let node = Action::Const {
+        let node = Action::LoadConst {
             value: "hello there".into(),
         };
         let inputs = HashMap::new();
@@ -554,7 +554,7 @@ mod tests {
         )?;
         let mut stream = orchestrator.listen()?;
 
-        let node = Action::Input {
+        let node = Action::LoadInput {
             name: "a".to_string(),
         };
         let inputs = input_sets[0].clone();
@@ -570,7 +570,7 @@ mod tests {
             json!({"value": 1}),
         );
 
-        let node = Action::Const { value: 3.into() };
+        let node = Action::LoadConst { value: 3.into() };
         let inputs = HashMap::new();
         orchestrator.perform_actions([(node, inputs)]).await?;
 
@@ -584,7 +584,7 @@ mod tests {
             json!({"value": 3}),
         );
 
-        let node = Action::Task {
+        let node = Action::PerformTask {
             worker_name: "builtin".to_string(),
             task_name: "iadd".to_string(),
         };
@@ -612,7 +612,7 @@ mod tests {
             json!({"value": 4}),
         );
 
-        let node = Action::Output {};
+        let node = Action::NotifyOutput {};
         let mut inputs = HashMap::new();
         inputs.insert(
             "value".to_string(),
@@ -683,13 +683,13 @@ mod tests {
         assert_eq!(actions.len(), 2);
         assert_eq!(
             actions[0].0,
-            Action::Input {
+            Action::LoadInput {
                 name: "a".to_string()
             }
         );
         assert_eq!(
             actions[1].0,
-            Action::Input {
+            Action::LoadInput {
                 name: "b".to_string()
             }
         );
@@ -740,7 +740,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         assert_eq!(
             actions[0].0,
-            Action::Input {
+            Action::LoadInput {
                 name: "a".to_string()
             }
         );
@@ -767,7 +767,7 @@ mod tests {
         let actions = actions.collect::<Vec<_>>();
 
         assert_eq!(actions.len(), 1);
-        assert_eq!(actions[0].0, Action::Output {});
+        assert_eq!(actions[0].0, Action::NotifyOutput {});
 
         orchestrator.perform_actions(actions).await?;
         let output_complete_event = stream.next().await.unwrap();
