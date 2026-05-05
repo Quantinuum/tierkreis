@@ -58,8 +58,9 @@ pub enum Action {
 #[allow(dead_code)]
 #[derive(Debug)]
 struct ExecutionContext<'a> {
+    subworkflow_context: &'a [NodeIndex],
     graph_inputs: &'a HashMap<String, AssetSpec>,
-    node_outputs: &'a HashMap<NodeIndex, HashMap<String, AssetSpec>>,
+    node_outputs: &'a HashMap<Vec<NodeIndex>, HashMap<String, AssetSpec>>,
 }
 
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
@@ -125,10 +126,17 @@ impl Orchestrator {
         workflow_graph: &'a WorkflowGraph,
     ) -> impl Iterator<Item = (Action, HashMap<String, AssetSpec>)> {
         workflow_graph
-            .toposort_filtered_from_output_node(|n| !context.node_outputs.contains_key(&n))
+            .toposort_filtered_from_output_node(|n| {
+                let mut subworkflow_path = context.subworkflow_context.to_vec();
+                subworkflow_path.push(n);
+                !context.node_outputs.contains_key(&subworkflow_path)
+            })
             .filter(|n| {
-                workflow_graph
-                    .all_inputs(*n, |incoming| context.node_outputs.contains_key(&incoming))
+                workflow_graph.all_inputs(*n, |incoming| {
+                    let mut subworkflow_path = context.subworkflow_context.to_vec();
+                    subworkflow_path.push(incoming);
+                    context.node_outputs.contains_key(&subworkflow_path)
+                })
             })
             .flat_map(move |n| {
                 let definition = workflow_graph.node_definition(n).unwrap();
@@ -174,11 +182,14 @@ impl Orchestrator {
                         let subgraph: WorkflowGraph =
                             serde_json::from_slice(&subgraph_bytes).unwrap();
 
+                        let mut subworkflow_context = context.subworkflow_context.to_vec();
+                        subworkflow_context.push(n);
+
                         self.build_actions(
                             &ExecutionContext {
+                                subworkflow_context: &subworkflow_context,
                                 graph_inputs: &inputs,
-                                // TODO: We need to get the existing graph state somehow
-                                node_outputs: &HashMap::new(),
+                                node_outputs: context.node_outputs,
                             },
                             &subgraph,
                         )
@@ -344,7 +355,7 @@ fn collect_inputs(
             let linked_node = workflow_graph.port_node(o)?;
             let output_asset_spec = context
                 .node_outputs
-                .get(&linked_node)
+                .get(&vec![linked_node])
                 .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?
                 .get(output_name)
                 .ok_or_else(|| miette!("Could not get node output for node: {linked_node:?} and port name: {output_name}"))?;
@@ -561,7 +572,6 @@ mod tests {
         orchestrator.perform_actions([(node, inputs)]).await?;
 
         let input_complete_event = stream.next().await.unwrap();
-        dbg!(&input_complete_event);
         let mut input_complete_outputs = input_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
@@ -575,7 +585,6 @@ mod tests {
         orchestrator.perform_actions([(node, inputs)]).await?;
 
         let const_complete_event = stream.next().await.unwrap();
-        dbg!(&const_complete_event);
         let mut const_complete_outputs = const_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
@@ -600,10 +609,8 @@ mod tests {
         orchestrator.perform_actions([(node, inputs)]).await?;
 
         let task_running_event = stream.next().await.unwrap();
-        dbg!(&task_running_event);
         assert_eq!(task_running_event.status, Status::Running);
         let task_complete_event = stream.next().await.unwrap();
-        dbg!(&task_complete_event);
         let mut task_complete_outputs = task_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
@@ -621,7 +628,6 @@ mod tests {
         orchestrator.perform_actions([(node, inputs)]).await?;
 
         let output_complete_event = stream.next().await.unwrap();
-        dbg!(&output_complete_event);
         let output_complete_outputs = output_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
@@ -670,10 +676,10 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&input2_idx, "value", &workflow_graph.output_idx(), "out2")
             .unwrap();
-        dbg!(&workflow_graph);
 
         let inputs = input_sets[0].clone();
         let context = &ExecutionContext {
+            subworkflow_context: &[],
             graph_inputs: &inputs.clone(),
             node_outputs: &HashMap::new(),
         };
@@ -727,10 +733,10 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&input_idx, "value", &workflow_graph.output_idx(), "out")
             .unwrap();
-        dbg!(&workflow_graph);
 
         let inputs = input_sets[0].clone();
         let context = &ExecutionContext {
+            subworkflow_context: &[],
             graph_inputs: &inputs.clone(),
             node_outputs: &HashMap::new(),
         };
@@ -747,7 +753,6 @@ mod tests {
 
         orchestrator.perform_actions(actions).await?;
         let input_complete_event = stream.next().await.unwrap();
-        dbg!(&input_complete_event);
         let input_complete_outputs = input_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
@@ -757,8 +762,9 @@ mod tests {
         );
 
         let mut node_outputs = HashMap::new();
-        node_outputs.insert(input_idx, input_complete_outputs);
+        node_outputs.insert(vec![input_idx], input_complete_outputs);
         let context = &ExecutionContext {
+            subworkflow_context: &[],
             graph_inputs: &inputs.clone(),
             node_outputs: &node_outputs,
         };
@@ -771,7 +777,203 @@ mod tests {
 
         orchestrator.perform_actions(actions).await?;
         let output_complete_event = stream.next().await.unwrap();
-        dbg!(&output_complete_event);
+        let output_complete_outputs = output_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &output_complete_outputs,
+            json!({"out": 1}),
+        );
+
+        Ok(())
+    }
+
+    // Test that we can plan the first actions of a workflow and run them.
+    #[rstest]
+    #[case("memory")]
+    #[case("file")]
+    #[tokio::test]
+    async fn plan_and_run_simple_eval_workflow(
+        #[case] default_storage_name: &str,
+    ) -> miette::Result<()> {
+        let mut subworkflow_graph = WorkflowGraph::new(["out".to_string()]);
+        let inner_a_input_idx = subworkflow_graph.add_node(
+            NodeDefinition::Input {
+                name: "a".to_string(),
+            },
+            [],
+            ["value".to_string()],
+        );
+
+        subworkflow_graph
+            .link_nodes_by_port_name(
+                &inner_a_input_idx,
+                "value",
+                &subworkflow_graph.output_idx(),
+                "out",
+            )
+            .unwrap();
+
+        let (registry, input_sets, _dir) = test_storage_registry(
+            vec![json!({"a": 1, "subworkflow": subworkflow_graph})],
+            vec![],
+        );
+        let executor_registry = test_executor_registry(&registry);
+        let orchestrator = Orchestrator::try_new(
+            &registry,
+            &executor_registry,
+            default_storage_name,
+            "memory",
+        )?;
+        let mut stream = orchestrator.listen()?;
+
+        let mut workflow_graph = WorkflowGraph::new(["out".to_string()]);
+        let a_input_idx = workflow_graph.add_node(
+            NodeDefinition::Input {
+                name: "a".to_string(),
+            },
+            [],
+            ["value".to_string()],
+        );
+        let subworkflow_input_idx = workflow_graph.add_node(
+            NodeDefinition::Input {
+                name: "subworkflow".to_string(),
+            },
+            [],
+            ["value".to_string()],
+        );
+        let eval_idx = workflow_graph.add_node(
+            NodeDefinition::Eval {},
+            ["graph".to_string(), "a".to_string()],
+            ["out".to_string()],
+        );
+
+        workflow_graph
+            .link_nodes_by_port_name(&a_input_idx, "value", &eval_idx, "a")
+            .unwrap();
+        workflow_graph
+            .link_nodes_by_port_name(&subworkflow_input_idx, "value", &eval_idx, "graph")
+            .unwrap();
+        workflow_graph
+            .link_nodes_by_port_name(&eval_idx, "out", &workflow_graph.output_idx(), "out")
+            .unwrap();
+
+        let inputs = input_sets[0].clone();
+        let context = &ExecutionContext {
+            subworkflow_context: &[],
+            graph_inputs: &inputs,
+            node_outputs: &HashMap::new(),
+        };
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        assert_eq!(actions.len(), 2);
+        assert_eq!(
+            actions[0].0,
+            Action::LoadInput {
+                name: "subworkflow".to_string()
+            }
+        );
+        assert_eq!(
+            actions[1].0,
+            Action::LoadInput {
+                name: "a".to_string()
+            }
+        );
+
+        orchestrator.perform_actions(actions).await?;
+        let subworkflow_input_complete_event = stream.next().await.unwrap();
+        let subworkflow_input_complete_outputs =
+            subworkflow_input_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &subworkflow_input_complete_outputs,
+            json!({"value": subworkflow_graph}),
+        );
+
+        let a_input_complete_event = stream.next().await.unwrap();
+        let a_input_complete_outputs = a_input_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &a_input_complete_outputs,
+            json!({"value": 1}),
+        );
+
+        let mut node_outputs = HashMap::new();
+        node_outputs.insert(
+            vec![subworkflow_input_idx],
+            subworkflow_input_complete_outputs,
+        );
+        node_outputs.insert(vec![a_input_idx], a_input_complete_outputs);
+        let context = &ExecutionContext {
+            subworkflow_context: &[],
+            graph_inputs: &inputs,
+            node_outputs: &node_outputs,
+        };
+
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].0,
+            Action::LoadInput {
+                name: "a".to_string()
+            }
+        );
+
+        orchestrator.perform_actions(actions).await?;
+        let inner_a_input_complete_event = stream.next().await.unwrap();
+        let inner_a_input_complete_outputs = inner_a_input_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &inner_a_input_complete_outputs,
+            json!({"value": 1}),
+        );
+
+        node_outputs.insert(
+            vec![eval_idx, inner_a_input_idx],
+            inner_a_input_complete_outputs,
+        );
+        let context = &ExecutionContext {
+            subworkflow_context: &[],
+            graph_inputs: &inputs,
+            node_outputs: &node_outputs,
+        };
+
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        orchestrator.perform_actions(actions).await?;
+        let inner_output_complete_event = stream.next().await.unwrap();
+        let inner_output_complete_outputs = inner_output_complete_event.outputs().unwrap();
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &inner_output_complete_outputs,
+            json!({"out": 1}),
+        );
+
+        // TODO: Does this represent what the updater will actually do?
+        node_outputs.insert(
+            vec![eval_idx, subworkflow_graph.output_idx()],
+            inner_output_complete_outputs.clone(),
+        );
+        node_outputs.insert(vec![eval_idx], inner_output_complete_outputs);
+        let context = &ExecutionContext {
+            subworkflow_context: &[],
+            graph_inputs: &inputs,
+            node_outputs: &node_outputs,
+        };
+
+        let actions = orchestrator.build_actions(context, &workflow_graph);
+        let actions = actions.collect::<Vec<_>>();
+
+        orchestrator.perform_actions(actions).await?;
+        let output_complete_event = stream.next().await.unwrap();
         let output_complete_outputs = output_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
