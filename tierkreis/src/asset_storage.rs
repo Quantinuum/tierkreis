@@ -11,7 +11,10 @@ pub use crate::asset_storage::file::FileAssetStorage;
 pub use crate::asset_storage::inmemory::InMemoryStorage;
 pub use crate::asset_storage::interface::{AssetKey, AssetKind, AssetSpec, AssetStorage};
 
+use walkdir::WalkDir;
+use std::fs;
 use std::hash::BuildHasher;
+use std::path::{Path, PathBuf};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -167,6 +170,40 @@ pub fn reserve_asset_specs(
         });
     }
     Ok(asset_specs)
+}
+
+/// Load Assets from a checkpoint directory into a FileAssetStorage for testing purposes.
+///
+/// # Panics
+///
+/// Panics if the checkpoint directory cannot be read or if the assets cannot be loaded.
+#[cfg(test)]
+
+pub fn load_checkpoints_dir(path: &Path, storage_name: &str) -> (FileAssetStorage, HashMap<String,AssetSpec>) {
+    let files = WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file() && e.path().parent().map_or(false,|p| p.ends_with("outputs")))
+        .map(|e| e.path().to_path_buf())
+        .collect::<Vec<PathBuf>>();
+    let storage = FileAssetStorage::new(path);
+    let mut assets = HashMap::new();
+    for file in files {
+        let asset_path = file.components().rev().take(3).collect::<PathBuf>().components().rev().collect::<PathBuf>();
+        let asset_name = asset_path.to_str().unwrap();
+        let asset_key = AssetKey::new();
+        let asset: serde_json::Value = serde_json::from_str(fs::read_to_string(&file).unwrap().as_str()).unwrap();
+        storage.save(&asset_key, serde_json::to_vec(&asset).unwrap()).unwrap();
+        assets.insert(
+            asset_name.to_string(),
+            AssetSpec {
+                kind: storage.kind(),
+                asset_key,
+                storage_name: storage_name.to_string(),
+            },
+        );
+    }
+    (storage, assets)
 }
 
 /// Initialize an [`AssetStorageRegistry`] with predefined Assets for use in tests.

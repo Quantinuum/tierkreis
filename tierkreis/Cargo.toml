@@ -27,6 +27,7 @@ utoipa = { version = "5.4.0", features = ["axum_extras", "debug", "uuid", "chron
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 uuid = { version = "1.23.0", features = ["serde", "v7"] }
+walkdir = "2.5.0"
 which = { version = "8.0.2", features = ["regex"] }
 
 [dev-dependencies]

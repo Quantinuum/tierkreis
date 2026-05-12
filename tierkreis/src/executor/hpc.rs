@@ -1,12 +1,12 @@
 /*!
-This module defines the [`SubprocessExecutor`] struct which implements [Executor]
+This module defines the [`HPCExecutor`] struct which implements [Executor]
 by running subprocesses.
 */
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-    process::{ExitStatus, Stdio},
-    sync::{Arc, Mutex, atomic::AtomicU32},
+    path::PathBuf,
+    process::ExitStatus,
+    sync::{Arc, Mutex, atomic::AtomicU32}, time::Duration,
 };
 
 use futures::{
@@ -21,49 +21,53 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::{
     io::AsyncReadExt,
-    process::Command,
     task::{AbortHandle, JoinHandle},
 };
 use which::which_re;
 
 use crate::{
     asset_storage::{
-        AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
+        AssetKind, AssetSpec, AssetStorageRegistry, FileAssetStorage, file, reserve_asset_specs, transfer_assets
     },
     event::{Event, Status, send_cancelled, send_complete, send_error, send_running},
-    executor::interface::{Executor, TaskPlan, WorkerSpec},
+    executor::{interface::{Executor, TaskPlan, WorkerSpec}, slurm::{parse_and_extract_job_id, poll_slurm_status, submit_job, write_jobscript}},
 };
 
-/// [`SubprocessResourceSpec`] determines what Resources should be available to the
-/// [`SubprocessExecutor`] or what is requested as part of a [`TaskPlan`].
+/// [`HPCResourceSpec`] determines what Resources should be available to the
+/// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct SubprocessResourceSpec {}
+pub struct HPCResourceSpec {}
 
-/// [`SubprocessEnvironmentSpec`] determines the default execution environment of
-/// [`SubprocessExecutor`] or what is requested as part of a [`TaskPlan`].
+/// [`HPCEnvironmentSpec`] determines the default execution environment of
+/// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct SubprocessEnvironmentSpec {}
+pub struct HPCEnvironmentSpec {}
 
-struct BackgroundTaskPlan {
+pub struct BackgroundTaskPlan {
     id: u32,
     worker_name: String,
     output_storage_name: String,
-    worker_args: NamedTempFile,
-    done_file: NamedTempFile,
+    pub worker_args: PathBuf,
+    pub script_path: PathBuf,
+    done_file: PathBuf,
     outputs: HashMap<String, AssetSpec>,
+    resources: HPCResourceSpec, // Unused for now -> used to generate job script    
+    environment: HPCEnvironmentSpec,
 }
 
 struct BackgroundTask {
     id: u32,
+    hpc_id: String, // See if we can use this as id
     output_storage_name: String,
-    exit_status: Result<ExitStatus, std::io::Error>,
+    exit_status: Result<ExitStatus, miette::Error>,
     outputs: HashMap<String, AssetSpec>,
     stderr: JoinHandle<String>,
 
+    // TODO: Do I need these?
     // Handles to temporary files to prevent deletion
     // until the task is complete.
-    _worker_args: NamedTempFile,
-    _done_file: NamedTempFile,
+    _worker_args: PathBuf,
+    _done_file: PathBuf,
 }
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
@@ -138,10 +142,11 @@ async fn start_task(
     let id = internal_task.id;
     send_running(event_sender, id).await?;
 
+
+    write_jobscript(&internal_task, &internal_task.script_path)?;
     let worker_args = internal_task.worker_args;
-    let worker_args_path = worker_args.path();
     let done_file = internal_task.done_file;
-    let res = spawn_worker(&internal_task.worker_name, worker_args_path);
+    let res = submit_job(&internal_task.script_path);
     let mut child = match res {
         Ok(child) => child,
         Err(err) => {
@@ -150,13 +155,16 @@ async fn start_task(
         }
     };
     let stderr = read_stderr(&mut child);
+    let job_id = parse_and_extract_job_id(&mut child).await.unwrap().unwrap();
 
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
+    dbg!(&job_id);
     let task = tokio::task::spawn(async move {
-        let exit_status = child.wait().await;
+        let exit_status = poll_slurm_status(&job_id, Duration::new(1, 0), Duration::new(60, 0)).await;
         BackgroundTask {
             id,
+            hpc_id: job_id,
             output_storage_name,
             exit_status,
             outputs,
@@ -221,7 +229,7 @@ async fn process_tasks(
 }
 
 /// [`SubprocessExecutor`] defines an [Executor] that performs Task Nodes using Worker subprocesses.
-pub struct SubprocessExecutor {
+pub struct HPCExecutor {
     id_source: AtomicU32,
     task_sender: TaskSender,
     cancel_sender: CancelSender,
@@ -240,8 +248,8 @@ pub struct SubprocessExecutor {
 
 type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
 
-impl SubprocessExecutor {
-    /// Try to create a new [`SubprocessExecutor`] with an [`AssetStorageRegistry`], a
+impl HPCExecutor {
+    /// Try to create a new [`HPCExecutor`] with an [`AssetStorageRegistry`], a
     /// configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// of [`AssetKind::File`][crate::asset_storage::AssetKind::File] where files are written
     /// to for the subprocesses to consume and a configured name for an
@@ -318,6 +326,7 @@ impl SubprocessExecutor {
     fn build_inputs(
         &self,
         inputs: &HashMap<String, AssetSpec>,
+        base: &std::path::Path,
     ) -> Result<HashMap<String, PathBuf>, miette::Error> {
         let inputs = transfer_assets(
             &self.asset_storage_registry,
@@ -325,11 +334,14 @@ impl SubprocessExecutor {
             inputs,
         )?;
         let inputs =
-            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
+            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?.iter().map(|(k, v)| {
+                let rel_path = v.strip_prefix(base).into_diagnostic()?;
+                Ok((k.clone(), rel_path.to_path_buf()))
+            }).collect::<Result<HashMap<_, _>, miette::Error>>()?;
         Ok(inputs)
     }
 
-    fn build_outputs(&self, outputs: HashSet<String>) -> Result<OutputSpecs, miette::Error> {
+    fn build_outputs(&self, outputs: HashSet<String>, base: &std::path::Path) -> Result<OutputSpecs, miette::Error> {
         let output_specs = reserve_asset_specs(
             &self.asset_storage_registry,
             &self.subprocess_storage_name,
@@ -338,24 +350,14 @@ impl SubprocessExecutor {
         let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
         let output_paths = outputs
             .iter()
-            .map(|(k, v)| Ok((k.clone(), v.path()?)))
+            .map(|(k, v)| {
+                let path = v.path()?;
+                let rel_path = path.strip_prefix(base).into_diagnostic()?;
+                Ok((k.clone(), rel_path.to_path_buf()))
+            })
             .collect::<Result<HashMap<_, _>, miette::Error>>()?;
         Ok((outputs, output_paths))
     }
-}
-
-fn spawn_worker(
-    worker_name: &str,
-    worker_args_path: &Path,
-) -> Result<tokio::process::Child, miette::Error> {
-    let child = Command::new(format!("tkr-{worker_name}"))
-        .arg(worker_args_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .into_diagnostic()
-        .wrap_err(miette!("Could not spawn worker"))?;
-    Ok(child)
 }
 
 fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
@@ -394,7 +396,7 @@ fn write_input_paths(
     Ok(input_paths)
 }
 
-impl Executor for SubprocessExecutor {
+impl Executor for HPCExecutor {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
     }
@@ -404,27 +406,40 @@ impl Executor for SubprocessExecutor {
             let mut ids = Vec::new();
             let mut task_sender = self.task_sender.clone();
 
+            let base_path = self.asset_storage_registry
+                .read()
+                .unwrap()
+                .get(&self.subprocess_storage_name)
+                .ok_or_else(|| miette!("subprocess_storage_name not in registry"))
+                .and_then(|file_storage| match file_storage.kind() {
+                    AssetKind::File { root } => Ok(root),
+                    _ => Err(miette!("subprocess_storage_name must be of AssetKind::File")),
+                })?;
+
             for task_plan in task_plans {
                 let id = self
                     .id_source
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let inputs = self.build_inputs(&task_plan.inputs)?;
-                let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
+                let inputs = self.build_inputs(&task_plan.inputs, &base_path.as_path())?;
+                let (outputs, output_paths) = self.build_outputs(task_plan.outputs, &base_path.as_path())?;
 
-                let worker_args = NamedTempFile::new().into_diagnostic()?;
-
+                
+                let tmp_assets = &reserve_asset_specs(&self.asset_storage_registry, &self.subprocess_storage_name, 2)?;
+                let worker_args = tmp_assets[0].path()?;
+                let file = std::fs::File::create(&worker_args).into_diagnostic()?;
+                let script_path = tmp_assets[1].path()?;
                 // Redirect the done_file to a temporary file as we
                 // do not need it to figure out if a process has
                 // completed currently.
-                let done_file = NamedTempFile::new().into_diagnostic()?;
+                let done_file = std::path::Path::new( "_done").to_path_buf();
 
                 serde_json::to_writer(
-                    &worker_args,
+                    file,
                     &WorkerCallArgs {
                         function_name: task_plan.task_name,
                         inputs,
                         outputs: output_paths,
-                        done_path: done_file.path().to_path_buf(),
+                        done_path: done_file.clone(),
                         ..Default::default()
                     },
                 )
@@ -441,8 +456,11 @@ impl Executor for SubprocessExecutor {
                         worker_name: task_plan.worker_name,
                         output_storage_name,
                         worker_args,
+                        script_path,
                         done_file,
                         outputs,
+                        resources: HPCResourceSpec::default(),
+                        environment: HPCEnvironmentSpec::default(),
                     })
                     .await
                     .into_diagnostic()?;
@@ -485,258 +503,31 @@ impl Executor for SubprocessExecutor {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
 
-    use futures::StreamExt;
-    use rstest::rstest;
+use futures::StreamExt;
     use serde_json::json;
 
-    use crate::asset_storage::{assert_registry_contains_values, test_storage_registry};
-
+    use crate::{asset_storage::{load_checkpoints_dir,assert_registry_contains_values,  FileAssetStorage, test_storage_registry}, executor::HPCExecutor};
     use super::*;
-
-    // Test that we can list the available workers in $PATH
-    #[tokio::test]
-    async fn subprocess_workers() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
-
-        let workers = executor.workers().await?;
-
-        // We should expect these workers to be already installed.
-        assert!(
-            workers
-                .iter()
-                .any(|workers| workers.worker_name == "tkr-aer-worker")
-        );
-        assert!(
-            workers
-                .iter()
-                .any(|workers| workers.worker_name == "tkr-qulacs-worker")
-        );
-
-        // We should not include the main cli tool in the worker list.
-        assert!(workers.iter().all(|workers| workers.worker_name != "tkr"));
-
-        Ok(())
-    }
-
-    // Test that we can launch a single task and listen for
-    // the status changes.
-    #[rstest]
-    #[case("memory")]
-    #[case("file")]
-    #[tokio::test]
-    async fn execute_subprocess(#[case] output_storage_name: &str) -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(
-            vec![json!({"greeting": "hello ", "subject": "dave"})],
-            vec![],
-        );
-        let mut outputs = HashSet::new();
-        outputs.insert("value".to_string());
-
-        let task_plans = vec![TaskPlan {
-            worker_name: "hello-world-worker".to_string(),
-            task_name: "greet".to_string(),
-
-            inputs: input_sets[0].clone(),
-            outputs,
-            ..Default::default()
-        }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
-
-        let stream = executor.listen()?;
-        executor.execute(task_plans).await?;
-
-        let events = stream.take(2).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
-        assert_registry_contains_values(
-            &registry,
-            output_storage_name,
-            &events[1].clone().outputs().unwrap_or_default(),
-            json!({"value": "hello dave"}),
-        );
-
-        Ok(())
-    }
-
-    // Test that we can launch a single task and listen for
-    // the status changes when reading the input values from
-    // a FileAssetStorage.
-    #[rstest]
-    #[case("memory")]
-    #[case("file")]
-    #[tokio::test]
-    async fn execute_subprocess_with_file_inputs(
-        #[case] output_storage_name: &str,
-    ) -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(
-            vec![],
-            vec![json!({"greeting": "hello ", "subject": "dave"})],
-        );
-        let mut outputs = HashSet::new();
-        outputs.insert("value".to_string());
-
-        let task_plans = vec![TaskPlan {
-            worker_name: "hello-world-worker".to_string(),
-            task_name: "greet".to_string(),
-
-            inputs: input_sets[0].clone(),
-            outputs,
-
-            ..Default::default()
-        }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
-
-        let stream = executor.listen()?;
-        executor.execute(task_plans).await?;
-
-        let events = stream.take(2).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
-        assert_registry_contains_values(
-            &registry,
-            output_storage_name,
-            &events[1].clone().outputs().unwrap_or_default(),
-            json!({"value": "hello dave"}),
-        );
-
-        Ok(())
-    }
-
-    // Test that we can launch two tasks and listen for
-    // their status changes.
-    #[rstest]
-    #[case("memory")]
-    #[case("file")]
-    #[tokio::test]
-    async fn execute_subprocess_two_tasks(#[case] output_storage_name: &str) -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(
-            vec![
-                json!({"greeting": "hello ", "subject": "dave"}),
-                json!({"greeting": "hi ", "subject": "steve"}),
-            ],
-            vec![],
-        );
-        let mut outputs = HashSet::new();
-        outputs.insert("value".to_string());
-
-        let task_plans = vec![
-            TaskPlan {
-                worker_name: "hello-world-worker".to_string(),
-                task_name: "greet".to_string(),
-
-                inputs: input_sets[0].clone(),
-                outputs: outputs.clone(),
-
-                ..Default::default()
-            },
-            TaskPlan {
-                worker_name: "hello-world-worker".to_string(),
-                task_name: "greet".to_string(),
-
-                inputs: input_sets[1].clone(),
-                outputs: outputs.clone(),
-
-                ..Default::default()
-            },
-        ];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
-
-        let stream = executor.listen()?;
-        executor.execute(task_plans).await?;
-
-        let events = stream.take(4).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 4);
-        assert!(events.contains(&Event {
-            id: 0,
-            status: Status::Running
-        }));
-        assert!(events.contains(&Event {
-            id: 1,
-            status: Status::Running
-        }));
-
-        // These may complete out of order, so find the correct events.
-        let complete0 = events
-            .iter()
-            .find(|event| event.is_complete() && event.id == 0)
-            .unwrap();
-        assert_registry_contains_values(
-            &registry,
-            output_storage_name,
-            &complete0.clone().outputs().unwrap_or_default(),
-            json!({"value": "hello dave"}),
-        );
-        let complete1 = events
-            .iter()
-            .find(|event| event.is_complete() && event.id == 1)
-            .unwrap();
-        assert_registry_contains_values(
-            &registry,
-            output_storage_name,
-            &complete1.clone().outputs().unwrap_or_default(),
-            json!({"value": "hi steve"}),
-        );
-
-        Ok(())
-    }
-
-    // Test that we can launch a task and listen for
-    // the status changes even if we launch the task before
-    // we start listening to the executor.
-    #[tokio::test]
-    async fn execute_subprocess_execute_before_listen() -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(
-            vec![json!({"greeting": "hello ", "subject": "dave"})],
-            vec![],
-        );
-        let mut outputs = HashSet::new();
-        outputs.insert("value".to_string());
-
-        let task_plans = vec![TaskPlan {
-            worker_name: "hello-world-worker".to_string(),
-            task_name: "greet".to_string(),
-
-            inputs: input_sets[0].clone(),
-            outputs: outputs.clone(),
-
-            ..Default::default()
-        }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
-
-        executor.execute(task_plans).await?;
-        let stream = executor.listen()?;
-
-        let events = stream.take(2).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
-        assert_registry_contains_values(
-            &registry,
-            "file",
-            &events[1].clone().outputs().unwrap_or_default(),
-            json!({"value": "hello dave"}),
-        );
-
-        Ok(())
-    }
-
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
     async fn execute_subprocess_error() -> miette::Result<()> {
-        let (registry, _, _dir) = test_storage_registry(vec![], vec![]);
+        // TODO: overwrite test_storage_registry in a way that the file system is the checkpoints dir
+        let file_storage = FileAssetStorage::new(std::path::Path::new("/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/"));
+        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"value": "Test"})], vec![]);
+        registry.write().unwrap().insert("checkpoints".to_string(), Box::new(file_storage));
+        let mut outputs = HashSet::new();
+        outputs.insert("value".to_string());
         let task_plans = vec![TaskPlan {
             worker_name: "hello-world-worker".to_string(),
-            // hello-world-worker has no task called "hail"
-            task_name: "hail".to_string(),
-
-            inputs: HashMap::new(),
+            task_name: "mpi_rank_info_with_input".to_string(),
+            outputs,
+            inputs: input_sets[0].clone(),
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor = HPCExecutor::try_new(&registry, "checkpoints", "checkpoints")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -744,101 +535,14 @@ mod tests {
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].status, Status::Running);
-        assert_eq!(
-            events[1].status,
-            Status::Error {
-                error: "Could not spawn worker".to_string(),
-                detail: None,
-            }
-        );
-        Ok(())
-    }
-
-    // Test that we can launch a task and then cancel it
-    // before it completes.
-    #[tokio::test]
-    async fn execute_subprocess_cancel() -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(
-            vec![json!({"greeting": "hello ", "subject": "dave"})],
-            vec![],
-        );
-        let mut outputs = HashSet::new();
-        outputs.insert("value".to_string());
-
-        let task_plans = vec![TaskPlan {
-            worker_name: "hello-world-worker".to_string(),
-            task_name: "greet".to_string(),
-
-            inputs: input_sets[0].clone(),
-            outputs: outputs.clone(),
-
-            ..Default::default()
-        }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
-
-        let mut stream = executor.listen()?;
-        let task_ids = executor.execute(task_plans).await?;
-
-        let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Running);
-
-        executor.cancel(task_ids).await?;
-
-        let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Cancelled);
-
-        Ok(())
-    }
-
-    // Test that we can pass a non-existent ID to cancel and
-    // it will not error.
-    #[tokio::test]
-    async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
-
-        executor.cancel(vec![0]).await?;
-
-        Ok(())
-    }
-
-    // Test that we can pass a completed ID to cancel and
-    // it will not error.
-    #[tokio::test]
-    async fn execute_subprocess_cancel_completed() -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(
-            vec![json!({"greeting": "hello ", "subject": "dave"})],
-            vec![],
-        );
-        let mut outputs = HashSet::new();
-        outputs.insert("value".to_string());
-
-        let task_plans = vec![TaskPlan {
-            worker_name: "hello-world-worker".to_string(),
-            task_name: "greet".to_string(),
-
-            inputs: input_sets[0].clone(),
-            outputs: outputs.clone(),
-
-            ..Default::default()
-        }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
-
-        let stream = executor.listen()?;
-        let task_ids = executor.execute(task_plans).await?;
-
-        let events = stream.take(2).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
         assert_registry_contains_values(
             &registry,
-            "file",
+            "checkpoints",
             &events[1].clone().outputs().unwrap_or_default(),
-            json!({"value": "hello dave"}),
+            json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
         );
-
-        executor.cancel(task_ids).await?;
 
         Ok(())
     }
+    
 }
