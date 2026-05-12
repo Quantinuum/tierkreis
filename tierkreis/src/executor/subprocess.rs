@@ -3,11 +3,11 @@ This module defines the [`SubprocessExecutor`] struct which implements [Executor
 by running subprocesses.
 */
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex, atomic::AtomicU32},
-    any::Any,
 };
 
 use futures::{

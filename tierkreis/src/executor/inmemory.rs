@@ -3,6 +3,7 @@ This module defines the [`InMemoryExecutor`] struct which implements [Executor]
 by running small tasks from a small work queue.
 */
 use std::{
+    any::Any,
     collections::HashMap,
     sync::{
         Arc, Mutex,
@@ -10,7 +11,6 @@ use std::{
     },
     thread::sleep,
     time::Duration,
-    any::Any,
 };
 
 use futures::{

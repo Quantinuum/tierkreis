@@ -24,7 +24,11 @@ use crate::{
         transfer_assets,
     },
     event::{Event, send_complete},
-    executor::{ExecutorRegistry, HPCExecutor, hpc::{HPCResourceSpec, HPCEnvironmentSpec}, interface::TaskPlan},
+    executor::{
+        ExecutorRegistry, HPCExecutor,
+        hpc::{HPCEnvironmentSpec, HPCResourceSpec},
+        interface::TaskPlan,
+    },
     graph::{NodeDefinition, WorkflowGraph},
 };
 
@@ -240,16 +244,16 @@ impl Orchestrator {
                         outputs: std::collections::HashSet::from_iter(vec!["value".to_string()]),
                         ..Default::default()
                     })
-                //     task_plans.push(TaskPlan {
-                //     worker_name,
-                //     task_name,
-                //     inputs: inputs.clone(),
-                //     output_storage_name: Some(self.default_storage_name.clone()),
-                //     resources,
-                //     environment,
-                //     ..Default::default()
-                // })
-                },
+                    //     task_plans.push(TaskPlan {
+                    //     worker_name,
+                    //     task_name,
+                    //     inputs: inputs.clone(),
+                    //     output_storage_name: Some(self.default_storage_name.clone()),
+                    //     resources,
+                    //     environment,
+                    //     ..Default::default()
+                    // })
+                }
                 Action::LoadInput { name } => {
                     // Assume the inputs are the inputs to the graph.
                     //
@@ -333,9 +337,13 @@ impl Orchestrator {
             let executor = self
                 .executor_registry
                 .get(&executor_name)
-                .ok_or_else(|| miette!("Could not find an executor with name '{executor_name}' in ExecutorRegistry"))
+                .ok_or_else(|| {
+                    miette!(
+                        "Could not find an executor with name '{executor_name}' in ExecutorRegistry"
+                    )
+                })
                 .wrap_err("Could not run Task Nodes")?;
-        
+
             executor
                 .execute(task_plans)
                 .await
@@ -344,19 +352,37 @@ impl Orchestrator {
         Ok(())
     }
 
-    fn orchestrate(&self, resources: &HashMap<String, Value>, environment: &HashMap<String, Value>,) -> String {
+    fn orchestrate(
+        &self,
+        resources: &HashMap<String, Value>,
+        environment: &HashMap<String, Value>,
+    ) -> String {
         for (executor_name, executor) in self.executor_registry.iter() {
             if let Some(hpc_executor) = executor.as_any().downcast_ref::<HPCExecutor>() {
                 let hpc_resources = HPCResourceSpec::new(
                     resources.get("nodes").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                    resources.get("cores_per_node").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                    resources.get("memory_per_node_gb").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                    resources.get("gpus_per_node").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                    resources
+                        .get("cores_per_node")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("memory_per_node_gb")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("gpus_per_node")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32,
                 );
                 let hpc_environment = HPCEnvironmentSpec::new(
-                    environment.get("mpi_available").and_then(|v| v.as_bool()).unwrap_or(false),
+                    environment
+                        .get("mpi_available")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 );
-                if hpc_executor.max_resources.satisfies(&hpc_resources) && hpc_executor.environment.satisfies(&hpc_environment) {
+                if hpc_executor.max_resources.satisfies(&hpc_resources)
+                    && hpc_executor.environment.satisfies(&hpc_environment)
+                {
                     return executor_name.clone();
                 }
             }
@@ -430,11 +456,11 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        asset_storage::{assert_registry_contains_values, test_storage_registry, FileAssetStorage},
+        asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
         event::Status,
         executor::{
+            hpc::HPCEnvironmentSpec, hpc::HPCExecutor, hpc::HPCResourceSpec,
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
-            hpc::HPCExecutor, hpc::HPCResourceSpec, hpc::HPCEnvironmentSpec,
         },
     };
 
@@ -455,11 +481,29 @@ mod tests {
         let environment = HPCEnvironmentSpec::new(true);
         executor_registry.insert(
             "large".to_string(),
-            Box::new(HPCExecutor::try_new(asset_storage_registry, "checkpoints", "checkpoints", HPCResourceSpec::new(2, 1, 4, 1), environment.clone()).unwrap()),
+            Box::new(
+                HPCExecutor::try_new(
+                    asset_storage_registry,
+                    "checkpoints",
+                    "checkpoints",
+                    HPCResourceSpec::new(2, 1, 4, 1),
+                    environment.clone(),
+                )
+                .unwrap(),
+            ),
         );
         executor_registry.insert(
             "small".to_string(),
-            Box::new(HPCExecutor::try_new(asset_storage_registry, "checkpoints", "checkpoints", HPCResourceSpec::new(1, 1, 2, 1), environment).unwrap()),
+            Box::new(
+                HPCExecutor::try_new(
+                    asset_storage_registry,
+                    "checkpoints",
+                    "checkpoints",
+                    HPCResourceSpec::new(1, 1, 2, 1),
+                    environment,
+                )
+                .unwrap(),
+            ),
         );
 
         Arc::new(executor_registry)
@@ -1056,24 +1100,24 @@ mod tests {
 
         Ok(())
     }
-   
+
     #[rstest]
     #[tokio::test]
     async fn do_resource_orchestration() -> miette::Result<()> {
         // Setup Orchestrator and registry
-        let file_storage = FileAssetStorage::new(std::path::Path::new("/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/"));
-        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"value": "Test"})], vec![]);
-        registry.write().unwrap().insert("checkpoints".to_string(), Box::new(file_storage));
+        let file_storage = FileAssetStorage::new(std::path::Path::new(
+            "/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/",
+        ));
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"value": "Test"})], vec![]);
+        registry
+            .write()
+            .unwrap()
+            .insert("checkpoints".to_string(), Box::new(file_storage));
         let executor_registry = test_executor_registry(&registry);
 
-
         let executors = Arc::new(executor_registry);
-        let orchestrator = Orchestrator::try_new(
-            &registry,
-            &executors,
-            "memory",
-            "memory",
-        )?;
+        let orchestrator = Orchestrator::try_new(&registry, &executors, "memory", "memory")?;
         let stream = orchestrator.listen()?;
 
         let node = Action::PerformTask {
@@ -1095,8 +1139,6 @@ mod tests {
             json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
         );
 
-
         Ok(())
     }
 }
- 
