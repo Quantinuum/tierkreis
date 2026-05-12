@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex, atomic::AtomicU32},
+    any::Any,
 };
 
 use futures::{
@@ -397,6 +398,9 @@ fn write_input_paths(
 impl Executor for SubprocessExecutor {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {

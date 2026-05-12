@@ -10,6 +10,7 @@ use std::{
     },
     thread::sleep,
     time::Duration,
+    any::Any,
 };
 
 use futures::{
@@ -320,6 +321,9 @@ impl Executor for InMemoryExecutor {
             worker_name: "builtin".to_string(),
         }])
         .boxed()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<Vec<u32>>> {

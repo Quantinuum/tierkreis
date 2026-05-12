@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde_json::Value;
+use std::any::Any;
 
 use crate::asset_storage::interface::AssetSpec;
 use crate::event::Event;
@@ -74,4 +75,5 @@ pub trait Executor: Send + Sync {
     ///
     /// Will return Err if the [Executor] is unreachable.
     fn cancel(&self, task_ids: Vec<u32>) -> BoxFuture<'_, miette::Result<()>>;
+    fn as_any(&self) -> &dyn Any;
 }
