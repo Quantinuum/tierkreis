@@ -134,7 +134,6 @@ pub async fn send_complete(
     outputs: HashMap<String, AssetSpec, RandomState>,
 ) -> miette::Result<()> {
     let workflow_complete = loc.is_root();
-    dbg!(&loc);
     event_sender
         .send(Event {
             loc: loc.clone(),

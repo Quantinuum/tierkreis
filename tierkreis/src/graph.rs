@@ -97,7 +97,7 @@ impl WorkflowGraph {
         self.node_definitions.get(&node)
     }
 
-    /// Iterate over the indices of all the nodes in the grraph.
+    /// Iterate over the indices of all the nodes in the graph.
     pub fn node_ids(&self) -> impl Iterator<Item = NodeIndex> {
         self.graph.nodes_iter()
     }
