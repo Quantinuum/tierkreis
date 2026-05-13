@@ -26,6 +26,7 @@ use crate::{
     event::{Event, send_complete},
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{NodeDefinition, WorkflowGraph},
+    location::Location,
 };
 
 static EMPTY_INPUTS: LazyLock<HashMap<String, AssetSpec>> = LazyLock::new(HashMap::new);
@@ -242,7 +243,8 @@ impl Orchestrator {
                     )?;
 
                     let mut event_sender = self.event_sender.clone();
-                    send_complete(&mut event_sender, 0, outputs).await?;
+                    // TODO: Placeholder Location for now
+                    send_complete(&mut event_sender, Location::root(), outputs).await?;
                 }
                 Action::NotifyOutput {} => {
                     // Notify that the outputs are ready
@@ -255,7 +257,8 @@ impl Orchestrator {
                         &inputs,
                     )
                     .wrap_err("Could not run Output Node")?;
-                    send_complete(&mut event_sender, 0, outputs).await?;
+                    // TODO: Placeholder Location for now
+                    send_complete(&mut event_sender, Location::root(), outputs).await?;
                 }
                 Action::LoadConst { value } => {
                     // Load the constant value into the correct storage.
@@ -289,7 +292,8 @@ impl Orchestrator {
                     };
 
                     let mut event_sender = self.event_sender.clone();
-                    send_complete(&mut event_sender, 0, outputs).await?;
+                    // TODO: Placeholder Location for now
+                    send_complete(&mut event_sender, Location::root(), outputs).await?;
                 }
             }
         }
