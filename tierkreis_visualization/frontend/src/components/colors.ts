@@ -1,11 +1,11 @@
 export const bg_color = (status: string) => {
   switch (status) {
     case "Started":
-      return "bg-chart-4";
+      return "bg-nexus-purple text-white";
     case "Finished":
-      return "bg-chart-2";
+      return "bg-nexus-green text-white";
     case "Error":
-      return "bg-chart-1 bg-repeat";
+      return "bg-nexus-red text-white bg-repeat";
     default:
       return "bg-card";
   }
@@ -14,11 +14,11 @@ export const bg_color = (status: string) => {
 export const border_color = (status: string) => {
   switch (status) {
     case "Started":
-      return "border-chart-4";
+      return "border-nexus-purple";
     case "Finished":
-      return "border-chart-2";
+      return "border-nexus-green";
     case "Error":
-      return "border-chart-1";
+      return "border-nexus-red";
     default:
       return "border-card";
   }
