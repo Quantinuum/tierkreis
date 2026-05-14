@@ -27,7 +27,7 @@ pub struct RunAttemptUpdated {
 ///
 /// This state is built up by reading [`Event`] messages and can be queried
 /// by the [`WorkflowState`] interface.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct NodeState {
     /// The time at which the node was scheduled by the [`Orchestrator`] if any.
     pub scheduled_time: Option<DateTime<Utc>>,
@@ -73,7 +73,13 @@ pub trait WorkflowState: Debug + Send + Sync {
     /// Update the [`WorkflowState`] from an [`Event`].
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the state of a Node at the specified [`Location`].
+    ///
+    /// If the `location` has no existing state, a default NodeState will be returned.
     fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>>;
+    /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
+    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
+    /// Read the metadata for the Workflow run.
+    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
 
     /// Returns `Ok(true)` if the Node at the specified [`Location`] has been
     /// scheduled by the [`Orchestrator`].

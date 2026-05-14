@@ -35,6 +35,7 @@ use crate::{
 #[derive(Debug, Default)]
 struct RunAttemptState {
     nodes: HashMap<Location, NodeState>,
+    metadata: HashMap<String, String>,
 }
 
 /// [`InMemoryRuntimeStateInner`] is a shared struct that can be accessed
@@ -245,6 +246,18 @@ impl WorkflowState for InMemoryWorkflowState {
 
         future::ready(res()).boxed()
     }
+
+    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
+        let entry = self.global_state.runs.entry((self.run_id, self.attempt));
+        entry.or_default().metadata.extend(metadata.into_iter());
+        future::ok(()).boxed()
+    }
+
+    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>> {
+        let entry = self.global_state.runs.entry((self.run_id, self.attempt));
+        let metadata = entry.or_default().value().metadata.clone();
+        future::ok(metadata).boxed()
+    }
 }
 
 #[cfg(test)]
@@ -253,11 +266,28 @@ mod tests {
 
     use super::*;
 
+    /// Test that reading a location returns the default value.
     #[tokio::test]
-    async fn listen_for_updates() -> miette::Result<()> {
+    async fn read_location_returns_default() -> miette::Result<()> {
         let runtime_state = InMemoryRuntimeState::new();
 
-        let stream = runtime_state.listen().expect("Failed to listen");
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert_eq!(node_state, NodeState::default());
+
+        Ok(())
+    }
+
+    /// Test that we can write and listen for updates.
+    #[tokio::test]
+    async fn write_and_listen_for_updates() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+
+        let stream = runtime_state.listen()?;
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
@@ -268,8 +298,7 @@ mod tests {
                 loc: Location::root(),
                 status: Status::Scheduled,
             })
-            .await
-            .expect("Failed to write state");
+            .await?;
 
         let updated = stream.take(1).collect::<Vec<_>>().await;
         assert_eq!(updated.len(), 1);
@@ -281,6 +310,71 @@ mod tests {
                 complete: false
             }
         );
+
+        Ok(())
+    }
+
+    /// Test that we can read and write workflow run state.
+    #[tokio::test]
+    async fn write_and_read() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        workflow_state
+            .write(Event {
+                loc: Location::root(),
+                status: Status::Scheduled,
+            })
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert!(node_state.scheduled_time.is_some());
+
+        Ok(())
+    }
+
+    /// Test that we can read and write metadata
+    #[tokio::test]
+    async fn write_and_read_metadata() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
+        workflow_state.add_metadata(metadata.clone()).await?;
+
+        let read_metadata = workflow_state.read_metadata().await?;
+
+        assert_eq!(metadata, read_metadata);
+
+        Ok(())
+    }
+
+    /// Test that metadata we write gets merged.
+    #[tokio::test]
+    async fn merge_metadata() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
+        workflow_state.add_metadata(metadata1.clone()).await?;
+
+        let metadata2 = HashMap::from_iter([("baz".to_string(), "boo".to_string())]);
+        workflow_state.add_metadata(metadata2.clone()).await?;
+
+        let read_metadata = workflow_state.read_metadata().await?;
+
+        metadata1.extend(metadata2.into_iter());
+        assert_eq!(metadata1, read_metadata);
 
         Ok(())
     }
