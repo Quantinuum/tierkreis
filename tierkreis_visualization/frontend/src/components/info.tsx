@@ -41,6 +41,13 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
     );
   };
 
+  const getMetadata = async () => {
+    window.open(
+      `/api/workflows/${props.info.workflow_id}/nodes/${props.info.node_location}/metadata`,
+      "_blank",
+    );
+  };
+
   const restartButton =
     props.info.type === "Logs" ? (
       <Button className="cursor-pointer mt-2" onClick={restartHandle}>
@@ -59,6 +66,18 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       </Button>
     );
   };
+  const metadataButton = () => {
+    return (
+      <Button
+        className="cursor-pointer pl-0"
+        variant="link"
+        onClick={async () => await getMetadata()}
+      >
+        Download Executor Metadata
+      </Button>
+    );
+  };
+
   const [duration, setDuration] = useState<number | null>(null);
   useEffect(() => {
     const start = props.info.started_time
@@ -80,7 +99,11 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   return (
     <DialogContent className="w-[90vw] h-[90vh] flex flex-col">
       <DialogHeader>
-        <DialogTitle> {props.info.type}</DialogTitle>
+        <DialogTitle>
+          {" "}
+          {props.info.type}{" "}
+          {props.info.task_name && ` - ${props.info.task_name}`}
+        </DialogTitle>
 
         <DialogDescription>
           Started at:{" "}
@@ -89,6 +112,8 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           {!props.info.has_error && (
             <>Duration: {duration !== null ? `${duration}s` : "N/A"}</>
           )}
+          <br />
+          {props.info.task_name && metadataButton()}
         </DialogDescription>
         {props.info.output_names &&
           props.info.output_names.length > 0 &&

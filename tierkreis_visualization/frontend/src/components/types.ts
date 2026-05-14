@@ -14,6 +14,7 @@ export interface InfoProps {
   finished_time?: string;
   output_names?: string[];
   has_error: boolean;
+  task_name?: string;
 }
 export interface HandleProps {
   handles: string[];

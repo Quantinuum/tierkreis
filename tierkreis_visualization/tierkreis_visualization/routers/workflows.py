@@ -186,3 +186,13 @@ def restart(request: Request, workflow_id: UUID, node_location_str: str) -> list
     if isinstance(storage, GraphDataStorage):
         return []
     return storage.restart_task(loc)
+
+
+@router.get("/{workflow_id}/nodes/{node_location_str}/metadata")
+def get_node_metadata(
+    request: Request, workflow_id: UUID, node_location_str: str
+) -> JSONResponse:
+    node_location = parse_node_location(node_location_str)
+    storage = request.app.state.get_storage_fn(workflow_id)
+    metadata = storage.read_executor_data(node_location)
+    return JSONResponse(metadata.model_dump_json())

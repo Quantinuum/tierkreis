@@ -1,0 +1,104 @@
+import { InputHandleArray, OutputHandleArray } from "@/components/handles";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { DialogTrigger } from "@/components/ui/dialog";
+import { type NodeProps } from "@xyflow/react";
+import { type BackendNode } from "./types";
+import { OctagonAlert } from "lucide-react";
+import { fetchErrors, fetchNodeLogs } from "@/data/api";
+import { bg_color } from "@/components/colors";
+
+export function TaskNode({ data }: NodeProps<BackendNode>) {
+  let name = data.title;
+  if (name == "Function") {
+    name = data.name;
+  }
+
+  const handleClick = async () => {
+    const workflow_id = data.workflowId;
+    const node_location = data.node_location;
+    if (data.node_type === "function") {
+      const content = await fetchNodeLogs(data.workflowId, data.node_location);
+      data.setInfo?.({
+        type: "Logs",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+        task_name: data.name,
+      });
+    } else {
+      return;
+    }
+  };
+  const handleErrorClick = async () => {
+    const errors = await fetchErrors(data.workflowId, data.node_location);
+    data.setInfo?.({
+      type: "Errors",
+      content: errors,
+      workflow_id: data.workflowId,
+      node_location: data.node_location,
+      started_time: data.started_time,
+      finished_time: data.finished_time,
+      has_error: data.has_error,
+    });
+  };
+
+  return (
+    <Card
+      className={"w-[180px] drag-handle " + bg_color(data.status)}
+      onClick={handleClick}
+    >
+      <DialogTrigger asChild>
+        <div>
+          <CardHeader>
+            <CardTitle className="whitespace-nowrap overflow-hidden text-ellipsis">
+              {name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InputHandleArray
+              handles={data.handles.inputs}
+              id={data.id}
+              isOpen={data.isTooltipOpen}
+              hoveredId={data.hoveredId}
+              setHoveredId={data.setHoveredId}
+            />
+            <div className="flex items-center justify-center">
+              {data.status == "Error" && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  style={{ zIndex: 5 }}
+                  onClick={handleErrorClick}
+                >
+                  <OctagonAlert />
+                </Button>
+              )}
+            </div>
+            <OutputHandleArray
+              handles={data.handles.outputs}
+              id={data.id}
+              isOpen={data.isTooltipOpen}
+              hoveredId={data.hoveredId}
+              setHoveredId={data.setHoveredId}
+            />
+          </CardContent>
+          <CardFooter
+            className="flex justify-content justify-start"
+            style={{ padding: "-5px" }}
+          ></CardFooter>
+        </div>
+      </DialogTrigger>
+    </Card>
+  );
+}

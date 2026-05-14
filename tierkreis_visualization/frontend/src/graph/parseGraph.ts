@@ -21,7 +21,7 @@ function nodeType(function_name: string) {
     case "map":
       return "map-node";
     default:
-      return "default-node";
+      return "task-node";
   }
 }
 function getTitle(function_name: string) {
