@@ -74,7 +74,7 @@ pub trait WorkflowState: Debug + Send + Sync {
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the state of a Node at the specified [`Location`].
     ///
-    /// If the `location` has no existing state, a default NodeState will be returned.
+    /// If the `location` has no existing state, a default [`NodeState`] will be returned.
     fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;

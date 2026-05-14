@@ -249,7 +249,7 @@ impl WorkflowState for InMemoryWorkflowState {
 
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
-        entry.or_default().metadata.extend(metadata.into_iter());
+        entry.or_default().metadata.extend(metadata);
         future::ok(()).boxed()
     }
 
