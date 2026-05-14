@@ -21,6 +21,7 @@ use futures::{
 use miette::miette;
 use uuid::Uuid;
 
+use crate::state::interface::RunAttemptUpdated;
 use crate::{
     event::Event,
     location::Location,
@@ -30,11 +31,15 @@ use crate::{
     },
 };
 
+/// [`RunAttemptState`] is the full state of a run.
 #[derive(Debug, Default)]
 struct RunAttemptState {
     nodes: HashMap<Location, NodeState>,
 }
 
+/// [`InMemoryRuntimeStateInner`] is a shared struct that can be accessed
+/// by both [`InMemoryRuntimeState`] and [`InMemoryWorkflowState`] through shared
+/// references.
 #[derive(Debug, Default)]
 struct InMemoryRuntimeStateInner {
     runs: DashMap<(Uuid, u32), RunAttemptState>,
@@ -45,8 +50,8 @@ struct InMemoryRuntimeStateInner {
 #[derive(Debug)]
 pub struct InMemoryRuntimeState {
     inner: Arc<InMemoryRuntimeStateInner>,
-    update_sender: mpsc::Sender<(Uuid, u32, bool)>,
-    update_receiver: Mutex<Option<mpsc::Receiver<(Uuid, u32, bool)>>>,
+    update_sender: mpsc::Sender<RunAttemptUpdated>,
+    update_receiver: Mutex<Option<mpsc::Receiver<RunAttemptUpdated>>>,
 }
 
 impl InMemoryRuntimeState {
@@ -73,6 +78,10 @@ impl Default for InMemoryRuntimeState {
 
 impl RuntimeState for InMemoryRuntimeState {
     fn workflow_state(&self, run_id: Uuid, attempt: u32) -> Arc<dyn WorkflowState> {
+        let entry = self.inner.runs.entry((run_id, attempt));
+        // Insert the default if the value does not yet exist.
+        entry.or_default();
+
         Arc::new(InMemoryWorkflowState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
@@ -81,7 +90,7 @@ impl RuntimeState for InMemoryRuntimeState {
         })
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'static, (Uuid, u32, bool)>> {
+    fn listen(&self) -> miette::Result<BoxStream<'static, RunAttemptUpdated>> {
         let receiver = {
             let mut receiver = self
                 .update_receiver
@@ -102,7 +111,7 @@ impl RuntimeState for InMemoryRuntimeState {
 #[derive(Debug)]
 pub struct InMemoryWorkflowState {
     global_state: Arc<InMemoryRuntimeStateInner>,
-    update_sender: mpsc::Sender<(Uuid, u32, bool)>,
+    update_sender: mpsc::Sender<RunAttemptUpdated>,
     run_id: Uuid,
     attempt: u32,
 }
@@ -116,7 +125,7 @@ impl InMemoryWorkflowState {
     /// Will panic if `listen` returns an error, but this should be impossible.
     #[cfg(test)]
     #[must_use]
-    pub fn test() -> (Self, BoxStream<'static, (Uuid, u32, bool)>) {
+    pub fn test() -> (Self, BoxStream<'static, RunAttemptUpdated>) {
         let global_state = InMemoryRuntimeState::new();
         let events = global_state.listen().unwrap();
         global_state
@@ -198,7 +207,11 @@ impl WorkflowState for InMemoryWorkflowState {
         async move {
             if send_update {
                 update_sender
-                    .send((self.run_id, self.attempt, send_workflow_complete))
+                    .send(RunAttemptUpdated {
+                        run_id: self.run_id,
+                        attempt: self.attempt,
+                        complete: send_workflow_complete,
+                    })
                     .await
                     .map_err(|err| miette!("Send failed: {err}"))?;
             }
@@ -231,5 +244,44 @@ impl WorkflowState for InMemoryWorkflowState {
         };
 
         future::ready(res()).boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::event::Status;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn listen_for_updates() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+
+        let stream = runtime_state.listen().expect("Failed to listen");
+
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        workflow_state
+            .write(Event {
+                loc: Location::root(),
+                status: Status::Scheduled,
+            })
+            .await
+            .expect("Failed to write state");
+
+        let updated = stream.take(1).collect::<Vec<_>>().await;
+        assert_eq!(updated.len(), 1);
+        assert_eq!(
+            updated[0],
+            RunAttemptUpdated {
+                run_id,
+                attempt,
+                complete: false
+            }
+        );
+
+        Ok(())
     }
 }

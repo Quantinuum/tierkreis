@@ -10,6 +10,18 @@ use uuid::Uuid;
 
 use crate::{asset_storage::AssetSpec, event::Event, location::Location};
 
+/// [`RunAttemptUpdated`] is a struct that is emitted by the [`RuntimeState`] interface
+/// whenever a run attempt changes, in order to drive further workflow orchestration.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RunAttemptUpdated {
+    /// The unique identifier of the run.
+    pub run_id: Uuid,
+    /// The number of the run attempt, typically sequential.
+    pub attempt: u32,
+    /// Whether the workflow is complete and no further orchestration is required.
+    pub complete: bool,
+}
+
 /// [`NodeState`] is a struct that stores the possible state that a node
 /// in the Workflow graph can be in.
 ///
@@ -44,6 +56,8 @@ pub struct NodeState {
 pub trait RuntimeState: Debug + Send + Sync {
     /// Retrieve a handle to a [`WorkflowState`] depending on the `run_id` and attempt number.
     ///
+    /// If the backing data for the [`WorkflowState`] does not exist, create it.
+    ///
     /// The [`WorkflowState`] comes inside an `Arc` such that it can be shared between threads.
     fn workflow_state(&self, run_id: Uuid, attempt: u32) -> Arc<dyn WorkflowState>;
     /// Listen for updates about *all* of the running workflows.
@@ -51,10 +65,10 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    fn listen(&self) -> miette::Result<BoxStream<'static, (Uuid, u32, bool)>>;
+    fn listen(&self) -> miette::Result<BoxStream<'static, RunAttemptUpdated>>;
 }
 
-/// [`WorkfowState`] is an interface to the state of an individual Workflow run attempt.
+/// [`WorkflowState`] is an interface to the state of an individual Workflow run attempt.
 pub trait WorkflowState: Debug + Send + Sync {
     /// Update the [`WorkflowState`] from an [`Event`].
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>>;
