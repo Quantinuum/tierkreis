@@ -17,7 +17,12 @@ import { nodeTypes } from "@/nodes";
 import { edgeTypes } from "@/edges";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { bottomUpLayout } from "@/graph/layoutGraph";
-import { Eye, FolderSync, Network } from "lucide-react";
+import { Eye, FolderSync, Network, Scan } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export const GraphView = (props: {
   nodes: BackendNode[];
@@ -89,17 +94,45 @@ export const GraphView = (props: {
         fitView
       >
         <Background />
-        <Controls showZoom={false} showInteractive={false}>
-          <SidebarTrigger style={{ fill: "none" }} />
-          <ControlButton onClick={revertPositionChanges}>
-            <Network style={{ fill: "none" }} />
-          </ControlButton>
-          <ControlButton onClick={() => localStorage.clear()}>
-            <FolderSync style={{ fill: "none" }} />
-          </ControlButton>
-          <ControlButton onClick={() => handleToggleTooltips()}>
-            <Eye style={{ fill: "none" }} />
-          </ControlButton>
+        <Controls showZoom={false} showInteractive={false} showFitView={false}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ControlButton onClick={() => reactFlowInstance.fitView()}>
+                <Scan style={{ fill: "none" }} />
+              </ControlButton>
+            </TooltipTrigger>
+            <TooltipContent>Recenter</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SidebarTrigger style={{ fill: "none" }} />
+            </TooltipTrigger>
+            <TooltipContent>Show the sidebar</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ControlButton onClick={revertPositionChanges}>
+                <Network style={{ fill: "none" }} />
+              </ControlButton>
+            </TooltipTrigger>
+            <TooltipContent>Recalculate layout</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ControlButton onClick={() => localStorage.clear()}>
+                <FolderSync style={{ fill: "none" }} />
+              </ControlButton>
+            </TooltipTrigger>
+            <TooltipContent>Clear local storage</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ControlButton onClick={() => handleToggleTooltips()}>
+                <Eye style={{ fill: "none" }} />
+              </ControlButton>
+            </TooltipTrigger>
+            <TooltipContent>Toggle node port names</TooltipContent>
+          </Tooltip>
         </Controls>
       </ReactFlow>
     </Layout>
