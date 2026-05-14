@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { ReactNode } from "react";
-import { border_color } from "./colors";
+import { bg_color, border_color } from "./colors";
 
 export type NodeStatusIndicatorProps = {
   status?: "Not started" | "Started" | "Error" | "Finished";
@@ -37,15 +37,28 @@ export const LoadingIndicator = ({ children }: { children: ReactNode }) => {
 const StatusBorder = ({
   children,
   className,
+  borderColor,
+  bgColor,
 }: {
   children: ReactNode;
   className?: string;
+  borderColor?: string;
+  bgColor?: string;
 }) => {
   return (
     <>
       <div
         className={clsx(
           "absolute -left-[1px] -top-[1px] h-[calc(100%+2px)] w-[calc(100%+2px)] rounded-xl border-2",
+          borderColor,
+          className,
+        )}
+        style={{ pointerEvents: "none" }}
+      />
+      <div
+        className={clsx(
+          "absolute -left-[1px] -top-[1px] h-[calc(100%+2px)] w-[calc(100%+2px)] rounded-xl opacity-10",
+          bgColor,
           className,
         )}
         style={{ pointerEvents: "none" }}
@@ -60,13 +73,26 @@ export const NodeStatusIndicator = ({
   children,
 }: NodeStatusIndicatorProps) => {
   const color = border_color(status ?? "default");
+  const bgcolor = bg_color(status ?? "default");
   switch (status) {
     case "Started":
-      return <StatusBorder className={color}>{children}</StatusBorder>;
+      return (
+        <StatusBorder bgColor={bgcolor} borderColor={color}>
+          {children}
+        </StatusBorder>
+      );
     case "Finished":
-      return <StatusBorder className={color}>{children}</StatusBorder>;
+      return (
+        <StatusBorder bgColor={bgcolor} borderColor={color}>
+          {children}
+        </StatusBorder>
+      );
     case "Error":
-      return <StatusBorder className={color}>{children}</StatusBorder>;
+      return (
+        <StatusBorder bgColor={bgcolor} borderColor={color}>
+          {children}
+        </StatusBorder>
+      );
     default:
       return (
         <StatusBorder className="border py-6 shadow-sm">

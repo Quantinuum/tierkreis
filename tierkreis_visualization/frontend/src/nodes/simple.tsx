@@ -77,7 +77,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
   return (
     <div
       className={
-        "w-[80px] h-[80px] p-4  shadow-sm flex items-center justify-center border-double border-sidebar-border border-3 " +
+        "w-[80px] h-[80px] drag-handle p-4  shadow-sm flex items-center justify-center border-double border-sidebar-border border-3 " +
         bg_color(data.status) +
         " " +
         extra_classes

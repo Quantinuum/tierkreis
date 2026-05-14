@@ -87,7 +87,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
 
   return (
     <Card
-      className={"w-[180px] " + bg_color(data.status)}
+      className={"w-[180px] drag-handle " + bg_color(data.status)}
       onClick={handleClick}
     >
       <DialogTrigger asChild>

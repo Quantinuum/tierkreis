@@ -5,7 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { type NodeProps } from "@xyflow/react";
+import { NodeResizeControl, type NodeProps } from "@xyflow/react";
 
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { NodeStatusIndicator } from "@/components/StatusIndicator";
@@ -13,6 +13,8 @@ import { type BackendNode } from "@/nodes/types";
 import { ZoomOutButton, ZoomInButton } from "./node_navigation";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { bg_color } from "@/components/colors";
+import { Button } from "@/components/ui/button";
+import { Move, Scaling } from "lucide-react";
 
 export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
@@ -30,8 +32,35 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
   if (node_data.is_expanded) {
     return (
       <NodeStatusIndicator status={node_data.status}>
-        <div className="grid justify-items-end">
+        <div className="flex justify-end">
+          <div className="drag-handle">
+            <Button className="flex-none m-1" variant="secondary" size="icon">
+              <Move />
+            </Button>
+          </div>
           <ZoomOutButton wid={wid} loc={loc} node_loc={node_loc} />
+          <div>
+            <Button className="flex-none m-1" variant="secondary" size="icon">
+              <Scaling />
+              <NodeResizeControl
+                className="flex-none m-1"
+                autoScale={false}
+                style={{
+                  // Hack the position to where we want it, anyone smartet than me feel free to fix this
+                  background: "transparent",
+                  border: "none",
+                  position: "absolute",
+                  left: "97%",
+                  top: "18px",
+                  width: "36px",
+                  height: "36px",
+                }}
+                minWidth={100}
+                minHeight={50}
+                position="top-right"
+              ></NodeResizeControl>
+            </Button>
+          </div>
         </div>
       </NodeStatusIndicator>
     );
@@ -44,7 +73,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
   return (
     <Card
       onDoubleClick={handleDoubleClick}
-      className={"w-[180px] gap-2 " + bg_color(node_data.status)}
+      className={"w-[180px] gap-2 drag-handle " + bg_color(node_data.status)}
     >
       <CardHeader>
         <CardTitle>{node_data.title}</CardTitle>

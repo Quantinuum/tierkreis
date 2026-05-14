@@ -91,6 +91,7 @@ function parseNodes(
     if (parent === "-") parent = undefined;
 
     return {
+      dragHandle: ".drag-handle",
       id: node.node_location,
       type: nodeType(node.function_name),
       position: { x: 0, y: 0 },
