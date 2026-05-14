@@ -109,7 +109,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
               {data.status == "Error" && (
                 <Button
                   size="sm"
-                  variant="destructive"
+                  variant="default"
                   style={{ zIndex: 5 }}
                   onClick={handleErrorClick}
                 >

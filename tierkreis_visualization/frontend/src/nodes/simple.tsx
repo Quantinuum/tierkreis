@@ -1,11 +1,4 @@
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
@@ -17,6 +10,15 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
   let name = data.title;
   if (data.value) {
     name = data.value;
+  }
+
+  let extra_classes = "";
+  if (data.node_type === "input") {
+    extra_classes = "rounded-b-lg";
+  } else if (data.node_type === "output") {
+    extra_classes = "rounded-t-lg";
+  } else if (data.node_type === "const") {
+    extra_classes = "rounded-lg ";
   }
 
   const handleClick = async () => {
@@ -73,39 +75,34 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
   };
 
   return (
-    <Card
-      className={"w-[180px] " + bg_color(data.status)}
+    <div
+      className={
+        "w-[80px] h-[80px] p-4  shadow-sm flex items-center justify-center border-double border-sidebar-border border-3 " +
+        bg_color(data.status) +
+        " " +
+        extra_classes
+      }
       onClick={handleClick}
     >
       <DialogTrigger asChild>
-        <div>
-          <CardHeader>
-            <CardTitle className="whitespace-nowrap overflow-hidden text-ellipsis">
-              {name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <InputHandleArray
-              handles={data.handles.inputs}
-              id={data.id}
-              isOpen={data.isTooltipOpen}
-              hoveredId={data.hoveredId}
-              setHoveredId={data.setHoveredId}
-            />
-            <OutputHandleArray
-              handles={data.handles.outputs}
-              id={data.id}
-              isOpen={data.isTooltipOpen}
-              hoveredId={data.hoveredId}
-              setHoveredId={data.setHoveredId}
-            />
-          </CardContent>
-          <CardFooter
-            className="flex justify-content justify-start"
-            style={{ padding: "-5px" }}
-          ></CardFooter>
+        <div className="text-center font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+          <InputHandleArray
+            handles={data.handles.inputs}
+            id={data.id}
+            isOpen={data.isTooltipOpen}
+            hoveredId={data.hoveredId}
+            setHoveredId={data.setHoveredId}
+          />
+          <OutputHandleArray
+            handles={data.handles.outputs}
+            id={data.id}
+            isOpen={data.isTooltipOpen}
+            hoveredId={data.hoveredId}
+            setHoveredId={data.setHoveredId}
+          />
+          {name}
         </div>
       </DialogTrigger>
-    </Card>
+    </div>
   );
 }
