@@ -30,7 +30,7 @@ export const ZoomInButton = (props: {
     return { openEvals, openLoops, openMaps };
   };
   return (
-    <Button className="flex-none m-1" variant="secondary" size="icon">
+    <Button className="flex-none m-1" variant="default" size="icon">
       <Link
         to="/workflows/$wid/nodes/$loc"
         params={params}
@@ -50,20 +50,20 @@ export const ZoomOutButton = (props: {
   const params = { wid: props.wid, loc: props.loc };
   const search = (prev: SearchData): SearchData => {
     const openEvals = prev.openEvals?.filter(
-      (x) => !x.startsWith(props.node_loc)
+      (x) => !x.startsWith(props.node_loc),
     );
     const openLoops = prev.openLoops?.filter(
-      (x) => !x.startsWith(props.node_loc)
+      (x) => !x.startsWith(props.node_loc),
     );
     const openMaps = prev.openMaps?.filter(
-      (x) => !x.startsWith(props.node_loc)
+      (x) => !x.startsWith(props.node_loc),
     );
     return { openEvals, openLoops, openMaps };
   };
   return (
     <Button className="flex-none m-1" variant="secondary" size="icon">
       <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
-        <Minus style={{ width: 48, height: 48 }} />
+        <Minus />
       </Link>
     </Button>
   );

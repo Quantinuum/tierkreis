@@ -1,5 +1,6 @@
 import { loc_peek, loc_steps } from "@/data/loc";
 import { Link } from "@tanstack/react-router";
+import { ColorMap } from "./ColorMap";
 
 const Breadcrumb = (props: { wid: string; loc: string }) => {
   const name = loc_peek(props.loc);
@@ -27,6 +28,11 @@ export const Breadcrumbs = (props: { wid: string; loc: string }) => {
         workflows
       </Link>
       {crumbs}
+      <div className="flex-1 flex h-12 justify-end">
+        <div className="border-l-1 h-12 p-1">
+          <ColorMap state={["Started", "Not started", "Finished", "Error"]} />
+        </div>
+      </div>
     </div>
   );
 };

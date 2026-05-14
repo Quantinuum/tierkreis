@@ -12,6 +12,7 @@ import { NodeStatusIndicator } from "@/components/StatusIndicator";
 import { type BackendNode } from "@/nodes/types";
 import { ZoomOutButton, ZoomInButton } from "./node_navigation";
 import { useNavigate, useParams } from "@tanstack/react-router";
+import { bg_color } from "@/components/colors";
 
 export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
@@ -41,35 +42,35 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
   );
 
   return (
-    <NodeStatusIndicator status={node_data.status}>
-      {}
-      <Card onDoubleClick={handleDoubleClick} className="w-[180px] gap-2">
-        <CardHeader>
-          <CardTitle>{node_data.title}</CardTitle>
-        </CardHeader>
+    <Card
+      onDoubleClick={handleDoubleClick}
+      className={"w-[180px] gap-2 " + bg_color(node_data.status)}
+    >
+      <CardHeader>
+        <CardTitle>{node_data.title}</CardTitle>
+      </CardHeader>
 
-        <CardContent>
-          <div className="flex items-center justify-center">{inButton}</div>
-          <InputHandleArray
-            handles={node_data.handles.inputs}
-            id={node_data.id}
-            isOpen={node_data.isTooltipOpen}
-            hoveredId={node_data.hoveredId}
-            setHoveredId={node_data.setHoveredId}
-          />
-          <OutputHandleArray
-            handles={node_data.handles.outputs}
-            id={node_data.id}
-            isOpen={node_data.isTooltipOpen}
-            hoveredId={node_data.hoveredId}
-            setHoveredId={node_data.setHoveredId}
-          />
-        </CardContent>
-        <CardFooter
-          className="flex justify-content justify-start"
-          style={{ padding: "-5px" }}
-        ></CardFooter>
-      </Card>
-    </NodeStatusIndicator>
+      <CardContent>
+        <div className="flex items-center justify-center">{inButton}</div>
+        <InputHandleArray
+          handles={node_data.handles.inputs}
+          id={node_data.id}
+          isOpen={node_data.isTooltipOpen}
+          hoveredId={node_data.hoveredId}
+          setHoveredId={node_data.setHoveredId}
+        />
+        <OutputHandleArray
+          handles={node_data.handles.outputs}
+          id={node_data.id}
+          isOpen={node_data.isTooltipOpen}
+          hoveredId={node_data.hoveredId}
+          setHoveredId={node_data.setHoveredId}
+        />
+      </CardContent>
+      <CardFooter
+        className="flex justify-content justify-start"
+        style={{ padding: "-5px" }}
+      ></CardFooter>
+    </Card>
   );
 }

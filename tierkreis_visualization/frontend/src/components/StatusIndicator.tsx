@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { ReactNode } from "react";
+import { border_color } from "./colors";
 
 export type NodeStatusIndicatorProps = {
   status?: "Not started" | "Started" | "Error" | "Finished";
@@ -58,15 +59,14 @@ export const NodeStatusIndicator = ({
   status,
   children,
 }: NodeStatusIndicatorProps) => {
+  const color = border_color(status ?? "default");
   switch (status) {
     case "Started":
-      return <StatusBorder className="border-chart-4">{children}</StatusBorder>;
+      return <StatusBorder className={color}>{children}</StatusBorder>;
     case "Finished":
-      return (
-        <StatusBorder className="border-emerald-600">{children}</StatusBorder>
-      );
+      return <StatusBorder className={color}>{children}</StatusBorder>;
     case "Error":
-      return <StatusBorder className="border-red-400">{children}</StatusBorder>;
+      return <StatusBorder className={color}>{children}</StatusBorder>;
     default:
       return (
         <StatusBorder className="border py-6 shadow-sm">

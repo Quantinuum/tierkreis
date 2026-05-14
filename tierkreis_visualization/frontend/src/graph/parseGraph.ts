@@ -11,6 +11,7 @@ function nodeType(function_name: string) {
     case "input":
     case "output":
     case "const":
+      return "simple-node";
     case "ifelse":
     case "eifelse":
       return "default-node";

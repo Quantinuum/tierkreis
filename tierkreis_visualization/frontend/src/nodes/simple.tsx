@@ -1,5 +1,4 @@
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -10,25 +9,27 @@ import {
 import { DialogTrigger } from "@/components/ui/dialog";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
-import { OctagonAlert } from "lucide-react";
-import { fetchErrors, fetchNodeLogs } from "@/data/api";
+import { fetchOutput, fetchOutputs } from "@/data/api";
+import { loc_parent } from "@/data/loc";
 import { bg_color } from "@/components/colors";
 
-export function DefaultNode({ data }: NodeProps<BackendNode>) {
+export function SimpleNode({ data }: NodeProps<BackendNode>) {
   let name = data.title;
-  if (name == "Function") {
-    name = data.name;
-  } else if (data.value) {
+  if (data.value) {
     name = data.value;
   }
 
   const handleClick = async () => {
     const workflow_id = data.workflowId;
     const node_location = data.node_location;
-    if (data.node_type === "function") {
-      const content = await fetchNodeLogs(data.workflowId, data.node_location);
+    if (data.node_type === "const") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        "value",
+      );
       data.setInfo?.({
-        type: "Logs",
+        type: "Constant value",
         content,
         workflow_id,
         node_location,
@@ -37,22 +38,15 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
         output_names: data.output_names,
         has_error: data.has_error,
       });
-    } else if (data.node_type === "const") {
-      return;
     } else if (data.node_type === "input") {
-      return;
-    } else if (data.node_type === "eifelse") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        name,
+      );
       data.setInfo?.({
-        type: "Eager if/else",
-        content: "",
-        workflow_id,
-        node_location,
-        has_error: data.has_error,
-      });
-    } else if (data.node_type === "ifelse") {
-      data.setInfo?.({
-        type: "Lazy if/else",
-        content: "",
+        type: "Input",
+        content,
         workflow_id,
         node_location,
         started_time: data.started_time,
@@ -60,29 +54,22 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
         output_names: data.output_names,
         has_error: data.has_error,
       });
-    } else if (data.node_type === "eval") {
-      return;
-    } else if (data.node_type === "map") {
-      return;
-    } else if (data.node_type === "loop") {
-      return;
     } else if (data.node_type === "output") {
-      return;
+      const parent = loc_parent(data.node_location);
+      const content = await fetchOutputs(data.workflowId, parent);
+      data.setInfo?.({
+        type: "Output",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+      });
     } else {
-      data.node_type satisfies never;
+      return;
     }
-  };
-  const handleErrorClick = async () => {
-    const errors = await fetchErrors(data.workflowId, data.node_location);
-    data.setInfo?.({
-      type: "Errors",
-      content: errors,
-      workflow_id: data.workflowId,
-      node_location: data.node_location,
-      started_time: data.started_time,
-      finished_time: data.finished_time,
-      has_error: data.has_error,
-    });
   };
 
   return (
@@ -105,18 +92,6 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
               hoveredId={data.hoveredId}
               setHoveredId={data.setHoveredId}
             />
-            <div className="flex items-center justify-center">
-              {data.status == "Error" && (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  style={{ zIndex: 5 }}
-                  onClick={handleErrorClick}
-                >
-                  <OctagonAlert />
-                </Button>
-              )}
-            </div>
             <OutputHandleArray
               handles={data.handles.outputs}
               id={data.id}
