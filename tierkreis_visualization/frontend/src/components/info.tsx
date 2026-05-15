@@ -55,14 +55,11 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
     );
   };
 
-  const restartButton =
-    props.info.type === "Logs" ? (
-      <Button className="cursor-pointer mt-2" onClick={restartHandle}>
-        Restart
-      </Button>
-    ) : (
-      <></>
-    );
+  const restartButton = (
+    <Button className="cursor-pointer mt-2" onClick={restartHandle}>
+      Restart
+    </Button>
+  );
   const outputButton = (outputName: string) => {
     return (
       <Button

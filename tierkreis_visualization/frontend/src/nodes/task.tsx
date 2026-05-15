@@ -52,13 +52,14 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
       finished_time: data.finished_time,
       has_error: data.has_error,
       node_inputs: data.node_inputs,
+      task_name: data.name,
     });
   };
 
   return (
     <Card
       className={"w-[180px] drag-handle " + bg_color(data.status)}
-      onClick={handleClick}
+      onClick={data.status === "Error" ? handleErrorClick : handleClick}
     >
       <DialogTrigger asChild>
         <div>
@@ -75,18 +76,6 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
               hoveredId={data.hoveredId}
               setHoveredId={data.setHoveredId}
             />
-            <div className="flex items-center justify-center">
-              {data.status == "Error" && (
-                <Button
-                  size="sm"
-                  variant="default"
-                  style={{ zIndex: 5 }}
-                  onClick={handleErrorClick}
-                >
-                  <OctagonAlert />
-                </Button>
-              )}
-            </div>
             <OutputHandleArray
               handles={data.handles.outputs}
               id={data.id}
