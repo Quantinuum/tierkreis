@@ -21,19 +21,19 @@ dev = [
 ]
 lint = [
     "isort>=6.0.1",
-    "ruff>=0.15.11",
-    "pyright>=1.1.400",
+    "ruff>=0.15.13",
+    "pyright>=1.1.409",
 ]
 test = [
     "pytest>=9.0.3,<10",
     "pytest-asyncio>=0.16,<1.4",
     "pytest-cov>=5.0,<8",
-    "pydantic>=2.13.2",
+    "pydantic>=2.13.4",
 ]
 docs = [
     "sphinx>=8.2",
     "sphinx-autodoc2>=0.5.0",
     "myst-nb>=1.4.0",
     "furo>=2025.7.19",
-    "pyscf>=2.9.0",
+    "pyscf>=2.13.0",
 ]
