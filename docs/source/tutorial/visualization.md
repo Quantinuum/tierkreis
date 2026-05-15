@@ -80,8 +80,15 @@ Available graphs are listed in the sidebar by their name.
 
 ### Node Types
 
-The visualizer will show the different node types with their heading.
-Tasks will be displayed by their function names and constant values, inputs and outputs have their values attached.
+The visualizer will show the different node types:
+![node types](../_static/visualization/node_types.png)
+
+- Constant nodes: squares with rounded corners and a double border.
+- Input nodes: squares with rounded corners at the bottom, regular corners at the top and a double border.
+- Output nodes: squares with rounded corners at the top, regular corners at the bottom and a double border.
+- Conditional nodes: squares with strongly rounded corners and a regular border.
+- Task nodes: Rectangles with rounded corners and a regular border.
+- Map, Eval, Loop nodes: rectangles with rounded corners, a regular border and the expansion button. 
 
 ### Node Status
 
@@ -89,10 +96,11 @@ The node status is indicated by the border color of the nodes:
 
 ![node state example](../_static/visualization/node_states.png)
 
-- Yellow: Node is currently running
+From left to right
+- Purple: Node is currently running
+- White: Node has not been started yet
 - Green: Node is finished
 - Red: An error has occurred in the node (or one of its nested nodes)
-- White/No border: Node has not been started yet
 
 ### Ports & Values
 
@@ -105,6 +113,8 @@ Small values will be displayed, larger values are truncated with a `{}` symbol.
 Hovering the symbol shows the entire value in json format.
 The graph symbol indicates a value is a constant subgraph supplied as a nested graph.
 
+Values can be downloaded as outputs from the [detail view](#detail-view).
+
 ### Nested Graphs
 
 The higher order nodes `eval`, `map`, and `loop` can be expanded by pressing the `+` button.
@@ -115,11 +125,19 @@ For `eval` nodes this will immediately be the nested graph;
 For `map`/`loop` nodes this will show the individual elements/iterations which each contain their own subgraph.
 For unevaluated graphs, this will only show a placeholder evaluation.
 To hide the graph again use the `-` button at the top right.
+The other two buttons allow for resizing the bounding box and moving the node _with all its children_.
 
-### Logs & Errors
+### Detail View
 
-Logs can be accessed by double-clicking a node.
-If an error has occurred on a node, it will have a `!` button.
-Pressing it will show the error information.
+Detailed node information can be accessed by by double-clicking a node.
+By default this will show:
+- Node Type
+- Execution information: Start, End, Duration
+- _Task nodes only_: Inputs with downloadable values
+- Outputs with downloadable values
+- Logs (for task nodes) or data entries
+- A restart button for the node and its dependents
+
+If an error has occurred on a node, errors logs will be shown instead of node logs. 
 
 ![error logs](../_static/visualization/Debugging.png)
