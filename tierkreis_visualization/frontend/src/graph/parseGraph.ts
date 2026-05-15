@@ -100,6 +100,7 @@ function parseNodes(
         status: node.status,
         handles: getHandlesFromEdges(node.id, edges),
         output_names: node.outputs,
+        node_inputs: node.inputs,
         hidden_handles: undefined,
         hidden_edges: undefined,
         workflowId: workflowId,

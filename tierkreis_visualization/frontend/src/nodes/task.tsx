@@ -33,6 +33,7 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
         started_time: data.started_time,
         finished_time: data.finished_time,
         output_names: data.output_names,
+        node_inputs: data.node_inputs,
         has_error: data.has_error,
         task_name: data.name,
       });
@@ -50,6 +51,7 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
       started_time: data.started_time,
       finished_time: data.finished_time,
       has_error: data.has_error,
+      node_inputs: data.node_inputs,
     });
   };
 

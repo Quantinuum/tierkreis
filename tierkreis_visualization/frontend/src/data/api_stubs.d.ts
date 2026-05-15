@@ -219,6 +219,15 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** NodeInputs */
+        NodeInputs: {
+            /** Port */
+            port: string;
+            /** From Node */
+            from_node: string;
+            /** From Port */
+            from_port: string;
+        };
         /** PyEdge */
         PyEdge: {
             /** From Node */
@@ -267,6 +276,11 @@ export interface components {
             node_location: string;
             /** Outputs */
             outputs: string[];
+            /**
+             * Inputs
+             * @default []
+             */
+            inputs: components["schemas"]["NodeInputs"][];
             /** Value */
             value?: string | null;
             /** Started Time */

@@ -1,5 +1,5 @@
 import { InfoProps } from "@/components/types";
-import { NodeType } from "@/data/api_types";
+import { NodeInputs, NodeType } from "@/data/api_types";
 import { Edge, type Node } from "@xyflow/react";
 
 export type BackendNode = Node<{
@@ -10,6 +10,7 @@ export type BackendNode = Node<{
     outputs: string[];
   };
   output_names?: string[];
+  node_inputs?: NodeInputs[];
   hidden_handles?: {
     inputs: string[];
     outputs: string[];

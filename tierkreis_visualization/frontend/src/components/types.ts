@@ -1,3 +1,5 @@
+import { NodeInputs } from "@/data/api_types";
+
 export interface InfoProps {
   type:
     | "Logs"
@@ -13,6 +15,7 @@ export interface InfoProps {
   started_time?: string;
   finished_time?: string;
   output_names?: string[];
+  node_inputs?: NodeInputs[];
   has_error: boolean;
   task_name?: string;
 }

@@ -7,3 +7,4 @@ export type PyGraph =
 export type PyEdge = PyGraph["edges"][0];
 export type PyNode = PyGraph["nodes"][0];
 export type NodeType = PyNode["node_type"];
+export type NodeInputs = PyNode["inputs"][0];

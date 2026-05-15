@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NodeInputs } from "@/data/api_types";
 export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
@@ -40,6 +41,12 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       "_blank",
     );
   };
+  const getInput = async (input: NodeInputs) => {
+    window.open(
+      `/api/workflows/${props.info.workflow_id}/nodes/${input.from_node}/inputs/${input.from_port}`,
+      "_blank",
+    );
+  };
 
   const getMetadata = async () => {
     window.open(
@@ -66,6 +73,17 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       </Button>
     );
   };
+  const inputButton = (input: NodeInputs) => {
+    return (
+      <Button
+        className="cursor-pointer"
+        onClick={async () => await getInput(input)}
+      >
+        {input.port} <Download className="inline-block ml-2 mb-1" />
+      </Button>
+    );
+  };
+
   const metadataButton = () => {
     return (
       <Button
@@ -115,6 +133,16 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           <br />
           {props.info.task_name && metadataButton()}
         </DialogDescription>
+        {props.info.node_inputs &&
+          props.info.node_inputs.length > 0 &&
+          props.info.finished_time && (
+            <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
+              <p className="text-xs text-gray-500 mb-2">Inputs</p>
+              <div className="flex flex-row flex-wrap items-center gap-3">
+                {props.info.node_inputs.map((input) => inputButton(input))}
+              </div>
+            </div>
+          )}
         {props.info.output_names &&
           props.info.output_names.length > 0 &&
           props.info.finished_time && (
