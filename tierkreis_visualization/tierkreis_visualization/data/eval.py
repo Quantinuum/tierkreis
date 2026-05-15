@@ -7,8 +7,8 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
-from tierkreis_visualization.data.models import NodeStatus, PyEdge, PyNode
-from tierkreis_visualization.data.outputs import outputs_from_loc
+from tierkreis_visualization.data.models import NodeInputs, NodeStatus, PyEdge, PyNode
+from tierkreis_visualization.data.outputs import outputs_from_loc, task_inputs
 from tierkreis_visualization.routers.models import PyGraph
 
 
@@ -79,9 +79,11 @@ def get_eval_node(
         started_time = storage.read_started_time(new_location) or ""
         finished_time = storage.read_finished_time(new_location) or ""
         value: str | None = None
+        inputs: list[NodeInputs] = []
         match node.type:
             case "function":
                 name = node.function_name
+                inputs = task_inputs(storage, new_location)
             case "ifelse":
                 name = node.type
                 add_conditional_edges(storage, node_location, i, node, py_edges)
@@ -114,6 +116,7 @@ def get_eval_node(
             started_time=started_time,
             finished_time=finished_time,
             outputs=list(node.outputs),
+            inputs=inputs,
         )
         pynodes.append(pynode)
 

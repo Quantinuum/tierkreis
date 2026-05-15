@@ -18,6 +18,12 @@ NodeType = Literal[
 ]
 
 
+class NodeInputs(BaseModel):
+    port: str
+    from_node: Loc
+    from_port: str
+
+
 class PyNode(BaseModel):
     id: Loc
     status: NodeStatus
@@ -25,6 +31,7 @@ class PyNode(BaseModel):
     node_type: NodeType
     node_location: str = ""
     outputs: list[str]
+    inputs: list[NodeInputs] = []
     value: str | None = None
     started_time: str
     finished_time: str
