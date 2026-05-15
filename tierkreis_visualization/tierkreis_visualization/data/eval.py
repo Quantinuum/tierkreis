@@ -1,8 +1,6 @@
-import json
 from typing import assert_never
 
-from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.graph import GraphData, IfElse, in_edges
+from tierkreis.controller.data.graph import GraphData, in_edges
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.protocol import ControllerStorage
@@ -32,36 +30,6 @@ def check_error(node_location: Loc, errored_nodes: list[Loc]) -> bool:
     return any(node.startswith(node_location) for node in errored_nodes)
 
 
-def add_conditional_edges(
-    storage: ControllerStorage,
-    loc: Loc,
-    i: NodeIndex,
-    node: IfElse,
-    py_edges: list[PyEdge],
-) -> None:
-    try:
-        pred = json.loads(storage.read_output(loc.N(node.pred[0]), node.pred[1]))
-    except (FileNotFoundError, TierkreisError):
-        pred = None
-
-    refs = {True: node.if_true, False: node.if_false}
-
-    for branch, (idx, p) in refs.items():
-        try:
-            value = outputs_from_loc(storage, loc.N(idx), p)
-        except FileNotFoundError:
-            value = None
-        edge = PyEdge(
-            from_node=loc.N(idx),
-            from_port=p,
-            to_node=loc.N(i),
-            to_port=f"If{branch}",
-            conditional=pred is None or pred != branch,
-            value=value,
-        )
-        py_edges.append(edge)
-
-
 def get_eval_node(
     storage: ControllerStorage,
     node_location: Loc,
@@ -84,10 +52,7 @@ def get_eval_node(
             case "function":
                 name = node.function_name
                 inputs = task_inputs(storage, new_location)
-            case "ifelse":
-                name = node.type
-                add_conditional_edges(storage, node_location, i, node, py_edges)
-            case "map" | "eval" | "loop" | "eifelse":
+            case "map" | "eval" | "loop" | "ifelse" | "eifelse":
                 name = node.type
             case "const":
                 name = node.type
