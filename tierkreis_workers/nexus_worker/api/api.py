@@ -1,17 +1,32 @@
 """Code generated from nexus_worker namespace. Please do not edit."""
 
+# ruff: noqa: F821
 from typing import NamedTuple, Union
 from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
 class upload_circuit(NamedTuple):
-    project_name: TKR[str]  # noqa: F821 # fmt: skip
-    circ: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    project_name: TKR[str]
+    circ: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
 
     @staticmethod
-    def out() -> type[TKR[Union[OpaqueType["qnexus.models.references.CircuitRef"], OpaqueType["qnexus.models.references.HUGRRef"], OpaqueType["qnexus.models.references.QIRRef"]]]]:  # noqa: F821 # fmt: skip
-        return TKR[Union[OpaqueType["qnexus.models.references.CircuitRef"], OpaqueType["qnexus.models.references.HUGRRef"], OpaqueType["qnexus.models.references.QIRRef"]]]  # noqa: F821 # fmt: skip
+    def out() -> type[
+        TKR[
+            Union[
+                OpaqueType["qnexus.models.references.CircuitRef"],
+                OpaqueType["qnexus.models.references.HUGRRef"],
+                OpaqueType["qnexus.models.references.QIRRef"],
+            ]
+        ]
+    ]:
+        return TKR[
+            Union[
+                OpaqueType["qnexus.models.references.CircuitRef"],
+                OpaqueType["qnexus.models.references.HUGRRef"],
+                OpaqueType["qnexus.models.references.QIRRef"],
+            ]
+        ]
 
     @property
     def namespace(self) -> str:
@@ -19,15 +34,37 @@ class upload_circuit(NamedTuple):
 
 
 class start_execute_job(NamedTuple):
-    project_name: TKR[str]  # noqa: F821 # fmt: skip
-    job_name: TKR[str]  # noqa: F821 # fmt: skip
-    circuits: TKR[list[Union[OpaqueType["qnexus.models.references.CircuitRef"], OpaqueType["qnexus.models.references.HUGRRef"], OpaqueType["qnexus.models.references.QIRRef"]]]]  # noqa: F821 # fmt: skip
-    n_shots: TKR[list[int]]  # noqa: F821 # fmt: skip
-    backend_config: TKR[Union[OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"], OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"], OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"], OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"], OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"], OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"], OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"], OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"], OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"], OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"], OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"]]]  # noqa: F821 # fmt: skip
+    project_name: TKR[str]
+    job_name: TKR[str]
+    circuits: TKR[
+        list[
+            Union[
+                OpaqueType["qnexus.models.references.CircuitRef"],
+                OpaqueType["qnexus.models.references.HUGRRef"],
+                OpaqueType["qnexus.models.references.QIRRef"],
+            ]
+        ]
+    ]
+    n_shots: TKR[list[int]]
+    backend_config: TKR[
+        Union[
+            OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"],
+        ]
+    ]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]]:
+        return TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]
 
     @property
     def namespace(self) -> str:
@@ -35,11 +72,11 @@ class start_execute_job(NamedTuple):
 
 
 class is_running(NamedTuple):
-    execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]  # noqa: F821 # fmt: skip
+    execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]
 
     @staticmethod
-    def out() -> type[TKR[bool]]:  # noqa: F821 # fmt: skip
-        return TKR[bool]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[bool]]:
+        return TKR[bool]
 
     @property
     def namespace(self) -> str:
@@ -47,11 +84,13 @@ class is_running(NamedTuple):
 
 
 class get_results(NamedTuple):
-    execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]  # noqa: F821 # fmt: skip
+    execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]
 
     @staticmethod
-    def out() -> type[TKR[list[OpaqueType["pytket.backends.backendresult.BackendResult"]]]]:  # noqa: F821 # fmt: skip
-        return TKR[list[OpaqueType["pytket.backends.backendresult.BackendResult"]]]  # noqa: F821 # fmt: skip
+    def out() -> type[
+        TKR[list[OpaqueType["pytket.backends.backendresult.BackendResult"]]]
+    ]:
+        return TKR[list[OpaqueType["pytket.backends.backendresult.BackendResult"]]]
 
     @property
     def namespace(self) -> str:
@@ -59,13 +98,13 @@ class get_results(NamedTuple):
 
 
 class upload_hugr(NamedTuple):
-    hugr_package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
-    project_name: TKR[str]  # noqa: F821 # fmt: skip
-    name: TKR[Union[str, NoneType]] | None = None  # noqa: F821 # fmt: skip
+    hugr_package: TKR[OpaqueType["hugr.package.Package"]]
+    project_name: TKR[str]
+    name: TKR[Union[str, NoneType]] | None = None
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["qnexus.models.references.HUGRRef"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["qnexus.models.references.HUGRRef"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["qnexus.models.references.HUGRRef"]]]:
+        return TKR[OpaqueType["qnexus.models.references.HUGRRef"]]
 
     @property
     def namespace(self) -> str:
@@ -73,13 +112,18 @@ class upload_hugr(NamedTuple):
 
 
 class cost(NamedTuple):
-    hugr_ref: TKR[Union[OpaqueType["qnexus.models.references.HUGRRef"], list[OpaqueType["qnexus.models.references.HUGRRef"]]]]  # noqa: F821 # fmt: skip
-    n_shots: TKR[int]  # noqa: F821 # fmt: skip
-    project_name: TKR[str]  # noqa: F821 # fmt: skip
+    hugr_ref: TKR[
+        Union[
+            OpaqueType["qnexus.models.references.HUGRRef"],
+            list[OpaqueType["qnexus.models.references.HUGRRef"]],
+        ]
+    ]
+    n_shots: TKR[int]
+    project_name: TKR[str]
 
     @staticmethod
-    def out() -> type[TKR[float]]:  # noqa: F821 # fmt: skip
-        return TKR[float]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[float]]:
+        return TKR[float]
 
     @property
     def namespace(self) -> str:

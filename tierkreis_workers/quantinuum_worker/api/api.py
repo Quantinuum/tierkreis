@@ -1,15 +1,16 @@
 """Code generated from quantinuum_worker namespace. Please do not edit."""
 
+# ruff: noqa: F821
 from typing import NamedTuple
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
 class get_backend_info(NamedTuple):
-    device_name: TKR[str]  # noqa: F821 # fmt: skip
+    device_name: TKR[str]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]]:
+        return TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]
 
     @property
     def namespace(self) -> str:
@@ -17,13 +18,13 @@ class get_backend_info(NamedTuple):
 
 
 class compile_using_info(NamedTuple):
-    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
-    backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]  # noqa: F821 # fmt: skip
-    optimisation_level: TKR[int] | None = None  # noqa: F821 # fmt: skip
+    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
+    backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]
+    optimisation_level: TKR[int] | None = None
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"]]]:
+        return TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
 
     @property
     def namespace(self) -> str:
@@ -31,12 +32,12 @@ class compile_using_info(NamedTuple):
 
 
 class backend_pass_from_info(NamedTuple):
-    backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]  # noqa: F821 # fmt: skip
-    optimisation_level: TKR[int] | None = None  # noqa: F821 # fmt: skip
+    backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]
+    optimisation_level: TKR[int] | None = None
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket._tket.passes.BasePass"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket._tket.passes.BasePass"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket._tket.passes.BasePass"]]]:
+        return TKR[OpaqueType["pytket._tket.passes.BasePass"]]
 
     @property
     def namespace(self) -> str:
@@ -45,8 +46,8 @@ class backend_pass_from_info(NamedTuple):
 
 class fixed_pass(NamedTuple):
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket._tket.passes.BasePass"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket._tket.passes.BasePass"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket._tket.passes.BasePass"]]]:
+        return TKR[OpaqueType["pytket._tket.passes.BasePass"]]
 
     @property
     def namespace(self) -> str:
@@ -54,11 +55,11 @@ class fixed_pass(NamedTuple):
 
 
 class compile_circuit_quantinuum(NamedTuple):
-    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"]]]:
+        return TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
 
     @property
     def namespace(self) -> str:
@@ -66,11 +67,11 @@ class compile_circuit_quantinuum(NamedTuple):
 
 
 class compile_circuits_quantinuum(NamedTuple):
-    circuits: TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]  # noqa: F821 # fmt: skip
+    circuits: TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]
 
     @staticmethod
-    def out() -> type[TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]]:  # noqa: F821 # fmt: skip
-        return TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]]:
+        return TKR[list[OpaqueType["pytket._tket.circuit.Circuit"]]]
 
     @property
     def namespace(self) -> str:
@@ -78,13 +79,13 @@ class compile_circuits_quantinuum(NamedTuple):
 
 
 class run_circuit(NamedTuple):
-    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
-    n_shots: TKR[int]  # noqa: F821 # fmt: skip
-    device_name: TKR[str]  # noqa: F821 # fmt: skip
+    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
+    n_shots: TKR[int]
+    device_name: TKR[str]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]]:
+        return TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]
 
     @property
     def namespace(self) -> str:
