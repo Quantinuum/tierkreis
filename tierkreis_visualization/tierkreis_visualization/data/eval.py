@@ -1,8 +1,15 @@
 from typing import assert_never
 
-from tierkreis.controller.data.graph import GraphData, in_edges
+from tierkreis.controller.data.core import NodeIndex
+from tierkreis.controller.data.graph import (
+    GraphData,
+    IfElse,
+    graph_node_from_loc,
+    in_edges,
+)
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
 from tierkreis_visualization.data.models import NodeInputs, NodeStatus, PyEdge, PyNode
@@ -35,8 +42,14 @@ def get_eval_node(
     node_location: Loc,
     errored_nodes: list[Loc],
 ) -> PyGraph:
-    thunk = storage.read_output(node_location.N(-1), "body")
-    graph = ptype_from_bytes(thunk, GraphData)
+    try:
+        thunk = storage.read_output(node_location.N(-1), "body")
+        graph = ptype_from_bytes(thunk, GraphData)
+    except (EntryNotFoundError, TierkreisError):
+        thunk = storage.read_output(Loc("-.N-1"), "body")
+        graph = ptype_from_bytes(thunk, GraphData)
+        graph = graph_node_from_loc(node_location, graph)[1]
+
     pynodes: list[PyNode] = []
     py_edges: list[PyEdge] = []
     hidden_nodes: set[Loc] = set()
