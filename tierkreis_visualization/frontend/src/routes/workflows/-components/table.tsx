@@ -25,6 +25,7 @@ export function WorkflowsTable(props: {
       header: "Start time",
       invertSorting: true,
     }),
+    columnHelper.accessor("tkr_version", { header: "TKR version" }),
     columnHelper.accessor("errors", {
       header: "Errors",
       sortingFn: (x, y) => y.original.errors.length - x.original.errors.length,

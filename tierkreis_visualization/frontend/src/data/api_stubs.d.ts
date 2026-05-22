@@ -316,6 +316,8 @@ export interface components {
             start_time: string;
             /** Errors */
             errors: string[];
+            /** Tkr Version */
+            tkr_version: string;
         };
     };
     responses: never;
