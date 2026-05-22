@@ -7,6 +7,7 @@ from tierkreis.controller.data.types import PType, Struct
 
 class A(NamedTuple):
     age: TKR[int]  # noqa: F821 # fmt: skip
+    b: TKR['B']  # noqa: F821 # fmt: skip
     name: TKR[dict[str, str]]  # noqa: F821 # fmt: skip
 
 

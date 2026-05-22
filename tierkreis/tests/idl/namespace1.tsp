@@ -14,6 +14,7 @@ model IncludedType {
 model A {
   name: Record<string>;
   age: uint8;
+  b: 'B';
 }
 
 model B {
