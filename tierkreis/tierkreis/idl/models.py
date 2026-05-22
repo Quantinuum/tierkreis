@@ -32,6 +32,7 @@ class GenericType:
             (a) constructed from a `type` that was a PType,
             (b) not constructed from a `type` at all (e.g. from a string in the parser).
         has_serialization (bool): true if the type has custom serialization.
+        is_forward_ref (bool): true if the type is a forward reference e.g. list["MyType"] or "MyType".
 
     """
 
@@ -39,9 +40,10 @@ class GenericType:
     args: "Sequence[GenericType | str]"
     is_ptype: bool = True
     has_serialization: bool = False
+    is_forward_ref: bool = False
 
     @classmethod
-    def from_type(cls, t: type, *, has_serialization: bool = False) -> "Self":
+    def from_type(cls, t: type | str, *, has_serialization: bool = False) -> "Self":
         """Construct a generic type from a python type.
 
         :param t: The python type.
@@ -51,6 +53,8 @@ class GenericType:
         :return: The Tierkreis type.
         :rtype: Self
         """
+        if isinstance(t, str):
+            return cls(t, [], is_forward_ref=True)
         if get_origin(t) is Annotated:
             args = get_args(t)
             if (

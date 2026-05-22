@@ -4,7 +4,6 @@ We use https://typespec.io/docs/language-basics/built-in-types/ as a guide.
 """
 
 from types import NoneType
-from typing import ForwardRef
 
 from tierkreis.idl.models import GenericType
 from tierkreis.idl.parser import Parser, lit, reg, seq
@@ -23,7 +22,9 @@ other_date = lit("utcDateTime", "offsetDateTime", "duration")
 date_t = (plain_datetime | other_date).fail("Date")
 unknown_t = lit("unknown", "void", "never").fail("Unknown")
 ident = reg(r"[a-zA-Z0-9_]+")
-forward_ref = ident.map(ForwardRef)
+forward_ref = reg(r"'[a-zA-Z0-9_]+'").map(
+    lambda x: GenericType(x[1:-1], [], is_forward_ref=True)
+)
 generics = (lit("<") >> ident.rep(lit(",")) << lit(">")).opt().map(lambda x: x or [])
 
 
@@ -92,4 +93,5 @@ def type_symbol(ins: str) -> tuple[GenericType, str]:
         | array_t
         | record_t
         | generic_t
+        | forward_ref
     )(ins)

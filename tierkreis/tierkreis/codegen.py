@@ -13,15 +13,18 @@ from tierkreis.controller.data.types import (
     _is_union,
 )
 from tierkreis.idl.models import GenericType, Method, Model, TypedArg
+from typing import ForwardRef
 
 NO_QA_STR = " # noqa: F821 # fmt: skip"
 
 
-def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
+def format_ptype(
+    ptype: type | str | ForwardRef, *, has_serialization: bool = False
+) -> str:
     """Format a ptype to a string.
 
     :param ptype: The type to format.
-    :type ptype: type | str
+    :type ptype: type | str | ForwardRef
     :param has_serialization: If it was a custom serialized type.
     :type has_serialization: bool, defaults to False.
     :return: The formatted string representation of the type.
@@ -41,6 +44,8 @@ def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
         return "NoneType"
     if has_serialization:
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
+    if isinstance(ptype, ForwardRef):
+        return f"'{ptype.__forward_arg__}'"
     return ptype.__qualname__
 
 
@@ -77,7 +82,13 @@ def format_generic_type(
     generics_str = f"[{', '.join(generics)}]" if generictype.args else ""
 
     out = f"{origin_str}{generics_str}"
-    return f"TKR[{out}]" if is_tkr else out
+    if is_tkr:
+        if generictype.is_forward_ref:
+            out = f"'{out}'"
+        return f"TKR[{out}]"
+    if generictype.is_forward_ref:
+        return f"'{out}'"
+    return out
 
 
 def format_typed_arg(typed_arg: TypedArg, *, is_portmapping: bool) -> str:
