@@ -16,7 +16,7 @@ Tierkreis is restricted to a subset of the full specification:
 
 - Interfaces: defining the available tasks in your worker. Currently, Tierkreis allows only **one** interface definition for a worker, which **must** have the same name as the directory it is placed in.
 - Models: to define the types of the task in- and outputs
-  Additionally, you may use the `@portmapping` decorator on models to indicate tasks with multiple outputs.
+  - Additionally, you may use the `@portmapping` decorator on models to indicate tasks with multiple outputs.
 
 For example you could define the following interface in `TestNamespace/namespace.tsp`
 
@@ -27,7 +27,7 @@ model Person {
   age: uint8;
 }
 
-model Dog{
+model Dog {
   name: string;
   color: string;
 }
@@ -44,7 +44,7 @@ interface TestNamespace {
 }
 ```
 
-From which you could generate stubs.
+From which you could generate stubs as below.
 This is currently available through a python script or by running the cli `tkr init stubs` with the correct worker directory.
 
 ```py
@@ -62,6 +62,20 @@ if __name__ == "__main__":
     namespace = Namespace.from_spec_file(tsp_path)
     namespace.write_stubs(tsp_path.parent / "stubs.py")
 ```
+
+### Forward References
+To parse forward references use python style quoting using single quotes, e.g.:
+
+```rust
+model A {
+  b: 'B';
+}
+
+model B {
+  field: string;
+}
+```
+
 
 ## Parsing Inputs and Outputs
 
