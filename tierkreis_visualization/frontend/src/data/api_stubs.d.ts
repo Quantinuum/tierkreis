@@ -241,15 +241,6 @@ export interface components {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
     };
-    /** NodeInputs */
-    NodeInputs: {
-      /** Port */
-      port: string;
-      /** From Node */
-      from_node: string;
-      /** From Port */
-      from_port: string;
-    };
     /** PyEdge */
     PyEdge: {
       /** From Node */
@@ -307,11 +298,6 @@ export interface components {
       node_location: string;
       /** Outputs */
       outputs: string[];
-      /**
-       * Inputs
-       * @default []
-       */
-      inputs: components["schemas"]["NodeInputs"][];
       /** Value */
       value?: string | null;
       /** Started Time */
@@ -656,38 +642,6 @@ export interface operations {
         };
         content: {
           "application/json": string[];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  get_node_metadata_api_workflows__workflow_id__nodes__node_location_str__metadata_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        workflow_id: string;
-        node_location_str: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
         };
       };
       /** @description Validation Error */

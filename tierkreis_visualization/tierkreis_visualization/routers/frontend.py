@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from tierkreis_visualization.routers.models import BackendInfo
+from tierkreis_visualization.routers.models import RuntimeMetadata
 
 PACKAGE_DIR = Path(__file__).parent.parent.absolute()
 assets = StaticFiles(directory=PACKAGE_DIR / "static" / "dist" / "assets", html=True)
@@ -12,8 +12,8 @@ router = APIRouter()
 
 
 @router.get("/api/info")
-def get_info() -> BackendInfo:
-    info = BackendInfo(version=version("tierkreis"))
+def get_info() -> RuntimeMetadata:
+    info = RuntimeMetadata(version=version("tierkreis"))
     return info
 
 
