@@ -1,9 +1,7 @@
 from typing import assert_never
 
-from tierkreis.controller.data.core import NodeIndex
 from tierkreis.controller.data.graph import (
     GraphData,
-    IfElse,
     graph_node_from_loc,
     in_edges,
 )
