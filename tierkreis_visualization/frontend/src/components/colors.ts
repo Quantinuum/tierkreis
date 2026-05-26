@@ -1,7 +1,7 @@
 export const bg_color = (status: string) => {
   switch (status) {
     case "Started":
-      return "bg-nexus-purple text-white";
+      return "bg-amber-500";
     case "Finished":
       return "bg-nexus-green text-white";
     case "Error":
@@ -14,7 +14,7 @@ export const bg_color = (status: string) => {
 export const border_color = (status: string) => {
   switch (status) {
     case "Started":
-      return "border-nexus-purple";
+      return "border-amber-500";
     case "Finished":
       return "border-nexus-green";
     case "Error":

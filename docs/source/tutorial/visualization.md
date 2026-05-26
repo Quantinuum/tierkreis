@@ -97,7 +97,7 @@ The node status is indicated by the border color of the nodes:
 ![node state example](../_static/visualization/node_states.png)
 
 From left to right
-- Purple: Node is currently running
+- Yellow: Node is currently running
 - White: Node has not been started yet
 - Green: Node is finished
 - Red: An error has occurred in the node (or one of its nested nodes)
