@@ -2,37 +2,37 @@ import { InputHandleArray, OutputHandleArray } from "@/components/handles";
 import { DialogTrigger } from "@/components/ui/dialog";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
+import { fetchOutput, fetchOutputs } from "@/data/api";
+import { loc_parent } from "@/data/loc";
 import { bg_color } from "@/components/colors";
 
-export function DefaultNode({ data }: NodeProps<BackendNode>) {
+export function SimpleNode({ data }: NodeProps<BackendNode>) {
   let name = data.title;
-  if (name == "Function") {
-    name = data.name;
-  } else if (data.value) {
+  if (data.value) {
     name = data.value;
+  }
+
+  let extra_classes = "";
+  if (data.node_type === "input") {
+    extra_classes = "rounded-b-lg";
+  } else if (data.node_type === "output") {
+    extra_classes = "rounded-t-lg";
+  } else if (data.node_type === "const") {
+    extra_classes = "rounded-lg ";
   }
 
   const handleClick = async () => {
     const workflow_id = data.workflowId;
     const node_location = data.node_location;
-    if (data.node_type === "function") {
-      return;
-    } else if (data.node_type === "const") {
-      return;
-    } else if (data.node_type === "input") {
-      return;
-    } else if (data.node_type === "eifelse") {
+    if (data.node_type === "const") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        "value",
+      );
       data.setInfo?.({
-        type: "Eager if/else",
-        content: "",
-        workflow_id,
-        node_location,
-        has_error: data.has_error,
-      });
-    } else if (data.node_type === "ifelse") {
-      data.setInfo?.({
-        type: "Lazy if/else",
-        content: "",
+        type: "Constant value",
+        content,
         workflow_id,
         node_location,
         started_time: data.started_time,
@@ -40,24 +40,47 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
         output_names: data.output_names,
         has_error: data.has_error,
       });
-    } else if (data.node_type === "eval") {
-      return;
-    } else if (data.node_type === "map") {
-      return;
-    } else if (data.node_type === "loop") {
-      return;
+    } else if (data.node_type === "input") {
+      const content = await fetchOutput(
+        data.workflowId,
+        data.node_location,
+        name,
+      );
+      data.setInfo?.({
+        type: "Input",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+      });
     } else if (data.node_type === "output") {
-      return;
+      const parent = loc_parent(data.node_location);
+      const content = await fetchOutputs(data.workflowId, parent);
+      data.setInfo?.({
+        type: "Output",
+        content,
+        workflow_id,
+        node_location,
+        started_time: data.started_time,
+        finished_time: data.finished_time,
+        output_names: data.output_names,
+        has_error: data.has_error,
+      });
     } else {
-      data.node_type satisfies never;
+      return;
     }
   };
 
   return (
     <div
       className={
-        "w-[80px] h-[80px] drag-handle p-4  shadow-sm flex items-center justify-center rounded-[18px] " +
-        bg_color(data.status)
+        "w-[80px] h-[80px] drag-handle p-4  shadow-sm flex items-center justify-center border-double border-sidebar-border border-3 " +
+        bg_color(data.status) +
+        " " +
+        extra_classes
       }
       onClick={handleClick}
     >

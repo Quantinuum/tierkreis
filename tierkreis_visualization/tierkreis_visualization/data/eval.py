@@ -1,14 +1,12 @@
-import json
 from typing import assert_never
 
-from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.graph import GraphData, IfElse, in_edges
+from tierkreis.controller.data.graph import GraphData, in_edges
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
-from tierkreis_visualization.data.models import NodeStatus, PyEdge, PyNode
-from tierkreis_visualization.data.outputs import outputs_from_loc
+from tierkreis_visualization.data.models import NodeInputs, NodeStatus, PyEdge, PyNode
+from tierkreis_visualization.data.outputs import outputs_from_loc, task_inputs
 from tierkreis_visualization.routers.models import PyGraph
 
 
@@ -32,36 +30,6 @@ def check_error(node_location: Loc, errored_nodes: list[Loc]) -> bool:
     return any(node.startswith(node_location) for node in errored_nodes)
 
 
-def add_conditional_edges(
-    storage: ControllerStorage,
-    loc: Loc,
-    i: NodeIndex,
-    node: IfElse,
-    py_edges: list[PyEdge],
-) -> None:
-    try:
-        pred = json.loads(storage.read_output(loc.N(node.pred[0]), node.pred[1]))
-    except (FileNotFoundError, TierkreisError):
-        pred = None
-
-    refs = {True: node.if_true, False: node.if_false}
-
-    for branch, (idx, p) in refs.items():
-        try:
-            value = outputs_from_loc(storage, loc.N(idx), p)
-        except FileNotFoundError:
-            value = None
-        edge = PyEdge(
-            from_node=loc.N(idx),
-            from_port=p,
-            to_node=loc.N(i),
-            to_port=f"If{branch}",
-            conditional=pred is None or pred != branch,
-            value=value,
-        )
-        py_edges.append(edge)
-
-
 def get_eval_node(
     storage: ControllerStorage,
     node_location: Loc,
@@ -69,23 +37,27 @@ def get_eval_node(
 ) -> PyGraph:
     thunk = storage.read_output(node_location.N(-1), "body")
     graph = ptype_from_bytes(thunk, GraphData)
-
     pynodes: list[PyNode] = []
     py_edges: list[PyEdge] = []
+    hidden_nodes: set[Loc] = set()
     for i, node in enumerate(graph.nodes):
         new_location = node_location.N(i)
 
         status = node_status(storage, new_location, errored_nodes)
         started_time = storage.read_started_time(new_location) or ""
         finished_time = storage.read_finished_time(new_location) or ""
+        if i in graph.node_metadata:
+            is_hidden = graph.node_metadata[i].is_hidden
+        else:
+            is_hidden = False
+
         value: str | None = None
+        inputs: list[NodeInputs] = []
         match node.type:
             case "function":
                 name = node.function_name
-            case "ifelse":
-                name = node.type
-                add_conditional_edges(storage, node_location, i, node, py_edges)
-            case "map" | "eval" | "loop" | "eifelse":
+                inputs = task_inputs(storage, new_location)
+            case "map" | "eval" | "loop" | "ifelse" | "eifelse":
                 name = node.type
             case "const":
                 name = node.type
@@ -114,8 +86,12 @@ def get_eval_node(
             started_time=started_time,
             finished_time=finished_time,
             outputs=list(node.outputs),
+            inputs=inputs,
         )
-        pynodes.append(pynode)
+        if not is_hidden:
+            pynodes.append(pynode)
+        else:
+            hidden_nodes.add(new_location)
 
         for p0, (idx, p1) in in_edges(node).items():
             try:
@@ -132,4 +108,25 @@ def get_eval_node(
             )
             py_edges.append(py_edge)
 
-    return PyGraph(nodes=pynodes, edges=py_edges)
+    # Rewire edges through hidden nodes
+    # Works based on the assumption that hidden nodes have single input and output
+    # and that no two hidden nodes are directly connected.
+    # Currently only used for fold/unfold nodes, which follow this pattern.
+    # In this case, at most one of the edges holds a value, so we can just take it for the new edge.
+    rewired_edges: list[PyEdge] = []
+    for edge in py_edges:
+        if edge.to_node in hidden_nodes:
+            next_edge = next(filter(lambda e: e.from_node == edge.to_node, py_edges))
+            rewired_edges.append(
+                PyEdge(
+                    from_node=edge.from_node,
+                    from_port=edge.from_port,
+                    to_node=next_edge.to_node,
+                    to_port=next_edge.to_port,
+                    value=edge.value if edge.value is not None else next_edge.value,
+                )
+            )
+        elif edge.from_node not in hidden_nodes:
+            rewired_edges.append(edge)
+
+    return PyGraph(nodes=pynodes, edges=rewired_edges)

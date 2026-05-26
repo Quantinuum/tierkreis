@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
+import { NodeInputs } from "@/data/api_types";
 export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
@@ -40,15 +41,25 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       "_blank",
     );
   };
-
-  const restartButton =
-    props.info.type === "Logs" ? (
-      <Button className="cursor-pointer mt-2" onClick={restartHandle}>
-        Restart
-      </Button>
-    ) : (
-      <></>
+  const getInput = async (input: NodeInputs) => {
+    window.open(
+      `/api/workflows/${props.info.workflow_id}/nodes/${input.from_node}/inputs/${input.from_port}`,
+      "_blank",
     );
+  };
+
+  const getMetadata = async () => {
+    window.open(
+      `/api/workflows/${props.info.workflow_id}/nodes/${props.info.node_location}/metadata`,
+      "_blank",
+    );
+  };
+
+  const restartButton = (
+    <Button className="cursor-pointer mt-2" onClick={restartHandle}>
+      Restart
+    </Button>
+  );
   const outputButton = (outputName: string) => {
     return (
       <Button
@@ -59,6 +70,29 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       </Button>
     );
   };
+  const inputButton = (input: NodeInputs) => {
+    return (
+      <Button
+        className="cursor-pointer"
+        onClick={async () => await getInput(input)}
+      >
+        {input.port} <Download className="inline-block ml-2 mb-1" />
+      </Button>
+    );
+  };
+
+  const metadataButton = () => {
+    return (
+      <Button
+        className="cursor-pointer pl-0"
+        variant="link"
+        onClick={async () => await getMetadata()}
+      >
+        Download Executor Metadata
+      </Button>
+    );
+  };
+
   const [duration, setDuration] = useState<number | null>(null);
   useEffect(() => {
     const start = props.info.started_time
@@ -80,7 +114,11 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   return (
     <DialogContent className="w-[90vw] h-[90vh] flex flex-col">
       <DialogHeader>
-        <DialogTitle> {props.info.type}</DialogTitle>
+        <DialogTitle>
+          {" "}
+          {props.info.type}{" "}
+          {props.info.task_name && ` - ${props.info.task_name}`}
+        </DialogTitle>
 
         <DialogDescription>
           Started at:{" "}
@@ -89,7 +127,19 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           {!props.info.has_error && (
             <>Duration: {duration !== null ? `${duration}s` : "N/A"}</>
           )}
+          <br />
+          {props.info.task_name && metadataButton()}
         </DialogDescription>
+        {props.info.node_inputs &&
+          props.info.node_inputs.length > 0 &&
+          props.info.finished_time && (
+            <div className="p-2 bg-gray-50 border border-gray-200 rounded-lg">
+              <p className="text-xs text-gray-500 mb-2">Inputs</p>
+              <div className="flex flex-row flex-wrap items-center gap-3">
+                {props.info.node_inputs.map((input) => inputButton(input))}
+              </div>
+            </div>
+          )}
         {props.info.output_names &&
           props.info.output_names.length > 0 &&
           props.info.finished_time && (

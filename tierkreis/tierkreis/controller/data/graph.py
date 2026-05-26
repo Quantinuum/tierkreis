@@ -28,6 +28,7 @@ class NodeMetaData(BaseModel):
     """Metadata stored for each node"""
 
     has_breakpoint: bool = False
+    is_hidden: bool = False
 
 
 @dataclass

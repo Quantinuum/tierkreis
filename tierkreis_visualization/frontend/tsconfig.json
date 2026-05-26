@@ -3,9 +3,9 @@
     "noUncheckedIndexedAccess": true,
 
     /* Tailwind */
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "*": ["./*"]
     },
 
     "target": "ES2020",

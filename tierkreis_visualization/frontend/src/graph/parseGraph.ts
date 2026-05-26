@@ -11,6 +11,7 @@ function nodeType(function_name: string) {
     case "input":
     case "output":
     case "const":
+      return "simple-node";
     case "ifelse":
     case "eifelse":
       return "default-node";
@@ -20,7 +21,7 @@ function nodeType(function_name: string) {
     case "map":
       return "map-node";
     default:
-      return "default-node";
+      return "task-node";
   }
 }
 function getTitle(function_name: string) {
@@ -90,6 +91,7 @@ function parseNodes(
     if (parent === "-") parent = undefined;
 
     return {
+      dragHandle: ".drag-handle",
       id: node.node_location,
       type: nodeType(node.function_name),
       position: { x: 0, y: 0 },
@@ -98,6 +100,7 @@ function parseNodes(
         status: node.status,
         handles: getHandlesFromEdges(node.id, edges),
         output_names: node.outputs,
+        node_inputs: node.inputs,
         hidden_handles: undefined,
         hidden_edges: undefined,
         workflowId: workflowId,

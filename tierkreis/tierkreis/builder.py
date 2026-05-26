@@ -385,12 +385,16 @@ class Graph[Inputs: TModel, Outputs: TModel]:
 
     def _unfold_list[T: PType](self, ref: TKR[list[T]]) -> TList[TKR[T]]:
         ins = (ref.node_index, ref.port_id)
-        idx, _ = self.data.func("builtins.unfold_values", {"value": ins})("dummy")
+        idx, _ = self.data.func(
+            "builtins.unfold_values", {"value": ins}, is_hidden=True
+        )("dummy")
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
         value_ref = (refs._value.node_index, refs._value.port_id)  # noqa: SLF001
-        idx, _ = self.data.func("builtins.fold_values", {"values_glob": value_ref})(
+        idx, _ = self.data.func(
+            "builtins.fold_values", {"values_glob": value_ref}, is_hidden=True
+        )(
             "dummy",
         )
         return TKR[list[T]](idx, "value")
