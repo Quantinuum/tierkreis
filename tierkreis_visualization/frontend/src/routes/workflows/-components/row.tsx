@@ -11,9 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const TARGET_TKR_VERSION = "2.0.12";
-
-function check_semver_matches(v: string | null | undefined, target: string) {
+function check_semver_matches(v: string, target: string) {
   if (!v) return false;
   const parts = v.split(".");
   if (parts.length < 3) return false;
@@ -51,7 +49,10 @@ const logsLink = (wid: string) => {
   );
 };
 
-export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
+export const WorkflowsTableRow = (props: {
+  row: WorkflowDisplay;
+  targetVersion: string;
+}) => {
   const navigate = useNavigate();
   const r = props.row;
   const handleRowClick = () => {
@@ -80,7 +81,7 @@ export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
             (() => {
               const isOutdated = !check_semver_matches(
                 r.tkr_version,
-                TARGET_TKR_VERSION,
+                props.targetVersion,
               );
               return isOutdated ? (
                 <TooltipProvider>

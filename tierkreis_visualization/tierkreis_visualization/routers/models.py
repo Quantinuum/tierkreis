@@ -11,3 +11,7 @@ class PyGraph(BaseModel):
 
 class GraphsResponse(BaseModel):
     graphs: dict[Loc, PyGraph]
+
+
+class BackendInfo(BaseModel):
+    version: str
