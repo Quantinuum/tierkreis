@@ -14,8 +14,6 @@ from tierkreis.controller.data.types import (
 )
 from tierkreis.idl.models import GenericType, Method, Model, TypedArg
 
-NO_QA_STR = "#ruff: noqa: F821"
-
 
 def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
     """Format a ptype to a string.

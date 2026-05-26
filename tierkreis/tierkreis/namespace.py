@@ -9,7 +9,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import Self
 
-from tierkreis.codegen import NO_QA_STR, format_method, format_model
+from tierkreis.codegen import format_method, format_model
 from tierkreis.controller.data.models import PModel, is_portmapping
 from tierkreis.controller.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
@@ -132,7 +132,7 @@ class Namespace:
 
         return f'''"""Code generated from {self.name} namespace. Please do not edit."""
 
-{NO_QA_STR}
+#ruff: noqa: F821
 from typing import Literal, NamedTuple, Sequence, TypeVar, Generic, Protocol, Union
 from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
