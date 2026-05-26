@@ -13,6 +13,7 @@ import { WorkflowDisplay } from "@/data/api_types";
 export function WorkflowsTable(props: {
   data: WorkflowDisplay[];
   isLoading: boolean;
+  targetVersion: string;
 }) {
   const columnHelper = createColumnHelper<WorkflowDisplay>();
   const columns = [
@@ -25,6 +26,7 @@ export function WorkflowsTable(props: {
       header: "Start time",
       invertSorting: true,
     }),
+    columnHelper.accessor("tkr_version", { header: "TKR version" }),
     columnHelper.accessor("errors", {
       header: "Errors",
       sortingFn: (x, y) => y.original.errors.length - x.original.errors.length,
@@ -60,7 +62,12 @@ export function WorkflowsTable(props: {
 
   const rows = table
     .getRowModel()
-    .rows.map((row) => <WorkflowsTableRow row={row.original} />);
+    .rows.map((row) => (
+      <WorkflowsTableRow
+        row={row.original}
+        targetVersion={props.targetVersion}
+      />
+    ));
 
   const body = props.isLoading ? [<LoadingRow />] : rows;
 

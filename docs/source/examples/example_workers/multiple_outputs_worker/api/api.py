@@ -1,30 +1,31 @@
 """Code generated from multiple_outputs_worker namespace. Please do not edit."""
 
+# ruff: noqa: F821
 from typing import NamedTuple, Protocol
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import Struct
 
 
 class OpaquePoint(Struct, Protocol):
-    x: float  # noqa: F821 # fmt: skip
-    y: float  # noqa: F821 # fmt: skip
-    z: float  # noqa: F821 # fmt: skip
+    x: float
+    y: float
+    z: float
 
 
 class Point(NamedTuple):
-    x: TKR[float]  # noqa: F821 # fmt: skip
-    y: TKR[float]  # noqa: F821 # fmt: skip
-    z: TKR[float]  # noqa: F821 # fmt: skip
+    x: TKR[float]
+    y: TKR[float]
+    z: TKR[float]
 
 
 class new_opaque_point(NamedTuple):
-    x: TKR[float]  # noqa: F821 # fmt: skip
-    y: TKR[float]  # noqa: F821 # fmt: skip
-    z: TKR[float]  # noqa: F821 # fmt: skip
+    x: TKR[float]
+    y: TKR[float]
+    z: TKR[float]
 
     @staticmethod
-    def out() -> type[TKR[OpaquePoint]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaquePoint]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaquePoint]]:
+        return TKR[OpaquePoint]
 
     @property
     def namespace(self) -> str:
@@ -32,13 +33,13 @@ class new_opaque_point(NamedTuple):
 
 
 class new_point(NamedTuple):
-    x: TKR[float]  # noqa: F821 # fmt: skip
-    y: TKR[float]  # noqa: F821 # fmt: skip
-    z: TKR[float]  # noqa: F821 # fmt: skip
+    x: TKR[float]
+    y: TKR[float]
+    z: TKR[float]
 
     @staticmethod
-    def out() -> type[Point]:  # noqa: F821 # fmt: skip
-        return Point  # noqa: F821 # fmt: skip
+    def out() -> type[Point]:
+        return Point
 
     @property
     def namespace(self) -> str:

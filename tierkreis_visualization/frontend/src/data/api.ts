@@ -85,6 +85,7 @@ export const restartNode = async (
   return res.data;
 };
 
+export const useInfoQuery = () => $api.useQuery("get", "/api/info");
 export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
 export const useLogsQuery = (workflow_id: string) =>
   $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {

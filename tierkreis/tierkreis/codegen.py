@@ -14,8 +14,6 @@ from tierkreis.controller.data.types import (
 )
 from tierkreis.idl.models import GenericType, Method, Model, TypedArg
 
-NO_QA_STR = " # noqa: F821 # fmt: skip"
-
 
 def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
     """Format a ptype to a string.
@@ -98,7 +96,7 @@ def format_typed_arg(typed_arg: TypedArg, *, is_portmapping: bool) -> str:
     should_quote = typed_arg.t.included_structs() and is_portmapping
     type_str = f'"{type_str}"' if should_quote else type_str
     default_str = " | None = None " if typed_arg.has_default else ""
-    return f"{typed_arg.name}: {type_str}{default_str} {NO_QA_STR}"
+    return f"{typed_arg.name}: {type_str}{default_str}"
 
 
 def format_model(model: Model) -> str:
@@ -155,8 +153,8 @@ def format_method(namespace_name: str, fn: Method) -> str:
     {ins_str}
 
     @staticmethod
-    def out() -> type[{class_name}]:{NO_QA_STR}
-        return {class_name}{NO_QA_STR}
+    def out() -> type[{class_name}]:
+        return {class_name}
 
     @property
     def namespace(self) -> str:

@@ -3,6 +3,7 @@ from typing import assert_never
 from fastapi import HTTPException
 
 from tierkreis.controller.data.location import Loc
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.loop import get_loop_node
@@ -24,6 +25,14 @@ def get_node_data(storage: ControllerStorage, loc: Loc) -> PyGraph:
 
     try:
         node = storage.read_node_def(loc)
+    except EntryNotFoundError:
+        # Try reading the node from the root location
+        try:
+            node = storage.read_node_def(Loc())
+        except (EntryNotFoundError, FileNotFoundError):
+            raise HTTPException(404, detail="Node definition not found.")
+        data = get_eval_node(storage, loc, errored_nodes)
+        return PyGraph(nodes=data.nodes, edges=data.edges)
     except FileNotFoundError:
         raise HTTPException(404, detail="Node definition not found.")
 

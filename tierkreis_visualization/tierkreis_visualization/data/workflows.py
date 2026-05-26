@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from uuid import UUID
+from importlib.metadata import version
 
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ class WorkflowDisplay(BaseModel):
     name: str | None
     start_time: str
     errors: list[str]
+    tkr_version: str
 
 
 def get_workflows(storage_type: StorageType) -> list[WorkflowDisplay]:
@@ -27,6 +29,7 @@ def get_workflows(storage_type: StorageType) -> list[WorkflowDisplay]:
                 name="tmp",
                 start_time=datetime.now().isoformat(),
                 errors=[],
+                tkr_version=version("tierkreis"),
             ),
         ]
     return get_workflows_from_disk()
@@ -52,6 +55,7 @@ def get_workflows_from_disk() -> list[WorkflowDisplay]:
                     name=name,
                     start_time=start,
                     errors=errors,
+                    tkr_version=metadata.get("tierkreis_version", "2.0.0"),
                 ),
             )
         except (TypeError, ValueError):

@@ -34,7 +34,7 @@ export default function NodePage(props: {
     ...props.openMaps,
   ]);
 
-  const [g, setG] = useLocalStorageState<Graph>(
+  const [stored_graph, setG] = useLocalStorageState<Graph>(
     workflow_id + node_location_str,
     { defaultValue: { nodes: [], edges: [] } },
   );
@@ -76,7 +76,12 @@ export default function NodePage(props: {
       props.openLoops,
       props.openMaps,
     );
-    setG((oldG: Graph) => updateGraph(oldG, newG));
+    if (workflow_id === "00000000-0000-0000-0000-000000000000") {
+      // value used in vis_graph python function -> avoid local storage.
+      setG(updateGraph({ nodes: [], edges: [] }, newG));
+    } else {
+      setG((oldG: Graph) => updateGraph(oldG, newG));
+    }
   }, [props, workflow_id, node_location_str, setG, data]);
 
   useEffect(() => {
@@ -89,8 +94,8 @@ export default function NodePage(props: {
   return (
     <GraphView
       key={workflow_id + node_location_str}
-      nodes={g.nodes ?? []}
-      edges={g.edges ?? []}
+      nodes={stored_graph.nodes ?? []}
+      edges={stored_graph.edges ?? []}
       onNodesChange={onNodesChange}
       workflows={workflowsQuery.data ?? []}
       workflow_id={workflow_id}

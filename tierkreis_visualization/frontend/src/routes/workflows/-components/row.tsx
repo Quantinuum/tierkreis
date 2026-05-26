@@ -3,7 +3,20 @@ import { Button } from "@/components/ui/button";
 import { WorkflowDisplay } from "@/data/api_types";
 import { loc_parent } from "@/data/loc";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Download } from "lucide-react";
+import { Download, AlertCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+function check_semver_matches(v: string, target: string) {
+  if (!v) return false;
+  const parts = v.split(".");
+  if (parts.length < 3) return false;
+  return v === target;
+}
 
 const NodeLink = (props: { wid: string; loc: string }) => {
   return (
@@ -36,7 +49,10 @@ const logsLink = (wid: string) => {
   );
 };
 
-export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
+export const WorkflowsTableRow = (props: {
+  row: WorkflowDisplay;
+  targetVersion: string;
+}) => {
   const navigate = useNavigate();
   const r = props.row;
   const handleRowClick = () => {
@@ -58,6 +74,31 @@ export const WorkflowsTableRow = (props: { row: WorkflowDisplay }) => {
       <td className="p-4 border-t-1 cursor-pointer" onClick={handleRowClick}>
         {d_display}
       </td>
+      <td className="p-4 border-t-1">
+        <div className="flex items-center gap-2">
+          {r.tkr_version}
+          {r.tkr_version &&
+            (() => {
+              const isOutdated = !check_semver_matches(
+                r.tkr_version,
+                props.targetVersion,
+              );
+              return isOutdated ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AlertCircle className="w-4 h-4 text-nexus-red" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      This workflow was run with a different version of
+                      tierkreis and may not be displayed correctly.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null;
+            })()}
+        </div>
+      </td>
       <td className="p-4 border-t-1">{errorLinks(r.id, r.errors)}</td>
       <td className="p-4 border-t-1 flex justify-center">{logsLink(r.id)}</td>
     </tr>
@@ -74,7 +115,11 @@ export function LoadingRow() {
       </td>
 
       <td className="p-4 border-t-1 ">00000000-0000-0000-0000-000000000000</td>
-      <td className="p-4 border-t-1 ">Mon Dec 08 2025, 14:53:10</td>
+      <td className="p-4 border-t-1 ">
+        {new Date().toDateString()}, {new Date().toLocaleTimeString()}
+      </td>
+      <td className="p-4 border-t-1"></td>
+      <td className="p-4 border-t-1"></td>
       <td className="p-4 border-t-1"></td>
     </tr>
   );

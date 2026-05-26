@@ -1,19 +1,20 @@
 """Code generated from guppy_worker namespace. Please do not edit."""
 
+# ruff: noqa: F821
 from typing import NamedTuple, Union
 from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
 class emulate(NamedTuple):
-    hugr_package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
-    n_qubits: TKR[int]  # noqa: F821 # fmt: skip
-    n_shots: TKR[int]  # noqa: F821 # fmt: skip
-    seed: TKR[Union[int, NoneType]] | None = None  # noqa: F821 # fmt: skip
+    hugr_package: TKR[OpaqueType["hugr.package.Package"]]
+    n_qubits: TKR[int]
+    n_shots: TKR[int]
+    seed: TKR[Union[int, NoneType]] | None = None
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]]:
+        return TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]
 
     @property
     def namespace(self) -> str:
@@ -21,13 +22,13 @@ class emulate(NamedTuple):
 
 
 class from_circuit(NamedTuple):
-    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821 # fmt: skip
-    name: TKR[str]  # noqa: F821 # fmt: skip
-    use_arrays: TKR[bool] | None = None  # noqa: F821 # fmt: skip
+    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
+    name: TKR[str]
+    use_arrays: TKR[bool] | None = None
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -35,11 +36,11 @@ class from_circuit(NamedTuple):
 
 
 class to_backend_result(NamedTuple):
-    results: TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]  # noqa: F821 # fmt: skip
+    results: TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]]:
+        return TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]
 
     @property
     def namespace(self) -> str:
@@ -47,11 +48,11 @@ class to_backend_result(NamedTuple):
 
 
 class ghz(NamedTuple):
-    size: TKR[int]  # noqa: F821 # fmt: skip
+    size: TKR[int]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -59,11 +60,11 @@ class ghz(NamedTuple):
 
 
 class from_str(NamedTuple):
-    package_str: TKR[str]  # noqa: F821 # fmt: skip
+    package_str: TKR[str]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -71,11 +72,11 @@ class from_str(NamedTuple):
 
 
 class to_str(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
 
     @staticmethod
-    def out() -> type[TKR[str]]:  # noqa: F821 # fmt: skip
-        return TKR[str]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[str]]:
+        return TKR[str]
 
     @property
     def namespace(self) -> str:
@@ -83,11 +84,11 @@ class to_str(NamedTuple):
 
 
 class from_bytes(NamedTuple):
-    package_bytes: TKR[bytes]  # noqa: F821 # fmt: skip
+    package_bytes: TKR[bytes]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -95,11 +96,11 @@ class from_bytes(NamedTuple):
 
 
 class to_bytes(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
 
     @staticmethod
-    def out() -> type[TKR[bytes]]:  # noqa: F821 # fmt: skip
-        return TKR[bytes]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[bytes]]:
+        return TKR[bytes]
 
     @property
     def namespace(self) -> str:
@@ -107,11 +108,11 @@ class to_bytes(NamedTuple):
 
 
 class normalize(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -119,12 +120,12 @@ class normalize(NamedTuple):
 
 
 class apply_pytket_pass(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
-    pytket_pass: TKR[OpaqueType["pytket._tket.passes.BasePass"]]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
+    pytket_pass: TKR[OpaqueType["pytket._tket.passes.BasePass"]]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -132,11 +133,11 @@ class apply_pytket_pass(NamedTuple):
 
 
 class remove_redundancies(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -144,11 +145,11 @@ class remove_redundancies(NamedTuple):
 
 
 class squash_rz_phased_x(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
 
     @staticmethod
-    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:  # noqa: F821 # fmt: skip
-        return TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[OpaqueType["hugr.package.Package"]]]:
+        return TKR[OpaqueType["hugr.package.Package"]]
 
     @property
     def namespace(self) -> str:
@@ -156,12 +157,12 @@ class squash_rz_phased_x(NamedTuple):
 
 
 class to_qir(NamedTuple):
-    package: TKR[OpaqueType["hugr.package.Package"]]  # noqa: F821 # fmt: skip
-    format: TKR[str]  # noqa: F821 # fmt: skip
+    package: TKR[OpaqueType["hugr.package.Package"]]
+    format: TKR[str]
 
     @staticmethod
-    def out() -> type[TKR[Union[bytes, str]]]:  # noqa: F821 # fmt: skip
-        return TKR[Union[bytes, str]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[Union[bytes, str]]]:
+        return TKR[Union[bytes, str]]
 
     @property
     def namespace(self) -> str:
