@@ -75,10 +75,12 @@ def format_generic_type(
         generictype.origin, has_serialization=generictype.has_serialization
     )
 
-    generics = [
-        format_generic_type(x, include_bound=include_bound, is_tkr=False)
-        for x in generictype.args
-    ]
+    generics = []
+    for x in generictype.args:
+        formatted = format_generic_type(x, include_bound=include_bound, is_tkr=False)
+        if is_tkr and isinstance(x, GenericType) and x.is_forward_ref:
+            formatted = f"'{formatted}'"
+        generics.append(formatted)
     generics_str = f"[{', '.join(generics)}]" if generictype.args else ""
 
     out = f"{origin_str}{generics_str}"
@@ -86,8 +88,6 @@ def format_generic_type(
         if generictype.is_forward_ref:
             out = f"'{out}'"
         return f"TKR[{out}]"
-    if generictype.is_forward_ref:
-        return f"'{out}'"
     return out
 
 
@@ -106,7 +106,9 @@ def format_typed_arg(typed_arg: TypedArg, *, is_portmapping: bool) -> str:
         include_bound=False,
         is_tkr=not is_portmapping,
     )
-    should_quote = typed_arg.t.included_structs() and is_portmapping
+    should_quote = (is_portmapping and bool(typed_arg.t.included_structs())) or (
+        typed_arg.t.has_any_forward_ref() and "'" not in type_str
+    )
     type_str = f'"{type_str}"' if should_quote else type_str
     default_str = " | None = None " if typed_arg.has_default else ""
     return f"{typed_arg.name}: {type_str}{default_str} {NO_QA_STR}"

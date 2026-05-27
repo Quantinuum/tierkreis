@@ -120,6 +120,22 @@ class Namespace:
 
         return namespace
 
+    def _updated_forward_refs(self) -> None:
+        """Update the namespace for forward references.
+
+        This is necessary to correctly mark types as forward references in the generated stubs.
+        """
+        seen_types: set[str] = set()
+        for model in sorted(self.models):
+            if isinstance(model.t.origin, str):
+                seen_types.add(model.t.origin)
+            generic_types: set[str] = set()
+            for arg in model.t.args:
+                if isinstance(arg, str):
+                    generic_types.add(arg)
+            for decl in model.decls:
+                _mark_forward_refs(decl.t, seen_types | generic_types)
+
     def stubs(self) -> str:
         """Generate type stubs strings for the namespace.
 
@@ -128,6 +144,7 @@ class Namespace:
         """
         functions = [format_method(self.name, method) for method in self.methods]
         functions_str = "\n\n".join(functions)
+        self._updated_forward_refs()
         models_str = "\n\n".join([format_model(model) for model in sorted(self.models)])
 
         return f'''"""Code generated from {self.name} namespace. Please do not edit."""
@@ -170,3 +187,20 @@ from tierkreis.controller.data.types import PType, Struct, Workflow
             )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")
+
+
+def _mark_forward_refs(t: GenericType, seen_types: set[str]) -> None:
+    """Recursively mark forward references in a GenericType tree.
+
+    A GenericType node is a forward reference if its origin is a custom type
+    name (str) that has not yet appeared in the sorted model order and is not
+    a local generic type parameter of the enclosing model.
+
+    :param t: The type to inspect and annotate.
+    :param seen_types: Model origin names already processed.
+    """
+    if isinstance(t.origin, str) and t.origin not in seen_types:
+        t.is_forward_ref = True
+    for arg in t.args:
+        if isinstance(arg, GenericType):
+            _mark_forward_refs(arg, seen_types)
