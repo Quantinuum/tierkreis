@@ -96,6 +96,20 @@ class GenericType:
         """
         return hash(self.origin)
 
+    def has_any_forward_ref(self) -> bool:
+        """Check whether this type or any nested type is a forward reference recursively.
+
+        :return: True if ``is_forward_ref`` is set on this type or any of its args.
+        :rtype: bool
+        """
+        if self.is_forward_ref:
+            return True
+        return any(
+            arg.has_any_forward_ref()
+            for arg in self.args
+            if isinstance(arg, GenericType)
+        )
+
     def __eq__(self, value: object) -> bool:
         """Check the equality of self with an object.
 
