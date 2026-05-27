@@ -23,6 +23,7 @@ class IncludedType(NamedTuple):
 class A(NamedTuple):
     name: dict[str, str]
     age: int
+    bs: list[list["B"]]
     b: "B"
 
 
