@@ -27,21 +27,21 @@ use miette::miette;
 /// of Assets as required by the user.
 pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>>>>;
 
-/// Load inputs into a `HashMap` from the various [`AssetStorage`] implementations that
+/// Load assets into a `HashMap` from the various [`AssetStorage`] implementations that
 /// contain them as described in each [`AssetSpec`].
 ///
 /// # Errors
 ///
 /// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
 /// an [`AssetStorage`] with the specified name does not exist in the registry.
-pub fn load_inputs<S: BuildHasher>(
+pub fn load_assets<S: BuildHasher>(
     registry: &AssetStorageRegistry,
-    inputs: &HashMap<String, AssetSpec, S>,
+    assets: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
-    inputs
+    assets
         .iter()
         .map(|(k, v)| {
             let storage_name = &v.storage_name;
@@ -54,7 +54,36 @@ pub fn load_inputs<S: BuildHasher>(
         .collect()
 }
 
-/// Save outputs into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
+/// Load a single asset by name from the various [`AssetStorage`] implementations that
+/// contain them as described in the corresponding asset [`AssetSpec`].
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
+pub fn load_asset<S: BuildHasher>(
+    registry: &AssetStorageRegistry,
+    assets: &HashMap<String, AssetSpec, S>,
+    name: &str,
+) -> miette::Result<Vec<u8>> {
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+    let asset_spec = assets
+        .get(name)
+        .ok_or_else(|| miette!("Failed to find asset with that name"))?;
+
+    let storage_name = &asset_spec.storage_name;
+    let storage = registry.get(storage_name).ok_or(miette!(
+        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+    ))?;
+
+    let asset = storage.load(&asset_spec.asset_key)?;
+
+    Ok(asset)
+}
+
+/// Save assets into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
 /// and return a [`HashMap`] containing output names and the [`AssetSpec`]s that describe
 /// where the Assets were saved.
 ///
@@ -62,10 +91,10 @@ pub fn load_inputs<S: BuildHasher>(
 ///
 /// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
 /// an [`AssetStorage`] with the specified name does not exist in the registry.
-pub fn save_outputs<S: BuildHasher>(
+pub fn save_assets<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name: &str,
-    outputs: HashMap<String, Vec<u8>, S>,
+    asset_specs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let registry = registry
         .read()
@@ -74,7 +103,7 @@ pub fn save_outputs<S: BuildHasher>(
         "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
     ))?;
 
-    outputs
+    asset_specs
         .into_iter()
         .map(|(k, v)| {
             let asset_key = AssetKey::new();
@@ -89,6 +118,35 @@ pub fn save_outputs<S: BuildHasher>(
             ))
         })
         .collect()
+}
+
+/// Save assets into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
+/// and return a [`AssetSpec`] where the Asset was saved.
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
+pub fn save_asset(
+    registry: &AssetStorageRegistry,
+    storage_name: &str,
+    value: Vec<u8>,
+) -> miette::Result<AssetSpec> {
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+    let storage = registry.get(storage_name).ok_or(miette!(
+        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+    ))?;
+
+    let asset_key = AssetKey::new();
+    storage.save(&asset_key, value)?;
+
+    Ok(AssetSpec {
+        kind: storage.kind(),
+        storage_name: storage_name.to_string(),
+        asset_key,
+    })
 }
 
 /// Transfer Assets from various [`AssetStorage`] implementations using

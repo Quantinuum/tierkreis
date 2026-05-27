@@ -5,7 +5,7 @@ and [`WorkflowState`] implementations must satisfy.
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use chrono::{DateTime, Utc};
-use futures::{FutureExt, future::BoxFuture, stream::BoxStream};
+use futures::{future::BoxFuture, stream::BoxStream};
 use uuid::Uuid;
 
 use crate::{asset_storage::AssetSpec, event::Event, location::Location};
@@ -45,6 +45,9 @@ pub struct NodeState {
     /// The outputs of the node and their stored locations if any.
     pub outputs: Option<HashMap<String, AssetSpec>>,
 
+    /// The state associated with the `pred` port if this Node is an `IfElse` node.
+    pub cond: Option<bool>,
+
     /// The error message of the node if any.
     pub error: Option<String>,
     /// The detail of the error for the node if any.
@@ -81,19 +84,19 @@ pub trait WorkflowState: Debug + Send + Sync {
     /// Read the metadata for the Workflow run.
     fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
 
-    /// Returns `Ok(true)` if the Node at the specified [`Location`] has been
-    /// scheduled by the [`Orchestrator`].
-    fn is_scheduled(&self, location: &Location) -> BoxFuture<'_, miette::Result<bool>> {
-        self.read(location)
-            .map(|res| res.map(|state| state.scheduled_time.is_some()))
-            .boxed()
-    }
+    // /// Returns `Ok(true)` if the Node at the specified [`Location`] has been
+    // /// scheduled by the [`Orchestrator`].
+    // fn is_scheduled(&self, location: &Location) -> BoxFuture<'_, miette::Result<bool>> {
+    //     self.read(location)
+    //         .map(|res| res.map(|state| state.scheduled_time.is_some()))
+    //         .boxed()
+    // }
 
-    /// Returns `Ok(true)` if the Node at the specified [`Location`] has recorded
-    /// outputs, which suggests that it has completed.
-    fn has_outputs(&self, location: &Location) -> BoxFuture<'_, miette::Result<bool>> {
-        self.read(location)
-            .map(|res| res.map(|state| state.outputs.is_some()))
-            .boxed()
-    }
+    // /// Returns `Ok(true)` if the Node at the specified [`Location`] has recorded
+    // /// outputs, which suggests that it has completed.
+    // fn has_outputs(&self, location: &Location) -> BoxFuture<'_, miette::Result<bool>> {
+    //     self.read(location)
+    //         .map(|res| res.map(|state| state.outputs.is_some()))
+    //         .boxed()
+    // }
 }

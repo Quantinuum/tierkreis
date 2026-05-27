@@ -59,6 +59,16 @@ impl Event {
 pub enum Status {
     /// The node is scheduled to be run by the [Orchestrator].
     Scheduled,
+    /// The node is "switching" and will resolve when the corresponding
+    /// condition branch resolves.
+    ///
+    /// This status is triggered by an `IfElse` node when a value
+    /// appears on a `pred` port and the corresponding branches
+    /// are still resolving.
+    Switching {
+        /// The value that the `pred` port resolved to.
+        cond: bool,
+    },
     /// The node is queued to run using an [Executor][crate::executor::Executor].
     Queued,
     /// The node is running on an [Executor][crate::executor::Executor].
@@ -145,6 +155,29 @@ pub async fn send_complete(
         .await
         .map_err(|err| {
             miette!("Failed to send complete event: {err}")
+                .wrap_err(miette!("At location: {loc:?}"))
+        })
+}
+
+/// Utility function to send a new [`Event`] with [`Status::Switching`] and a conditional value
+/// for how the switch should resolve.
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_switching(
+    event_sender: &mut EventSender,
+    loc: Location,
+    cond: bool,
+) -> miette::Result<()> {
+    event_sender
+        .send(Event {
+            loc: loc.clone(),
+            status: Status::Switching { cond },
+        })
+        .await
+        .map_err(|err| {
+            miette!("Failed to send switching event: {err}")
                 .wrap_err(miette!("At location: {loc:?}"))
         })
 }

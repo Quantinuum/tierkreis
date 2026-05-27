@@ -164,6 +164,12 @@ impl WorkflowState for InMemoryWorkflowState {
                     node_state.scheduled_time = Some(Utc::now());
                 }
             }
+            crate::event::Status::Switching { cond } => {
+                if node_state.cond.is_none() {
+                    send_update = true;
+                    node_state.cond = Some(cond);
+                }
+            }
             crate::event::Status::Queued => {
                 if node_state.queued_time.is_none() {
                     send_update = true;
