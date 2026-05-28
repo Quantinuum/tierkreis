@@ -1,47 +1,50 @@
 """Code generated from TestNamespace namespace. Please do not edit."""
 
+# ruff: noqa: F821
 from typing import NamedTuple, Protocol
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType, Struct
 
 
-class A(NamedTuple):
-    age: TKR[int]  # noqa: F821 # fmt: skip
-    name: TKR[dict[str, str]]  # noqa: F821 # fmt: skip
-
-
 class B(Struct, Protocol):
-    age: int  # noqa: F821 # fmt: skip
-    name: dict[str, str]  # noqa: F821 # fmt: skip
+    age: int
+    name: dict[str, str]
 
 
-class C[T: PType](Struct, Protocol):
-    a: list[int]  # noqa: F821 # fmt: skip
-    b: "B"  # noqa: F821 # fmt: skip
-    included: "IncludedType"  # noqa: F821 # fmt: skip
-    ol: "list[ListItem]"  # noqa: F821 # fmt: skip
-    t: "T"  # noqa: F821 # fmt: skip
-
-
-class IncludedType(Struct, Protocol):
-    nested: "NestedType"  # noqa: F821 # fmt: skip
-
-
-class ListItem(Struct, Protocol):
-    i: int  # noqa: F821 # fmt: skip
+class A(NamedTuple):
+    age: TKR[int]
+    b: TKR[B]
+    bs: TKR[list[list[B]]]
+    name: TKR[dict[str, str]]
 
 
 class NestedType(Struct, Protocol):
-    city: str  # noqa: F821 # fmt: skip
+    city: str
+
+
+class IncludedType(Struct, Protocol):
+    nested: NestedType
+
+
+class ListItem(Struct, Protocol):
+    i: int
+
+
+class C[T: PType](Struct, Protocol):
+    a: list[int]
+    b: B
+    included: IncludedType
+    ol: list[ListItem]
+    t: T
 
 
 class foo(NamedTuple):
-    a: TKR[int]  # noqa: F821 # fmt: skip
-    b: TKR[str]  # noqa: F821 # fmt: skip
+    a: TKR[int]
+    b: TKR[str]
 
     @staticmethod
-    def out() -> type[A]:  # noqa: F821 # fmt: skip
-        return A  # noqa: F821 # fmt: skip
+    def out() -> type[A]:
+        return A
 
     @property
     def namespace(self) -> str:
@@ -50,8 +53,8 @@ class foo(NamedTuple):
 
 class bar(NamedTuple):
     @staticmethod
-    def out() -> type[TKR[B]]:  # noqa: F821 # fmt: skip
-        return TKR[B]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[B]]:
+        return TKR[B]
 
     @property
     def namespace(self) -> str:
@@ -59,11 +62,11 @@ class bar(NamedTuple):
 
 
 class z[T: PType](NamedTuple):
-    c: TKR[C[T]]  # noqa: F821 # fmt: skip
+    c: TKR[C[T]]
 
     @staticmethod
-    def out() -> type[TKR[C[T]]]:  # noqa: F821 # fmt: skip
-        return TKR[C[T]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[C[T]]]:
+        return TKR[C[T]]
 
     @property
     def namespace(self) -> str:

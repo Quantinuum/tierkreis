@@ -120,6 +120,26 @@ class Namespace:
 
         return namespace
 
+    def _topologically_sorted_models(self) -> list[Model]:
+        """Return models sorted so every dependency appears before the model that needs it.
+
+        :return: All internal models sorted topologically.
+        :rtype: list[Model]
+        """
+
+        models_by_name = {
+            m.t.origin
+            if isinstance(m.t.origin, str)
+            else getattr(m.t.origin, "__qualname__", str(m.t.origin)): m
+            for m in self.models
+        }
+
+        result: list[Model] = []
+        visited: set[Model] = set()
+        for model in sorted(self.models):
+            result.extend(_visit(model, visited, models_by_name))
+        return result
+
     def stubs(self) -> str:
         """Generate type stubs strings for the namespace.
 
@@ -128,7 +148,9 @@ class Namespace:
         """
         functions = [format_method(self.name, method) for method in self.methods]
         functions_str = "\n\n".join(functions)
-        models_str = "\n\n".join([format_model(model) for model in sorted(self.models)])
+        models_str = "\n\n".join([
+            format_model(model) for model in self._topologically_sorted_models()
+        ])
 
         return f'''"""Code generated from {self.name} namespace. Please do not edit."""
 
@@ -171,3 +193,16 @@ from tierkreis.controller.data.types import PType, Struct, Workflow
             )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")
+
+
+def _visit(
+    model: Model, visited: set[Model], models_by_name: dict[str, Model]
+) -> list[Model]:
+    result = []
+    if model in visited:
+        return result
+    visited.add(model)
+    for dep in sorted(model.model_dependencies(models_by_name)):
+        result.extend(_visit(dep, visited, models_by_name))
+    result.append(model)
+    return result

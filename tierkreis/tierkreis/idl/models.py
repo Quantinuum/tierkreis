@@ -3,7 +3,8 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import NoneType
-from typing import Annotated, Self, get_args, get_origin
+from typing import Annotated, Self, get_args, get_origin, ForwardRef
+
 
 from tierkreis.controller.data.core import (
     Deserializer,
@@ -210,3 +211,42 @@ class Model:
         if has_ptypes and has_tkrs:
             raise ValueError("Model decls should be all PTypes or all TKRs")
         return has_ptypes
+
+    def model_dependencies(self, known_models: dict[str, "Model"]) -> set["Model"]:
+        """Get a set of models this model depends on.
+
+        For example, if you have
+        model A { x: int, y: B }
+        model B { z: str }
+        Then A depends on B.
+
+        :param known_models: A dictionary of known models by their name.
+        :type known_models: dict[str, Model]
+        :return: A set of models this model depends on.
+        :rtype: set[Model]
+        """
+        generic_params = {arg for arg in self.t.args if isinstance(arg, str)}
+        deps: set[Model] = set()
+        for decl in self.decls:
+            deps.update(_collect_dependencies(decl.t, generic_params, known_models))
+        return deps
+
+
+def _collect_dependencies(
+    t: GenericType, generic_params: set[str], models_by_name: dict[str, Model]
+) -> set[Model]:
+    """Collect the models that t depends on, excluding generic parameters."""
+    origin = t.origin
+    deps = set()
+    if isinstance(origin, ForwardRef):
+        name = origin.__forward_arg__
+    else:
+        name = getattr(origin, "__qualname__", str(origin))
+    if name not in generic_params:
+        dep = models_by_name.get(name)
+        if dep is not None:
+            deps.add(dep)
+    for arg in t.args:
+        if isinstance(arg, GenericType):
+            deps.update(_collect_dependencies(arg, generic_params, models_by_name))
+    return deps
