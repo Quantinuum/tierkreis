@@ -55,3 +55,19 @@ def test_namespace(path: Path, expected: Namespace) -> None:
 def test_parser_fail(type_symb: str) -> None:
     with pytest.raises(TierkreisError):
         type_symbol(type_symb)
+
+
+def test_model_order() -> None:
+    namespace = tests.idl.namespace1.expected_namespace
+    sorted_models = [
+        str(model.t.origin.__qualname__)
+        for model in namespace._topologically_sorted_models()
+    ]
+    assert sorted_models == [
+        "B",
+        "A",
+        "NestedType",
+        "IncludedType",
+        "ListItem",
+        "C",
+    ]

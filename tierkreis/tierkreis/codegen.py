@@ -2,6 +2,7 @@
 
 from inspect import isclass
 from types import NoneType
+from typing import ForwardRef
 
 from hugr.package import Package
 from pydantic import BaseModel
@@ -15,11 +16,13 @@ from tierkreis.controller.data.types import (
 from tierkreis.idl.models import GenericType, Method, Model, TypedArg
 
 
-def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
+def format_ptype(
+    ptype: type | str | ForwardRef, *, has_serialization: bool = False
+) -> str:
     """Format a ptype to a string.
 
     :param ptype: The type to format.
-    :type ptype: type | str
+    :type ptype: type | str | ForwardRef
     :param has_serialization: If it was a custom serialized type.
     :type has_serialization: bool, defaults to False.
     :return: The formatted string representation of the type.
@@ -39,6 +42,8 @@ def format_ptype(ptype: type | str, *, has_serialization: bool = False) -> str:
         return "NoneType"
     if has_serialization:
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
+    if isinstance(ptype, ForwardRef):
+        return ptype.__forward_arg__
     return ptype.__qualname__
 
 
@@ -93,8 +98,7 @@ def format_typed_arg(typed_arg: TypedArg, *, is_portmapping: bool) -> str:
         include_bound=False,
         is_tkr=not is_portmapping,
     )
-    should_quote = typed_arg.t.included_structs() and is_portmapping
-    type_str = f'"{type_str}"' if should_quote else type_str
+
     default_str = " | None = None " if typed_arg.has_default else ""
     return f"{typed_arg.name}: {type_str}{default_str}"
 
