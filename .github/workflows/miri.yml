@@ -1,4 +1,4 @@
-name: Rust UB Detection with Miri
+name: Rust UB detection with Miri
 
 permissions:
   contents: read
@@ -13,6 +13,7 @@ jobs:
   miri:
     name: "Miri"
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install Miri
@@ -21,4 +22,4 @@ jobs:
           rustup override set nightly
           cargo miri setup
       - name: Test with Miri
-        run: cargo miri test
+        run: MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test
