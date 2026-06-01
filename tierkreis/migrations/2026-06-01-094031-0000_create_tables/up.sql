@@ -2,12 +2,13 @@
 CREATE TABLE `node_states`(
 	`id` TEXT NOT NULL PRIMARY KEY,
 	`run_id` TEXT NOT NULL,
+	`attempt` INTEGER NOT NULL,
 	`node_location` TEXT NOT NULL,
 	`started_time` TIMESTAMP NOT NULL,
 	`finished_time` TIMESTAMP,
 	`error` TEXT,
 	`error_detail` TEXT,
-	FOREIGN KEY (`run_id`) REFERENCES `workflow_runs`(`id`)
+	FOREIGN KEY (`run_id`, `attempt`) REFERENCES `workflow_runs`(`id`, `attempt`)
 );
 
 CREATE TABLE `workflows`(
@@ -25,11 +26,13 @@ CREATE TABLE `node_outputs`(
 );
 
 CREATE TABLE `workflow_runs`(
-	`id` TEXT NOT NULL PRIMARY KEY,
+	`id` TEXT NOT NULL,
+	`attempt` INTEGER NOT NULL,
 	`workflow_id` TEXT NOT NULL,
 	`run_metadata` TEXT NOT NULL,
 	`status` TEXT NOT NULL,
 	`started_at` TIMESTAMP NOT NULL,
+	PRIMARY KEY (`id`, `attempt`),
 	FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`)
 );
 
