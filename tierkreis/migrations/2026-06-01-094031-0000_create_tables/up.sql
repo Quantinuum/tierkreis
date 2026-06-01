@@ -1,0 +1,35 @@
+-- Your SQL goes here
+CREATE TABLE `node_states`(
+	`id` TEXT NOT NULL PRIMARY KEY,
+	`run_id` TEXT NOT NULL,
+	`node_location` TEXT NOT NULL,
+	`started_time` TIMESTAMP NOT NULL,
+	`finished_time` TIMESTAMP,
+	`error` TEXT,
+	`error_detail` TEXT,
+	FOREIGN KEY (`run_id`) REFERENCES `workflow_runs`(`id`)
+);
+
+CREATE TABLE `workflows`(
+	`id` TEXT NOT NULL PRIMARY KEY,
+	`name` TEXT,
+	`created_at` TIMESTAMP NOT NULL
+);
+
+CREATE TABLE `node_outputs`(
+	`id` TEXT NOT NULL PRIMARY KEY,
+	`node_state_id` TEXT NOT NULL,
+	`name` TEXT NOT NULL,
+	`asset_location` TEXT NOT NULL,
+	FOREIGN KEY (`node_state_id`) REFERENCES `node_states`(`id`)
+);
+
+CREATE TABLE `workflow_runs`(
+	`id` TEXT NOT NULL PRIMARY KEY,
+	`workflow_id` TEXT NOT NULL,
+	`run_metadata` TEXT NOT NULL,
+	`status` TEXT NOT NULL,
+	`started_at` TIMESTAMP NOT NULL,
+	FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`)
+);
+
