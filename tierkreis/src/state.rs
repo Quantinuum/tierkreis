@@ -5,6 +5,7 @@ and [`WorkflowState`].
 pub mod inmemory;
 pub mod interface;
 pub mod models;
+#[allow(missing_docs)]
 pub mod schema;
 pub mod sql;
 
