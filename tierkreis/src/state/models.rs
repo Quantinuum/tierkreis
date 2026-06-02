@@ -7,6 +7,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use miette::miette;
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 // -----------------------------------------------------------------------------
 // Workflows
@@ -99,6 +100,14 @@ fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
 }
 
+/// Load the run-attempt state for a workflow run, inserting default rows when the
+/// run does not yet exist.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed, the workflow run
+/// lookup fails, default rows cannot be inserted, metadata JSON cannot be parsed,
+/// or node state rows cannot be loaded.
 pub fn run_attempt_state_or_default(
     run_id: uuid::Uuid,
     attempt: u32,
@@ -171,6 +180,12 @@ pub fn run_attempt_state_or_default(
     Ok(RunAttemptState { nodes, metadata })
 }
 
+/// Upsert the current node state for a workflow run at a given location.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the node state
+/// upsert fails.
 pub fn update_node_state(
     state: &mut crate::state::interface::NodeState,
     loc: &Location,
@@ -214,6 +229,12 @@ pub fn update_node_state(
     Ok(())
 }
 
+/// Read the persisted node state for a workflow run at a given location.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the node state
+/// lookup fails.
 pub fn read_node_state(
     run_id: uuid::Uuid,
     attempt: u32,
@@ -262,10 +283,16 @@ pub fn read_node_state(
     }
 }
 
-pub fn add_run_metadata(
+/// Merge additional metadata into the persisted run metadata for a workflow run.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed, the run lookup
+/// fails, metadata JSON cannot be parsed or serialized, or the update fails.
+pub fn add_run_metadata<S: BuildHasher>(
     run_id: uuid::Uuid,
     attempt: u32,
-    new_metadata: HashMap<String, String>,
+    new_metadata: HashMap<String, String, S>,
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<()> {
     use crate::state::schema::workflow_runs::dsl as wr;
@@ -331,6 +358,12 @@ pub fn add_run_metadata(
     Ok(())
 }
 
+/// Read the persisted metadata for a workflow run.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed, the run lookup
+/// fails, or the metadata JSON cannot be parsed.
 pub fn read_run_metadata(
     run_id: uuid::Uuid,
     attempt: u32,

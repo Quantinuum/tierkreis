@@ -1,5 +1,5 @@
 /*!
-This module defines the [`InMemoryRuntimeState`] struct which implements [`RuntimeState`]
+This module defines the [`SQliteRuntimeState`] struct which implements [`RuntimeState`]
 that can be used by the tierkreis runtime.
 
 These implementations are intended to be used for testing and debugging as their
@@ -52,19 +52,28 @@ fn run_migrations(connection: &mut SqliteConnection) -> miette::Result<()> {
     Ok(())
 }
 
-/// Build a connection pool for the `SQLite` database specified by the `DATABASE_URL` environment variable
+/// Build a connection pool for the `SQLite` database specified by the `DATABASE_URL` environment variable.
+///
+/// # Errors
+///
+/// Returns an error when the database directory cannot be created, the pool cannot
+/// be built, a connection cannot be acquired, migrations fail, or `SQLite` pragmas
+/// fail to apply.
 pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
     let fallback = home_dir()
         .unwrap_or_else(|| "/tmp".into())
         .join(".tierkreis/checkpoints/tierkreis.sqlite");
-    if fallback.parent().is_some() && !fallback.parent().unwrap().exists() {
-        std::fs::create_dir_all(fallback.parent().unwrap()).map_err(|err| {
+    if let Some(parent) = fallback.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).map_err(|err| {
             miette!(
                 "Failed to create directory for SQLite database at {}: {err}",
                 fallback.display()
             )
         })?;
     }
+
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| fallback.to_string_lossy().to_string());
     let should_run_migrations = !Path::new(&database_url).exists();
@@ -102,7 +111,11 @@ pub struct SqliteRuntimeState {
 }
 
 impl SqliteRuntimeState {
-    /// Create a new [`SqlRuntimeState`] instance.
+    /// Create a new [`SqliteRuntimeState`] instance.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `SQLite` database connection pool cannot be established.
     #[must_use]
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(128);
