@@ -8,11 +8,13 @@ state is not persisted beyond the lifetime of the process.
 use std::{
     collections::HashMap,
     env::{self, home_dir},
+    path::Path,
     sync::{Arc, Mutex},
 };
 
 use chrono::Utc;
 use diesel::prelude::*;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use diesel::r2d2::{ConnectionManager, Pool};
 use futures::{
     FutureExt, SinkExt, StreamExt,
@@ -39,6 +41,17 @@ use crate::{
     },
 };
 
+/// Embedded Diesel migrations
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+
+fn run_migrations(connection: &mut SqliteConnection) -> miette::Result<()> {
+    connection
+        .run_pending_migrations(MIGRATIONS)
+        .map_err(|err| miette!("Failed to run SQLite migrations: {err}"))?;
+
+    Ok(())
+}
+
 /// Build a connection pool for the `SQLite` database specified by the `DATABASE_URL` environment variable
 pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
     let fallback = home_dir()
@@ -46,6 +59,7 @@ pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteCon
         .join(".tierkreis/checkpoints/tierkreis.sqlite");
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| fallback.to_string_lossy().to_string());
+    let should_run_migrations = !Path::new(&database_url).exists();
     let manager = ConnectionManager::<SqliteConnection>::new(database_url.clone());
     let builder = Pool::builder();
 
@@ -56,6 +70,9 @@ pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteCon
     let mut conn = pool
         .get()
         .map_err(|err| miette!("Error acquiring connection for SQLite setup: {err}"))?;
+    if should_run_migrations {
+        run_migrations(&mut conn)?;
+    }
     diesel::sql_query("PRAGMA busy_timeout = 5000;")
         .execute(&mut conn)
         .map_err(|err| miette!("Failed to apply SQLite busy_timeout: {err}"))?;
