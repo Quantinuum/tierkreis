@@ -15,7 +15,7 @@ diesel::table! {
         run_id -> Text,
         attempt -> Integer,
         node_location -> Text,
-        scheduled_time -> Timestamp,
+        scheduled_time -> Nullable<Timestamp>,
         queued_time -> Nullable<Timestamp>,
         running_time -> Nullable<Timestamp>,
         complete_time -> Nullable<Timestamp>,
@@ -32,8 +32,8 @@ diesel::table! {
         attempt -> Integer,
         workflow_id -> Text,
         run_metadata -> Text,
-        status -> Text,
-        started_at -> Timestamp,
+        status -> Nullable<Text>,
+        started_at -> Nullable<Timestamp>,
     }
 }
 

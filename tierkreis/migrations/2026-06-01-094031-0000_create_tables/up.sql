@@ -4,7 +4,7 @@ CREATE TABLE `node_states`(
 	`run_id` TEXT NOT NULL,
 	`attempt` INTEGER NOT NULL,
 	`node_location` TEXT NOT NULL,
-	`scheduled_time` TIMESTAMP NOT NULL,
+	`scheduled_time` TIMESTAMP,
 	`queued_time` TIMESTAMP,
 	`running_time` TIMESTAMP,
 	`complete_time` TIMESTAMP,
@@ -35,8 +35,8 @@ CREATE TABLE `workflow_runs`(
 	`attempt` INTEGER NOT NULL,
 	`workflow_id` TEXT NOT NULL,
 	`run_metadata` TEXT NOT NULL,
-	`status` TEXT NOT NULL,
-	`started_at` TIMESTAMP NOT NULL,
+	`status` TEXT,
+	`started_at` TIMESTAMP,
 	PRIMARY KEY (`id`, `attempt`),
 	FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`)
 );
