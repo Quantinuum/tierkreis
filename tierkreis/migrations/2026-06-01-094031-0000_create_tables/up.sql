@@ -12,6 +12,7 @@ CREATE TABLE `node_states`(
 	`error_time` TIMESTAMP,
 	`error` TEXT,
 	`error_detail` TEXT,
+	UNIQUE (`run_id`, `attempt`, `node_location`),
 	FOREIGN KEY (`run_id`, `attempt`) REFERENCES `workflow_runs`(`id`, `attempt`)
 );
 
