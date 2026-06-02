@@ -98,9 +98,7 @@ pub fn run_attempt_state_or_default(
     attempt: u32,
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<RunAttemptState> {
-    use crate::state::schema::{
-        node_states::dsl as ns, workflow_runs::dsl as wr,
-    };
+    use crate::state::schema::{node_states::dsl as ns, workflow_runs::dsl as wr};
 
     let mut conn = connection
         .get()
