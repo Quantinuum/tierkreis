@@ -24,7 +24,9 @@ pub struct WorkflowModel {
 // Workflow Runs
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset)]
+#[derive(
+    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset,
+)]
 #[diesel(belongs_to(WorkflowModel, foreign_key = workflow_id))]
 #[diesel(primary_key(id, attempt))]
 #[diesel(table_name = workflow_runs)]
@@ -33,15 +35,17 @@ pub struct WorkflowRunModel {
     pub attempt: i32,
     pub workflow_id: String,
     pub run_metadata: String, // JSON string
-    pub status: String,
-    pub started_at: NaiveDateTime,
+    pub status: Option<String>,
+    pub started_at: Option<NaiveDateTime>,
 }
 
 // -----------------------------------------------------------------------------
 // Node States
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset)]
+#[derive(
+    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset,
+)]
 #[diesel(belongs_to(WorkflowRunModel, foreign_key = run_id))]
 #[diesel(table_name = node_states)]
 pub struct NodeStateModel {
@@ -49,7 +53,7 @@ pub struct NodeStateModel {
     pub run_id: String,
     pub attempt: i32,
     pub node_location: String,
-    pub scheduled_time: NaiveDateTime,
+    pub scheduled_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
@@ -63,7 +67,9 @@ pub struct NodeStateModel {
 // Node Outputs
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset)]
+#[derive(
+    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset,
+)]
 #[diesel(belongs_to(NodeStateModel, foreign_key = node_state_id))]
 #[diesel(table_name = node_outputs)]
 pub struct NodeOutputModel {
@@ -147,7 +153,7 @@ pub fn run_attempt_state_or_default(
     let mut nodes = HashMap::new();
     for db_node in db_nodes {
         let node = crate::state::interface::NodeState {
-            scheduled_time: Some(utc_timestamp(db_node.scheduled_time)),
+            scheduled_time: db_node.scheduled_time.map(utc_timestamp),
             queued_time: db_node.queued_time.map(utc_timestamp),
             running_time: db_node.running_time.map(utc_timestamp),
             complete_time: db_node.complete_time.map(utc_timestamp),
@@ -187,7 +193,7 @@ pub fn update_node_state(
         run_id: run_id.to_string(),
         attempt: attempt_i32,
         node_location: loc_str,
-        scheduled_time: state.scheduled_time.unwrap_or_else(Utc::now).naive_utc(),
+        scheduled_time: state.scheduled_time.map(|t| t.naive_utc()),
         queued_time: state.queued_time.map(|t| t.naive_utc()),
         running_time: state.running_time.map(|t| t.naive_utc()),
         complete_time: state.complete_time.map(|t| t.naive_utc()),
@@ -241,7 +247,7 @@ pub fn read_node_state(
 
     if let Some(db_node) = db_node {
         Ok(crate::state::interface::NodeState {
-            scheduled_time: Some(utc_timestamp(db_node.scheduled_time)),
+            scheduled_time: db_node.scheduled_time.map(utc_timestamp),
             queued_time: db_node.queued_time.map(utc_timestamp),
             running_time: db_node.running_time.map(utc_timestamp),
             complete_time: db_node.complete_time.map(utc_timestamp),
@@ -384,8 +390,8 @@ fn insert_default_run(
         attempt,
         workflow_id: workflow.id,
         run_metadata: "{}".to_string(),
-        status: "created".to_string(),
-        started_at: now,
+        status: None, // Is this the correct default?
+        started_at: None,
     };
 
     diesel::insert_into(wr::workflow_runs)
