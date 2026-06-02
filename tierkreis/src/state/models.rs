@@ -12,7 +12,7 @@ use std::collections::HashMap;
 // Workflows
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Debug, Clone, AsChangeset)]
 #[diesel(table_name = workflows)]
 pub struct WorkflowModel {
     pub id: String, // UUID string
@@ -24,7 +24,7 @@ pub struct WorkflowModel {
 // Workflow Runs
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset)]
 #[diesel(belongs_to(WorkflowModel, foreign_key = workflow_id))]
 #[diesel(primary_key(id, attempt))]
 #[diesel(table_name = workflow_runs)]
@@ -41,7 +41,7 @@ pub struct WorkflowRunModel {
 // Node States
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset)]
 #[diesel(belongs_to(WorkflowRunModel, foreign_key = run_id))]
 #[diesel(table_name = node_states)]
 pub struct NodeStateModel {
@@ -63,7 +63,7 @@ pub struct NodeStateModel {
 // Node Outputs
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset)]
 #[diesel(belongs_to(NodeStateModel, foreign_key = node_state_id))]
 #[diesel(table_name = node_outputs)]
 pub struct NodeOutputModel {
@@ -173,7 +173,6 @@ pub fn update_node_state(
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<()> {
     use crate::state::schema::node_states::dsl as ns;
-    use diesel::upsert::excluded;
 
     let mut conn = connection
         .get()
@@ -183,33 +182,26 @@ pub fn update_node_state(
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
     let loc_str = serialize_location(loc);
 
+    let row = NodeStateModel {
+        id: uuid::Uuid::now_v7().to_string(),
+        run_id: run_id.to_string(),
+        attempt: attempt_i32,
+        node_location: loc_str,
+        scheduled_time: state.scheduled_time.unwrap_or_else(Utc::now).naive_utc(),
+        queued_time: state.queued_time.map(|t| t.naive_utc()),
+        running_time: state.running_time.map(|t| t.naive_utc()),
+        complete_time: state.complete_time.map(|t| t.naive_utc()),
+        cancelled_time: state.cancelled_time.map(|t| t.naive_utc()),
+        error_time: state.error_time.map(|t| t.naive_utc()),
+        error: state.error.clone(),
+        error_detail: state.error_detail.clone(),
+    };
+
     diesel::insert_into(ns::node_states)
-        .values((
-            ns::id.eq(uuid::Uuid::now_v7().to_string()),
-            ns::run_id.eq(run_id.to_string()),
-            ns::attempt.eq(attempt_i32),
-            ns::node_location.eq(loc_str.clone()),
-            ns::scheduled_time.eq(state.scheduled_time.unwrap_or_else(Utc::now).naive_utc()),
-            ns::queued_time.eq(state.queued_time.map(|t| t.naive_utc())),
-            ns::running_time.eq(state.running_time.map(|t| t.naive_utc())),
-            ns::complete_time.eq(state.complete_time.map(|t| t.naive_utc())),
-            ns::cancelled_time.eq(state.cancelled_time.map(|t| t.naive_utc())),
-            ns::error_time.eq(state.error_time.map(|t| t.naive_utc())),
-            ns::error.eq(state.error.clone()),
-            ns::error_detail.eq(state.error_detail.clone()),
-        ))
+        .values(&row)
         .on_conflict((ns::run_id, ns::attempt, ns::node_location))
         .do_update()
-        .set((
-            ns::scheduled_time.eq(excluded(ns::scheduled_time)),
-            ns::queued_time.eq(excluded(ns::queued_time)),
-            ns::running_time.eq(excluded(ns::running_time)),
-            ns::complete_time.eq(excluded(ns::complete_time)),
-            ns::cancelled_time.eq(excluded(ns::cancelled_time)),
-            ns::error_time.eq(excluded(ns::error_time)),
-            ns::error.eq(excluded(ns::error)),
-            ns::error_detail.eq(excluded(ns::error_detail)),
-        ))
+        .set(&row)
         .execute(&mut conn)
         .map_err(|err| miette!("Failed to upsert node state for run {run_id} attempt {attempt} location {:?}: {err}", loc))?;
 
@@ -372,28 +364,32 @@ fn insert_default_run(
     connection: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<WorkflowRunModel> {
     use crate::state::schema::{workflow_runs::dsl as wr, workflows::dsl as wf};
+
     let now = Utc::now().naive_utc();
-    let workflow_id = uuid::Uuid::nil().to_string(); // TODO: Get actual workflow ID if possible.
+    let workflow = WorkflowModel {
+        id: uuid::Uuid::nil().to_string(), // TODO: Get actual workflow ID if possible.
+        name: None,
+        created_at: now,
+    };
+
     diesel::insert_or_ignore_into(wf::workflows)
-        .values((
-            wf::id.eq(workflow_id.clone()),
-            wf::name.eq::<Option<String>>(None),
-            wf::created_at.eq(now),
-        ))
+        .values(&workflow)
         .execute(connection)
         .map_err(|err| {
             miette!("Failed to insert default workflow row for run {run_id_str}: {err}")
         })?;
 
+    let run = WorkflowRunModel {
+        id: run_id_str.clone(),
+        attempt,
+        workflow_id: workflow.id,
+        run_metadata: "{}".to_string(),
+        status: "created".to_string(),
+        started_at: now,
+    };
+
     diesel::insert_into(wr::workflow_runs)
-        .values((
-            wr::id.eq(run_id_str.clone()),
-            wr::attempt.eq(attempt),
-            wr::workflow_id.eq(workflow_id.clone()),
-            wr::run_metadata.eq("{}".to_string()),
-            wr::status.eq("created".to_string()), // What to use for scheduled?
-            wr::started_at.eq(now),
-        ))
+        .values(&run)
         .on_conflict((wr::id, wr::attempt))
         .do_nothing()
         .execute(connection)
@@ -402,12 +398,6 @@ fn insert_default_run(
                 "Failed to insert default workflow run row for run {run_id_str} attempt {attempt}: {err}"
             )
         })?;
-    Ok(WorkflowRunModel {
-        id: run_id_str.clone(),
-        attempt,
-        workflow_id,
-        run_metadata: "{}".to_string(),
-        status: "created".to_string(),
-        started_at: now,
-    })
+
+    Ok(run)
 }
