@@ -14,8 +14,8 @@ use std::{
 
 use chrono::Utc;
 use diesel::prelude::*;
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use diesel::r2d2::{ConnectionManager, Pool};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use futures::{
     FutureExt, SinkExt, StreamExt,
     channel::mpsc,
@@ -57,6 +57,14 @@ pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteCon
     let fallback = home_dir()
         .unwrap_or_else(|| "/tmp".into())
         .join(".tierkreis/checkpoints/tierkreis.sqlite");
+    if fallback.parent().is_some() && !fallback.parent().unwrap().exists() {
+        std::fs::create_dir_all(fallback.parent().unwrap()).map_err(|err| {
+            miette!(
+                "Failed to create directory for SQLite database at {}: {err}",
+                fallback.display()
+            )
+        })?;
+    }
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| fallback.to_string_lossy().to_string());
     let should_run_migrations = !Path::new(&database_url).exists();
