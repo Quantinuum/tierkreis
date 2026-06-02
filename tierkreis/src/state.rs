@@ -4,6 +4,7 @@ and [`WorkflowState`].
 */
 pub mod inmemory;
 pub mod interface;
+pub mod models;
 pub mod schema;
 
 pub use inmemory::{InMemoryRuntimeState, InMemoryWorkflowState};
