@@ -21,7 +21,10 @@ use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_assets, save_assets},
-    event::{Event, send_cancelled, send_complete, send_error, send_running},
+    event::{
+        Event, EventReceiver, EventSender, NodeEvent, send_cancelled, send_complete, send_error,
+        send_running,
+    },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
 };
@@ -50,8 +53,6 @@ struct BackgroundTask {
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
-type EventSender = mpsc::Sender<Event>;
-type EventReceiver = mpsc::Receiver<Event>;
 type CancelSender = mpsc::Sender<Location>;
 type CancelReceiver = mpsc::Receiver<Location>;
 
@@ -383,7 +384,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
-        event::Status,
+        event::NodeStatus,
         executor::interface::TaskPlan,
     };
 
@@ -432,7 +433,7 @@ mod tests {
         let events = stream.take(2).collect::<Vec<_>>().await;
         dbg!(&events);
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_registry_contains_values(
             &registry,
             default_storage_name,
@@ -471,7 +472,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_registry_contains_values(
             &registry,
             default_storage_name,
@@ -523,13 +524,13 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&Event {
+        assert!(events.contains(&NodeEvent {
             loc: loc1.clone(),
-            status: Status::Running
+            status: NodeStatus::Running
         }));
-        assert!(events.contains(&Event {
+        assert!(events.contains(&NodeEvent {
             loc: loc2.clone(),
-            status: Status::Running
+            status: NodeStatus::Running
         }));
 
         // These may complete out of order, so find the correct events.
@@ -580,7 +581,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert!(events[1].is_complete());
         assert_registry_contains_values(
             &registry,
@@ -613,10 +614,10 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_eq!(
             events[1].status,
-            Status::Error {
+            NodeStatus::Error {
                 error: "Unknown task".to_string(),
                 detail: None,
             }
@@ -648,12 +649,12 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Running);
+        assert_eq!(event.status, NodeStatus::Running);
 
         executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Cancelled);
+        assert_eq!(event.status, NodeStatus::Cancelled);
 
         Ok(())
     }
@@ -695,7 +696,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert!(events[1].is_complete());
         assert_registry_contains_values(
             &registry,

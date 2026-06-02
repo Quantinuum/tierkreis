@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 
-use crate::{event::Event, state::WorkflowState};
+use crate::{
+    event::{Event, NodeEvent},
+    state::WorkflowState,
+};
 
 /// [Updater] encapsulates a [`WorkflowState`] and allows the processing of [Event]s.
 pub struct Updater {
@@ -31,7 +34,10 @@ impl Updater {
         mut stream: impl Stream<Item = Event> + Unpin,
     ) -> miette::Result<()> {
         while let Some(event) = stream.next().await {
-            let workflow_complete = event.is_workflow_complete();
+            let workflow_complete = matches!(
+                event,
+                Event::Run(crate::event::RunEvent::WorkflowComplete {})
+            );
             self.state.write(event).await?;
             if workflow_complete {
                 return Ok(());
@@ -47,7 +53,7 @@ mod tests {
     use futures::stream::once;
     use rstest::rstest;
 
-    use crate::{event::Status, location::Location, state::inmemory::InMemoryWorkflowState};
+    use crate::{event::NodeStatus, location::Location, state::inmemory::InMemoryWorkflowState};
 
     use super::*;
 
@@ -58,9 +64,9 @@ mod tests {
         let updater = Updater::new(Arc::new(state));
 
         let stream = once(async {
-            Event {
+            NodeEvent {
                 loc: Location::from_usize_iter([0]),
-                status: Status::Running,
+                status: NodeStatus::Running,
             }
         })
         .boxed();

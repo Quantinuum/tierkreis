@@ -609,7 +609,7 @@ impl ConversionState {
             .insert(node_index, NodeDefinition::Loop {});
 
         self.build_inputs(
-            [("body".to_string(), graph_source)]
+            [("graph".to_string(), graph_source)]
                 .into_iter()
                 .chain(inputs),
             node_index,
@@ -631,7 +631,7 @@ impl ConversionState {
             .insert(node_index, NodeDefinition::Map {});
 
         self.build_inputs(
-            [("body".to_string(), graph_source)]
+            [("graph".to_string(), graph_source)]
                 .into_iter()
                 .chain(inputs),
             node_index,

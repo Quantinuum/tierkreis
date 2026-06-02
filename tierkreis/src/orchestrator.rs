@@ -21,7 +21,7 @@ use crate::{
     asset_storage::{
         AssetStorageRegistry, interface::AssetSpec, load_asset, save_asset, transfer_assets,
     },
-    event::{Event, send_complete, send_switching},
+    event::{Event, EventReceiver, EventSender, NodeEvent, send_complete, send_switching},
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
@@ -88,8 +88,8 @@ impl OrchestrationContext {
 /// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
 /// for the Workflow.
 pub struct Orchestrator {
-    event_sender: mpsc::Sender<Event>,
-    event_receiver: Mutex<Option<mpsc::Receiver<Event>>>,
+    event_sender: EventSender,
+    event_receiver: Mutex<Option<EventReceiver>>,
 
     default_executor_name: String,
     executor_registry: ExecutorRegistry,
@@ -201,6 +201,9 @@ impl Orchestrator {
                         ),
                         NodeDefinition::Eval {} => {
                             self.build_eval_actions(context.clone(), workflow_graph.clone(), n, loc)
+                        }
+                        NodeDefinition::Loop {} => {
+                            self.build_loop_actions(context.clone(), workflow_graph.clone(), n, loc)
                         }
                         // Eager and Lazy If else are controlled by the ready node checks
                         NodeDefinition::IfElse {} => self.build_if_else_action(
@@ -397,26 +400,13 @@ impl Orchestrator {
         n: NodeIndex,
         loc: Location,
     ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        let storage_name = self.default_storage_name.clone();
         async move {
             let inputs = collect_inputs(&context, &workflow_graph, n).await?;
-            // TODO: It's a little bit unclear if this is desired behaviour.
-            let parent_outputs = transfer_assets(&asset_storage_registry, &storage_name, &inputs)?;
 
-            let parent = loc.parent();
-            Ok(stream::iter([
-                Ok(Action {
-                    loc,
-                    kind: ActionKind::MarkComplete { outputs: inputs },
-                }),
-                Ok(Action {
-                    loc: parent,
-                    kind: ActionKind::MarkComplete {
-                        outputs: parent_outputs,
-                    },
-                }),
-            ]))
+            Ok(stream::iter([Ok(Action {
+                loc,
+                kind: ActionKind::MarkComplete { outputs: inputs },
+            })]))
         }
         .try_flatten_stream()
         .boxed()
@@ -429,24 +419,28 @@ impl Orchestrator {
         n: NodeIndex,
         loc: Location,
     ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
+        let asset_storage_registry = self.asset_storage_registry.clone();
+        let storage_name = self.default_storage_name.clone();
         async move {
             // TODO: we don't need to collect inputs other than the graph
             // itself if the graph has already started.
             let inputs = collect_inputs(&context, &workflow_graph, n).await?;
+            let subgraph = self.load_subgraph(&inputs)?;
+            let subgraph_output_state = context
+                .workflow_state
+                .read(&loc.with_node(subgraph.output_idx()))
+                .await?;
 
-            let subgraph_bytes = load_asset(&self.asset_storage_registry, &inputs, "graph")?;
-            let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
-                serde_json::from_slice(&subgraph_bytes);
-
-            let subgraph = match subgraph_res {
-                Ok(subgraph) => subgraph,
-                Err(_err) => {
-                    // TODO: rich error message here
-                    let legacy: LegacyWorkflowGraph =
-                        serde_json::from_slice(&subgraph_bytes).into_diagnostic()?;
-                    legacy.to_workflow_graph()?
-                }
-            };
+            if let Some(subgraph_outputs) = subgraph_output_state.outputs {
+                // TODO: Unclear if this is desired behaviour.
+                let outputs =
+                    transfer_assets(&asset_storage_registry, &storage_name, &subgraph_outputs)?;
+                return Ok(stream::iter([Ok(Action {
+                    loc,
+                    kind: ActionKind::MarkComplete { outputs },
+                })])
+                .boxed());
+            }
 
             Ok(self.build_actions(
                 OrchestrationContext {
@@ -459,6 +453,52 @@ impl Orchestrator {
         }
         .try_flatten_stream()
         .boxed()
+    }
+
+    fn build_loop_actions(
+        &self,
+        context: OrchestrationContext,
+        workflow_graph: WorkflowGraph,
+        n: NodeIndex,
+        loc: Location,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
+        async move {
+            // TODO: we don't need to collect inputs other than the graph
+            // itself if the graph has already started.
+            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
+            let subgraph = self.load_subgraph(&inputs)?;
+
+            let loop_state = context.workflow_state.read(&loc).await?;
+
+            Ok(self.build_actions(
+                OrchestrationContext {
+                    subworkflow_context: loc,
+                    graph_inputs: inputs,
+                    workflow_state: Arc::clone(&context.workflow_state),
+                },
+                subgraph,
+            ))
+        }
+        .try_flatten_stream()
+        .boxed()
+    }
+
+    fn load_subgraph(&self, inputs: &HashMap<String, AssetSpec>) -> miette::Result<WorkflowGraph> {
+        let subgraph_bytes = load_asset(&self.asset_storage_registry, &inputs, "graph")?;
+        let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
+            serde_json::from_slice(&subgraph_bytes);
+
+        let subgraph = match subgraph_res {
+            Ok(subgraph) => subgraph,
+            Err(_err) => {
+                // TODO: rich error message here
+                let legacy: LegacyWorkflowGraph =
+                    serde_json::from_slice(&subgraph_bytes).into_diagnostic()?;
+                legacy.to_workflow_graph()?
+            }
+        };
+
+        Ok(subgraph)
     }
 
     /// Perform a series of actions, dispatching to [`Executor`]s when necessary.
@@ -671,9 +711,9 @@ async fn prepare_ready_nodes(
     for ready_node in &ready_nodes {
         context
             .workflow_state
-            .write(Event {
+            .write(NodeEvent {
                 loc: context.subworkflow_context.with_node(*ready_node),
-                status: crate::event::Status::Scheduled {},
+                status: crate::event::NodeStatus::Scheduled {},
             })
             .await?;
     }

@@ -30,7 +30,10 @@ use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
     },
-    event::{Event, Status, send_cancelled, send_complete, send_error, send_running},
+    event::{
+        Event, EventReceiver, EventSender, NodeEvent, NodeStatus, send_cancelled, send_complete,
+        send_error, send_running,
+    },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
 };
@@ -69,8 +72,6 @@ struct BackgroundTask {
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
-type EventSender = mpsc::Sender<Event>;
-type EventReceiver = mpsc::Receiver<Event>;
 type CancelSender = mpsc::Sender<Location>;
 type CancelReceiver = mpsc::Receiver<Location>;
 
@@ -113,13 +114,13 @@ async fn process_finished_task(
             } else {
                 let stderr = background_task.stderr.await.ok();
                 event_sender
-                    .send(Event {
+                    .send(Event::Node(NodeEvent {
                         loc,
-                        status: Status::Error {
+                        status: NodeStatus::Error {
                             error: format!("Subprocess failed with exit code: {status}"),
                             detail: stderr,
                         },
-                    })
+                    }))
                     .await
                     .map_err(|err| miette!("Failed to send error event: {err}"))?;
             }
@@ -544,7 +545,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -588,7 +589,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -647,13 +648,13 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&Event {
+        assert!(events.contains(&NodeEvent {
             loc: loc1.clone(),
-            status: Status::Running
+            status: NodeStatus::Running
         }));
-        assert!(events.contains(&Event {
+        assert!(events.contains(&NodeEvent {
             loc: loc2.clone(),
-            status: Status::Running
+            status: NodeStatus::Running
         }));
 
         // These may complete out of order, so find the correct events.
@@ -709,7 +710,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_registry_contains_values(
             &registry,
             "file",
@@ -741,10 +742,10 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         matches!(
             &events[1].status,
-            Status::Error {
+            NodeStatus::Error {
                 error,
                 ..
             } if error == "Subprocess failed with exit code: exit status: 1",
@@ -781,12 +782,12 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Running);
+        assert_eq!(event.status, NodeStatus::Running);
 
         executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Cancelled);
+        assert_eq!(event.status, NodeStatus::Cancelled);
 
         Ok(())
     }
@@ -833,7 +834,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert_eq!(events[0].status, NodeStatus::Running);
         assert_registry_contains_values(
             &registry,
             "file",

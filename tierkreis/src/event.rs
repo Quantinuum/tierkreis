@@ -10,37 +10,34 @@ use miette::miette;
 
 use crate::{asset_storage::interface::AssetSpec, location::Location};
 
-/// [Event] messages are emitted from [Executor][crate::executor::Executor] instances and the
+pub enum Event {
+    Run(RunEvent),
+    Node(NodeEvent),
+}
+
+pub enum RunEvent {
+    WorkflowStarted {},
+    WorkflowComplete {},
+}
+
+/// [NodeEvent] messages are emitted from [Executor][crate::executor::Executor] instances and the
 /// [Orchestrator][crate::orchestrator::Orchestrator].
 ///
 /// [Event] messages correspond to an update in the state of a Node during the Workflow
 /// execution.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Event {
+pub struct NodeEvent {
     /// The location of the Node for this Event.
     pub loc: Location,
     /// The new status of the Node.
-    pub status: Status,
+    pub status: NodeStatus,
 }
 
-impl Event {
+impl NodeEvent {
     /// Returns `true` if the status field of the event is [`Status::Complete`]
     #[must_use]
     pub fn is_complete(&self) -> bool {
-        matches!(self.status, Status::Complete { .. })
-    }
-
-    /// Returns `true` if the status field of the event is [`Status::Complete`]
-    /// and the `workflow_complete` field is true.
-    #[must_use]
-    pub fn is_workflow_complete(&self) -> bool {
-        matches!(
-            self.status,
-            Status::Complete {
-                workflow_complete: true,
-                ..
-            }
-        )
+        matches!(self.status, NodeStatus::Complete { .. })
     }
 
     /// Returns the `outputs` field of a [`Status::Complete`] `status` and
@@ -48,7 +45,7 @@ impl Event {
     #[must_use]
     pub fn outputs(self) -> Option<HashMap<String, AssetSpec>> {
         match self.status {
-            Status::Complete { outputs, .. } => Some(outputs),
+            NodeStatus::Complete { outputs, .. } => Some(outputs),
             _ => None,
         }
     }
@@ -56,7 +53,7 @@ impl Event {
 
 /// [Status] defines the various states that Nodes can be in.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Status {
+pub enum NodeStatus {
     /// The node is scheduled to be run by the [Orchestrator].
     Scheduled,
     /// The node is "switching" and will resolve when the corresponding
@@ -77,8 +74,6 @@ pub enum Status {
     Complete {
         /// The outputs from the node.
         outputs: HashMap<String, AssetSpec>,
-        /// Indicates the entire top level Workflow is done.
-        workflow_complete: bool,
     },
     /// The node has been cancelled.
     Cancelled,
@@ -110,10 +105,10 @@ pub type EventReceiver = mpsc::Receiver<Event>;
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_running(event_sender: &mut EventSender, loc: Location) -> miette::Result<()> {
     event_sender
-        .send(Event {
+        .send(Event::Node(NodeEvent {
             loc,
-            status: Status::Running {},
-        })
+            status: NodeStatus::Running {},
+        }))
         .await
         .map_err(|err| miette!("Failed to send running event: {err}"))
 }
@@ -125,10 +120,10 @@ pub async fn send_running(event_sender: &mut EventSender, loc: Location) -> miet
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_cancelled(event_sender: &mut EventSender, loc: Location) -> miette::Result<()> {
     event_sender
-        .send(Event {
+        .send(Event::Node(NodeEvent {
             loc,
-            status: Status::Cancelled {},
-        })
+            status: NodeStatus::Cancelled {},
+        }))
         .await
         .map_err(|err| miette!("Failed to send cancelled event: {err}"))
 }
@@ -143,15 +138,11 @@ pub async fn send_complete(
     loc: Location,
     outputs: HashMap<String, AssetSpec, RandomState>,
 ) -> miette::Result<()> {
-    let workflow_complete = loc.is_root();
     event_sender
-        .send(Event {
+        .send(Event::Node(NodeEvent {
             loc: loc.clone(),
-            status: Status::Complete {
-                outputs,
-                workflow_complete,
-            },
-        })
+            status: NodeStatus::Complete { outputs },
+        }))
         .await
         .map_err(|err| {
             miette!("Failed to send complete event: {err}")
@@ -171,10 +162,10 @@ pub async fn send_switching(
     cond: bool,
 ) -> miette::Result<()> {
     event_sender
-        .send(Event {
+        .send(Event::Node(NodeEvent {
             loc: loc.clone(),
-            status: Status::Switching { cond },
-        })
+            status: NodeStatus::Switching { cond },
+        }))
         .await
         .map_err(|err| {
             miette!("Failed to send switching event: {err}")
@@ -193,13 +184,25 @@ pub async fn send_error(
     err: &miette::Error,
 ) -> miette::Result<()> {
     event_sender
-        .send(Event {
+        .send(Event::Node(NodeEvent {
             loc,
-            status: Status::Error {
+            status: NodeStatus::Error {
                 error: err.to_string(),
                 detail: None,
             },
-        })
+        }))
         .await
         .map_err(|err| miette!("Failed to send error event: {err}"))
+}
+
+/// Utility function to send a new [`Event`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_workflow_run_complete(event_sender: &mut EventSender) -> miette::Result<()> {
+    event_sender
+        .send(Event::Run(RunEvent::WorkflowComplete {}))
+        .await
+        .map_err(|err| miette!("Failed to send workflow run complete event: {err}"))
 }

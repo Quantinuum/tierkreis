@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::state::interface::RunAttemptUpdated;
 use crate::{
-    event::Event,
+    event::NodeEvent,
     location::Location,
     state::{
         WorkflowState,
@@ -146,7 +146,7 @@ impl InMemoryWorkflowState {
 }
 
 impl WorkflowState for InMemoryWorkflowState {
-    fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
+    fn write(&self, event: NodeEvent) -> BoxFuture<'_, miette::Result<()>> {
         let global_state = &self.global_state;
         let mut run_state = global_state
             .runs
@@ -158,31 +158,31 @@ impl WorkflowState for InMemoryWorkflowState {
         let node_state = run_state.nodes.entry(event.loc).or_default();
 
         match event.status {
-            crate::event::Status::Scheduled => {
+            crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
                     send_update = true;
                     node_state.scheduled_time = Some(Utc::now());
                 }
             }
-            crate::event::Status::Switching { cond } => {
+            crate::event::NodeStatus::Switching { cond } => {
                 if node_state.cond.is_none() {
                     send_update = true;
                     node_state.cond = Some(cond);
                 }
             }
-            crate::event::Status::Queued => {
+            crate::event::NodeStatus::Queued => {
                 if node_state.queued_time.is_none() {
                     send_update = true;
                     node_state.queued_time = Some(Utc::now());
                 }
             }
-            crate::event::Status::Running => {
+            crate::event::NodeStatus::Running => {
                 if node_state.running_time.is_none() {
                     send_update = true;
                     node_state.running_time = Some(Utc::now());
                 }
             }
-            crate::event::Status::Complete {
+            crate::event::NodeStatus::Complete {
                 outputs,
                 workflow_complete,
             } => {
@@ -194,7 +194,7 @@ impl WorkflowState for InMemoryWorkflowState {
                     send_workflow_stopped = workflow_complete;
                 }
             }
-            crate::event::Status::Cancelled => {
+            crate::event::NodeStatus::Cancelled => {
                 if node_state.cancelled_time.is_none() {
                     send_update = true;
                     node_state.cancelled_time = Some(Utc::now());
@@ -202,7 +202,7 @@ impl WorkflowState for InMemoryWorkflowState {
                     send_workflow_stopped = true;
                 }
             }
-            crate::event::Status::Error { error, detail } => {
+            crate::event::NodeStatus::Error { error, detail } => {
                 if node_state.error_time.is_none() {
                     send_update = true;
                     node_state.error_time = Some(Utc::now());
@@ -272,7 +272,7 @@ impl WorkflowState for InMemoryWorkflowState {
 
 #[cfg(test)]
 mod tests {
-    use crate::event::Status;
+    use crate::event::NodeStatus;
 
     use super::*;
 
@@ -304,9 +304,9 @@ mod tests {
         let workflow_state = runtime_state.workflow_state(run_id, attempt);
 
         workflow_state
-            .write(Event {
+            .write(NodeEvent {
                 loc: Location::root(),
-                status: Status::Scheduled,
+                status: NodeStatus::Scheduled,
             })
             .await?;
 
@@ -334,9 +334,9 @@ mod tests {
         let workflow_state = runtime_state.workflow_state(run_id, attempt);
 
         workflow_state
-            .write(Event {
+            .write(NodeEvent {
                 loc: Location::root(),
-                status: Status::Scheduled,
+                status: NodeStatus::Scheduled,
             })
             .await?;
 
