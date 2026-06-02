@@ -39,7 +39,7 @@ use crate::{
     },
 };
 
-/// Build a connection pool for the SQLite database specified by the `DATABASE_URL` environment variable
+/// Build a connection pool for the `SQLite` database specified by the `DATABASE_URL` environment variable
 pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
     let fallback = home_dir()
         .unwrap_or_else(|| "/tmp".into())
@@ -66,8 +66,8 @@ pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteCon
     Ok(pool)
 }
 
-/// [`SqliteRuntimeState`] implements [`RuntimeState`] but with a SQLite backing
-/// that will be persisted in a SQLite database.
+/// [`SqliteRuntimeState`] implements [`RuntimeState`] but with a `SQLite` backing
+/// that will be persisted in a `SQLite` database.
 #[derive(Debug)]
 pub struct SqliteRuntimeState {
     connection: Arc<Pool<ConnectionManager<SqliteConnection>>>,

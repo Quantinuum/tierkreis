@@ -99,7 +99,7 @@ pub fn run_attempt_state_or_default(
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<RunAttemptState> {
     use crate::state::schema::{
-        node_states::dsl as ns, workflow_runs::dsl as wr, workflows::dsl as wf,
+        node_states::dsl as ns, workflow_runs::dsl as wr,
     };
 
     let mut conn = connection
@@ -183,7 +183,7 @@ pub fn update_node_state(
 
     let attempt_i32 = i32::try_from(attempt)
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let loc_str = serialize_location(&loc);
+    let loc_str = serialize_location(loc);
 
     diesel::insert_into(ns::node_states)
         .values((
@@ -405,9 +405,9 @@ fn insert_default_run(
             )
         })?;
     Ok(WorkflowRunModel {
-        id: run_id_str.to_string(),
-        attempt: attempt,
-        workflow_id: workflow_id,
+        id: run_id_str.clone(),
+        attempt,
+        workflow_id,
         run_metadata: "{}".to_string(),
         status: "created".to_string(),
         started_at: now,
