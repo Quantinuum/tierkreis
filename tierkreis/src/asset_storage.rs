@@ -71,7 +71,7 @@ pub fn load_asset<S: BuildHasher>(
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
     let asset_spec = assets
         .get(name)
-        .ok_or_else(|| miette!("Failed to find asset with that name"))?;
+        .ok_or_else(|| miette!("Failed to find asset with name: `{name}`"))?;
 
     let storage_name = &asset_spec.storage_name;
     let storage = registry.get(storage_name).ok_or(miette!(

@@ -227,7 +227,8 @@ def test_runtime(  # noqa: PLR0913
         g = graph.data
     else:
         g = graph
-    run_workflow(g, inputs)
+    run_outputs = run_workflow(g, inputs)
+    assert output == run_outputs
 
 
 with_worker_param_data: list[

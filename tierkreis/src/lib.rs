@@ -21,6 +21,7 @@ mod tierkreis {
     use std::collections::HashMap;
 
     use miette::IntoDiagnostic;
+    use num_complex::Complex64;
     use pyo3::{PyErr, exceptions::PyValueError, prelude::*};
     use serde::{Deserialize, Serialize};
 
@@ -41,26 +42,39 @@ mod tierkreis {
         }
     }
 
-    #[derive(FromPyObject, Serialize, Deserialize)]
+    #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
     #[serde(untagged)]
-    enum Inputs {
+    enum ValueOrMapping {
         Mapping(HashMap<String, Value>),
         Value(Value),
     }
 
-    #[derive(FromPyObject, Serialize, Deserialize)]
+    #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
     #[serde(untagged)]
     enum Value {
         Int(i64),
         Float(f64),
         String(String),
+        Complex(Complex64),
+        Bytes(Vec<u8>),
         List(Vec<Value>),
         Dict(HashMap<String, Value>),
-        Bytes(Vec<u8>),
+    }
+
+    // If we have something that looks like bytes, we should "just" pass
+    // it transparently.
+    fn serialize_value(value: &Value) -> Result<Vec<u8>, serde_json::Error> {
+        match value {
+            Value::Bytes(bytes) => Ok(bytes.clone()),
+            _ => serde_json::to_vec(&value),
+        }
     }
 
     #[pyfunction]
-    fn run_workflow(workflow: &Bound<'_, PyAny>, inputs: Inputs) -> Result<(), MietteReport> {
+    fn run_workflow(
+        workflow: &Bound<'_, PyAny>,
+        inputs: ValueOrMapping,
+    ) -> Result<ValueOrMapping, MietteReport> {
         let workflow_dump: String = workflow
             .call_method0("model_dump_json")
             .into_diagnostic()?
@@ -71,30 +85,35 @@ mod tierkreis {
         let workflow_graph = legacy_workflow.to_workflow_graph()?;
 
         let inputs = match inputs {
-            Inputs::Value(value) => {
+            ValueOrMapping::Value(value) => {
                 let mut inputs = HashMap::new();
                 inputs.insert(
                     "value".to_string(),
-                    serde_json::to_vec(&value).into_diagnostic()?,
+                    serialize_value(&value).into_diagnostic()?,
                 );
                 inputs
             }
-            Inputs::Mapping(inputs) => inputs
+            ValueOrMapping::Mapping(inputs) => inputs
                 .into_iter()
-                .map(|(k, v)| serde_json::to_vec(&v).map(|b| (k, b)))
+                .map(|(k, v)| serialize_value(&v).map(|b| (k, b)))
                 .collect::<Result<HashMap<_, _>, _>>()
                 .into_diagnostic()?,
         };
 
         let outputs = runtime::run_workflow_in_memory(&workflow_graph, inputs)?;
 
-        let outputs: HashMap<String, serde_json::Value> = outputs
+        let mut outputs: HashMap<String, Value> = outputs
             .into_iter()
             .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
             .collect::<Result<_, MietteReport>>()?;
 
         println!("{outputs:?}");
-
-        Ok(())
+        if outputs.len() == 1 && outputs.contains_key("value") {
+            Ok(ValueOrMapping::Value(
+                outputs.remove("value").expect("No single output value"),
+            ))
+        } else {
+            Ok(ValueOrMapping::Mapping(outputs))
+        }
     }
 }

@@ -16,14 +16,15 @@ use futures::{
     stream::{BoxStream, FuturesUnordered},
 };
 use miette::{IntoDiagnostic, miette};
+use num_complex::Complex64;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_assets, save_assets},
     event::{
-        Event, EventReceiver, EventSender, NodeEvent, send_cancelled, send_complete, send_error,
-        send_running,
+        Event, EventReceiver, EventSender, send_cancelled, send_complete, send_error, send_running,
     },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
@@ -56,41 +57,20 @@ type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
 type CancelSender = mpsc::Sender<Location>;
 type CancelReceiver = mpsc::Receiver<Location>;
 
-fn extract_i64(inputs: &HashMap<String, Vec<u8>>, name: &str) -> miette::Result<i64> {
+fn extract_value<'a, T>(inputs: &'a HashMap<String, Vec<u8>>, name: &str) -> miette::Result<T>
+where
+    T: Deserialize<'a>,
+{
     let asset = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
     let val = serde_json::from_slice(asset).into_diagnostic()?;
 
-    if let Value::Number(val) = val {
-        if let Some(val) = val.as_i64() {
-            Ok(val)
-        } else {
-            Err(miette!("Range error: {val} is not representable as i64"))
-        }
-    } else {
-        Err(miette!("Type error: {val} is not a Number"))
-    }
-}
-
-fn extract_f64(inputs: &HashMap<String, Vec<u8>>, name: &str) -> miette::Result<f64> {
-    let asset = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
-    let val = serde_json::from_slice(asset).into_diagnostic()?;
-
-    if let Value::Number(val) = val {
-        if let Some(val) = val.as_f64() {
-            Ok(val)
-        } else {
-            Err(miette!("Range error: {val} is not representable as f64"))
-        }
-    } else {
-        Err(miette!("Type error: {val} is not a Number"))
-    }
+    Ok(val)
 }
 
 fn output_value(
     outputs: &mut HashMap<String, Vec<u8>>,
-    value: impl Into<Value>,
+    value: impl Serialize,
 ) -> miette::Result<()> {
-    let value: Value = value.into();
     outputs.insert(
         "value".to_string(),
         serde_json::to_vec(&value).into_diagnostic()?,
@@ -105,30 +85,90 @@ fn run_builtin(
     let mut outputs = HashMap::new();
     match task_name {
         "iadd" => {
-            let a = extract_i64(inputs, "a")?;
-            let b = extract_i64(inputs, "b")?;
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
 
             output_value(&mut outputs, a + b)?;
         }
         "isub" => {
-            let a = extract_i64(inputs, "a")?;
-            let b = extract_i64(inputs, "b")?;
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
 
             output_value(&mut outputs, a - b)?;
         }
         "itimes" => {
-            let a = extract_i64(inputs, "a")?;
-            let b = extract_i64(inputs, "b")?;
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
 
             output_value(&mut outputs, a * b)?;
         }
+        "idivide" => {
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
+
+            output_value(&mut outputs, a / b)?;
+        }
+        "igt" => {
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
+
+            output_value(&mut outputs, a > b)?;
+        }
+        "mod" => {
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
+
+            output_value(&mut outputs, a % b)?;
+        }
+        "eq" => {
+            let a: Value = extract_value(inputs, "a")?;
+            let b: Value = extract_value(inputs, "b")?;
+
+            output_value(&mut outputs, a == b)?;
+        }
+        "neq" => {
+            let a: Value = extract_value(inputs, "a")?;
+            let b: Value = extract_value(inputs, "b")?;
+
+            output_value(&mut outputs, a != b)?;
+        }
+        // Legacy built-in name.
+        "str" | "tkr_str" => {
+            let value: Value = extract_value(inputs, "value")?;
+
+            output_value(&mut outputs, value.to_string())?;
+        }
+        // Legacy built-in name.
+        "tuple" | "tkr_tuple" => {
+            let a: Value = extract_value(inputs, "a")?;
+            let b: Value = extract_value(inputs, "b")?;
+
+            output_value(&mut outputs, [a, b])?;
+        }
+        "untuple" => {
+            let value: (Value, Value) = extract_value(inputs, "value")?;
+
+            outputs.insert(
+                "a".to_string(),
+                serde_json::to_vec(&value.0).into_diagnostic()?,
+            );
+            outputs.insert(
+                "b".to_string(),
+                serde_json::to_vec(&value.1).into_diagnostic()?,
+            );
+        }
+        "conjugate" => {
+            let z: Complex64 = extract_value(inputs, "z")?;
+
+            output_value(&mut outputs, z.conj())?;
+        }
         "sleep" => {
-            let delay_seconds = extract_f64(inputs, "delay_seconds")?;
+            let delay_seconds: f64 = extract_value(inputs, "delay_seconds")?;
             sleep(Duration::from_secs_f64(delay_seconds));
 
             output_value(&mut outputs, true)?;
         }
-        _ => return Err(miette!("Unknown task")),
+        task => return Err(miette!("Unknown task: {task}")),
     }
     Ok(outputs)
 }
@@ -384,7 +424,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
-        event::NodeStatus,
+        event::{NodeEvent, NodeStatus},
         executor::interface::TaskPlan,
     };
 
@@ -433,7 +473,20 @@ mod tests {
         let events = stream.take(2).collect::<Vec<_>>().await;
         dbg!(&events);
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             default_storage_name,
@@ -472,7 +525,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             default_storage_name,
@@ -524,19 +590,27 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&NodeEvent {
+        assert!(events.contains(&Event::Node(NodeEvent {
             loc: loc1.clone(),
-            status: NodeStatus::Running
-        }));
-        assert!(events.contains(&NodeEvent {
+            status: NodeStatus::Running { state: None },
+        })));
+        assert!(events.contains(&Event::Node(NodeEvent {
             loc: loc2.clone(),
-            status: NodeStatus::Running
-        }));
+            status: NodeStatus::Running { state: None },
+        })));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
             .iter()
-            .find(|event| event.is_complete() && event.loc == loc1)
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::Node(NodeEvent {
+                        loc,
+                        status: NodeStatus::Complete { .. }
+                    }) if loc == &loc1
+                )
+            })
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -546,7 +620,15 @@ mod tests {
         );
         let complete1 = events
             .iter()
-            .find(|event| event.is_complete() && event.loc == loc2)
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::Node(NodeEvent {
+                        loc,
+                        status: NodeStatus::Complete { .. }
+                    }) if loc == &loc2
+                )
+            })
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -581,8 +663,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
-        assert!(events[1].is_complete());
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             "memory",
@@ -614,14 +708,23 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
-        assert_eq!(
-            events[1].status,
-            NodeStatus::Error {
-                error: "Unknown task".to_string(),
-                detail: None,
-            }
-        );
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            &events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Error {
+                    error,
+                    ..
+                },
+                ..
+            }) if error == "Unknown task"
+        ));
 
         Ok(())
     }
@@ -649,12 +752,24 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, NodeStatus::Running);
+        assert!(matches!(
+            event,
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
 
         executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, NodeStatus::Cancelled);
+        assert!(matches!(
+            event,
+            Event::Node(NodeEvent {
+                status: NodeStatus::Cancelled {},
+                ..
+            })
+        ));
 
         Ok(())
     }
@@ -696,8 +811,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
-        assert!(events[1].is_complete());
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             "memory",

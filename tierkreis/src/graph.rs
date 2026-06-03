@@ -306,7 +306,7 @@ impl WorkflowGraph {
     }
 }
 
-type ValueRef = (u32, String);
+type ValueRef = (i32, String);
 
 // Note that many fields are ignored as they are not necessary for rebuilding
 // the graph as in most cases the ports are standardized by the node type.
@@ -430,9 +430,16 @@ impl ConversionState {
 
     fn link_ports(&mut self) -> Result<(), miette::Error> {
         for (in_port, (from_node, from_port_name)) in &self.to_link {
+            // A negative index here signifies that port is intended to
+            // be a self-referential link.
+            if *from_node == -1 {
+                continue;
+            }
+
+            let node_index: usize = TryFrom::<i32>::try_from(*from_node).into_diagnostic()?;
             let out_port = self
                 .output_port_indices
-                .get(&NodeIndex::new(*from_node as usize))
+                .get(&NodeIndex::new(node_index))
                 .ok_or_else(|| miette!("Could not find node at: {}", from_node))?
                 .get(from_port_name)
                 .ok_or_else(|| {

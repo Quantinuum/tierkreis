@@ -47,6 +47,8 @@ pub struct NodeState {
 
     /// The state associated with the `pred` port if this Node is an `IfElse` node.
     pub cond: Option<bool>,
+    /// The state associated with the loop index if this Node is a `Loop` node.
+    pub loop_index: Option<u32>,
 
     /// The error message of the node if any.
     pub error: Option<String>,

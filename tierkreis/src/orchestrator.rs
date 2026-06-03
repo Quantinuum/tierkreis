@@ -21,11 +21,14 @@ use crate::{
     asset_storage::{
         AssetStorageRegistry, interface::AssetSpec, load_asset, save_asset, transfer_assets,
     },
-    event::{Event, EventReceiver, EventSender, NodeEvent, send_complete, send_switching},
+    event::{
+        Event, EventReceiver, EventSender, NodeEvent, send_complete, send_running_loop,
+        send_running_switching, send_workflow_run_complete,
+    },
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
-    state::WorkflowState,
+    state::{WorkflowState, interface::NodeState},
 };
 
 /// `Action` describes an operation the Orchestrator should perform.
@@ -51,15 +54,19 @@ pub enum ActionKind {
         inputs: HashMap<String, AssetSpec>,
     },
     /// Mark the node as switching with a particular value.
-    MarkSwitching {
+    SetSwitching {
         /// The value to mark the node with.
         cond: bool,
     },
+    SetRunningLoop {
+        index: u32,
+    },
     /// Mark the node as complete with outputs.
-    MarkComplete {
+    SetComplete {
         /// The output values for the node.
         outputs: HashMap<String, AssetSpec>,
     },
+    WorkflowFinished {},
 }
 
 /// The context state for the orchestration
@@ -150,28 +157,41 @@ impl Orchestrator {
         workflow_graph: WorkflowGraph,
     ) -> BoxStream<'_, miette::Result<Action>> {
         let fut = async move {
-            let state = context
-                .workflow_state
-                .read(
-                    &context
-                        .subworkflow_context
-                        .with_node(workflow_graph.output_idx()),
-                )
-                .await?;
-            if state.scheduled_time.is_some() {
+            let mut node_states = HashMap::new();
+            for node_id in workflow_graph.node_ids() {
+                let location = context.subworkflow_context.with_node(node_id);
+                let node_definition = workflow_graph
+                    .node_definition(node_id)
+                    .ok_or_else(|| miette!("Node definition not found"))?;
+                let node_state = context.workflow_state.read(&location).await?;
+                if node_state.error_time.is_some() {
+                    dbg!(node_state.error);
+                    return Ok(stream::iter([Ok(Action {
+                        loc: location,
+                        kind: ActionKind::WorkflowFinished {},
+                    })])
+                    .boxed());
+                }
+
+                node_states.insert(node_id, (node_definition.clone(), node_state));
+            }
+            let output_state = node_states
+                .get(&workflow_graph.output_idx())
+                .ok_or_else(|| miette!("No output node state found"))?;
+            if output_state.1.scheduled_time.is_some() {
                 // Output is already scheduled, no actions to perform.
                 return Ok(stream::empty().boxed());
             }
 
-            let ready_nodes = prepare_ready_nodes(&context, &workflow_graph).await?;
+            let ready_nodes = prepare_ready_nodes(&context, &workflow_graph, &node_states).await?;
 
             let parent_location = context.subworkflow_context.clone();
             let graph_inputs = context.graph_inputs.clone();
 
             Ok(stream::iter(ready_nodes)
                 .flat_map_unordered(None, move |n| {
-                    let Some(definition) = workflow_graph.node_definition(n) else {
-                        return stream_error(miette!("Could not find node definition"));
+                    let Some((definition, state)) = node_states.get(&n) else {
+                        return stream_error(miette!("Could not find node definition/state"));
                     };
 
                     let loc = parent_location.with_node(n);
@@ -202,8 +222,15 @@ impl Orchestrator {
                         NodeDefinition::Eval {} => {
                             self.build_eval_actions(context.clone(), workflow_graph.clone(), n, loc)
                         }
-                        NodeDefinition::Loop {} => {
-                            self.build_loop_actions(context.clone(), workflow_graph.clone(), n, loc)
+                        NodeDefinition::Loop {} => self.build_loop_actions(
+                            context.clone(),
+                            workflow_graph.clone(),
+                            n,
+                            loc,
+                            state.loop_index,
+                        ),
+                        NodeDefinition::Map {} => {
+                            self.build_map_actions(context.clone(), workflow_graph.clone(), n, loc)
                         }
                         // Eager and Lazy If else are controlled by the ready node checks
                         NodeDefinition::IfElse {} => self.build_if_else_action(
@@ -211,6 +238,7 @@ impl Orchestrator {
                             workflow_graph.clone(),
                             n,
                             loc,
+                            state.cond,
                         ),
                         NodeDefinition::EagerIfElse {} => self.build_eager_if_else_action(
                             context.clone(),
@@ -218,7 +246,6 @@ impl Orchestrator {
                             n,
                             loc,
                         ),
-                        _ => unimplemented!(),
                     }
                 })
                 .boxed())
@@ -233,11 +260,11 @@ impl Orchestrator {
         workflow_graph: WorkflowGraph,
         n: NodeIndex,
         loc: Location,
+        cond: Option<bool>,
     ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
         let asset_storage_registry = self.asset_storage_registry.clone();
         async move {
-            let node_state = context.workflow_state.read(&loc).await?;
-            match node_state.cond {
+            match cond {
                 None => {
                     let (pred_node, connected_port) =
                         workflow_graph.connected_input_by_port_name(&n, "pred")?;
@@ -254,7 +281,7 @@ impl Orchestrator {
 
                     Ok(Action {
                         loc,
-                        kind: ActionKind::MarkSwitching {
+                        kind: ActionKind::SetSwitching {
                             cond: pred_bytes == b"true",
                         },
                     })
@@ -281,7 +308,7 @@ impl Orchestrator {
 
                     Ok(Action {
                         loc,
-                        kind: ActionKind::MarkComplete { outputs },
+                        kind: ActionKind::SetComplete { outputs },
                     })
                 }
                 Some(false) => {
@@ -306,7 +333,7 @@ impl Orchestrator {
 
                     Ok(Action {
                         loc,
-                        kind: ActionKind::MarkComplete { outputs },
+                        kind: ActionKind::SetComplete { outputs },
                     })
                 }
             }
@@ -339,7 +366,7 @@ impl Orchestrator {
 
             Ok(Action {
                 loc,
-                kind: ActionKind::MarkComplete { outputs },
+                kind: ActionKind::SetComplete { outputs },
             })
         }
         .into_stream()
@@ -364,7 +391,7 @@ impl Orchestrator {
             let outputs = transfer_assets(&asset_storage_registry, &storage_name, &outputs)?;
             Ok(Action {
                 loc,
-                kind: ActionKind::MarkComplete { outputs },
+                kind: ActionKind::SetComplete { outputs },
             })
         }
         .into_stream()
@@ -386,7 +413,7 @@ impl Orchestrator {
             outputs.insert("value".to_string(), asset_key);
             Ok(Action {
                 loc,
-                kind: ActionKind::MarkComplete { outputs },
+                kind: ActionKind::SetComplete { outputs },
             })
         }
         .into_stream()
@@ -403,16 +430,161 @@ impl Orchestrator {
         async move {
             let inputs = collect_inputs(&context, &workflow_graph, n).await?;
 
-            Ok(stream::iter([Ok(Action {
-                loc,
-                kind: ActionKind::MarkComplete { outputs: inputs },
-            })]))
+            let is_root_workflow =
+                loc == Location::from_node_index_iter([workflow_graph.output_idx()]);
+            let mut events = vec![Ok(Action {
+                loc: loc.clone(),
+                kind: ActionKind::SetComplete { outputs: inputs },
+            })];
+
+            if is_root_workflow {
+                events.push(Ok(Action {
+                    loc,
+                    kind: ActionKind::WorkflowFinished {},
+                }));
+            }
+
+            Ok(stream::iter(events))
         }
         .try_flatten_stream()
         .boxed()
     }
 
     fn build_eval_actions(
+        &self,
+        context: OrchestrationContext,
+        workflow_graph: WorkflowGraph,
+        n: NodeIndex,
+        loc: Location,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
+        let asset_storage_registry = self.asset_storage_registry.clone();
+        let storage_name = self.default_storage_name.clone();
+        async move {
+            // TODO: we don't need to collect inputs other than the graph
+            // itself if the graph has already started.
+            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
+            let subgraph = if inputs.contains_key("graph") {
+                self.load_subgraph(&inputs)?
+            } else {
+                workflow_graph
+            };
+
+            let subgraph_output_state = context
+                .workflow_state
+                .read(&loc.with_node(subgraph.output_idx()))
+                .await?;
+
+            if let Some(subgraph_outputs) = subgraph_output_state.outputs {
+                // TODO: Unclear if this is desired behaviour.
+                let outputs =
+                    transfer_assets(&asset_storage_registry, &storage_name, &subgraph_outputs)?;
+                return Ok(stream::iter([Ok(Action {
+                    loc,
+                    kind: ActionKind::SetComplete { outputs },
+                })])
+                .boxed());
+            }
+
+            Ok(self.build_actions(
+                OrchestrationContext {
+                    subworkflow_context: loc,
+                    graph_inputs: inputs,
+                    workflow_state: Arc::clone(&context.workflow_state),
+                },
+                subgraph,
+            ))
+        }
+        .try_flatten_stream()
+        .boxed()
+    }
+
+    fn build_loop_actions(
+        &self,
+        context: OrchestrationContext,
+        workflow_graph: WorkflowGraph,
+        n: NodeIndex,
+        loc: Location,
+        loop_index: Option<u32>,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
+        async move {
+            match loop_index {
+                None => {
+                    return Ok(stream::iter([Ok(Action {
+                        loc,
+                        kind: ActionKind::SetRunningLoop { index: 0 },
+                    })])
+                    .boxed());
+                }
+                Some(index) => {
+                    // TODO: We probably don't need the inputs if we have already
+                    // visited this loop iteration.
+                    let mut inputs = collect_inputs(&context, &workflow_graph, n).await?;
+                    let subgraph = self.load_subgraph(&inputs)?;
+
+                    let loop_loc = loc.with_loop_index(index);
+                    let loop_subgraph_output_loc = loop_loc.with_node(subgraph.output_idx());
+                    let loop_iteration_output_state = context
+                        .workflow_state
+                        .read(&loop_subgraph_output_loc)
+                        .await?;
+
+                    match loop_iteration_output_state.outputs {
+                        None => {
+                            if index > 0 {
+                                let prev_loop_loc = loc.with_loop_index(index - 1);
+                                let prev_loop_subgraph_output_loc =
+                                    prev_loop_loc.with_node(subgraph.output_idx());
+                                let prev_loop_iteration_output_state = context
+                                    .workflow_state
+                                    .read(&prev_loop_subgraph_output_loc)
+                                    .await?;
+
+                                inputs.extend(
+                                    prev_loop_iteration_output_state.outputs.ok_or_else(|| {
+                                        miette!("No outputs from previous loop iteration")
+                                    })?,
+                                );
+                            }
+
+                            return Ok(self.build_actions(
+                                OrchestrationContext {
+                                    subworkflow_context: loop_loc,
+                                    graph_inputs: inputs,
+                                    workflow_state: Arc::clone(&context.workflow_state),
+                                },
+                                subgraph,
+                            ));
+                        }
+                        Some(outputs) => {
+                            let should_continue_bytes = load_asset(
+                                &self.asset_storage_registry,
+                                &outputs,
+                                "should_continue",
+                            )?;
+
+                            if should_continue_bytes == b"true" {
+                                return Ok(stream::iter([Ok(Action {
+                                    loc,
+                                    kind: ActionKind::SetRunningLoop { index: index + 1 },
+                                })])
+                                .boxed());
+                            } else {
+                                Ok(stream::iter([Ok(Action {
+                                    loc,
+                                    kind: ActionKind::SetComplete { outputs },
+                                })])
+                                .boxed())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .try_flatten_stream()
+        .boxed()
+    }
+
+    fn build_map_actions(
         &self,
         context: OrchestrationContext,
         workflow_graph: WorkflowGraph,
@@ -437,38 +609,10 @@ impl Orchestrator {
                     transfer_assets(&asset_storage_registry, &storage_name, &subgraph_outputs)?;
                 return Ok(stream::iter([Ok(Action {
                     loc,
-                    kind: ActionKind::MarkComplete { outputs },
+                    kind: ActionKind::SetComplete { outputs },
                 })])
                 .boxed());
             }
-
-            Ok(self.build_actions(
-                OrchestrationContext {
-                    subworkflow_context: loc,
-                    graph_inputs: inputs,
-                    workflow_state: Arc::clone(&context.workflow_state),
-                },
-                subgraph,
-            ))
-        }
-        .try_flatten_stream()
-        .boxed()
-    }
-
-    fn build_loop_actions(
-        &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
-        n: NodeIndex,
-        loc: Location,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
-        async move {
-            // TODO: we don't need to collect inputs other than the graph
-            // itself if the graph has already started.
-            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
-            let subgraph = self.load_subgraph(&inputs)?;
-
-            let loop_state = context.workflow_state.read(&loc).await?;
 
             Ok(self.build_actions(
                 OrchestrationContext {
@@ -528,11 +672,17 @@ impl Orchestrator {
                     output_storage_name: Some(self.default_storage_name.clone()),
                     ..Default::default()
                 }),
-                ActionKind::MarkSwitching { cond } => {
-                    send_switching(&mut event_sender, loc, cond).await?;
+                ActionKind::SetSwitching { cond } => {
+                    send_running_switching(&mut event_sender, loc, cond).await?;
                 }
-                ActionKind::MarkComplete { outputs } => {
+                ActionKind::SetRunningLoop { index } => {
+                    send_running_loop(&mut event_sender, loc, index).await?;
+                }
+                ActionKind::SetComplete { outputs } => {
                     send_complete(&mut event_sender, loc, outputs).await?;
+                }
+                ActionKind::WorkflowFinished {} => {
+                    send_workflow_run_complete(&mut event_sender).await?;
                 }
             }
         }
@@ -624,34 +774,19 @@ fn build_task_action(
 async fn prepare_ready_nodes(
     context: &OrchestrationContext,
     workflow_graph: &WorkflowGraph,
+    node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
 ) -> miette::Result<Vec<NodeIndex>> {
-    // Find relevant nodes and check their state.
-    let mut scheduled_nodes: HashSet<NodeIndex> = HashSet::new();
-    let mut nodes_with_outputs: HashSet<NodeIndex> = HashSet::new();
-    let mut node_conds: HashMap<NodeIndex, bool> = HashMap::new();
-    for node_id in workflow_graph.node_ids() {
-        let location = context.subworkflow_context.with_node(node_id);
-        let state = context.workflow_state.read(&location).await?;
-        if state.scheduled_time.is_some() {
-            scheduled_nodes.insert(node_id);
-
-            if state.outputs.is_some() {
-                nodes_with_outputs.insert(node_id);
-            } else if let Some(cond) = state.cond {
-                node_conds.insert(node_id, cond);
-            }
-        }
-    }
-
     // Find nodes that are ready for scheduling.
     let ready_nodes: Vec<_> = workflow_graph
+        // TODO: We shouldn't really need to sort every time
         .toposort_filtered_from_output_node(
             |n| {
-                let definition = workflow_graph
-                    .node_definition(n)
-                    .expect("Node definition not found");
+                let (definition, state) = node_states
+                    .get(&n)
+                    .expect("Node definition/state not found");
 
-                let not_already_scheduled = !scheduled_nodes.contains(&n);
+                let has_outputs = state.outputs.is_some();
+                let not_already_scheduled = state.scheduled_time.is_none();
                 let is_control_flow = matches!(
                     definition,
                     NodeDefinition::Eval {}
@@ -659,50 +794,59 @@ async fn prepare_ready_nodes(
                         | NodeDefinition::Map {}
                         | NodeDefinition::IfElse {}
                 );
-                not_already_scheduled || is_control_flow
+                !has_outputs && (not_already_scheduled || is_control_flow)
             },
             |n, p| {
-                let definition = workflow_graph
-                    .node_definition(n)
-                    .expect("Node definition not found");
+                let (definition, state) = node_states
+                    .get(&n)
+                    .expect("Node definition/state not found");
                 if matches!(definition, NodeDefinition::IfElse {}) {
-                    should_traverse_if_else_port(workflow_graph, &node_conds, n, p)
+                    should_traverse_if_else_port(workflow_graph, state.cond, p)
                 } else {
                     true
                 }
             },
         )
         .filter(|n| {
-            let definition = workflow_graph
-                .node_definition(*n)
-                .expect("Node definition not found");
+            let (definition, state) = node_states
+                .get(&n)
+                .expect("Node definition/state not found");
             if matches!(definition, NodeDefinition::IfElse {}) {
-                let cond = node_conds.get(n);
-                match cond {
+                match state.cond {
                     None => {
                         let (pred_node, _) = workflow_graph
                             .connected_input_by_port_name(n, "pred")
                             .expect("No `pred` port on `IfElse` node");
 
-                        nodes_with_outputs.contains(&pred_node)
+                        node_states
+                            .get(&pred_node)
+                            .is_some_and(|(_, state)| state.outputs.is_some())
                     }
                     Some(true) => {
                         let (if_true_node, _) = workflow_graph
                             .connected_input_by_port_name(n, "if_true")
                             .expect("No `if_true` port on `IfElse` node");
 
-                        nodes_with_outputs.contains(&if_true_node)
+                        node_states
+                            .get(&if_true_node)
+                            .is_some_and(|(_, state)| state.outputs.is_some())
                     }
                     Some(false) => {
                         let (if_false_node, _) = workflow_graph
                             .connected_input_by_port_name(n, "if_false")
                             .expect("No `if_false` port on `IfElse` node");
 
-                        nodes_with_outputs.contains(&if_false_node)
+                        node_states
+                            .get(&if_false_node)
+                            .is_some_and(|(_, state)| state.outputs.is_some())
                     }
                 }
             } else {
-                workflow_graph.all_inputs(*n, |incoming| nodes_with_outputs.contains(&incoming))
+                workflow_graph.all_inputs(*n, |incoming| {
+                    node_states
+                        .get(&incoming)
+                        .is_some_and(|(_, state)| state.outputs.is_some())
+                })
             }
         })
         .collect();
@@ -711,10 +855,10 @@ async fn prepare_ready_nodes(
     for ready_node in &ready_nodes {
         context
             .workflow_state
-            .write(NodeEvent {
+            .write(Event::Node(NodeEvent {
                 loc: context.subworkflow_context.with_node(*ready_node),
                 status: crate::event::NodeStatus::Scheduled {},
-            })
+            }))
             .await?;
     }
 
@@ -723,8 +867,7 @@ async fn prepare_ready_nodes(
 
 fn should_traverse_if_else_port(
     workflow_graph: &WorkflowGraph,
-    node_cond: &HashMap<NodeIndex, bool>,
-    n: NodeIndex,
+    node_cond: Option<bool>,
     p: portgraph::PortIndex,
 ) -> bool {
     let port_name = workflow_graph
@@ -732,8 +875,8 @@ fn should_traverse_if_else_port(
         .expect("Failed to get port name");
     match &**port_name {
         "pred" => true,
-        "if_true" => matches!(node_cond.get(&n), Some(true)),
-        "if_false" => matches!(node_cond.get(&n), Some(false)),
+        "if_true" => matches!(node_cond, Some(true)),
+        "if_false" => matches!(node_cond, Some(false)),
         _ => panic!("Unexpected port name for `IfElse`"),
     }
 }
@@ -779,6 +922,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
+        event::NodeStatus,
         executor::{
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
         },
@@ -855,9 +999,9 @@ mod tests {
 
         assert_eq!(actions.len(), 2);
         let action0 = actions[0].as_ref().unwrap();
-        assert!(matches!(action0.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
         let action1 = actions[1].as_ref().unwrap();
-        assert!(matches!(action1.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action1.kind, ActionKind::SetComplete { .. }));
 
         Ok(())
     }
@@ -907,7 +1051,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         let action0 = actions[0].as_ref().unwrap();
         assert_eq!(action0.loc, Location::from_node_index_iter([input_idx]));
-        assert!(matches!(action0.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
         let input_complete_event = stream.next().await.unwrap();
@@ -934,10 +1078,13 @@ mod tests {
             action0.loc,
             Location::from_node_index_iter([workflow_graph.output_idx()])
         );
-        assert!(matches!(action0.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
         let action1 = actions[1].as_ref().unwrap();
-        assert_eq!(action1.loc, Location::root());
-        assert!(matches!(action1.kind, ActionKind::MarkComplete { .. }));
+        assert_eq!(
+            action1.loc,
+            Location::from_node_index_iter([workflow_graph.output_idx()])
+        );
+        assert!(matches!(action1.kind, ActionKind::WorkflowFinished {}));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
         let output_complete_event = stream.next().await.unwrap();
@@ -1039,10 +1186,10 @@ mod tests {
             action0.loc,
             Location::from_node_index_iter([subworkflow_input_idx])
         );
-        assert!(matches!(action0.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
         let action1 = actions[1].as_ref().unwrap();
         assert_eq!(action1.loc, Location::from_node_index_iter([a_input_idx]));
-        assert!(matches!(action1.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action1.kind, ActionKind::SetComplete { .. }));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
         let subworkflow_input_complete_event = stream.next().await.unwrap();
@@ -1082,7 +1229,7 @@ mod tests {
             action0.loc,
             Location::from_node_index_iter([eval_idx, inner_a_input_idx])
         );
-        assert!(matches!(action0.kind, ActionKind::MarkComplete { .. }));
+        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
         let inner_a_input_complete_event = stream.next().await.unwrap();
@@ -1114,9 +1261,12 @@ mod tests {
             json!({"out": 1}),
         );
 
-        // TODO: Does this represent what the updater will actually do?
-        let mut eval_complete_event = inner_output_complete_event.clone();
-        eval_complete_event.loc = Location::from_node_index_iter([eval_idx]);
+        let eval_complete_event = Event::Node(NodeEvent {
+            loc: Location::from_node_index_iter([eval_idx]),
+            status: NodeStatus::Complete {
+                outputs: inner_output_complete_outputs.clone(),
+            },
+        });
         workflow_state.write(inner_output_complete_event).await?;
         workflow_state.write(eval_complete_event).await?;
         let context = OrchestrationContext {

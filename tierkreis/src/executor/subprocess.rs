@@ -545,7 +545,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -589,7 +602,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -648,19 +674,27 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&NodeEvent {
+        assert!(events.contains(&Event::Node(NodeEvent {
             loc: loc1.clone(),
-            status: NodeStatus::Running
-        }));
-        assert!(events.contains(&NodeEvent {
+            status: NodeStatus::Running { state: None },
+        })));
+        assert!(events.contains(&Event::Node(NodeEvent {
             loc: loc2.clone(),
-            status: NodeStatus::Running
-        }));
+            status: NodeStatus::Running { state: None },
+        })));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
             .iter()
-            .find(|event| event.is_complete() && event.loc == loc1)
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::Node(NodeEvent {
+                        loc,
+                        status: NodeStatus::Complete { .. }
+                    }) if loc == &loc1
+                )
+            })
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -670,7 +704,15 @@ mod tests {
         );
         let complete1 = events
             .iter()
-            .find(|event| event.is_complete() && event.loc == loc2)
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::Node(NodeEvent {
+                        loc,
+                        status: NodeStatus::Complete { .. }
+                    }) if loc == &loc2
+                )
+            })
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -710,7 +752,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             "file",
@@ -742,14 +797,23 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
-        matches!(
-            &events[1].status,
-            NodeStatus::Error {
-                error,
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
                 ..
-            } if error == "Subprocess failed with exit code: exit status: 1",
-        );
+            })
+        ));
+        assert!(matches!(
+            &events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Error {
+                    error,
+                    ..
+                },
+                ..
+            }) if error == "Subprocess failed with exit code: exit status: 1"
+        ));
 
         Ok(())
     }
@@ -782,12 +846,24 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, NodeStatus::Running);
+        assert!(matches!(
+            event,
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
 
         executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, NodeStatus::Cancelled);
+        assert!(matches!(
+            event,
+            Event::Node(NodeEvent {
+                status: NodeStatus::Cancelled {},
+                ..
+            })
+        ));
 
         Ok(())
     }
@@ -834,7 +910,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, NodeStatus::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             "file",
