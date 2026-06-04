@@ -140,7 +140,7 @@ impl RuntimeState for SqliteRuntimeState {
         // Cannot return errors from this trait method, so best-effort initialize.
         let run = read_workflowrun(run_id, attempt, &self.connection);
         // Should fail?
-        if let Err(_) = run {
+        if run.is_err() {
             _ = insert_default_workflowrun(run_id, attempt, &self.connection);
         }
 

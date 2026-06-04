@@ -1,5 +1,5 @@
 /*!
-This module defines the queries for reading the workflow state from the SQlite database.
+This module defines the queries for reading the workflow state from the `SQlite` database.
 */
 use std::collections::HashMap;
 use std::hash::BuildHasher;
@@ -59,7 +59,7 @@ pub fn read_workflowrun(
 ///
 /// Returns an error when the insert fails.
 pub fn insert_workflow_run(
-    run: WorkflowRun,
+    run: &WorkflowRun,
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<()> {
     use crate::state::schema::workflow_runs::dsl as wr;
@@ -69,7 +69,7 @@ pub fn insert_workflow_run(
         .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
 
     diesel::insert_into(wr::workflow_runs)
-        .values(&run)
+        .values(run)
         .on_conflict((wr::id, wr::attempt))
         .do_nothing()
         .execute(&mut conn)
@@ -120,12 +120,12 @@ pub fn insert_default_workflowrun(
         id: run_id.to_string(),
         attempt: attempt_i32,
         workflow_id: workflow_id.clone(),
-        run_metadata: br#"{}"#.to_vec(),
+        run_metadata: br"{}".to_vec(),
         status: None,
         started_time: None,
     };
 
-    insert_workflow_run(run.clone(), connection)?;
+    insert_workflow_run(&run, connection)?;
     Ok(run)
 }
 
@@ -262,7 +262,7 @@ pub fn add_run_metadata<S: BuildHasher>(
     let run = match run {
         Ok(run) => run,
         Err(diesel::result::Error::NotFound) => {
-            insert_default_workflowrun(run_id.clone(), attempt, connection)
+            insert_default_workflowrun(run_id, attempt, connection)
                 .map_err(|err| miette!("Failed to insert default run for metadata update: {err}"))?
         }
         Err(err) => {
