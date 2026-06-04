@@ -7,7 +7,7 @@ use diesel::prelude::*;
 // Workflows
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Debug, Clone, AsChangeset)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Debug, Clone)]
 #[diesel(table_name = workflows)]
 pub struct Workflow {
     pub id: String, // UUID string
@@ -20,7 +20,7 @@ pub struct Workflow {
 // -----------------------------------------------------------------------------
 
 #[derive(
-    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset,
+    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone,
 )]
 #[diesel(belongs_to(Workflow, foreign_key = workflow_id))]
 #[diesel(primary_key(id, attempt))]
@@ -80,7 +80,7 @@ pub struct UpsertNodeState {
 // -----------------------------------------------------------------------------
 
 #[derive(
-    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone, AsChangeset,
+    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone,
 )]
 #[diesel(belongs_to(NodeState, foreign_key = node_state_id))]
 #[diesel(table_name = node_outputs)]
