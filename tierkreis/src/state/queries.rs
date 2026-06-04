@@ -20,15 +20,6 @@ pub struct RunAttemptState {
     pub metadata: HashMap<String, String>,
 }
 
-fn parse_location(raw: &str) -> miette::Result<Location> {
-    raw.parse()
-        .map_err(|err| miette!("Failed to parse node location '{raw}': {err}"))
-}
-
-fn serialize_location(loc: &Location) -> String {
-    loc.to_string()
-}
-
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
 }
@@ -106,8 +97,7 @@ pub fn run_attempt_state_or_default(
             ..Default::default()
         };
 
-        let loc = parse_location(&db_node.node_location)?;
-        nodes.insert(loc, node);
+        nodes.insert(db_node.node_location.clone(), node);
     }
 
     Ok(RunAttemptState { nodes, metadata })
@@ -134,12 +124,10 @@ pub fn update_node_state(
 
     let attempt_i32 = i32::try_from(attempt)
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let loc_str = serialize_location(loc);
-
     let row = UpsertNodeState {
         run_id: run_id.to_string(),
         attempt: attempt_i32,
-        node_location: loc_str,
+        node_location: loc.clone(),
         scheduled_time: state.scheduled_time.map(|t| t.naive_utc()),
         queued_time: state.queued_time.map(|t| t.naive_utc()),
         running_time: state.running_time.map(|t| t.naive_utc()),
@@ -186,12 +174,10 @@ pub fn read_node_state(
 
     let attempt_i32 = i32::try_from(attempt)
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let loc_str = serialize_location(loc);
-
     let db_node = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
-        .filter(ns::node_location.eq(loc_str.clone()))
+        .filter(ns::node_location.eq(loc.clone()))
         .first::<NodeState>(&mut conn)
         .optional()
         .map_err(|err| {

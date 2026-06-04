@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+use crate::location::Location;
 use crate::state::schema::{node_outputs, node_states, workflow_runs, workflows};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -47,7 +48,7 @@ pub struct NodeState {
     pub id: i32,
     pub run_id: String,
     pub attempt: i32,
-    pub node_location: String,
+    pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,
@@ -64,7 +65,7 @@ pub struct NodeState {
 pub struct UpsertNodeState {
     pub run_id: String,
     pub attempt: i32,
-    pub node_location: String,
+    pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,

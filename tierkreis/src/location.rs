@@ -5,6 +5,12 @@ runtime to specify the place in a Workflow graph that something has happened.
 use portgraph::NodeIndex;
 use std::str::FromStr;
 
+use diesel::deserialize::{self, FromSql};
+use diesel::serialize::{self, Output, ToSql};
+use diesel::sqlite::{Sqlite, SqliteValue};
+use diesel::sql_types::Text;
+use diesel::{AsExpression, FromSqlRow};
+
 /// A component of the path for a [`Location`].
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LocationComponent {
@@ -19,7 +25,8 @@ pub enum LocationComponent {
 ///
 /// * The "root" of the Graph itself (if the path is empty).
 /// * A specific node in a Graph or a Subgraph inside a higher order node.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, AsExpression, FromSqlRow)]
+#[diesel(sql_type = Text)]
 pub struct Location(Vec<LocationComponent>);
 
 impl Location {
@@ -93,6 +100,22 @@ impl FromStr for Location {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let nodes = serde_json::from_str::<Vec<usize>>(s)?;
         Ok(Self::from_usize_iter(nodes))
+    }
+}
+
+impl ToSql<Text, Sqlite> for Location {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
+        out.set_value(self.to_string());
+        Ok(serialize::IsNull::No)
+    }
+}
+
+impl FromSql<Text, Sqlite> for Location {
+    fn from_sql(value: SqliteValue<'_, '_, '_>) -> deserialize::Result<Self> {
+        let serialized = <String as FromSql<Text, Sqlite>>::from_sql(value)?;
+        serialized
+            .parse::<Location>()
+            .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)
     }
 }
 
