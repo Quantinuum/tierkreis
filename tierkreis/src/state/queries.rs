@@ -1,5 +1,20 @@
+/*!
+This module defines the queries for reading the workflow state from the SQlite database.
+*/
+use std::collections::HashMap;
+use std::hash::BuildHasher;
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
+use miette::miette;
+
+use crate::location::Location;
+use crate::state::models::{NodeState, UpsertNodeState, Workflow, WorkflowRun};
+
 /// [`RunAttemptState`] is the full state of a run.
 #[derive(Debug, Default)]
+#[allow(missing_docs)]
 pub struct RunAttemptState {
     pub nodes: HashMap<Location, crate::state::interface::NodeState>,
     pub metadata: HashMap<String, String>,
@@ -44,9 +59,9 @@ pub fn run_attempt_state_or_default(
     let run = wr::workflow_runs
         .filter(wr::id.eq(run_id_str.clone()))
         .filter(wr::attempt.eq(attempt_i32))
-        .order(wr::started_at.asc())
-        .select(WorkflowRunModel::as_select())
-        .first::<WorkflowRunModel>(&mut conn)
+        .order(wr::started_time.asc())
+        .select(WorkflowRun::as_select())
+        .first::<WorkflowRun>(&mut conn)
         .optional()
         .map_err(|err| miette!("Failed to query workflow run: {err}"))?;
 
@@ -57,7 +72,7 @@ pub fn run_attempt_state_or_default(
     };
 
     let metadata =
-        serde_json::from_str::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
+        serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
             miette!(
                 "Failed to parse run metadata JSON for run {}: {err}",
                 run.id
@@ -67,8 +82,8 @@ pub fn run_attempt_state_or_default(
     let db_nodes = ns::node_states
         .filter(ns::run_id.eq(run.id.clone()))
         .filter(ns::attempt.eq(run.attempt))
-        .select(NodeStateModel::as_select())
-        .load::<NodeStateModel>(&mut conn)
+        .select(NodeState::as_select())
+        .load::<NodeState>(&mut conn)
         .map_err(|err| {
             miette!(
                 "Failed to load node states for run {} attempt {}: {err}",
@@ -121,8 +136,7 @@ pub fn update_node_state(
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
     let loc_str = serialize_location(loc);
 
-    let row = NodeStateModel {
-        id: uuid::Uuid::now_v7().to_string(),
+    let row = UpsertNodeState {
         run_id: run_id.to_string(),
         attempt: attempt_i32,
         node_location: loc_str,
@@ -142,7 +156,12 @@ pub fn update_node_state(
         .do_update()
         .set(&row)
         .execute(&mut conn)
-        .map_err(|err| miette!("Failed to upsert node state for run {run_id} attempt {attempt} location {:?}: {err}", loc))?;
+        .map_err(|err| {
+            miette!(
+                "Failed to upsert node state for run {run_id} attempt {attempt} location {:?}: {err}",
+                loc
+            )
+        })?;
 
     Ok(())
 }
@@ -173,7 +192,7 @@ pub fn read_node_state(
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
         .filter(ns::node_location.eq(loc_str.clone()))
-        .first::<NodeStateModel>(&mut conn)
+        .first::<NodeState>(&mut conn)
         .optional()
         .map_err(|err| {
             miette!(
@@ -227,7 +246,7 @@ pub fn add_run_metadata<S: BuildHasher>(
     let run = wr::workflow_runs
         .filter(wr::id.eq(run_id_str.clone()))
         .filter(wr::attempt.eq(attempt_i32))
-        .first::<WorkflowRunModel>(&mut conn);
+        .first::<WorkflowRun>(&mut conn);
     let run = match run {
         Ok(run) => run,
         Err(diesel::result::Error::NotFound) => {
@@ -242,7 +261,7 @@ pub fn add_run_metadata<S: BuildHasher>(
     };
 
     let mut metadata =
-        serde_json::from_str::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
+        serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
             miette!(
                 "Failed to parse existing run metadata JSON for run {}: {err}",
                 run.id
@@ -251,7 +270,7 @@ pub fn add_run_metadata<S: BuildHasher>(
 
     metadata.extend(new_metadata);
 
-    let updated_metadata_json = serde_json::to_string(&metadata).map_err(|err| {
+    let updated_metadata_json = serde_json::to_vec(&metadata).map_err(|err| {
         miette!(
             "Failed to serialize updated metadata to JSON for run {}: {err}",
             run.id
@@ -301,11 +320,11 @@ pub fn read_run_metadata(
     let run = wr::workflow_runs
         .filter(wr::id.eq(run_id_str.clone()))
         .filter(wr::attempt.eq(attempt_i32))
-        .first::<WorkflowRunModel>(&mut conn)
+        .first::<WorkflowRun>(&mut conn)
         .map_err(|err| miette!("Failed to query workflow run for metadata update: {err}"))?;
 
     let metadata =
-        serde_json::from_str::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
+        serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
             miette!(
                 "Failed to parse existing run metadata JSON for run {}: {err}",
                 run.id
@@ -316,17 +335,17 @@ pub fn read_run_metadata(
 }
 
 fn insert_default_run(
-    run_id_str: &String,
+    run_id_str: &str,
     attempt: i32,
     connection: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<WorkflowRunModel> {
+) -> miette::Result<WorkflowRun> {
     use crate::state::schema::{workflow_runs::dsl as wr, workflows::dsl as wf};
 
     let now = Utc::now().naive_utc();
     let workflow = Workflow {
         id: uuid::Uuid::nil().to_string(), // TODO: Get actual workflow ID if possible.
         name: None,
-        created_at: now,
+        created_time: Some(now),
     };
 
     diesel::insert_or_ignore_into(wf::workflows)
@@ -336,13 +355,13 @@ fn insert_default_run(
             miette!("Failed to insert default workflow row for run {run_id_str}: {err}")
         })?;
 
-    let run = WorkflowRunModel {
-        id: run_id_str.clone(),
+    let run = WorkflowRun {
+        id: run_id_str.to_owned(),
         attempt,
-        workflow_id: workflow.id,
-        run_metadata: "{}".to_string(),
+        workflow_id: workflow.id.clone(),
+        run_metadata: br#"{}"#.to_vec(),
         status: None, // Is this the correct default?
-        started_at: None,
+        started_time: None,
     };
 
     diesel::insert_into(wr::workflow_runs)
@@ -358,4 +377,3 @@ fn insert_default_run(
 
     Ok(run)
 }
-

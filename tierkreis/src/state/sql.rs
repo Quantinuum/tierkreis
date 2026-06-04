@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 use crate::state::{
     interface::RunAttemptUpdated,
-    models::{
+    queries::{
         add_run_metadata, read_node_state, read_run_metadata, run_attempt_state_or_default,
         update_node_state,
     },
