@@ -2,16 +2,18 @@
 
 diesel::table! {
     node_outputs (id) {
-        id -> Text,
-        node_state_id -> Text,
+        id -> Integer,
+        node_state_id -> Integer,
         name -> Text,
-        asset_location -> Text,
+        asset_kind -> Text,
+        storage_name -> Text,
+        asset_key -> Text,
     }
 }
 
 diesel::table! {
     node_states (id) {
-        id -> Text,
+        id -> Integer,
         run_id -> Text,
         attempt -> Integer,
         node_location -> Text,
@@ -31,9 +33,9 @@ diesel::table! {
         id -> Text,
         attempt -> Integer,
         workflow_id -> Text,
-        run_metadata -> Text,
+        run_metadata -> Binary,
         status -> Nullable<Text>,
-        started_at -> Nullable<Timestamp>,
+        started_time -> Nullable<Timestamp>,
     }
 }
 
@@ -41,7 +43,7 @@ diesel::table! {
     workflows (id) {
         id -> Text,
         name -> Nullable<Text>,
-        created_at -> Timestamp,
+        created_time -> Nullable<Timestamp>,
     }
 }
 
