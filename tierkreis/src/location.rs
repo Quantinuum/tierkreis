@@ -7,8 +7,8 @@ use std::str::FromStr;
 
 use diesel::deserialize::{self, FromSql};
 use diesel::serialize::{self, Output, ToSql};
-use diesel::sqlite::{Sqlite, SqliteValue};
 use diesel::sql_types::Text;
+use diesel::sqlite::{Sqlite, SqliteValue};
 use diesel::{AsExpression, FromSqlRow};
 
 /// A component of the path for a [`Location`].

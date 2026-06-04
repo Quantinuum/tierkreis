@@ -6,7 +6,7 @@ use std::hash::BuildHasher;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
+use diesel::r2d2::{ConnectionManager, Pool};
 use miette::miette;
 
 use crate::location::Location;
@@ -24,20 +24,18 @@ fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
 }
 
-/// Load the run-attempt state for a workflow run, inserting default rows when the
-/// run does not yet exist.
+/// Load the run-attempt state for a workflow run if it exists.
 ///
 /// # Errors
 ///
-/// Returns an error when the connection pool cannot be accessed, the workflow run
-/// lookup fails, default rows cannot be inserted, metadata JSON cannot be parsed,
-/// or node state rows cannot be loaded.
-pub fn run_attempt_state_or_default(
+/// If the run does not exists.
+/// Returns an error when the connection pool cannot be accessed.
+pub fn read_workflowrun(
     run_id: uuid::Uuid,
     attempt: u32,
     connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<RunAttemptState> {
-    use crate::state::schema::{node_states::dsl as ns, workflow_runs::dsl as wr};
+) -> miette::Result<WorkflowRun> {
+    use crate::state::schema::workflow_runs::dsl as wr;
 
     let mut conn = connection
         .get()
@@ -45,62 +43,90 @@ pub fn run_attempt_state_or_default(
 
     let attempt_i32 = i32::try_from(attempt)
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let run_id_str = run_id.to_string();
 
-    let run = wr::workflow_runs
-        .filter(wr::id.eq(run_id_str.clone()))
+    wr::workflow_runs
+        .filter(wr::id.eq(run_id.to_string()))
         .filter(wr::attempt.eq(attempt_i32))
         .order(wr::started_time.asc())
         .select(WorkflowRun::as_select())
         .first::<WorkflowRun>(&mut conn)
-        .optional()
-        .map_err(|err| miette!("Failed to query workflow run: {err}"))?;
+        .map_err(|err| miette!("Failed to query workflow run: {err}"))
+}
 
-    let run = match run {
-        Some(run) => run,
-        None => insert_default_run(&run_id_str, attempt_i32, &mut conn)
-            .map_err(|err| miette!("Failed to insert default run for metadata update: {err}"))?,
-    };
+/// Insert a workflow run row.
+///
+/// # Errors
+///
+/// Returns an error when the insert fails.
+pub fn insert_workflow_run(
+    run: WorkflowRun,
+    connection: &Pool<ConnectionManager<SqliteConnection>>,
+) -> miette::Result<()> {
+    use crate::state::schema::workflow_runs::dsl as wr;
 
-    let metadata =
-        serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
-            miette!(
-                "Failed to parse run metadata JSON for run {}: {err}",
-                run.id
-            )
-        })?;
+    let mut conn = connection
+        .get()
+        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
 
-    let db_nodes = ns::node_states
-        .filter(ns::run_id.eq(run.id.clone()))
-        .filter(ns::attempt.eq(run.attempt))
-        .select(NodeState::as_select())
-        .load::<NodeState>(&mut conn)
+    diesel::insert_into(wr::workflow_runs)
+        .values(&run)
+        .on_conflict((wr::id, wr::attempt))
+        .do_nothing()
+        .execute(&mut conn)
         .map_err(|err| {
             miette!(
-                "Failed to load node states for run {} attempt {}: {err}",
+                "Failed to insert workflow run row for run {} attempt {}: {err}",
                 run.id,
                 run.attempt
             )
         })?;
 
-    let mut nodes = HashMap::new();
-    for db_node in db_nodes {
-        let node = crate::state::interface::NodeState {
-            scheduled_time: db_node.scheduled_time.map(utc_timestamp),
-            queued_time: db_node.queued_time.map(utc_timestamp),
-            running_time: db_node.running_time.map(utc_timestamp),
-            complete_time: db_node.complete_time.map(utc_timestamp),
-            cancelled_time: db_node.cancelled_time.map(utc_timestamp),
-            error_time: db_node.error_time.map(utc_timestamp),
-            error: db_node.error.clone(),
-            error_detail: db_node.error_detail.clone(),
-            ..Default::default()
-        };
+    Ok(())
+}
 
-        nodes.insert(db_node.node_location.clone(), node);
-    }
+/// Insert a default workflow run row for a given run ID and attempt.
+/// Also insert a default workflow row if it does not already exist.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the insert
+/// fails.
+pub fn insert_default_workflowrun(
+    run_id: uuid::Uuid,
+    attempt: u32,
+    connection: &Pool<ConnectionManager<SqliteConnection>>,
+) -> miette::Result<WorkflowRun> {
+    use crate::state::schema::workflows::dsl as wf;
 
-    Ok(RunAttemptState { nodes, metadata })
+    let mut conn = connection
+        .get()
+        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+
+    let attempt_i32 = i32::try_from(attempt)
+        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+
+    let workflow_id = uuid::Uuid::nil().to_string();
+    let workflow = Workflow {
+        id: workflow_id.clone(),
+        name: None,
+        created_time: Some(Utc::now().naive_utc()),
+    };
+
+    diesel::insert_or_ignore_into(wf::workflows)
+        .values(&workflow)
+        .execute(&mut conn)
+        .map_err(|err| miette!("Failed to insert workflow row for run {}: {err}", run_id))?;
+    let run = WorkflowRun {
+        id: run_id.to_string(),
+        attempt: attempt_i32,
+        workflow_id: workflow_id.clone(),
+        run_metadata: br#"{}"#.to_vec(),
+        status: None,
+        started_time: None,
+    };
+
+    insert_workflow_run(run.clone(), connection)?;
+    Ok(run)
 }
 
 /// Upsert the current node state for a workflow run at a given location.
@@ -236,7 +262,7 @@ pub fn add_run_metadata<S: BuildHasher>(
     let run = match run {
         Ok(run) => run,
         Err(diesel::result::Error::NotFound) => {
-            insert_default_run(&run_id_str, attempt_i32, &mut conn)
+            insert_default_workflowrun(run_id.clone(), attempt, connection)
                 .map_err(|err| miette!("Failed to insert default run for metadata update: {err}"))?
         }
         Err(err) => {
@@ -246,8 +272,8 @@ pub fn add_run_metadata<S: BuildHasher>(
         }
     };
 
-    let mut metadata =
-        serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
+    let mut metadata = serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata)
+        .map_err(|err| {
             miette!(
                 "Failed to parse existing run metadata JSON for run {}: {err}",
                 run.id
@@ -318,48 +344,4 @@ pub fn read_run_metadata(
         })?;
 
     Ok(metadata)
-}
-
-fn insert_default_run(
-    run_id_str: &str,
-    attempt: i32,
-    connection: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<WorkflowRun> {
-    use crate::state::schema::{workflow_runs::dsl as wr, workflows::dsl as wf};
-
-    let now = Utc::now().naive_utc();
-    let workflow = Workflow {
-        id: uuid::Uuid::nil().to_string(), // TODO: Get actual workflow ID if possible.
-        name: None,
-        created_time: Some(now),
-    };
-
-    diesel::insert_or_ignore_into(wf::workflows)
-        .values(&workflow)
-        .execute(connection)
-        .map_err(|err| {
-            miette!("Failed to insert default workflow row for run {run_id_str}: {err}")
-        })?;
-
-    let run = WorkflowRun {
-        id: run_id_str.to_owned(),
-        attempt,
-        workflow_id: workflow.id.clone(),
-        run_metadata: br#"{}"#.to_vec(),
-        status: None, // Is this the correct default?
-        started_time: None,
-    };
-
-    diesel::insert_into(wr::workflow_runs)
-        .values(&run)
-        .on_conflict((wr::id, wr::attempt))
-        .do_nothing()
-        .execute(connection)
-        .map_err(|err| {
-            miette!(
-                "Failed to insert default workflow run row for run {run_id_str} attempt {attempt}: {err}"
-            )
-        })?;
-
-    Ok(run)
 }

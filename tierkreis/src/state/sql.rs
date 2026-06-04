@@ -28,8 +28,8 @@ use uuid::Uuid;
 use crate::state::{
     interface::RunAttemptUpdated,
     queries::{
-        add_run_metadata, read_node_state, read_run_metadata, run_attempt_state_or_default,
-        update_node_state,
+        add_run_metadata, insert_default_workflowrun, read_node_state, read_run_metadata,
+        read_workflowrun, update_node_state,
     },
 };
 use crate::{
@@ -138,7 +138,11 @@ impl RuntimeState for SqliteRuntimeState {
     fn workflow_state(&self, run_id: Uuid, attempt: u32) -> Arc<dyn WorkflowState> {
         // Insert the default if the value does not yet exist.
         // Cannot return errors from this trait method, so best-effort initialize.
-        let _ = run_attempt_state_or_default(run_id, attempt, &self.connection);
+        let run = read_workflowrun(run_id, attempt, &self.connection);
+        // Should fail?
+        if let Err(_) = run {
+            _ = insert_default_workflowrun(run_id, attempt, &self.connection);
+        }
 
         Arc::new(SqliteWorkflowState {
             global_state: self.connection.clone(),
@@ -178,17 +182,14 @@ impl SqliteWorkflowState {}
 
 impl WorkflowState for SqliteWorkflowState {
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
-        let global_state = &self.global_state;
-        let mut run_state =
-            match run_attempt_state_or_default(self.run_id, self.attempt, global_state) {
-                Ok(run_state) => run_state,
-                Err(err) => return future::ready(Err(err)).boxed(),
-            };
-
         let mut send_update = false;
         let mut send_workflow_stopped = false;
         let loc = event.loc.clone();
-        let node_state = run_state.nodes.entry(loc.clone()).or_default();
+        let mut node_state =
+            match read_node_state(self.run_id, self.attempt, &loc, &self.global_state) {
+                Ok(node_state) => node_state,
+                Err(err) => return future::ready(Err(err)).boxed(),
+            };
 
         match event.status {
             crate::event::Status::Scheduled => {
@@ -241,7 +242,7 @@ impl WorkflowState for SqliteWorkflowState {
             }
         }
         if let Err(err) = update_node_state(
-            node_state,
+            &mut node_state,
             &loc,
             self.run_id,
             self.attempt,
@@ -267,9 +268,9 @@ impl WorkflowState for SqliteWorkflowState {
     }
 
     fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>> {
-        let run_state = read_node_state(self.run_id, self.attempt, location, &self.global_state);
+        let node_state = read_node_state(self.run_id, self.attempt, location, &self.global_state);
 
-        future::ready(run_state).boxed()
+        future::ready(node_state).boxed()
     }
 
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {

@@ -20,9 +20,7 @@ pub struct Workflow {
 // Workflow Runs
 // -----------------------------------------------------------------------------
 
-#[derive(
-    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone,
-)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
 #[diesel(belongs_to(Workflow, foreign_key = workflow_id))]
 #[diesel(primary_key(id, attempt))]
 #[diesel(table_name = workflow_runs)]
@@ -39,9 +37,7 @@ pub struct WorkflowRun {
 // Node States
 // -----------------------------------------------------------------------------
 
-#[derive(
-    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone,
-)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
 #[diesel(belongs_to(WorkflowRun, foreign_key = run_id))]
 #[diesel(table_name = node_states)]
 pub struct NodeState {
@@ -80,9 +76,7 @@ pub struct UpsertNodeState {
 // Node Outputs
 // -----------------------------------------------------------------------------
 
-#[derive(
-    Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone,
-)]
+#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
 #[diesel(belongs_to(NodeState, foreign_key = node_state_id))]
 #[diesel(table_name = node_outputs)]
 pub struct NodeOutput {
@@ -93,5 +87,3 @@ pub struct NodeOutput {
     pub storage_name: String,
     pub asset_key: String,
 }
-
-
