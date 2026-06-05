@@ -129,14 +129,13 @@ pub fn insert_default_workflowrun(
     Ok(run)
 }
 
-/// Upsert the current node state for a workflow run at a given location.
+/// Ensure a node-state row exists for the given run/location.
 ///
 /// # Errors
 ///
-/// Returns an error when the connection pool cannot be accessed or the node state
-/// upsert fails.
-pub fn update_node_state(
-    state: &mut crate::state::interface::NodeState,
+/// Returns an error when the connection pool cannot be accessed or the insert
+/// operation fails.
+pub fn insert_default_node_state(
     loc: &Location,
     run_id: uuid::Uuid,
     attempt: u32,
@@ -150,34 +149,128 @@ pub fn update_node_state(
 
     let attempt_i32 = i32::try_from(attempt)
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+
     let row = UpsertNodeState {
         run_id: run_id.to_string(),
         attempt: attempt_i32,
         node_location: loc.clone(),
-        scheduled_time: state.scheduled_time.map(|t| t.naive_utc()),
-        queued_time: state.queued_time.map(|t| t.naive_utc()),
-        running_time: state.running_time.map(|t| t.naive_utc()),
-        complete_time: state.complete_time.map(|t| t.naive_utc()),
-        cancelled_time: state.cancelled_time.map(|t| t.naive_utc()),
-        error_time: state.error_time.map(|t| t.naive_utc()),
-        error: state.error.clone(),
-        error_detail: state.error_detail.clone(),
+        scheduled_time: None,
+        queued_time: None,
+        running_time: None,
+        complete_time: None,
+        cancelled_time: None,
+        error_time: None,
+        error: None,
+        error_detail: None,
     };
 
     diesel::insert_into(ns::node_states)
         .values(&row)
         .on_conflict((ns::run_id, ns::attempt, ns::node_location))
-        .do_update()
-        .set(&row)
+        .do_nothing()
         .execute(&mut conn)
         .map_err(|err| {
             miette!(
-                "Failed to upsert node state for run {run_id} attempt {attempt} location {:?}: {err}",
+                "Failed to ensure node state row for run {run_id} attempt {attempt} location {:?}: {err}",
                 loc
             )
         })?;
 
     Ok(())
+}
+
+macro_rules! define_set_time_if_none {
+    ($fn_name:ident, $field:ident, $label:literal) => {
+        #[doc = "Set `"]
+        #[doc = stringify!($field)]
+        #[doc = "` iff it is currently unset. \n\n# Errors\n\nReturns an error if the connection pool cannot be accessed or the update fails."]
+
+        pub fn $fn_name(
+            loc: &Location,
+            run_id: uuid::Uuid,
+            attempt: u32,
+            connection: &Pool<ConnectionManager<SqliteConnection>>,
+        ) -> miette::Result<bool> {
+            use crate::state::schema::node_states::dsl as ns;
+
+            let mut conn = connection
+                .get()
+                .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+            let attempt_i32 = i32::try_from(attempt)
+                .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+            let now = Utc::now().naive_utc();
+
+            let changed = diesel::update(
+                ns::node_states
+                    .filter(ns::run_id.eq(run_id.to_string()))
+                    .filter(ns::attempt.eq(attempt_i32))
+                    .filter(ns::node_location.eq(loc.clone()))
+                    .filter(ns::$field.is_null()),
+            )
+            .set(ns::$field.eq(now))
+            .execute(&mut conn)
+            .map_err(|err| {
+                miette!(
+                    "Failed to set {} time for run {run_id} attempt {attempt} location {:?}: {err}",
+                    $label,
+                    loc
+                )
+            })?;
+
+            Ok(changed > 0)
+        }
+    };
+}
+
+define_set_time_if_none!(set_scheduled_if_none, scheduled_time, "scheduled");
+define_set_time_if_none!(set_queued_if_none, queued_time, "queued");
+define_set_time_if_none!(set_running_if_none, running_time, "running");
+define_set_time_if_none!(set_complete_if_none, complete_time, "complete");
+define_set_time_if_none!(set_cancelled_if_none, cancelled_time, "cancelled");
+
+/// Set error fields iff `error_time` is currently unset.
+///
+/// # Errors
+///
+/// Returns an error if the connection pool cannot be accessed or the update fails.
+pub fn set_error_if_none(
+    loc: &Location,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    error: String,
+    detail: Option<String>,
+    connection: &Pool<ConnectionManager<SqliteConnection>>,
+) -> miette::Result<bool> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let mut conn = connection
+        .get()
+        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+    let attempt_i32 = i32::try_from(attempt)
+        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let now = Utc::now().naive_utc();
+
+    let changed = diesel::update(
+        ns::node_states
+            .filter(ns::run_id.eq(run_id.to_string()))
+            .filter(ns::attempt.eq(attempt_i32))
+            .filter(ns::node_location.eq(loc.clone()))
+            .filter(ns::error_time.is_null()),
+    )
+    .set((
+        ns::error_time.eq(now),
+        ns::error.eq(error),
+        ns::error_detail.eq(detail),
+    ))
+    .execute(&mut conn)
+    .map_err(|err| {
+        miette!(
+            "Failed to set error state for run {run_id} attempt {attempt} location {:?}: {err}",
+            loc
+        )
+    })?;
+
+    Ok(changed > 0)
 }
 
 /// Read the persisted node state for a workflow run at a given location.

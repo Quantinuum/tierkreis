@@ -12,7 +12,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use chrono::Utc;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -28,8 +27,9 @@ use uuid::Uuid;
 use crate::state::{
     interface::RunAttemptUpdated,
     queries::{
-        add_run_metadata, insert_default_workflowrun, read_node_state, read_run_metadata,
-        read_workflowrun, update_node_state,
+        add_run_metadata, insert_default_node_state, insert_default_workflowrun, read_node_state,
+        read_run_metadata, read_workflowrun, set_cancelled_if_none, set_complete_if_none,
+        set_error_if_none, set_queued_if_none, set_running_if_none, set_scheduled_if_none,
     },
 };
 use crate::{
@@ -182,77 +182,56 @@ impl SqliteWorkflowState {}
 
 impl WorkflowState for SqliteWorkflowState {
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
-        let mut send_update = false;
         let mut send_workflow_stopped = false;
         let loc = event.loc.clone();
-        let mut node_state =
-            match read_node_state(self.run_id, self.attempt, &loc, &self.global_state) {
-                Ok(node_state) => node_state,
-                Err(err) => return future::ready(Err(err)).boxed(),
-            };
-
-        match event.status {
-            crate::event::Status::Scheduled => {
-                if node_state.scheduled_time.is_none() {
-                    send_update = true;
-                    node_state.scheduled_time = Some(Utc::now());
-                }
-            }
-            crate::event::Status::Queued => {
-                if node_state.queued_time.is_none() {
-                    send_update = true;
-                    node_state.queued_time = Some(Utc::now());
-                }
-            }
-            crate::event::Status::Running => {
-                if node_state.running_time.is_none() {
-                    send_update = true;
-                    node_state.running_time = Some(Utc::now());
-                }
-            }
-            crate::event::Status::Complete {
-                outputs,
-                workflow_complete,
-            } => {
-                if node_state.complete_time.is_none() {
-                    send_update = true;
-                    node_state.complete_time = Some(Utc::now());
-                    node_state.outputs = Some(outputs);
-
-                    send_workflow_stopped = workflow_complete;
-                }
-            }
-            crate::event::Status::Cancelled => {
-                if node_state.cancelled_time.is_none() {
-                    send_update = true;
-                    node_state.cancelled_time = Some(Utc::now());
-
-                    send_workflow_stopped = true;
-                }
-            }
-            crate::event::Status::Error { error, detail } => {
-                if node_state.error_time.is_none() {
-                    send_update = true;
-                    node_state.error_time = Some(Utc::now());
-                    node_state.error = Some(error);
-                    node_state.error_detail = detail;
-
-                    send_workflow_stopped = true;
-                }
-            }
-        }
-        if let Err(err) = update_node_state(
-            &mut node_state,
-            &loc,
-            self.run_id,
-            self.attempt,
-            &self.global_state,
-        ) {
+        if let Err(err) =
+            insert_default_node_state(&loc, self.run_id, self.attempt, &self.global_state)
+        {
             return future::ready(Err(err)).boxed();
         }
+
+        let send_update_result = match event.status {
+            crate::event::Status::Scheduled => {
+                set_scheduled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            crate::event::Status::Queued => {
+                set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            crate::event::Status::Running => {
+                set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            crate::event::Status::Complete {
+                outputs: _,
+                workflow_complete,
+            } => {
+                send_workflow_stopped = workflow_complete;
+                set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            crate::event::Status::Cancelled => {
+                send_workflow_stopped = true;
+                set_cancelled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+            }
+            crate::event::Status::Error { error, detail } => {
+                send_workflow_stopped = true;
+                set_error_if_none(
+                    &loc,
+                    self.run_id,
+                    self.attempt,
+                    error,
+                    detail,
+                    &self.global_state,
+                )
+            }
+        };
+
+        let send_update = match send_update_result {
+            Ok(changed) => changed,
+            Err(err) => return future::ready(Err(err)).boxed(),
+        };
+
         let mut update_sender = self.update_sender.clone();
         async move {
-            if send_update {
+            if send_update || send_workflow_stopped {
                 update_sender
                     .send(RunAttemptUpdated {
                         run_id: self.run_id,
