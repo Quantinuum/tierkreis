@@ -43,7 +43,12 @@ def test_breakpoint(
         executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
     storage.clean_graph_files()
     run_graph(
-        storage, executor, graph, Circuit(2), enable_breakpoints=enable_breakpoints
+        storage,
+        executor,
+        graph,
+        Circuit(2),
+        enable_breakpoints=enable_breakpoints,
+        polling_interval_seconds=0.1,
     )
     if enable_breakpoints:
         assert not storage.is_node_finished(Loc())

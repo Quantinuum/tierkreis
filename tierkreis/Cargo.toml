@@ -14,6 +14,8 @@ bitvec = "1.0.1"
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.0", features = ["derive"] }
 dashmap = "6.1.0"
+diesel = { version = "2.3.0", features = ["sqlite", "chrono", "r2d2", "returning_clauses_for_sqlite_3_35"] }
+diesel_migrations = "2.3.2"
 futures = "0.3.32"
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
 portgraph = { version = "0.16.1", features = ["serde"] }
