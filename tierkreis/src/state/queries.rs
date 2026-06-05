@@ -12,14 +12,6 @@ use miette::miette;
 use crate::location::Location;
 use crate::state::models::{NodeState, UpsertNodeState, Workflow, WorkflowRun};
 
-/// [`RunAttemptState`] is the full state of a run.
-#[derive(Debug, Default)]
-#[allow(missing_docs)]
-pub struct RunAttemptState {
-    pub nodes: HashMap<Location, crate::state::interface::NodeState>,
-    pub metadata: HashMap<String, String>,
-}
-
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
 }
@@ -105,6 +97,8 @@ pub fn insert_default_workflowrun(
     let attempt_i32 = i32::try_from(attempt)
         .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
 
+    // This workflow should exist already, this is just to have a valid insert
+    // In the future this should not be necessary. Nil to make it clear it is not a real workflow.
     let workflow_id = uuid::Uuid::nil().to_string();
     let workflow = Workflow {
         id: workflow_id.clone(),
