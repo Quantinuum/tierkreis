@@ -6,7 +6,7 @@ from tests.workers.graph.stubs import (
     apply_twice,
     ApplyTwiceInput,
 )
-from tierkreis.builder import Graph, TypedGraphRef, Workflow
+from tierkreis.builder import Graph, TypedGraphRef
 from tierkreis.builtins import (
     conjugate,
     eq,
@@ -19,8 +19,7 @@ from tierkreis.builtins import (
     untuple,
     tkr_str,
 )
-from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.models import TKR
+from tierkreis.models import EmptyModel, TKR, Workflow
 
 
 class DoublerInput(NamedTuple):

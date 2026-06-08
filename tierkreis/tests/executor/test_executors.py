@@ -2,12 +2,11 @@ from pathlib import Path
 from uuid import UUID
 
 from tests.workers.hello_world_worker.stubs import greet
-from tierkreis.builder import Workflow, Graph
+from tierkreis.builder import Graph
 from tierkreis.builtins import neg
 from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.executor.multiple import MultipleExecutor
 from tierkreis.controller.executor.shell_executor import ShellExecutor
@@ -16,6 +15,7 @@ from tierkreis.controller.executor.task_executor import TaskExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
+from tierkreis.models import TKR, Workflow
 from tierkreis.storage import read_outputs
 
 WORKER_PATH = Path(__file__).parent.parent / "workers"

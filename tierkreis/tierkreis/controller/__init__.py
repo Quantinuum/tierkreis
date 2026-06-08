@@ -9,7 +9,6 @@ import logging
 from time import sleep
 from typing import TYPE_CHECKING
 
-from tierkreis.builder import Workflow
 from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
@@ -21,6 +20,7 @@ from tierkreis.controller.storage.walk import walk_node
 from tierkreis.controller.storage.walk_result import NodeRunData
 from tierkreis.exceptions import TierkreisError
 from tierkreis.logger_setup import set_tkr_logger
+from tierkreis.models import Workflow
 
 if TYPE_CHECKING:
     from tierkreis.controller.data.core import PortID, ValueRef

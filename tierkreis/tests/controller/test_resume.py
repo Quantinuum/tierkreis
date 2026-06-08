@@ -38,7 +38,6 @@ from tests.controller.typed_graphdata import (
     typed_map_simple,
     embed_graph,
 )
-from tierkreis.builder import Workflow
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
@@ -48,6 +47,7 @@ from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.data import WorkflowMetaData
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
+from tierkreis.models import Workflow
 from tierkreis.storage import read_outputs
 
 param_data: list[

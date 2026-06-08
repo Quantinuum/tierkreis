@@ -1,10 +1,10 @@
 from typing import NamedTuple
 
 import tierkreis.builtins.stubs as tkr_builtins
-from tierkreis.builder import Graph, Workflow
+from tierkreis.builder import Graph
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.models import TKR
+from tierkreis.models import TKR, Workflow
 
 
 def _loop_body_multiple_acc_untyped() -> GraphData:

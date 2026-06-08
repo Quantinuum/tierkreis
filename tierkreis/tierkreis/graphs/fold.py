@@ -2,10 +2,10 @@
 
 from typing import NamedTuple, TypeVar
 
-from tierkreis.builder import Graph, Workflow, TypedGraphRef
+from tierkreis.builder import Graph, TypedGraphRef
 from tierkreis.builtins import head, igt, tkr_len
-from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
+from tierkreis.models import TKR, Workflow
 
 
 class _FoldGraphOuterInputs[A: PType, B: PType](NamedTuple):

@@ -3,9 +3,9 @@
 # ruff: noqa: F821
 from typing import NamedTuple
 
-from tierkreis.builder import Graph, Workflow
+from tierkreis.builder import Graph
 from tierkreis.builtins import tkr_sleep
-from tierkreis.controller.data.models import TKR, OpaqueType
+from tierkreis.models import OpaqueType, TKR, Workflow
 from tierkreis.nexus_worker import (
     get_results,
     is_running,
