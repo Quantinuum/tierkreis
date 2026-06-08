@@ -1,0 +1,37 @@
+name: UV Audit
+
+permissions:
+  contents: read
+
+on: [pull_request]
+
+env:
+  CLICOLOR: 1
+
+jobs:
+  audit:
+    name: Run uv audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout Code 
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: "0"
+
+      - name: Set up uv & venv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+          cache-dependency-glob: uv.lock
+
+      - name: Do uv audit
+        uses: ./.github/workflows/run_check_matrix.yml
+        with:
+          command_name: "UV Audit"
+          command: "uv audit --no-dev"
+
