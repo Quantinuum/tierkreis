@@ -319,7 +319,7 @@ def bytes_from_ptype(ptype: PType, annotation: type[PType] | None = None) -> byt
             return json.dumps(ser, cls=TierkreisEncoder, indent=2).encode()
 
 
-def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
+def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T | None:
     """Find the value of type T from a serialized form.
 
     Uses the annotation to find the correct deserialization method, if available.
@@ -329,8 +329,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
     :param annotation: The annotation to coerce to, if available.
     :type annotation: type[T] | None, optional
     :raises TierkreisError: If the value cannot be coerced to the annotation.
-    :return: The coerced value.
-    :rtype: T
+    :return: The coerced value or None if the input was None.
+    :rtype: T | None
     """
     from tierkreis.controller.data.graph import GraphData
 
@@ -464,14 +464,20 @@ def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> 
     method = get_serialization_format(annotation)
     match method:
         case "bytes":
-            return coerce_from_annotation(bs, annotation)
+            if result := coerce_from_annotation(bs, annotation):
+                return result
+            return cast("T", bs)
         case "json":
             j = json.loads(bs, cls=TierkreisDecoder)
-            return coerce_from_annotation(j, annotation)
+            if result := coerce_from_annotation(j, annotation):
+                return result
+            return cast("T", bs)
         case "unknown":
             try:
                 j = json.loads(bs, cls=TierkreisDecoder)
-                return coerce_from_annotation(j, annotation)
+                if result := coerce_from_annotation(j, annotation):
+                    return result
+                return cast("T", bs)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return cast("T", bs)
         case _:
