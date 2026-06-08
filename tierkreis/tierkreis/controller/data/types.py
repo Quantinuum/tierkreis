@@ -22,6 +22,7 @@ from typing import (
     cast,
     get_args,
     get_origin,
+    overload,
     runtime_checkable,
 )
 
@@ -451,33 +452,41 @@ def get_serialization_format[T: PType](
     return "json"
 
 
-def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> T:
+@overload
+def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> T: ...
+@overload
+def ptype_from_bytes[T: PType](bs: None, annotation: type[T] | None = None) -> None: ...
+def ptype_from_bytes[T: PType](
+    bs: bytes | None, annotation: type[T] | None = None
+) -> T | None:
     """Get the value with the correct type from its bytes.
 
     :param bs: The bytes to deserialize.
-    :type bs: bytes
+    :type bs: bytes | None
     :param annotation: The annotation to use for deserialization, if available.
     :type annotation: type[T] | None, optional
-    :return: The deserialized value of type T.
-    :rtype: T
+    :return: The deserialized value of type T, or None if bytes was None.
+    :rtype: T | None
     """
+    if bs is None:
+        return None
     method = get_serialization_format(annotation)
     match method:
         case "bytes":
-            if result := coerce_from_annotation(bs, annotation):
+            if (result := coerce_from_annotation(bs, annotation)) is not None:
                 return result
-            return cast("T", bs)
+            return None
         case "json":
             j = json.loads(bs, cls=TierkreisDecoder)
-            if result := coerce_from_annotation(j, annotation):
+            if (result := coerce_from_annotation(j, annotation)) is not None:
                 return result
-            return cast("T", bs)
+            return None
         case "unknown":
             try:
                 j = json.loads(bs, cls=TierkreisDecoder)
-                if result := coerce_from_annotation(j, annotation):
+                if (result := coerce_from_annotation(j, annotation)) is not None:
                     return result
-                return cast("T", bs)
+                return None
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return cast("T", bs)
         case _:
