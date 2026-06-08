@@ -1,6 +1,5 @@
 """Implementation to access node storage data."""
 
-from tierkreis.builder import Workflow
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.models import TModel
@@ -14,6 +13,7 @@ from tierkreis.controller.storage.in_memory import (
 )
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+from tierkreis.models import Workflow
 
 __all__ = ["FileStorage", "InMemoryStorage"]
 

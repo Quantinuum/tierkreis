@@ -2,9 +2,9 @@ from sys import argv
 from typing import NamedTuple
 
 from tierkreis import Worker
-from tierkreis.builder import Graph, Workflow, TypedGraphRef
+from tierkreis.builder import Graph, TypedGraphRef
 from tierkreis.builtins import iadd, itimes
-from tierkreis.models import TKR
+from tierkreis.models import TKR, Workflow
 
 worker = Worker("graph")
 

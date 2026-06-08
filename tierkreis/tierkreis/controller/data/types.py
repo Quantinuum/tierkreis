@@ -22,6 +22,7 @@ from typing import (
     cast,
     get_args,
     get_origin,
+    overload,
     runtime_checkable,
 )
 
@@ -319,7 +320,7 @@ def bytes_from_ptype(ptype: PType, annotation: type[PType] | None = None) -> byt
             return json.dumps(ser, cls=TierkreisEncoder, indent=2).encode()
 
 
-def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
+def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T | None:
     """Find the value of type T from a serialized form.
 
     Uses the annotation to find the correct deserialization method, if available.
@@ -329,8 +330,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T:
     :param annotation: The annotation to coerce to, if available.
     :type annotation: type[T] | None, optional
     :raises TierkreisError: If the value cannot be coerced to the annotation.
-    :return: The coerced value.
-    :rtype: T
+    :return: The coerced value or None if the input was None.
+    :rtype: T | None
     """
     from tierkreis.controller.data.graph import GraphData
 
@@ -451,27 +452,41 @@ def get_serialization_format[T: PType](
     return "json"
 
 
-def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> T:
+@overload
+def ptype_from_bytes[T: PType](bs: bytes, annotation: type[T] | None = None) -> T: ...
+@overload
+def ptype_from_bytes[T: PType](bs: None, annotation: type[T] | None = None) -> None: ...
+def ptype_from_bytes[T: PType](
+    bs: bytes | None, annotation: type[T] | None = None
+) -> T | None:
     """Get the value with the correct type from its bytes.
 
     :param bs: The bytes to deserialize.
-    :type bs: bytes
+    :type bs: bytes | None
     :param annotation: The annotation to use for deserialization, if available.
     :type annotation: type[T] | None, optional
-    :return: The deserialized value of type T.
-    :rtype: T
+    :return: The deserialized value of type T, or None if bytes was None.
+    :rtype: T | None
     """
+    if bs is None:
+        return None
     method = get_serialization_format(annotation)
     match method:
         case "bytes":
-            return coerce_from_annotation(bs, annotation)
+            if (result := coerce_from_annotation(bs, annotation)) is not None:
+                return result
+            return None
         case "json":
             j = json.loads(bs, cls=TierkreisDecoder)
-            return coerce_from_annotation(j, annotation)
+            if (result := coerce_from_annotation(j, annotation)) is not None:
+                return result
+            return None
         case "unknown":
             try:
                 j = json.loads(bs, cls=TierkreisDecoder)
-                return coerce_from_annotation(j, annotation)
+                if (result := coerce_from_annotation(j, annotation)) is not None:
+                    return result
+                return None
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return cast("T", bs)
         case _:

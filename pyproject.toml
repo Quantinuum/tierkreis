@@ -11,6 +11,9 @@ exclude = [
     "docs/source/examples/example_workers/openssl_worker",
 ]
 
+[tool.uv]
+exclude-newer = "P7D"
+
 
 [dependency-groups]
 # Default dev dependency group

@@ -9,9 +9,9 @@ from tierkreis.aer_worker import (
 from tierkreis.aer_worker import (
     run_circuit as aer_run,
 )
-from tierkreis.builder import Graph, Workflow
+from tierkreis.builder import Graph
 from tierkreis.builtins import str_eq, tkr_zip, untuple
-from tierkreis.controller.data.models import TKR, OpaqueType
+from tierkreis.models import OpaqueType, TKR, Workflow
 from tierkreis.qulacs_worker import (
     get_compiled_circuit as qulacs_compile,
 )

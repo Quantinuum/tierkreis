@@ -1,8 +1,8 @@
 from typing import NamedTuple
 
-from tierkreis.builder import Graph, Workflow
+from tierkreis.builder import Graph
 from tierkreis.builtins import tkr_range
-from tierkreis.controller.data.models import TKR
+from tierkreis.models import TKR, Workflow
 
 
 class Inputs(NamedTuple):
