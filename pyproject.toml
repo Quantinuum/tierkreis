@@ -12,7 +12,7 @@ exclude = [
 ]
 
 [tool.uv]
-exclude-newer = "7 days"
+exclude-newer = "P7D"
 
 
 [dependency-groups]
