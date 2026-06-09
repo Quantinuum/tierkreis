@@ -10,6 +10,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use bitvec::vec::BitVec;
 use chrono::Utc;
 use dashmap::DashMap;
 use futures::{
@@ -19,6 +20,7 @@ use futures::{
     stream::BoxStream,
 };
 use miette::miette;
+use tracing::{info, instrument};
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +28,7 @@ use crate::{
     state::interface::RunAttemptUpdated,
 };
 use crate::{
-    event::{NodeEvent, RunningState},
+    event::{NodeEvent, RunningStateUpdate},
     location::Location,
     state::{
         WorkflowState,
@@ -101,9 +103,9 @@ impl RuntimeState for InMemoryRuntimeState {
                 .try_lock()
                 .map_err(|err| miette!("Failed to listen: {}", err))?;
 
-            receiver.take().ok_or(miette!(
-                "Failed to listen: InMemoryGlobalState is already being listened to."
-            ))?
+            receiver.take().ok_or_else(|| {
+                miette!("Failed to listen: InMemoryGlobalState is already being listened to.")
+            })?
         };
 
         Ok(receiver.boxed())
@@ -149,6 +151,7 @@ impl InMemoryWorkflowState {
 }
 
 impl WorkflowState for InMemoryWorkflowState {
+    #[instrument]
     fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
         let global_state = &self.global_state;
         let run_state = global_state
@@ -169,6 +172,7 @@ impl WorkflowState for InMemoryWorkflowState {
         let mut update_sender = self.update_sender.clone();
         async move {
             if send_update || send_workflow_stopped {
+                info!("sending update!");
                 update_sender
                     .send(RunAttemptUpdated {
                         run_id: self.run_id,
@@ -183,6 +187,7 @@ impl WorkflowState for InMemoryWorkflowState {
         .boxed()
     }
 
+    #[instrument]
     fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>> {
         let global_state = &self.global_state;
         let res = || {
@@ -257,7 +262,7 @@ fn handle_node_event(
             }
         }
         crate::event::NodeStatus::Running {
-            state: Some(RunningState::Switching { cond }),
+            state: Some(RunningStateUpdate::Switching { cond }),
         } => {
             if node_state.cond.is_none() {
                 *send_update = true;
@@ -265,11 +270,27 @@ fn handle_node_event(
             }
         }
         crate::event::NodeStatus::Running {
-            state: Some(RunningState::Looping { loop_index }),
+            state: Some(RunningStateUpdate::Looping { index }),
         } => {
-            if node_state.cond.is_none() {
+            if node_state.loop_index != Some(index) {
                 *send_update = true;
-                node_state.loop_index = Some(loop_index);
+                node_state.loop_index = Some(index);
+            }
+        }
+        crate::event::NodeStatus::Running {
+            state: Some(RunningStateUpdate::MapStarted { size }),
+        } => {
+            if node_state.map_completed.is_none() {
+                *send_update = true;
+                node_state.map_completed = Some(BitVec::repeat(false, size as usize));
+            }
+        }
+        crate::event::NodeStatus::Running {
+            state: Some(RunningStateUpdate::MapElemComplete { index }),
+        } => {
+            if let Some(map_completed) = node_state.map_completed.as_mut() {
+                map_completed.set(index as usize, true);
+                *send_update = true;
             }
         }
         crate::event::NodeStatus::Complete { outputs } => {

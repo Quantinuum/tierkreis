@@ -5,6 +5,7 @@ of [Event] and write each event to a [`WorkflowState`].
 use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
+use tracing::info;
 
 use crate::{event::Event, state::WorkflowState};
 
@@ -31,6 +32,7 @@ impl Updater {
         mut stream: impl Stream<Item = Event> + Unpin,
     ) -> miette::Result<()> {
         while let Some(event) = stream.next().await {
+            info!("got event {event:?}");
             let workflow_finished = event.is_workflow_finished();
             self.state.write(event).await?;
             if workflow_finished {

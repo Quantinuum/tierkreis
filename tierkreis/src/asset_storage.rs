@@ -17,7 +17,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use miette::miette;
+use miette::{IntoDiagnostic, miette};
 
 /// [`AssetStorageRegistry`] is sharable mapping of configured [`AssetStorage`] names
 /// to various implementations.
@@ -45,9 +45,11 @@ pub fn load_assets<S: BuildHasher>(
         .iter()
         .map(|(k, v)| {
             let storage_name = &v.storage_name;
-            let storage = registry.get(storage_name).ok_or(miette!(
-                "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
-            ))?;
+            let storage = registry.get(storage_name).ok_or_else(|| {
+                miette!(
+                    "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+                )
+            })?;
             let asset = storage.load(&v.asset_key)?;
             Ok((k.clone(), asset))
         })
@@ -74,13 +76,53 @@ pub fn load_asset<S: BuildHasher>(
         .ok_or_else(|| miette!("Failed to find asset with name: `{name}`"))?;
 
     let storage_name = &asset_spec.storage_name;
-    let storage = registry.get(storage_name).ok_or(miette!(
-        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
-    ))?;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
 
     let asset = storage.load(&asset_spec.asset_key)?;
 
     Ok(asset)
+}
+
+pub fn unfold_asset<S: BuildHasher>(
+    registry: &AssetStorageRegistry,
+    assets: &HashMap<String, AssetSpec, S>,
+    name: &str,
+) -> miette::Result<Vec<AssetSpec>> {
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+    let asset_spec = assets
+        .get(name)
+        .ok_or_else(|| miette!("Failed to find asset with name: `{name}`"))?;
+
+    let storage_name = &asset_spec.storage_name;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
+
+    let asset = storage.load(&asset_spec.asset_key)?;
+
+    let asset_value_list: Vec<serde_json::Value> =
+        serde_json::from_slice(&asset).map_err(|err| miette!("Could not unfold asset: {err}"))?;
+
+    let asset_spec_list = asset_value_list
+        .into_iter()
+        .map(|asset_value| {
+            let asset_key = AssetKey::new();
+            let asset_bytes = serde_json::to_vec(&asset_value).into_diagnostic()?;
+            storage.save(&asset_key, asset_bytes)?;
+
+            Ok(AssetSpec {
+                kind: storage.kind(),
+                asset_key,
+                storage_name: storage_name.to_string(),
+            })
+        })
+        .collect::<miette::Result<Vec<_>>>()?;
+
+    Ok(asset_spec_list)
 }
 
 /// Save assets into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
@@ -94,16 +136,16 @@ pub fn load_asset<S: BuildHasher>(
 pub fn save_assets<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     storage_name: &str,
-    asset_specs: HashMap<String, Vec<u8>, S>,
+    asset_bytes: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
-    let storage = registry.get(storage_name).ok_or(miette!(
-        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
-    ))?;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
 
-    asset_specs
+    asset_bytes
         .into_iter()
         .map(|(k, v)| {
             let asset_key = AssetKey::new();
@@ -135,9 +177,9 @@ pub fn save_asset(
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
-    let storage = registry.get(storage_name).ok_or(miette!(
-        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
-    ))?;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
 
     let asset_key = AssetKey::new();
     storage.save(&asset_key, value)?;
@@ -146,6 +188,47 @@ pub fn save_asset(
         kind: storage.kind(),
         storage_name: storage_name.to_string(),
         asset_key,
+    })
+}
+
+pub fn fold_assets(
+    registry: &AssetStorageRegistry,
+    storage_name: &str,
+    assets: impl IntoIterator<Item = AssetSpec>,
+) -> miette::Result<AssetSpec> {
+    let registry = registry
+        .read()
+        .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
+
+    let asset_values = assets
+        .into_iter()
+        .map(|asset_spec| {
+            let storage_name = &asset_spec.storage_name;
+            let storage = registry.get(&asset_spec.storage_name).ok_or_else(|| {
+                miette!(
+                    "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
+                )
+            })?;
+
+            let asset = storage.load(&asset_spec.asset_key)?;
+            let asset_value: serde_json::Value =
+                serde_json::from_slice(&asset).into_diagnostic()?;
+
+            Ok(asset_value)
+        })
+        .collect::<miette::Result<Vec<_>>>()?;
+
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
+    let asset_key = AssetKey::new();
+    let asset_bytes = serde_json::to_vec(&asset_values).into_diagnostic()?;
+    storage.save(&asset_key, asset_bytes)?;
+
+    Ok(AssetSpec {
+        kind: storage.kind(),
+        asset_key,
+        storage_name: storage_name.to_string(),
     })
 }
 
@@ -165,9 +248,9 @@ pub fn transfer_assets<S: BuildHasher>(
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
-    let storage_to = registry.get(storage_name_to).ok_or(miette!(
-        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_to}"
-    ))?;
+    let storage_to = registry.get(storage_name_to).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_to}")
+    })?;
 
     assets_from
         .iter()
@@ -176,7 +259,7 @@ pub fn transfer_assets<S: BuildHasher>(
                 Ok((k.clone(), v.clone()))
             } else {
                 let storage_name_from = &v.storage_name;
-                let storage_from = registry.get(storage_name_from).ok_or(miette!(
+                let storage_from = registry.get(storage_name_from).ok_or_else(|| miette!(
                     "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_from}"
                 ))?;
 
@@ -211,9 +294,9 @@ pub fn reserve_asset_specs(
     let registry = registry
         .read()
         .map_err(|err| miette!("Failed to read AssetStorageRegistry: {err}"))?;
-    let storage = registry.get(storage_name).ok_or(miette!(
-        "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}"
-    ))?;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
 
     let mut asset_specs = Vec::new();
     for _ in 0..total {

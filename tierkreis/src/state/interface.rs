@@ -4,6 +4,7 @@ and [`WorkflowState`] implementations must satisfy.
 */
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
+use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::BoxStream};
 use uuid::Uuid;
@@ -49,6 +50,10 @@ pub struct NodeState {
     pub cond: Option<bool>,
     /// The state associated with the loop index if this Node is a `Loop` node.
     pub loop_index: Option<u32>,
+    /// The state associated with a map if this Node is a `Map` node.
+    ///
+    /// This value tracks the number of elements being mapped over.
+    pub map_completed: Option<BitVec>,
 
     /// The error message of the node if any.
     pub error: Option<String>,

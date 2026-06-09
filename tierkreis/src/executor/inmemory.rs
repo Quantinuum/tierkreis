@@ -19,7 +19,11 @@ use miette::{IntoDiagnostic, miette};
 use num_complex::Complex64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::task::{AbortHandle, JoinHandle};
+use tokio::{
+    sync::Semaphore,
+    task::{AbortHandle, JoinHandle},
+};
+use tracing::info;
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_assets, save_assets},
@@ -57,11 +61,15 @@ type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
 type CancelSender = mpsc::Sender<Location>;
 type CancelReceiver = mpsc::Receiver<Location>;
 
+static PERMIT: Semaphore = Semaphore::const_new(1);
+
 fn extract_value<'a, T>(inputs: &'a HashMap<String, Vec<u8>>, name: &str) -> miette::Result<T>
 where
     T: Deserialize<'a>,
 {
-    let asset = inputs.get(name).ok_or(miette!("Missing input: {name}"))?;
+    let asset = inputs
+        .get(name)
+        .ok_or_else(|| miette!("Missing input: {name}"))?;
     let val = serde_json::from_slice(asset).into_diagnostic()?;
 
     Ok(val)
@@ -206,6 +214,8 @@ async fn process_finished_task(
             return Ok(());
         }
     };
+    info!("finished task: {outputs:?}", outputs = &outputs);
+
     let outputs = save_assets(asset_storage_registry, &output_storage_name, outputs);
     match outputs {
         Ok(outputs) => send_complete(event_sender, loc, outputs).await?,
@@ -236,7 +246,9 @@ async fn start_task(
             return Ok(());
         }
     };
+    info!("spawning task: {inputs:?}", inputs = &inputs);
 
+    let _permit = PERMIT.acquire().await.unwrap();
     let task_loc = loc.clone();
     let task = tokio::task::spawn_blocking(move || {
         let inputs = inputs;
@@ -340,12 +352,12 @@ impl InMemoryExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
-        tokio::spawn(process_tasks(
+        tokio::spawn(Box::pin(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
             asset_storage_registry,
-        ));
+        )));
 
         Ok(Self {
             task_sender,
@@ -397,9 +409,9 @@ impl Executor for InMemoryExecutor {
                 .try_lock()
                 .map_err(|err| miette!("Failed to listen: {}", err))?;
 
-            receiver.take().ok_or(miette!(
-                "Failed to listen: Executor is already being listened to."
-            ))?
+            receiver.take().ok_or_else(|| {
+                miette!("Failed to listen: Executor is already being listened to.")
+            })?
         };
         Ok(channel.boxed())
     }

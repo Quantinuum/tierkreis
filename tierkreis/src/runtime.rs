@@ -17,6 +17,7 @@ use miette::{
     miette,
 };
 use pyo3::{exceptions::PySyntaxError, prelude::*};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -48,7 +49,7 @@ macro_rules! getattr_or_early_return {
 
 #[tokio::main]
 pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
-    workflow_graph: &WorkflowGraph,
+    workflow_graph: Arc<WorkflowGraph>,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
@@ -106,16 +107,23 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
             }
         }
     });
-    let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+    let actions = orchestrator
+        .build_actions(context.clone(), Arc::clone(&workflow_graph))
+        .await?;
     orchestrator.perform_actions(actions).await?;
 
-    let mut state_chunks = state_events.ready_chunks(8);
+    let mut state_chunks = state_events.ready_chunks(32);
     while let Some(chunk) = state_chunks.next().await {
         if chunk.iter().any(|updated| updated.stopped) {
             break;
         }
-        let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+        info!("building actions");
+        let actions = orchestrator
+            .build_actions(context.clone(), Arc::clone(&workflow_graph))
+            .await?;
+        info!("running actions");
         orchestrator.perform_actions(actions).await?;
+        info!("actions done");
     }
 
     let output_state = workflow_state
@@ -151,17 +159,17 @@ pub fn run(path: &Path) -> miette::Result<()> {
 
         let code = CStr::from_bytes_until_nul(code_buf.as_bytes()).into_diagnostic()?;
 
-        let source_file_name = path.file_name().ok_or(miette!("no file name"))?;
+        let source_file_name = path.file_name().ok_or_else(|| miette!("no file name"))?;
         let source_file_name_str = source_file_name
             .to_str()
-            .ok_or(miette!("failed to convert to cstring"))?;
+            .ok_or_else(|| miette!("failed to convert to cstring"))?;
         let source_file_name_cstring = CString::new(source_file_name_str).into_diagnostic()?;
 
-        let module = path.file_stem().ok_or(miette!("no file stem"))?;
+        let module = path.file_stem().ok_or_else(|| miette!("no file stem"))?;
         let module_name_cstring = CString::new(
             module
                 .to_str()
-                .ok_or(miette!("failed to convert to cstring"))?,
+                .ok_or_else(|| miette!("failed to convert to cstring"))?,
         )
         .into_diagnostic()?;
 
@@ -215,9 +223,9 @@ pub fn run(path: &Path) -> miette::Result<()> {
 
         let legacy_workflow: LegacyWorkflowGraph =
             serde_json::from_str(&workflow_dump).into_diagnostic()?;
-        let workflow_graph = legacy_workflow.to_workflow_graph()?;
+        let workflow_graph = Arc::new(legacy_workflow.to_workflow_graph()?);
 
-        let outputs = run_workflow_in_memory(&workflow_graph, HashMap::new())?;
+        let outputs = run_workflow_in_memory(workflow_graph, HashMap::new())?;
 
         let outputs: HashMap<String, serde_json::Value> = outputs
             .into_iter()

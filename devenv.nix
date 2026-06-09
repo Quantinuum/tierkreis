@@ -13,6 +13,7 @@ in
     pkgs.maturin
     pkgs.bacon
     pkgs.cargo-nextest
+    pkgs.perf
   ] ++ lib.optionals pkgs.stdenv.isDarwin darwinRuntimeLibraries;
 
   git-hooks.hooks = {

@@ -87,7 +87,7 @@ impl NodeEvent {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum RunningState {
+pub enum RunningStateUpdate {
     /// The node is "switching" and will resolve when the corresponding
     /// condition branch resolves.
     ///
@@ -99,7 +99,13 @@ pub enum RunningState {
         cond: bool,
     },
     Looping {
-        loop_index: u32,
+        index: u32,
+    },
+    MapStarted {
+        size: u32,
+    },
+    MapElemComplete {
+        index: u32,
     },
 }
 
@@ -111,7 +117,7 @@ pub enum NodeStatus {
     /// The node is queued to run using an [Executor][crate::executor::Executor].
     Queued,
     /// The node is running on an [Executor][crate::executor::Executor].
-    Running { state: Option<RunningState> },
+    Running { state: Option<RunningStateUpdate> },
     /// The node is finished and has outputs.
     Complete {
         /// The outputs from the node.
@@ -207,7 +213,7 @@ pub async fn send_running_switching(
         .send(Event::Node(NodeEvent {
             loc: loc.clone(),
             status: NodeStatus::Running {
-                state: Some(RunningState::Switching { cond }),
+                state: Some(RunningStateUpdate::Switching { cond }),
             },
         }))
         .await
@@ -226,18 +232,56 @@ pub async fn send_running_switching(
 pub async fn send_running_loop(
     event_sender: &mut EventSender,
     loc: Location,
-    loop_index: u32,
+    index: u32,
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
             loc: loc.clone(),
             status: NodeStatus::Running {
-                state: Some(RunningState::Looping { loop_index }),
+                state: Some(RunningStateUpdate::Looping { index }),
             },
         }))
         .await
         .map_err(|err| {
-            miette!("Failed to send switching event: {err}")
+            miette!("Failed to send running loop event: {err}")
+                .wrap_err(miette!("At location: {loc:?}"))
+        })
+}
+
+pub async fn send_running_map(
+    event_sender: &mut EventSender,
+    loc: Location,
+    size: u32,
+) -> miette::Result<()> {
+    event_sender
+        .send(Event::Node(NodeEvent {
+            loc: loc.clone(),
+            status: NodeStatus::Running {
+                state: Some(RunningStateUpdate::MapStarted { size }),
+            },
+        }))
+        .await
+        .map_err(|err| {
+            miette!("Failed to send running map event: {err}")
+                .wrap_err(miette!("At location: {loc:?}"))
+        })
+}
+
+pub async fn send_map_elem_complete(
+    event_sender: &mut EventSender,
+    loc: Location,
+    index: u32,
+) -> miette::Result<()> {
+    event_sender
+        .send(Event::Node(NodeEvent {
+            loc: loc.clone(),
+            status: NodeStatus::Running {
+                state: Some(RunningStateUpdate::MapElemComplete { index }),
+            },
+        }))
+        .await
+        .map_err(|err| {
+            miette!("Failed to send running map event: {err}")
                 .wrap_err(miette!("At location: {loc:?}"))
         })
 }

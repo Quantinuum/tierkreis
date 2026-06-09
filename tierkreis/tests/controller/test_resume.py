@@ -63,13 +63,13 @@ param_data: list[
     (simple_loop(), 10, "simple_loop", {}),
     (simple_map(), list(range(6, 47, 2)), "simple_map", {}),
     (maps_in_series(), list(range(0, 81, 4)), "maps_in_series", {}),
-    (simple_ifelse(), 1, "simple_ifelse", {"pred": b"true"}),
-    (simple_ifelse(), 2, "simple_ifelse", {"pred": b"false"}),
+    (simple_ifelse(), 1, "simple_ifelse", {"pred": True}),
+    (simple_ifelse(), 2, "simple_ifelse", {"pred": False}),
     (factorial(), 24, "factorial", 4),
     (loop_multiple_acc_untyped(), {"acc1": 6, "acc2": 12, "acc3": 18}, "multi_acc", {}),
     (loop_multiple_acc(), {"acc1": 6, "acc2": 12, "acc3": 18}, "multi_acc", {}),
-    (simple_eagerifelse(), 1, "simple_eagerifelse", {"pred": b"true"}),
-    (factorial(), 120, "factorial", {"value": b"5"}),
+    (simple_eagerifelse(), 1, "simple_eagerifelse", {"pred": True}),
+    (factorial(), 120, "factorial", {"value": 5}),
     (typed_eval(), {"typed_eval_output": 12}, "typed_eval", {}),
     (typed_loop(), 10, "typed_loop", {}),
     (typed_map(), list(range(6, 47, 2)), "typed_map", {"value": list(range(21))}),
@@ -227,7 +227,7 @@ def test_runtime(  # noqa: PLR0913
         g = graph.data
     else:
         g = graph
-    run_outputs = run_workflow(g, inputs)
+    run_outputs = run_workflow(name, g, inputs)
     assert output == run_outputs
 
 

@@ -9,7 +9,7 @@ def doubler_plus() -> GraphData:
     two = g.const(2)
     mul = g.func("builtins.itimes", {"a": inp, "b": two})("value")
     out = g.func("builtins.iadd", {"a": mul, "b": intercept})("value")
-    g.output({"doubler_output": out})
+    g.output({"value": out})
     return g
 
 

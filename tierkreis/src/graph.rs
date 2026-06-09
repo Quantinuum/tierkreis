@@ -2,7 +2,7 @@
 This module defines the Workflow graph representation.
 */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bitvec::vec::BitVec;
 use miette::{Context, IntoDiagnostic, miette};
@@ -48,7 +48,7 @@ pub enum NodeDefinition {
     /// A node that defines that a Subgraph needs to be evaluated repeatedly until a condition is met.
     Loop {},
     /// A node that defines that a Subgraph needs to be evaluated across multiple inputs.
-    Map {},
+    Map { mapped_ports: HashSet<String> },
 }
 
 /// The [`WorkflowGraph`] defines a Workflow that can be evaluated
@@ -191,9 +191,9 @@ impl WorkflowGraph {
                 .into_diagnostic()?;
             Ok(())
         };
-        res.wrap_err(miette!(
-            "Failed to link ports {from:?}:{from_output} -> {to:?}:{to_input}"
-        ))
+        res.wrap_err_with(|| {
+            miette!("Failed to link ports {from:?}:{from_output} -> {to:?}:{to_input}")
+        })
     }
 
     /// Returns an iterator of input links from a provided `NodeIndex`.
@@ -381,6 +381,8 @@ impl LegacyWorkflowGraph {
         }
 
         state.link_ports()?;
+        state.remove_fold_and_unfold()?;
+        state.migrate_wildcard_ports()?;
 
         Ok(WorkflowGraph {
             graph: state.graph,
@@ -426,6 +428,147 @@ impl ConversionState {
             to_link,
             output_node,
         }
+    }
+
+    fn remove_fold_and_unfold(&mut self) -> Result<(), miette::Error> {
+        let mut remove_nodes: Vec<_> = self
+            .node_definitions
+            .iter()
+            .filter(|(_idx, node)| {
+                matches!(
+                    node,
+                    &NodeDefinition::Task {
+                        worker_name,
+                        task_name,
+                    } if worker_name == "builtins" && task_name == "unfold_values"
+                )
+            })
+            .map(|(idx, _node)| {
+                // Re-link the single input and output
+                let input = self.graph.input(*idx, 0).unwrap();
+                let input_link = self.graph.port_link(input).unwrap();
+                let output = self.graph.output(*idx, 0).unwrap();
+                let output_link = self.graph.port_link(output).unwrap();
+                self.graph
+                    .link_ports(input_link.into(), output_link.into())
+                    .unwrap();
+
+                for port in self.graph.all_ports(*idx) {
+                    self.port_names.remove(&port);
+                }
+                self.graph.remove_node(*idx);
+                self.input_port_indices.remove(idx);
+                self.output_port_indices.remove(idx);
+
+                idx.clone()
+            })
+            .collect();
+
+        remove_nodes.extend(
+            self.node_definitions
+                .iter()
+                .filter(|(_idx, node)| {
+                    matches!(
+                        node,
+                        &NodeDefinition::Task {
+                            worker_name,
+                            task_name,
+                        } if worker_name == "builtins" && task_name == "fold_values"
+                    )
+                })
+                .map(|(idx, _node)| {
+                    // Re-link the single input and output
+                    let input = self.graph.input(*idx, 0).unwrap();
+                    let input_link = self.graph.port_link(input).unwrap();
+                    let output = self.graph.output(*idx, 0).unwrap();
+                    let output_link = self.graph.port_link(output).unwrap();
+                    self.graph
+                        .link_ports(input_link.into(), output_link.into())
+                        .unwrap();
+
+                    for port in self.graph.all_ports(*idx) {
+                        self.port_names.remove(&port);
+                    }
+
+                    self.graph.remove_node(*idx);
+                    self.input_port_indices.remove(idx);
+                    self.output_port_indices.remove(idx);
+
+                    idx.clone()
+                }),
+        );
+
+        for node in remove_nodes {
+            self.node_definitions.remove(&node);
+        }
+
+        Ok(())
+    }
+
+    fn migrate_wildcard_ports(&mut self) -> Result<(), miette::Error> {
+        self.node_definitions
+            .iter_mut()
+            .filter_map(|(_, node_definition)| {
+                if let NodeDefinition::Map { mapped_ports } = node_definition {
+                    Some(mapped_ports)
+                } else {
+                    None
+                }
+            })
+            .for_each(|mapped_ports| {
+                *mapped_ports = mapped_ports
+                    .iter()
+                    .map(|port_name| {
+                        let mut new_name = port_name.clone();
+                        if port_name == "*" {
+                            new_name = "value".to_string();
+                        } else if port_name.ends_with("-*") {
+                            new_name = port_name.strip_suffix("-*").unwrap().to_string();
+                        }
+                        new_name
+                    })
+                    .collect();
+            });
+
+        self.input_port_indices.values_mut().for_each(|value| {
+            *value = value
+                .iter()
+                .map(|(port_name, v)| {
+                    let mut new_name = port_name.clone();
+                    if port_name == "*" {
+                        new_name = "value".to_string();
+                    } else if port_name.ends_with("-*") {
+                        new_name = port_name.strip_suffix("-*").unwrap().to_string();
+                    }
+                    (new_name, v.clone())
+                })
+                .collect();
+        });
+
+        self.output_port_indices.values_mut().for_each(|value| {
+            *value = value
+                .iter()
+                .map(|(port_name, v)| {
+                    let mut new_name = port_name.clone();
+                    if port_name == "*" {
+                        new_name = "value".to_string();
+                    } else if port_name.ends_with("-*") {
+                        new_name = port_name.strip_suffix("-*").unwrap().to_string();
+                    }
+                    (new_name, v.clone())
+                })
+                .collect();
+        });
+
+        self.port_names.values_mut().for_each(|port_name| {
+            if port_name == "*" {
+                *port_name = "value".to_string();
+            } else if port_name.ends_with("-*") {
+                *port_name = port_name.strip_suffix("-*").unwrap().to_string();
+            }
+        });
+
+        Ok(())
     }
 
     fn link_ports(&mut self) -> Result<(), miette::Error> {
@@ -634,8 +777,16 @@ impl ConversionState {
         let outgoing = outputs.len();
         let node_index = self.graph.add_node(incoming + 1, outgoing);
 
+        let mut mapped_ports = HashSet::new();
+        for (name, (_, connected)) in &inputs {
+            // Ports containing a `*` are mapped over.
+            if connected == "*" || connected.ends_with("-*") {
+                mapped_ports.insert(name.clone());
+            }
+        }
+
         self.node_definitions
-            .insert(node_index, NodeDefinition::Map {});
+            .insert(node_index, NodeDefinition::Map { mapped_ports });
 
         self.build_inputs(
             [("graph".to_string(), graph_source)]

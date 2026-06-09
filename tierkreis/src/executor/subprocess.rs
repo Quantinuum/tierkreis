@@ -22,6 +22,7 @@ use tempfile::NamedTempFile;
 use tokio::{
     io::AsyncReadExt,
     process::Command,
+    sync::Semaphore,
     task::{AbortHandle, JoinHandle},
 };
 use which::which_re;
@@ -37,6 +38,8 @@ use crate::{
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
 };
+
+static PERMIT: Semaphore = Semaphore::const_new(1);
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
 /// [`SubprocessExecutor`] or what is requested as part of a [`TaskPlan`].
@@ -156,6 +159,7 @@ async fn start_task(
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
+    let _permit = PERMIT.acquire().await.unwrap();
     let task = tokio::task::spawn(async move {
         let exit_status = child.wait().await;
         BackgroundTask {
@@ -303,10 +307,10 @@ impl SubprocessExecutor {
         let task = tokio::task::spawn_blocking(|| {
             let re = Regex::new(r"tkr-.*-worker")
                 .into_diagnostic()
-                .wrap_err("Failed to compile Worker name regex")?;
+                .wrap_err_with(|| "Failed to compile Worker name regex")?;
             let paths = which_re(&re)
                 .into_diagnostic()
-                .wrap_err("Failed to search for Worker binaries")?;
+                .wrap_err_with(|| "Failed to search for Worker binaries")?;
             Ok(paths
                 .map(|path| WorkerSpec {
                     worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
@@ -325,8 +329,8 @@ impl SubprocessExecutor {
             &self.subprocess_storage_name,
             inputs,
         )?;
-        let inputs =
-            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
+        let inputs = write_input_paths(&inputs)
+            .wrap_err_with(|| "Failed to collect Worker input filepaths")?;
         Ok(inputs)
     }
 
@@ -355,7 +359,7 @@ fn spawn_worker(
         .stderr(Stdio::piped())
         .spawn()
         .into_diagnostic()
-        .wrap_err(miette!("Could not spawn worker"))?;
+        .wrap_err_with(|| miette!("Could not spawn worker"))?;
     Ok(child)
 }
 
@@ -459,9 +463,9 @@ impl Executor for SubprocessExecutor {
                 .try_lock()
                 .map_err(|err| miette!("Failed to listen: {}", err))?;
 
-            receiver.take().ok_or(miette!(
-                "Failed to listen: Executor is already being listened to."
-            ))?
+            receiver.take().ok_or_else(|| {
+                miette!("Failed to listen: Executor is already being listened to.")
+            })?
         };
         Ok(channel.boxed())
     }

@@ -5,25 +5,29 @@ of [Event]s with updates about each node in the Workflow.
 */
 use std::{
     collections::{HashMap, HashSet},
+    iter,
     sync::{Arc, Mutex},
 };
 
+use bitvec::vec::BitVec;
 use futures::{
     FutureExt, Stream, StreamExt, TryFutureExt,
     channel::mpsc,
     future,
-    stream::{self, BoxStream, select_all},
+    stream::{self, BoxStream, LocalBoxStream, select_all},
 };
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::NodeIndex;
+use tracing::{info, instrument};
 
 use crate::{
     asset_storage::{
-        AssetStorageRegistry, interface::AssetSpec, load_asset, save_asset, transfer_assets,
+        AssetStorageRegistry, fold_assets, interface::AssetSpec, load_asset, save_asset,
+        transfer_assets, unfold_asset,
     },
     event::{
-        Event, EventReceiver, EventSender, NodeEvent, send_complete, send_running_loop,
-        send_running_switching, send_workflow_run_complete,
+        Event, EventReceiver, EventSender, NodeEvent, send_complete, send_map_elem_complete,
+        send_running_loop, send_running_map, send_running_switching, send_workflow_run_complete,
     },
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
@@ -59,6 +63,12 @@ pub enum ActionKind {
         cond: bool,
     },
     SetRunningLoop {
+        index: u32,
+    },
+    SetRunningMap {
+        size: u32,
+    },
+    SetMapElemComplete {
         index: u32,
     },
     /// Mark the node as complete with outputs.
@@ -151,483 +161,592 @@ impl Orchestrator {
     ///
     /// This function effectively flattens higher order graph execution into a stream of [`Action`]s
     /// that can then be processed by the [`perform_actions`] method.
-    pub fn build_actions(
+    #[instrument(skip(self, context, workflow_graph), err)]
+    pub async fn build_actions(
         &self,
         context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
-    ) -> BoxStream<'_, miette::Result<Action>> {
-        let fut = async move {
-            let mut node_states = HashMap::new();
-            for node_id in workflow_graph.node_ids() {
-                let location = context.subworkflow_context.with_node(node_id);
-                let node_definition = workflow_graph
-                    .node_definition(node_id)
-                    .ok_or_else(|| miette!("Node definition not found"))?;
-                let node_state = context.workflow_state.read(&location).await?;
-                if node_state.error_time.is_some() {
-                    dbg!(node_state.error);
-                    return Ok(stream::iter([Ok(Action {
-                        loc: location,
-                        kind: ActionKind::WorkflowFinished {},
-                    })])
-                    .boxed());
-                }
-
-                node_states.insert(node_id, (node_definition.clone(), node_state));
-            }
-            let output_state = node_states
-                .get(&workflow_graph.output_idx())
-                .ok_or_else(|| miette!("No output node state found"))?;
-            if output_state.1.scheduled_time.is_some() {
-                // Output is already scheduled, no actions to perform.
-                return Ok(stream::empty().boxed());
+        workflow_graph: Arc<WorkflowGraph>,
+    ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+        let mut node_states = HashMap::new();
+        for node_id in workflow_graph.node_ids() {
+            let location = context.subworkflow_context.with_node(node_id);
+            let node_definition = workflow_graph
+                .node_definition(node_id)
+                .ok_or_else(|| miette!("Node definition not found"))?;
+            let node_state = context.workflow_state.read(&location).await?;
+            if let Some(error_msg) = node_state.error {
+                return Err(miette!("Workflow ended with error: {error_msg}"));
             }
 
-            let ready_nodes = prepare_ready_nodes(&context, &workflow_graph, &node_states).await?;
+            node_states.insert(node_id, (node_definition.clone(), node_state));
+        }
+        let output_state = node_states
+            .get(&workflow_graph.output_idx())
+            .ok_or_else(|| miette!("No output node state found"))?;
+        if output_state.1.scheduled_time.is_some() {
+            // Output is already scheduled, no actions to perform.
+            return Ok(stream::empty().boxed());
+        }
 
-            let parent_location = context.subworkflow_context.clone();
-            let graph_inputs = context.graph_inputs.clone();
+        let ready_nodes = prepare_ready_nodes(&context, &workflow_graph, &node_states).await?;
+        let parent_location = context.subworkflow_context.clone();
+        let graph_inputs = Arc::new(context.graph_inputs.clone());
+        let workflow_state = Arc::clone(&context.workflow_state);
+        let node_states = Arc::new(node_states);
 
-            Ok(stream::iter(ready_nodes)
-                .flat_map_unordered(None, move |n| {
-                    let Some((definition, state)) = node_states.get(&n) else {
-                        return stream_error(miette!("Could not find node definition/state"));
-                    };
+        info!("ready nodes: {ready_nodes:?}");
 
-                    let loc = parent_location.with_node(n);
-                    match definition {
-                        NodeDefinition::Input { name } => {
-                            self.build_input_action(&graph_inputs, loc, name)
-                        }
-                        NodeDefinition::Const { value } => {
-                            self.build_const_action(loc, value.clone())
-                        }
-                        NodeDefinition::Output {} => self.build_output_actions(
-                            context.clone(),
+        Ok(stream::iter(ready_nodes)
+            .flat_map_unordered(None, move |n| -> LocalBoxStream<miette::Result<Action>> {
+                let node_states = Arc::clone(&node_states);
+                let Some((definition, state)) = node_states.get(&n) else {
+                    return stream_error(miette!("Could not find node definition/state"));
+                };
+
+                let loc = parent_location.with_node(n);
+                match definition {
+                    NodeDefinition::Input { name } => stream_action_result(
+                        self.build_input_action(graph_inputs.clone(), loc, name),
+                    ),
+                    NodeDefinition::Const { value } => {
+                        stream_action_result(self.build_const_action(loc, value.clone()))
+                    }
+                    NodeDefinition::Output {} => self
+                        .build_output_actions(workflow_graph.clone(), node_states.clone(), n, loc)
+                        .try_flatten_stream()
+                        .boxed_local(),
+                    NodeDefinition::Task {
+                        worker_name,
+                        task_name,
+                    } => stream_action_result(build_task_action(
+                        workflow_graph.clone(),
+                        node_states.clone(),
+                        n,
+                        loc,
+                        worker_name,
+                        task_name,
+                    )),
+                    NodeDefinition::Eval {} => self
+                        .build_eval_actions(
                             workflow_graph.clone(),
+                            workflow_state.clone(),
+                            node_states.clone(),
                             n,
                             loc,
-                        ),
-                        NodeDefinition::Task {
-                            worker_name,
-                            task_name,
-                        } => build_task_action(
-                            &context,
-                            &workflow_graph,
-                            n,
-                            loc,
-                            worker_name,
-                            task_name,
-                        ),
-                        NodeDefinition::Eval {} => {
-                            self.build_eval_actions(context.clone(), workflow_graph.clone(), n, loc)
-                        }
-                        NodeDefinition::Loop {} => self.build_loop_actions(
-                            context.clone(),
+                        )
+                        .try_flatten_stream()
+                        .boxed_local(),
+                    NodeDefinition::Loop {} => self
+                        .build_loop_actions(
                             workflow_graph.clone(),
+                            workflow_state.clone(),
+                            node_states.clone(),
                             n,
                             loc,
                             state.loop_index,
-                        ),
-                        NodeDefinition::Map {} => {
-                            self.build_map_actions(context.clone(), workflow_graph.clone(), n, loc)
-                        }
-                        // Eager and Lazy If else are controlled by the ready node checks
-                        NodeDefinition::IfElse {} => self.build_if_else_action(
-                            context.clone(),
+                        )
+                        .try_flatten_stream()
+                        .boxed_local(),
+                    NodeDefinition::Map { mapped_ports } => self
+                        .build_map_actions(
                             workflow_graph.clone(),
+                            workflow_state.clone(),
+                            node_states.clone(),
+                            mapped_ports.clone(),
                             n,
                             loc,
-                            state.cond,
-                        ),
-                        NodeDefinition::EagerIfElse {} => self.build_eager_if_else_action(
-                            context.clone(),
+                            state.map_completed.clone(),
+                        )
+                        .try_flatten_stream()
+                        .boxed_local(),
+                    // Eager and Lazy If else are controlled by the ready node checks
+                    NodeDefinition::IfElse {} => stream_action_result(self.build_if_else_action(
+                        workflow_graph.clone(),
+                        node_states.clone(),
+                        n,
+                        loc,
+                        state.cond,
+                    )),
+                    NodeDefinition::EagerIfElse {} => {
+                        stream_action_result(self.build_eager_if_else_action(
                             workflow_graph.clone(),
+                            node_states.clone(),
                             n,
                             loc,
-                        ),
+                        ))
                     }
-                })
-                .boxed())
-        };
-
-        fut.try_flatten_stream().boxed()
+                }
+            })
+            .boxed_local())
     }
 
+    #[instrument(skip(self, workflow_graph, node_states), err)]
     fn build_if_else_action(
         &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
+        workflow_graph: Arc<WorkflowGraph>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
         n: NodeIndex,
         loc: Location,
         cond: Option<bool>,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        async move {
-            match cond {
-                None => {
-                    let (pred_node, connected_port) =
-                        workflow_graph.connected_input_by_port_name(&n, "pred")?;
-                    let pred_location = context.subworkflow_context.with_node(pred_node);
+    ) -> miette::Result<Action> {
+        match cond {
+            None => {
+                let (pred_node, connected_port) =
+                    workflow_graph.connected_input_by_port_name(&n, "pred")?;
+                let (_, pred_state) = node_states
+                    .get(&pred_node)
+                    .ok_or_else(|| miette!("Cannot find state for `pred` node"))?;
+                let connected_port_name = workflow_graph.get_port_name(&connected_port)?;
 
-                    let pred_state = context.workflow_state.read(&pred_location).await?;
-                    let connected_port_name = workflow_graph.get_port_name(&connected_port)?;
-
-                    let pred_bytes = load_asset(
-                        &asset_storage_registry,
-                        &pred_state.outputs.unwrap(),
-                        connected_port_name,
-                    )?;
-
-                    Ok(Action {
-                        loc,
-                        kind: ActionKind::SetSwitching {
-                            cond: pred_bytes == b"true",
-                        },
-                    })
-                }
-                Some(true) => {
-                    let (if_true_node, connected_port) =
-                        workflow_graph.connected_input_by_port_name(&n, "if_true")?;
-                    let if_true_location = context.subworkflow_context.with_node(if_true_node);
-
-                    let if_true_state = context.workflow_state.read(&if_true_location).await?;
-                    let if_true_port_name = workflow_graph.get_port_name(&connected_port)?;
-
-                    let mut outputs = HashMap::new();
-                    let value = if_true_state
+                let pred_bytes = load_asset(
+                    &self.asset_storage_registry,
+                    pred_state
                         .outputs
-                        .ok_or_else(|| {
-                            miette!("No outputs found on node connected to `if_true` port.")
-                        })?
-                        .remove(if_true_port_name)
-                        .ok_or_else(|| {
-                            miette!("No outputs found for `{if_true_port_name}` port.")
-                        })?;
-                    outputs.insert("value".to_string(), value);
+                        .as_ref()
+                        .ok_or_else(|| miette!("`pred` node has no outputs"))?,
+                    connected_port_name,
+                )?;
 
-                    Ok(Action {
-                        loc,
-                        kind: ActionKind::SetComplete { outputs },
-                    })
-                }
-                Some(false) => {
-                    let (if_false_node, connected_port) =
-                        workflow_graph.connected_input_by_port_name(&n, "if_false")?;
-                    let if_false_location = context.subworkflow_context.with_node(if_false_node);
+                Ok(Action {
+                    loc,
+                    kind: ActionKind::SetSwitching {
+                        cond: pred_bytes == b"true",
+                    },
+                })
+            }
+            Some(true) => {
+                let (if_true_node, connected_port) =
+                    workflow_graph.connected_input_by_port_name(&n, "if_true")?;
+                let (_, if_true_state) = node_states
+                    .get(&if_true_node)
+                    .ok_or_else(|| miette!("Cannot find state for `if_true` node"))?;
+                let if_true_port_name = workflow_graph.get_port_name(&connected_port)?;
 
-                    let if_false_state = context.workflow_state.read(&if_false_location).await?;
-                    let if_false_port_name = workflow_graph.get_port_name(&connected_port)?;
+                let mut outputs = HashMap::new();
+                let value = if_true_state
+                    .outputs
+                    .as_ref()
+                    .ok_or_else(|| {
+                        miette!("No outputs found on node connected to `if_true` port.")
+                    })?
+                    .get(if_true_port_name)
+                    .ok_or_else(|| miette!("No outputs found for `{if_true_port_name}` port."))?;
+                outputs.insert("value".to_string(), value.clone());
 
-                    let mut outputs = HashMap::new();
-                    let value = if_false_state
-                        .outputs
-                        .ok_or_else(|| {
-                            miette!("No outputs found on node connected to `if_false` port.")
-                        })?
-                        .remove(if_false_port_name)
-                        .ok_or_else(|| {
-                            miette!("No outputs found for `{if_false_port_name}` port.")
-                        })?;
-                    outputs.insert("value".to_string(), value);
+                Ok(Action {
+                    loc,
+                    kind: ActionKind::SetComplete { outputs },
+                })
+            }
+            Some(false) => {
+                let (if_false_node, connected_port) =
+                    workflow_graph.connected_input_by_port_name(&n, "if_false")?;
+                let (_, if_false_state) = node_states
+                    .get(&if_false_node)
+                    .ok_or_else(|| miette!("Cannot find state for `if_false` node"))?;
+                let if_false_port_name = workflow_graph.get_port_name(&connected_port)?;
 
-                    Ok(Action {
-                        loc,
-                        kind: ActionKind::SetComplete { outputs },
-                    })
-                }
+                let mut outputs = HashMap::new();
+                let value = if_false_state
+                    .outputs
+                    .as_ref()
+                    .ok_or_else(|| {
+                        miette!("No outputs found on node connected to `if_false` port.")
+                    })?
+                    .get(if_false_port_name)
+                    .ok_or_else(|| miette!("No outputs found for `{if_false_port_name}` port."))?;
+                outputs.insert("value".to_string(), value.clone());
+
+                Ok(Action {
+                    loc,
+                    kind: ActionKind::SetComplete { outputs },
+                })
             }
         }
-        .into_stream()
-        .boxed()
     }
 
+    #[instrument(skip(self, workflow_graph, node_states), err)]
     fn build_eager_if_else_action(
         &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
+        workflow_graph: Arc<WorkflowGraph>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
         n: NodeIndex,
         loc: Location,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        async move {
-            let mut inputs = collect_inputs(&context, &workflow_graph, n).await?;
+    ) -> miette::Result<Action> {
+        let mut inputs = collect_inputs(&workflow_graph, &node_states, n)?;
 
-            let pred_bytes = load_asset(&asset_storage_registry, &inputs, "pred")?;
-            let mut outputs = HashMap::new();
+        let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred")?;
+        let mut outputs = HashMap::new();
 
-            if pred_bytes == b"true" {
-                let value = inputs.remove("if_true").unwrap();
-                outputs.insert("value".to_string(), value);
-            } else {
-                let value = inputs.remove("if_false").unwrap();
-                outputs.insert("value".to_string(), value);
-            }
-
-            Ok(Action {
-                loc,
-                kind: ActionKind::SetComplete { outputs },
-            })
+        if pred_bytes == b"true" {
+            let value = inputs.remove("if_true").unwrap();
+            outputs.insert("value".to_string(), value);
+        } else {
+            let value = inputs.remove("if_false").unwrap();
+            outputs.insert("value".to_string(), value);
         }
-        .into_stream()
-        .boxed()
+
+        Ok(Action {
+            loc,
+            kind: ActionKind::SetComplete { outputs },
+        })
     }
 
+    #[instrument(skip(self), err)]
     fn build_input_action(
         &self,
-        graph_inputs: &HashMap<String, AssetSpec>,
+        graph_inputs: Arc<HashMap<String, AssetSpec>>,
         loc: Location,
         name: &String,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        let storage_name = self.default_storage_name.clone();
+    ) -> miette::Result<Action> {
         let outputs: HashMap<String, AssetSpec> = graph_inputs
             .iter()
             .filter(|(k, _)| k == &name)
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        async move {
-            // TODO: It's a little bit unclear if this is desired behaviour.
-            let outputs = transfer_assets(&asset_storage_registry, &storage_name, &outputs)?;
-            Ok(Action {
-                loc,
-                kind: ActionKind::SetComplete { outputs },
-            })
-        }
-        .into_stream()
-        .boxed()
+        // TODO: It's a little bit unclear if this is desired behaviour.
+        let outputs = transfer_assets(
+            &self.asset_storage_registry,
+            &self.default_storage_name,
+            &outputs,
+        )?;
+        Ok(Action {
+            loc,
+            kind: ActionKind::SetComplete { outputs },
+        })
     }
 
+    #[instrument(skip(self), err)]
     fn build_const_action(
         &self,
         loc: Location,
         value: serde_json::Value,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        let storage_name = self.default_storage_name.clone();
-        async move {
-            let value_bytes = serde_json::to_vec(&value).into_diagnostic()?;
-            let asset_key = save_asset(&asset_storage_registry, &storage_name, value_bytes)?;
+    ) -> miette::Result<Action> {
+        let value_bytes = serde_json::to_vec(&value).into_diagnostic()?;
+        let asset_key = save_asset(
+            &self.asset_storage_registry,
+            &self.default_storage_name,
+            value_bytes,
+        )?;
 
-            let mut outputs = HashMap::new();
-            outputs.insert("value".to_string(), asset_key);
-            Ok(Action {
+        let mut outputs = HashMap::new();
+        outputs.insert("value".to_string(), asset_key);
+        Ok(Action {
+            loc,
+            kind: ActionKind::SetComplete { outputs },
+        })
+    }
+
+    #[instrument(skip(self, workflow_graph, node_states), err)]
+    async fn build_output_actions(
+        &self,
+        workflow_graph: Arc<WorkflowGraph>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        n: NodeIndex,
+        loc: Location,
+    ) -> miette::Result<BoxStream<'_, miette::Result<Action>>> {
+        info!("running output node");
+        let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+        info!("inputs: {inputs:?}");
+
+        let is_root_workflow = loc == Location::from_node_index_iter([workflow_graph.output_idx()]);
+        let mut actions = vec![Ok(Action {
+            loc: loc.clone(),
+            kind: ActionKind::SetComplete { outputs: inputs },
+        })];
+        info!("output actions: {actions:?}");
+
+        if is_root_workflow {
+            actions.push(Ok(Action {
+                loc,
+                kind: ActionKind::WorkflowFinished {},
+            }));
+        }
+        info!("output actions: {actions:?}");
+
+        Ok(stream::iter(actions).boxed())
+    }
+
+    #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
+    async fn build_eval_actions(
+        &self,
+        workflow_graph: Arc<WorkflowGraph>,
+        workflow_state: Arc<dyn WorkflowState>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        n: NodeIndex,
+        loc: Location,
+    ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+        // TODO: we don't need to collect inputs other than the graph
+        // itself if the graph has already started.
+        let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+
+        let subgraph = if inputs.contains_key("graph") {
+            self.load_subgraph(&inputs)?
+        } else {
+            workflow_graph
+        };
+
+        let subgraph_output_state = workflow_state
+            .read(&loc.with_node(subgraph.output_idx()))
+            .await?;
+
+        if let Some(subgraph_outputs) = subgraph_output_state.outputs {
+            // TODO: Unclear if this is desired behaviour.
+            let outputs = transfer_assets(
+                &self.asset_storage_registry,
+                &self.default_storage_name,
+                &subgraph_outputs,
+            )?;
+            return Ok(stream::once(future::ok(Action {
                 loc,
                 kind: ActionKind::SetComplete { outputs },
-            })
+            }))
+            .boxed());
         }
-        .into_stream()
-        .boxed()
-    }
 
-    fn build_output_actions(
-        &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
-        n: NodeIndex,
-        loc: Location,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-        async move {
-            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
-
-            let is_root_workflow =
-                loc == Location::from_node_index_iter([workflow_graph.output_idx()]);
-            let mut events = vec![Ok(Action {
-                loc: loc.clone(),
-                kind: ActionKind::SetComplete { outputs: inputs },
-            })];
-
-            if is_root_workflow {
-                events.push(Ok(Action {
-                    loc,
-                    kind: ActionKind::WorkflowFinished {},
-                }));
-            }
-
-            Ok(stream::iter(events))
-        }
-        .try_flatten_stream()
-        .boxed()
-    }
-
-    fn build_eval_actions(
-        &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
-        n: NodeIndex,
-        loc: Location,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        let storage_name = self.default_storage_name.clone();
-        async move {
-            // TODO: we don't need to collect inputs other than the graph
-            // itself if the graph has already started.
-            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
-            let subgraph = if inputs.contains_key("graph") {
-                self.load_subgraph(&inputs)?
-            } else {
-                workflow_graph
-            };
-
-            let subgraph_output_state = context
-                .workflow_state
-                .read(&loc.with_node(subgraph.output_idx()))
-                .await?;
-
-            if let Some(subgraph_outputs) = subgraph_output_state.outputs {
-                // TODO: Unclear if this is desired behaviour.
-                let outputs =
-                    transfer_assets(&asset_storage_registry, &storage_name, &subgraph_outputs)?;
-                return Ok(stream::iter([Ok(Action {
-                    loc,
-                    kind: ActionKind::SetComplete { outputs },
-                })])
-                .boxed());
-            }
-
-            Ok(self.build_actions(
+        let stream = self
+            .build_actions(
                 OrchestrationContext {
                     subworkflow_context: loc,
                     graph_inputs: inputs,
-                    workflow_state: Arc::clone(&context.workflow_state),
+                    workflow_state: Arc::clone(&workflow_state),
                 },
                 subgraph,
-            ))
-        }
-        .try_flatten_stream()
-        .boxed()
+            )
+            .await?;
+
+        Ok(stream.boxed_local())
     }
 
-    fn build_loop_actions(
+    #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
+    async fn build_loop_actions(
         &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
+        workflow_graph: Arc<WorkflowGraph>,
+        workflow_state: Arc<dyn WorkflowState>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
         n: NodeIndex,
         loc: Location,
         loop_index: Option<u32>,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
-        async move {
-            match loop_index {
-                None => {
-                    return Ok(stream::iter([Ok(Action {
-                        loc,
-                        kind: ActionKind::SetRunningLoop { index: 0 },
-                    })])
-                    .boxed());
-                }
-                Some(index) => {
-                    // TODO: We probably don't need the inputs if we have already
-                    // visited this loop iteration.
-                    let mut inputs = collect_inputs(&context, &workflow_graph, n).await?;
-                    let subgraph = self.load_subgraph(&inputs)?;
+    ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+        match loop_index {
+            None => {
+                return Ok(stream::once(future::ok(Action {
+                    loc,
+                    kind: ActionKind::SetRunningLoop { index: 0 },
+                }))
+                .boxed());
+            }
+            Some(index) => {
+                // TODO: We probably don't need the inputs if we have already
+                // visited this loop iteration.
+                let mut inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+                let subgraph = self.load_subgraph(&inputs)?;
 
-                    let loop_loc = loc.with_loop_index(index);
-                    let loop_subgraph_output_loc = loop_loc.with_node(subgraph.output_idx());
-                    let loop_iteration_output_state = context
-                        .workflow_state
-                        .read(&loop_subgraph_output_loc)
-                        .await?;
+                let loop_loc = loc.with_loop_index(index);
+                let loop_subgraph_output_loc = loop_loc.with_node(subgraph.output_idx());
+                let loop_iteration_output_state =
+                    workflow_state.read(&loop_subgraph_output_loc).await?;
 
-                    match loop_iteration_output_state.outputs {
-                        None => {
-                            if index > 0 {
-                                let prev_loop_loc = loc.with_loop_index(index - 1);
-                                let prev_loop_subgraph_output_loc =
-                                    prev_loop_loc.with_node(subgraph.output_idx());
-                                let prev_loop_iteration_output_state = context
-                                    .workflow_state
-                                    .read(&prev_loop_subgraph_output_loc)
-                                    .await?;
+                match loop_iteration_output_state.outputs {
+                    None => {
+                        if index > 0 {
+                            let prev_loop_loc = loc.with_loop_index(index - 1);
+                            let prev_loop_subgraph_output_loc =
+                                prev_loop_loc.with_node(subgraph.output_idx());
+                            let prev_loop_iteration_output_state =
+                                workflow_state.read(&prev_loop_subgraph_output_loc).await?;
 
-                                inputs.extend(
-                                    prev_loop_iteration_output_state.outputs.ok_or_else(|| {
-                                        miette!("No outputs from previous loop iteration")
-                                    })?,
-                                );
-                            }
+                            inputs.extend(prev_loop_iteration_output_state.outputs.ok_or_else(
+                                || miette!("No outputs from previous loop iteration"),
+                            )?);
+                        }
 
-                            return Ok(self.build_actions(
+                        return self
+                            .build_actions(
                                 OrchestrationContext {
                                     subworkflow_context: loop_loc,
                                     graph_inputs: inputs,
-                                    workflow_state: Arc::clone(&context.workflow_state),
+                                    workflow_state: Arc::clone(&workflow_state),
                                 },
                                 subgraph,
-                            ));
-                        }
-                        Some(outputs) => {
-                            let should_continue_bytes = load_asset(
-                                &self.asset_storage_registry,
-                                &outputs,
-                                "should_continue",
-                            )?;
+                            )
+                            .await;
+                    }
+                    Some(outputs) => {
+                        let should_continue_bytes =
+                            load_asset(&self.asset_storage_registry, &outputs, "should_continue")?;
 
-                            if should_continue_bytes == b"true" {
-                                return Ok(stream::iter([Ok(Action {
-                                    loc,
-                                    kind: ActionKind::SetRunningLoop { index: index + 1 },
-                                })])
-                                .boxed());
-                            } else {
-                                Ok(stream::iter([Ok(Action {
-                                    loc,
-                                    kind: ActionKind::SetComplete { outputs },
-                                })])
-                                .boxed())
-                            }
+                        if should_continue_bytes == b"true" {
+                            Ok(stream::once(future::ok(Action {
+                                loc,
+                                kind: ActionKind::SetRunningLoop { index: index + 1 },
+                            }))
+                            .boxed())
+                        } else {
+                            Ok(stream::once(future::ok(Action {
+                                loc,
+                                kind: ActionKind::SetComplete { outputs },
+                            }))
+                            .boxed())
                         }
                     }
                 }
             }
         }
-        .try_flatten_stream()
-        .boxed()
     }
 
-    fn build_map_actions(
+    #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
+    async fn build_map_actions(
         &self,
-        context: OrchestrationContext,
-        workflow_graph: WorkflowGraph,
+        workflow_graph: Arc<WorkflowGraph>,
+        workflow_state: Arc<dyn WorkflowState>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        mapped_ports: HashSet<String>,
         n: NodeIndex,
         loc: Location,
-    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send + '_>> {
-        let asset_storage_registry = self.asset_storage_registry.clone();
-        let storage_name = self.default_storage_name.clone();
-        async move {
-            // TODO: we don't need to collect inputs other than the graph
-            // itself if the graph has already started.
-            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
-            let subgraph = self.load_subgraph(&inputs)?;
-            let subgraph_output_state = context
-                .workflow_state
-                .read(&loc.with_node(subgraph.output_idx()))
-                .await?;
+        completed: Option<BitVec>,
+    ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+        let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+        let subgraph = self.load_subgraph(&inputs)?;
 
-            if let Some(subgraph_outputs) = subgraph_output_state.outputs {
-                // TODO: Unclear if this is desired behaviour.
-                let outputs =
-                    transfer_assets(&asset_storage_registry, &storage_name, &subgraph_outputs)?;
-                return Ok(stream::iter([Ok(Action {
-                    loc,
-                    kind: ActionKind::SetComplete { outputs },
-                })])
-                .boxed());
+        Ok(match completed {
+            None => {
+                let mut input_sets = Vec::new();
+                for mapped_port in mapped_ports {
+                    let unfolded_assets =
+                        unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port)?;
+
+                    if input_sets.is_empty() {
+                        input_sets.extend(iter::repeat_n(inputs.clone(), unfolded_assets.len()));
+                    }
+
+                    for (index, asset) in unfolded_assets.into_iter().enumerate() {
+                        let input_set = input_sets.get_mut(index).unwrap();
+                        input_set.insert(mapped_port.clone(), asset);
+                    }
+                }
+                let map_size = input_sets.len();
+
+                let loc_copy = loc.clone();
+
+                stream::iter(input_sets.into_iter().enumerate())
+                    .flat_map_unordered(None, move |(index, inputs)| {
+                        let map_loc = loc_copy.with_map_index(index as u32);
+                        self.build_actions(
+                            OrchestrationContext {
+                                subworkflow_context: map_loc,
+                                graph_inputs: inputs,
+                                workflow_state: Arc::clone(&workflow_state),
+                            },
+                            subgraph.clone(),
+                        )
+                        .try_flatten_stream()
+                        .boxed_local()
+                    })
+                    .chain(stream::once(future::ok(Action {
+                        loc,
+                        kind: ActionKind::SetRunningMap {
+                            size: map_size as u32,
+                        },
+                    })))
+                    .boxed_local()
             }
+            Some(completed) => {
+                let output_idx = subgraph.output_idx();
 
-            Ok(self.build_actions(
-                OrchestrationContext {
-                    subworkflow_context: loc,
-                    graph_inputs: inputs,
-                    workflow_state: Arc::clone(&context.workflow_state),
-                },
-                subgraph,
-            ))
-        }
-        .try_flatten_stream()
-        .boxed()
+                if completed.all() {
+                    return Ok(stream::once(async move {
+                        let mut assets: HashMap<String, Vec<_>> = HashMap::new();
+                        for index in 0..completed.len() {
+                            let map_loc = loc.with_map_index(index as u32);
+                            let subgraph_output_state =
+                                workflow_state.read(&map_loc.with_node(output_idx)).await?;
+
+                            let outputs = subgraph_output_state
+                                .outputs
+                                .ok_or_else(|| miette!("No outputs!"))?;
+
+                            outputs.into_iter().for_each(|(k, v)| {
+                                let entry = assets.entry(k).or_default();
+                                entry.push(v);
+                            });
+                        }
+
+                        let outputs = assets
+                            .into_iter()
+                            .map(|(k, v)| {
+                                let asset_spec = fold_assets(
+                                    &self.asset_storage_registry,
+                                    &self.default_storage_name,
+                                    v,
+                                )?;
+
+                                Ok((k, asset_spec))
+                            })
+                            .collect::<miette::Result<_>>()?;
+
+                        Ok(Action {
+                            loc,
+                            kind: ActionKind::SetComplete { outputs },
+                        })
+                    })
+                    .boxed());
+                }
+
+                stream::iter(completed.into_iter().enumerate())
+                    .filter(|(_index, completed)| future::ready(!completed))
+                    .flat_map_unordered(None, move |(index, _completed)| {
+                        let loc_copy = loc.clone();
+                        let map_loc = loc.with_map_index(index as u32);
+                        let map_loc_copy = map_loc.clone();
+                        self.build_actions(
+                            OrchestrationContext {
+                                subworkflow_context: map_loc,
+                                graph_inputs: inputs.clone(),
+                                workflow_state: Arc::clone(&workflow_state),
+                            },
+                            subgraph.clone(),
+                        )
+                        .try_flatten_stream()
+                        .chain(
+                            stream::once({
+                                let workflow_state_copy = Arc::clone(&workflow_state);
+                                async move {
+                                    let res = workflow_state_copy
+                                        .read(&map_loc_copy.with_node(output_idx))
+                                        .await;
+
+                                    let subgraph_output_state = match res {
+                                        Ok(state) => state,
+                                        Err(err) => return stream_error(err),
+                                    };
+
+                                    match subgraph_output_state.outputs {
+                                        None => stream::empty().boxed(),
+                                        Some(_) => stream::once(future::ok(Action {
+                                            loc: loc_copy,
+                                            kind: ActionKind::SetMapElemComplete {
+                                                index: index as u32,
+                                            },
+                                        }))
+                                        .boxed(),
+                                    }
+                                }
+                            })
+                            .flatten(),
+                        )
+                        .boxed_local()
+                    })
+                    .boxed_local()
+            }
+        })
     }
 
-    fn load_subgraph(&self, inputs: &HashMap<String, AssetSpec>) -> miette::Result<WorkflowGraph> {
+    #[instrument(skip(self, inputs), err)]
+    fn load_subgraph(
+        &self,
+        inputs: &HashMap<String, AssetSpec>,
+    ) -> miette::Result<Arc<WorkflowGraph>> {
         let subgraph_bytes = load_asset(&self.asset_storage_registry, &inputs, "graph")?;
         let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
             serde_json::from_slice(&subgraph_bytes);
@@ -642,7 +761,7 @@ impl Orchestrator {
             }
         };
 
-        Ok(subgraph)
+        Ok(Arc::new(subgraph))
     }
 
     /// Perform a series of actions, dispatching to [`Executor`]s when necessary.
@@ -650,6 +769,7 @@ impl Orchestrator {
     /// # Errors
     ///
     /// Will return Err if a Node cannot be run or dispatched.
+    #[instrument(skip(self, actions), err)]
     pub async fn perform_actions(
         &self,
         mut actions: impl Stream<Item = miette::Result<Action>> + Unpin,
@@ -659,6 +779,7 @@ impl Orchestrator {
         let mut task_plans = Vec::new();
         let mut event_sender = self.event_sender.clone();
         while let Some(Action { loc, kind }) = actions.next().await.transpose()? {
+            info!("action: {kind:?}");
             match kind {
                 ActionKind::PerformTask {
                     worker_name,
@@ -678,6 +799,12 @@ impl Orchestrator {
                 ActionKind::SetRunningLoop { index } => {
                     send_running_loop(&mut event_sender, loc, index).await?;
                 }
+                ActionKind::SetRunningMap { size } => {
+                    send_running_map(&mut event_sender, loc, size).await?;
+                }
+                ActionKind::SetMapElemComplete { index } => {
+                    send_map_elem_complete(&mut event_sender, loc, index).await?;
+                }
                 ActionKind::SetComplete { outputs } => {
                     send_complete(&mut event_sender, loc, outputs).await?;
                 }
@@ -695,7 +822,7 @@ impl Orchestrator {
         executor
             .execute(task_plans)
             .await
-            .wrap_err("Could not run Task Nodes")?;
+            .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
 
         Ok(())
     }
@@ -716,9 +843,9 @@ impl Orchestrator {
                 .try_lock()
                 .map_err(|err| miette!("Failed to listen: {}", err))?;
 
-            receiver.take().ok_or(miette!(
-                "Failed to listen: Orchestrator is already being listened to."
-            ))?
+            receiver.take().ok_or_else(|| {
+                miette!("Failed to listen: Orchestrator is already being listened to.")
+            })?
         };
 
         let mut streams = self
@@ -735,42 +862,37 @@ impl Orchestrator {
     }
 }
 
-fn stream_error(
-    err: miette::Error,
-) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
+fn stream_action_result<'a>(res: miette::Result<Action>) -> BoxStream<'a, miette::Result<Action>> {
+    stream::once(future::ready(res)).boxed()
+}
+
+fn stream_error<'a>(err: miette::Error) -> BoxStream<'a, miette::Result<Action>> {
     stream::once(future::err(err)).boxed()
 }
 
+#[instrument(skip(workflow_graph, node_states), err)]
 fn build_task_action(
-    context: &OrchestrationContext,
-    workflow_graph: &WorkflowGraph,
+    workflow_graph: Arc<WorkflowGraph>,
+    node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
     n: NodeIndex,
     loc: Location,
     worker_name: &str,
     task_name: &str,
-) -> std::pin::Pin<Box<dyn Stream<Item = Result<Action, miette::Error>> + Send>> {
-    stream::once({
-        let context = context.clone();
-        let workflow_graph = workflow_graph.clone();
-        let worker_name = worker_name.to_owned();
-        let task_name = task_name.to_owned();
-        async move {
-            let inputs = collect_inputs(&context, &workflow_graph, n).await?;
+) -> miette::Result<Action> {
+    let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
 
-            Ok(Action {
-                loc,
-                kind: ActionKind::PerformTask {
-                    worker_name,
-                    task_name,
-                    inputs,
-                },
-            })
-        }
+    Ok(Action {
+        loc,
+        kind: ActionKind::PerformTask {
+            worker_name: worker_name.to_string(),
+            task_name: task_name.to_string(),
+            inputs,
+        },
     })
-    .boxed()
 }
 
 /// Find nodes which are ready for execution, mark them as scheduled then return them.
+#[instrument(skip(context, workflow_graph, node_states), err)]
 async fn prepare_ready_nodes(
     context: &OrchestrationContext,
     workflow_graph: &WorkflowGraph,
@@ -791,7 +913,7 @@ async fn prepare_ready_nodes(
                     definition,
                     NodeDefinition::Eval {}
                         | NodeDefinition::Loop {}
-                        | NodeDefinition::Map {}
+                        | NodeDefinition::Map { .. }
                         | NodeDefinition::IfElse {}
                 );
                 !has_outputs && (not_already_scheduled || is_control_flow)
@@ -843,8 +965,8 @@ async fn prepare_ready_nodes(
                 }
             } else {
                 workflow_graph.all_inputs(*n, |incoming| {
-                    node_states
-                        .get(&incoming)
+                    info!("checking node: {incoming:?}");
+                    dbg!(node_states.get(&incoming))
                         .is_some_and(|(_, state)| state.outputs.is_some())
                 })
             }
@@ -881,36 +1003,37 @@ fn should_traverse_if_else_port(
     }
 }
 
-async fn collect_inputs(
-    context: &OrchestrationContext,
+#[instrument(skip(workflow_graph, node_states))]
+fn collect_inputs(
     workflow_graph: &WorkflowGraph,
+    node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
     n: NodeIndex,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
-    let inputs: HashMap<String, AssetSpec> = stream::iter(workflow_graph.input_links(n))
-        .then(|(i, o)| async move {
-            let input_name = workflow_graph.get_port_name(&i.into())?;
-            let output_name = workflow_graph.get_port_name(&o.into())?;
-            let linked_node = workflow_graph.port_node(o)?;
-            let loc = context.subworkflow_context.with_node(linked_node);
-            let node_state = context
-                .workflow_state
-                .read(&loc)
-                .await
-                .wrap_err(miette!("Could not find node outputs for location: {loc:?}"))?;
-            let outputs = node_state
-                .outputs
-                .ok_or_else(|| miette!("Could not find node outputs for location: {loc:?}"))?;
-            let output_asset_spec = outputs.get(output_name).ok_or_else(|| {
-                miette!(
-                    "Could not get node output for location: {loc:?} and port name: {output_name}"
-                )
-            })?;
-            Ok((input_name.clone(), output_asset_spec.clone()))
-        })
-        .collect::<Vec<miette::Result<_, miette::Report>>>()
-        .await
-        .into_iter()
-        .collect::<miette::Result<HashMap<_, _>>>()?;
+    let mut inputs = HashMap::new();
+    for (i, o) in workflow_graph.input_links(n) {
+        info!("getting link: {i:?} -> {o:?}");
+        let input_name = workflow_graph.get_port_name(&i.into())?;
+        let output_name = workflow_graph.get_port_name(&o.into())?;
+        info!("output name: {output_name}");
+        let linked_node = workflow_graph.port_node(o)?;
+        let (_, node_state) = node_states
+            .get(&linked_node)
+            .wrap_err_with(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
+        info!("node state: {node_state:?}");
+        let outputs = node_state
+            .outputs
+            .as_ref()
+            .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
+        info!("outputs: {outputs:?}");
+        let output_asset_spec = outputs.get(output_name).ok_or_else(|| {
+            miette!(
+                "Could not get node output for node: {linked_node:?} and port name: {output_name}"
+            )
+        })?;
+        info!("output asset spec: {output_asset_spec:?}");
+
+        inputs.insert(input_name.clone(), output_asset_spec.clone());
+    }
     Ok(inputs)
 }
 
@@ -985,6 +1108,7 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&input2_idx, "b", &workflow_graph.output_idx(), "out2")
             .unwrap();
+        let workflow_graph = Arc::new(workflow_graph);
 
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
@@ -994,7 +1118,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state,
         };
-        let actions = orchestrator.build_actions(context, workflow_graph);
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         assert_eq!(actions.len(), 2);
@@ -1036,6 +1162,7 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&input_idx, "a", &workflow_graph.output_idx(), "out")
             .unwrap();
+        let workflow_graph = Arc::new(workflow_graph);
 
         let inputs = input_sets[0].clone();
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
@@ -1045,7 +1172,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
-        let actions = orchestrator.build_actions(context, workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         assert_eq!(actions.len(), 1);
@@ -1069,7 +1198,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
-        let actions = orchestrator.build_actions(context, workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         assert_eq!(actions.len(), 2);
@@ -1168,6 +1299,7 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&eval_idx, "out", &workflow_graph.output_idx(), "out")
             .unwrap();
+        let workflow_graph = Arc::new(workflow_graph);
 
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
@@ -1177,7 +1309,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
-        let actions = orchestrator.build_actions(context, workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         assert_eq!(actions.len(), 2);
@@ -1220,7 +1354,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
-        let actions = orchestrator.build_actions(context, workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         assert_eq!(actions.len(), 1);
@@ -1248,7 +1384,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
-        let actions = orchestrator.build_actions(context, workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
@@ -1274,7 +1412,9 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
-        let actions = orchestrator.build_actions(context, workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context, workflow_graph.clone())
+            .await?;
         let actions = actions.collect::<Vec<_>>().await;
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
@@ -1328,6 +1468,7 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&add_idx, "value", &output_idx, "out")
             .unwrap();
+        let workflow_graph = Arc::new(workflow_graph);
 
         let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
         let executor_registry = test_executor_registry(&registry);
@@ -1352,7 +1493,9 @@ mod tests {
             updater.process(stream).await.unwrap();
             println!("done listening");
         });
-        let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context.clone(), workflow_graph.clone())
+            .await?;
         orchestrator.perform_actions(actions).await?;
 
         let mut state_chunks = state_events.ready_chunks(8);
@@ -1360,7 +1503,9 @@ mod tests {
             if chunk.iter().any(|updated| updated.stopped) {
                 break;
             }
-            let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+            let actions = orchestrator
+                .build_actions(context.clone(), workflow_graph.clone())
+                .await?;
             orchestrator.perform_actions(actions).await?;
         }
 
@@ -1460,6 +1605,7 @@ mod tests {
         workflow_graph
             .link_nodes_by_port_name(&eval_idx, "out", &workflow_graph.output_idx(), "out")
             .unwrap();
+        let workflow_graph = Arc::new(workflow_graph);
 
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"a": 1, "subworkflow": subworkflow_graph})],
@@ -1487,14 +1633,18 @@ mod tests {
             updater.process(stream).await.unwrap();
             println!("done listening");
         });
-        let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context.clone(), workflow_graph.clone())
+            .await?;
         orchestrator.perform_actions(actions).await?;
         let mut state_chunks = state_events.ready_chunks(8);
         while let Some(chunk) = state_chunks.next().await {
             if chunk.iter().any(|updated| updated.stopped) {
                 break;
             }
-            let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+            let actions = orchestrator
+                .build_actions(context.clone(), workflow_graph.clone())
+                .await?;
             orchestrator.perform_actions(actions).await?;
         }
 
@@ -1551,7 +1701,7 @@ mod tests {
         let serialized_graph = include_str!("../tests/cli/data/sample_graph");
         let graph: LegacyWorkflowGraph =
             serde_json::from_str(serialized_graph).into_diagnostic()?;
-        let workflow_graph = graph.to_workflow_graph().unwrap();
+        let workflow_graph = Arc::new(graph.to_workflow_graph().unwrap());
 
         let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]);
         let executor_registry = test_executor_registry(&registry);
@@ -1575,14 +1725,18 @@ mod tests {
             updater.process(stream).await.unwrap();
             println!("done listening");
         });
-        let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+        let actions = orchestrator
+            .build_actions(context.clone(), workflow_graph.clone())
+            .await?;
         orchestrator.perform_actions(actions).await?;
         let mut state_chunks = state_events.ready_chunks(8);
         while let Some(chunk) = state_chunks.next().await {
             if chunk.iter().any(|updated| updated.stopped) {
                 break;
             }
-            let actions = orchestrator.build_actions(context.clone(), workflow_graph.clone());
+            let actions = orchestrator
+                .build_actions(context.clone(), workflow_graph.clone())
+                .await?;
             orchestrator.perform_actions(actions).await?;
         }
 

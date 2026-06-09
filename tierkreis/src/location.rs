@@ -10,6 +10,7 @@ pub enum LocationComponent {
     /// The [`NodeIndex`] of a Node in a Graph or Subgraph inside a higher order node.
     Node(NodeIndex),
     LoopIndex(u32),
+    MapIndex(u32),
 }
 
 /// A [`Location`] struct describes where a computation is happening in a higher
@@ -64,6 +65,14 @@ impl Location {
     pub fn with_loop_index(&self, index: u32) -> Location {
         let mut inner = self.0.clone();
         inner.push(LocationComponent::LoopIndex(index));
+        Location(inner)
+    }
+
+    /// Extend the [`Location`] struct with a Node component with the specified [`NodeIndex`].
+    #[must_use]
+    pub fn with_map_index(&self, index: u32) -> Location {
+        let mut inner = self.0.clone();
+        inner.push(LocationComponent::MapIndex(index));
         Location(inner)
     }
 
