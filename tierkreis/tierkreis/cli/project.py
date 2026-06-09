@@ -188,7 +188,14 @@ def _gen_worker_stubs(worker_directory: Path, stubs_name: str) -> None:
                 check=True,
             )
             subprocess.run(
-                [uv_path, "add", "--active", "--editable", f"{worker}/api"],
+                [
+                    uv_path,
+                    "add",
+                    "--active",
+                    "--editable",
+                    f"{worker}",
+                    "--no-workspace",
+                ],
                 check=True,
             )
 

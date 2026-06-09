@@ -153,8 +153,7 @@ from uuid import UUID
 
 from tierkreis.builder import Graph
 from tierkreis.controller import run_graph
-from tierkreis.controller.data.models import TKR, OpaqueType
-from tierkreis.controller.data.types import Workflow
+from tierkreis.models import OpaqueType, TKR, Workflow
 from tierkreis.executor import ShellExecutor, UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
@@ -200,9 +199,7 @@ def worker_init() -> str:
     :return: An init template
     :rtype: str
     """
-    return """from from .api.api import *
-
-"""
+    return """from .api.api import *"""
 
 
 def worker_impl_init() -> str:
