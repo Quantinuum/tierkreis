@@ -2,6 +2,7 @@
 This module defines the [`Location`] struct that is used throughout the Tierkreis
 runtime to specify the place in a Workflow graph that something has happened.
 */
+use miette::{IntoDiagnostic, miette};
 use portgraph::NodeIndex;
 use std::str::FromStr;
 
@@ -15,7 +16,58 @@ use diesel::{AsExpression, FromSqlRow};
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LocationComponent {
     /// The [`NodeIndex`] of a Node in a Graph or Subgraph inside a higher order node.
-    Node(NodeIndex),
+    Node {
+        /// The location of the node within the graph.
+        node: NodeIndex,
+    },
+    /// The [`LoopIndex`] of a Loop node, independent from the [`NodeIndex`] of the Loop node.
+    LoopIndex {
+        /// The index of the "virtual" loop node within in the graph.
+        index: u32,
+    },
+    /// The [`MapIndex`] of a Map node, independent from the [`NodeIndex`] of the Map node.
+    MapIndex {
+        /// The index of the "virtual" map element within in the graph.
+        index: u32,
+    },
+}
+
+impl LocationComponent {
+    /// Construct a new [`LocationComponent`] from a &str.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the &str is malformed and cannot be parsed.
+    pub fn new(step: &str) -> miette::Result<Self> {
+        match (step.get(0..1), step.get(1..)) {
+            (Some("N"), Some(idx_str)) => Ok(LocationComponent::Node {
+                node: NodeIndex::new(idx_str.parse().into_diagnostic()?),
+            }),
+            (Some("L"), Some(idx_str)) => Ok(LocationComponent::LoopIndex {
+                index: idx_str.parse().into_diagnostic()?,
+            }),
+            (Some("M"), Some(idx_str)) => Ok(LocationComponent::MapIndex {
+                index: idx_str.parse().into_diagnostic()?,
+            }),
+            (tag, index) => Err(miette!(
+                "Could not parse Loc: {} with tag {:?} and index {:?}",
+                step,
+                tag,
+                index
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for LocationComponent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LocationComponent::Node { node } => write!(f, "N{}", node.index())?,
+            LocationComponent::LoopIndex { index } => write!(f, "L{index}")?,
+            LocationComponent::MapIndex { index } => write!(f, "M{index}")?,
+        }
+        Ok(())
+    }
 }
 
 /// A [`Location`] struct describes where a computation is happening in a higher
@@ -30,6 +82,20 @@ pub enum LocationComponent {
 pub struct Location(Vec<LocationComponent>);
 
 impl Location {
+    /// Construct a new [`Location`] from a &str.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the &str is malformed and cannot be parsed.
+    pub fn new(k: &str) -> miette::Result<Self> {
+        let parts = k.split_terminator('.');
+        let mut steps = Vec::new();
+        for part in parts {
+            steps.push(LocationComponent::new(part)?);
+        }
+        Ok(Self(steps))
+    }
+
     /// Construct a [`Location`] that represents the "root" Location.
     #[must_use]
     pub fn root() -> Self {
@@ -37,12 +103,14 @@ impl Location {
     }
 
     /// Construct a [`Location`] from an iterator of [`usize`].
+    ///
+    /// This method cannot be used to construct Map or Loop components.
     pub fn from_usize_iter(nodes: impl IntoIterator<Item = usize>) -> Self {
         Self(
             nodes
                 .into_iter()
                 .map(NodeIndex::new)
-                .map(LocationComponent::Node)
+                .map(|node_index| LocationComponent::Node { node: node_index })
                 .collect(),
         )
     }
@@ -55,14 +123,35 @@ impl Location {
 
     /// Construct a [`Location`] from an iterator of [`NodeIndex`].
     pub fn from_node_index_iter(nodes: impl IntoIterator<Item = NodeIndex>) -> Self {
-        Self(nodes.into_iter().map(LocationComponent::Node).collect())
+        Self(
+            nodes
+                .into_iter()
+                .map(|node_index| LocationComponent::Node { node: node_index })
+                .collect(),
+        )
     }
 
     /// Extend the [`Location`] struct with a Node component with the specified [`NodeIndex`].
     #[must_use]
     pub fn with_node(&self, node: NodeIndex) -> Location {
         let mut inner = self.0.clone();
-        inner.push(LocationComponent::Node(node));
+        inner.push(LocationComponent::Node { node });
+        Location(inner)
+    }
+
+    /// Extend the [`Location`] struct with a Node component with the specified [`NodeIndex`].
+    #[must_use]
+    pub fn with_loop_index(&self, index: u32) -> Location {
+        let mut inner = self.0.clone();
+        inner.push(LocationComponent::LoopIndex { index });
+        Location(inner)
+    }
+
+    /// Extend the [`Location`] struct with a Node component with the specified [`NodeIndex`].
+    #[must_use]
+    pub fn with_map_index(&self, index: u32) -> Location {
+        let mut inner = self.0.clone();
+        inner.push(LocationComponent::MapIndex { index });
         Location(inner)
     }
 
@@ -73,33 +162,26 @@ impl Location {
         components.pop();
         Location(components)
     }
-
-    /// Return the location path as raw node indices.
-    #[must_use]
-    pub fn as_usize_vec(&self) -> Vec<usize> {
-        self.0
-            .iter()
-            .map(|component| match component {
-                LocationComponent::Node(index) => index.index(),
-            })
-            .collect()
-    }
 }
 
 impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let serialized =
-            serde_json::to_string(&self.as_usize_vec()).map_err(|_| std::fmt::Error)?;
-        write!(f, "{serialized}")
+        self.0
+            .first()
+            .map(|first_step| write!(f, "{first_step}"))
+            .transpose()?;
+        for step in self.0.iter().skip(1) {
+            write!(f, ".{step}")?;
+        }
+        Ok(())
     }
 }
 
 impl FromStr for Location {
-    type Err = serde_json::Error;
+    type Err = miette::ErrReport;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let nodes = serde_json::from_str::<Vec<usize>>(s)?;
-        Ok(Self::from_usize_iter(nodes))
+        Self::new(s)
     }
 }
 
@@ -113,9 +195,7 @@ impl ToSql<Text, Sqlite> for Location {
 impl FromSql<Text, Sqlite> for Location {
     fn from_sql(value: SqliteValue<'_, '_, '_>) -> deserialize::Result<Self> {
         let serialized = <String as FromSql<Text, Sqlite>>::from_sql(value)?;
-        serialized
-            .parse::<Location>()
-            .map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)
+        serialized.parse::<Location>().map_err(Into::into)
     }
 }
 
@@ -124,17 +204,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn roundtrip_location_serialization() {
+    fn roundtrip_location_serialization() -> miette::Result<()> {
         let location = Location::from_usize_iter([2, 4, 8]);
         let serialized = location.to_string();
-        let parsed = serialized.parse::<Location>().unwrap();
+        let parsed = serialized.parse::<Location>()?;
         assert_eq!(location, parsed);
+
+        Ok(())
     }
 
     #[test]
-    fn root_serializes_as_empty_path() {
+    fn roundtrip_location_serialization_from_str() -> miette::Result<()> {
+        let location = Location::new("N2.N4.M5.N5.L6")?;
+        let serialized = location.to_string();
+        let parsed = serialized.parse::<Location>()?;
+        assert_eq!(location, parsed);
+
+        Ok(())
+    }
+
+    #[test]
+    fn root_serializes_as_empty_path() -> miette::Result<()> {
         let root = Location::root();
-        assert_eq!(root.to_string(), "[]");
-        assert_eq!("[]".parse::<Location>().unwrap(), root);
+        assert_eq!(root.to_string(), "");
+        assert_eq!("".parse::<Location>()?, root);
+
+        Ok(())
     }
 }
