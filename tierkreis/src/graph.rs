@@ -210,7 +210,7 @@ impl WorkflowGraph {
         self.graph.input_links(node)
     }
 
-    /// Returns a the `NodeIndex` and `PortIndex` of the port linked to the provided
+    /// Returns the `NodeIndex` and `PortIndex` of the port linked to the provided
     /// input port name on a particular node.
     ///
     /// # Errors
@@ -341,7 +341,6 @@ enum LegacyNodeDef {
         inputs: HashMap<String, ValueRef>,
         outputs: HashMap<String, Vec<u32>>,
     },
-    // TODO: Loop and Map
     #[serde(rename = "const")]
     Const { value: serde_json::Value },
     #[serde(rename = "ifelse")]
