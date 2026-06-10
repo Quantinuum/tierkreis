@@ -127,11 +127,14 @@ impl Orchestrator {
         workflow_graph: &'a WorkflowGraph,
     ) -> impl Iterator<Item = (Action, HashMap<String, AssetSpec>)> {
         workflow_graph
-            .toposort_filtered_from_output_node(|n| {
-                let mut subworkflow_path = context.subworkflow_context.to_vec();
-                subworkflow_path.push(n);
-                !context.node_outputs.contains_key(&subworkflow_path)
-            })
+            .toposort_filtered_from_output_node(
+                |n| {
+                    let mut subworkflow_path = context.subworkflow_context.to_vec();
+                    subworkflow_path.push(n);
+                    !context.node_outputs.contains_key(&subworkflow_path)
+                },
+                |_n, _p| true,
+            )
             .filter(|n| {
                 workflow_graph.all_inputs(*n, |incoming| {
                     let mut subworkflow_path = context.subworkflow_context.to_vec();
