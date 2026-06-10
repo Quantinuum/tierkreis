@@ -12,7 +12,7 @@ use uuid::Uuid;
 ///
 /// For instance the [`SubprocessExecutor`][crate::executor::SubprocessExecutor] struct requires that
 /// Task inputs and outputs are of [`AssetKind::File`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AssetKind {
     /// An Asset that is stored in memory during Workflow execution.
@@ -35,7 +35,7 @@ pub enum AssetKind {
 ///
 /// The Asset may not have been persisted yet depending on the Workflow execution
 /// and Executors may wish to reserve [`AssetSpec`]s for Tasks.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssetSpec {
     /// The kind of Asset that should be saved.
     pub kind: AssetKind,

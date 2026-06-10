@@ -50,7 +50,7 @@ impl AssetStorage for InMemoryStorage {
         let value = self
             .store
             .get(key)
-            .ok_or(miette!("Asset not found in InMemoryStorage"))?;
+            .ok_or_else(|| miette!("Asset not found in InMemoryStorage"))?;
         Ok(value.clone())
     }
 }
