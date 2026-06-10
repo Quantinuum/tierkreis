@@ -226,7 +226,7 @@ impl WorkflowGraph {
         self.connected_input(port)
     }
 
-    /// Returns a the `NodeIndex` and `PortIndex` of the port linked to the provided
+    /// Returns the `NodeIndex` and `PortIndex` of the port linked to the provided
     /// input port.
     ///
     /// # Errors
