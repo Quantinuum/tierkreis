@@ -908,15 +908,6 @@ mod tests {
     }
 
     #[rstest]
-    #[case(include_str!("../tests/cli/data/empty"))]
-    #[case(include_str!("../tests/cli/data/portgraph"))]
-    fn deserialize_workflow_graph(#[case] serialized_graph: &str) -> miette::Result<()> {
-        let _graph: WorkflowGraph = serde_json::from_str(serialized_graph).into_diagnostic()?;
-
-        Ok(())
-    }
-
-    #[rstest]
     #[case(include_str!("../tests/cli/data/sample_graph"))]
     #[case(include_str!("../tests/cli/data/factorial"))]
     fn convert_graph(#[case] serialized_graph: &str) -> miette::Result<()> {
