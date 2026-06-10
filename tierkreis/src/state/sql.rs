@@ -122,7 +122,8 @@ impl SqliteRuntimeState {
     /// Panics if the `SQLite` database connection pool cannot be established.
     #[must_use]
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel(128);
+        // TODO: This channel clogs up easily if left un-checked.
+        let (sender, receiver) = mpsc::channel(1024);
         let connection = establish_connection().expect("Failed to establish database connection");
         Self {
             connection: Arc::new(connection),
