@@ -30,7 +30,10 @@ use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
     },
-    event::{Event, Status, send_cancelled, send_complete, send_error, send_running},
+    event::{
+        Event, EventReceiver, EventSender, NodeEvent, NodeStatus, send_cancelled, send_complete,
+        send_error, send_running,
+    },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
 };
@@ -69,8 +72,6 @@ struct BackgroundTask {
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
-type EventSender = mpsc::Sender<Event>;
-type EventReceiver = mpsc::Receiver<Event>;
 type CancelSender = mpsc::Sender<Location>;
 type CancelReceiver = mpsc::Receiver<Location>;
 
@@ -113,13 +114,13 @@ async fn process_finished_task(
             } else {
                 let stderr = background_task.stderr.await.ok();
                 event_sender
-                    .send(Event {
+                    .send(Event::Node(NodeEvent {
                         loc,
-                        status: Status::Error {
+                        status: NodeStatus::Error {
                             error: format!("Subprocess failed with exit code: {status}"),
                             detail: stderr,
                         },
-                    })
+                    }))
                     .await
                     .map_err(|err| miette!("Failed to send error event: {err}"))?;
             }
@@ -302,10 +303,10 @@ impl SubprocessExecutor {
         let task = tokio::task::spawn_blocking(|| {
             let re = Regex::new(r"tkr-.*-worker")
                 .into_diagnostic()
-                .wrap_err("Failed to compile Worker name regex")?;
+                .wrap_err_with(|| "Failed to compile Worker name regex")?;
             let paths = which_re(&re)
                 .into_diagnostic()
-                .wrap_err("Failed to search for Worker binaries")?;
+                .wrap_err_with(|| "Failed to search for Worker binaries")?;
             Ok(paths
                 .map(|path| WorkerSpec {
                     worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
@@ -324,8 +325,8 @@ impl SubprocessExecutor {
             &self.subprocess_storage_name,
             inputs,
         )?;
-        let inputs =
-            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
+        let inputs = write_input_paths(&inputs)
+            .wrap_err_with(|| "Failed to collect Worker input filepaths")?;
         Ok(inputs)
     }
 
@@ -354,7 +355,7 @@ fn spawn_worker(
         .stderr(Stdio::piped())
         .spawn()
         .into_diagnostic()
-        .wrap_err(miette!("Could not spawn worker"))?;
+        .wrap_err_with(|| miette!("Could not spawn worker"))?;
     Ok(child)
 }
 
@@ -458,9 +459,9 @@ impl Executor for SubprocessExecutor {
                 .try_lock()
                 .map_err(|err| miette!("Failed to listen: {}", err))?;
 
-            receiver.take().ok_or(miette!(
-                "Failed to listen: Executor is already being listened to."
-            ))?
+            receiver.take().ok_or_else(|| {
+                miette!("Failed to listen: Executor is already being listened to.")
+            })?
         };
         Ok(channel.boxed())
     }
@@ -544,7 +545,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -588,7 +602,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -647,19 +674,27 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&Event {
+        assert!(events.contains(&Event::Node(NodeEvent {
             loc: loc1.clone(),
-            status: Status::Running
-        }));
-        assert!(events.contains(&Event {
+            status: NodeStatus::Running { state_update: None },
+        })));
+        assert!(events.contains(&Event::Node(NodeEvent {
             loc: loc2.clone(),
-            status: Status::Running
-        }));
+            status: NodeStatus::Running { state_update: None },
+        })));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
             .iter()
-            .find(|event| event.is_complete() && event.loc == loc1)
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::Node(NodeEvent {
+                        loc,
+                        status: NodeStatus::Complete { .. }
+                    }) if loc == &loc1
+                )
+            })
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -669,7 +704,15 @@ mod tests {
         );
         let complete1 = events
             .iter()
-            .find(|event| event.is_complete() && event.loc == loc2)
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::Node(NodeEvent {
+                        loc,
+                        status: NodeStatus::Complete { .. }
+                    }) if loc == &loc2
+                )
+            })
             .unwrap();
         assert_registry_contains_values(
             &registry,
@@ -709,7 +752,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             "file",
@@ -741,14 +797,23 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
-        matches!(
-            &events[1].status,
-            Status::Error {
-                error,
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
                 ..
-            } if error == "Subprocess failed with exit code: exit status: 1",
-        );
+            })
+        ));
+        assert!(matches!(
+            &events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Error {
+                    error,
+                    ..
+                },
+                ..
+            }) if error == "Subprocess failed with exit code: exit status: 1"
+        ));
 
         Ok(())
     }
@@ -781,12 +846,24 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Running);
+        assert!(matches!(
+            event,
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
 
         executor.cancel(vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert_eq!(event.status, Status::Cancelled);
+        assert!(matches!(
+            event,
+            Event::Node(NodeEvent {
+                status: NodeStatus::Cancelled,
+                ..
+            })
+        ));
 
         Ok(())
     }
@@ -833,7 +910,20 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].status, Status::Running);
+        assert!(matches!(
+            events[0],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Running { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            events[1],
+            Event::Node(NodeEvent {
+                status: NodeStatus::Complete { .. },
+                ..
+            })
+        ));
         assert_registry_contains_values(
             &registry,
             "file",

@@ -13,3 +13,4 @@ pub mod orchestrator;
 pub mod runtime;
 pub mod server;
 pub mod state;
+pub mod updater;
