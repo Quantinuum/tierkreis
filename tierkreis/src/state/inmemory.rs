@@ -20,7 +20,7 @@ use futures::{
     stream::BoxStream,
 };
 use miette::miette;
-use tracing::{info, instrument};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -288,7 +288,6 @@ fn handle_node_event(
         crate::event::NodeStatus::Running {
             state_update: Some(RunningStateUpdate::MapElemComplete { index }),
         } => {
-            info!("map_completed: {index}");
             if let Some(map_completed) = node_state.map_completed.as_mut() {
                 map_completed.set(index as usize, true);
                 *send_update = true;
