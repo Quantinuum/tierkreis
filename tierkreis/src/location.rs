@@ -25,7 +25,7 @@ pub enum LocationComponent {
         /// The index of the "virtual" loop node within in the graph.
         index: u32,
     },
-    /// The [`LoopIndex`] of a Map node, independent from the [`NodeIndex`] of the Map node.
+    /// The [`MapIndex`] of a Map node, independent from the [`NodeIndex`] of the Map node.
     MapIndex {
         /// The index of the "virtual" map element within in the graph.
         index: u32,
@@ -38,8 +38,8 @@ impl LocationComponent {
     /// # Errors
     ///
     /// Will return Err if the &str is malformed and cannot be parsed.
-    pub fn new(steps: &str) -> miette::Result<Self> {
-        match (steps.get(0..1), steps.get(1..)) {
+    pub fn new(step: &str) -> miette::Result<Self> {
+        match (step.get(0..1), step.get(1..)) {
             (Some("N"), Some(idx_str)) => Ok(LocationComponent::Node {
                 node: NodeIndex::new(idx_str.parse().into_diagnostic()?),
             }),
@@ -49,10 +49,10 @@ impl LocationComponent {
             (Some("M"), Some(idx_str)) => Ok(LocationComponent::MapIndex {
                 index: idx_str.parse().into_diagnostic()?,
             }),
-            (step, index) => Err(miette!(
-                "Could not parse Loc: {} with step {:?} and index {:?}",
-                steps,
+            (tag, index) => Err(miette!(
+                "Could not parse Loc: {} with tag {:?} and index {:?}",
                 step,
+                tag,
                 index
             )),
         }
