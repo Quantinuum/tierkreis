@@ -20,6 +20,12 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Install Python dev headers
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python${{ inputs.python_version }}-dev
+
     - name: Set up uv & venv
       uses: astral-sh/setup-uv@v5
       with:
