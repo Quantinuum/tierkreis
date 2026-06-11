@@ -295,7 +295,7 @@ pub fn set_cond_if_none(
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
 
-    let mut conn = connection
+    let mut db_conn = connection
         .get()
         .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
     let attempt_i32 = i32::try_from(attempt)
@@ -309,7 +309,7 @@ pub fn set_cond_if_none(
             .filter(ns::cond.is_null()),
     )
     .set(ns::cond.eq(cond))
-    .execute(&mut conn)
+    .execute(&mut db_conn)
     .map_err(|err| {
         miette!(
             "Failed to set cond state for run {run_id} attempt {attempt} location {:?}: {err}",
@@ -347,7 +347,11 @@ pub fn set_loop_index(
             .filter(ns::run_id.eq(run_id.to_string()))
             .filter(ns::attempt.eq(attempt_i32))
             .filter(ns::node_location.eq(loc.clone()))
-            .filter(ns::loop_index.ne(loop_index_i32).or(ns::loop_index.is_null())),
+            .filter(
+                ns::loop_index
+                    .ne(loop_index_i32)
+                    .or(ns::loop_index.is_null()),
+            ),
     )
     .set(ns::loop_index.eq(loop_index_i32))
     .execute(&mut conn)
