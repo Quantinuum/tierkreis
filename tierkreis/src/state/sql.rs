@@ -57,6 +57,38 @@ fn run_migrations(connection: &mut SqliteConnection) -> miette::Result<()> {
     Ok(())
 }
 
+/// Build a connection pool for the given `database_url`.
+///
+/// # Errors
+///
+/// Returns an error when the pool cannot be built, a connection cannot be
+/// acquired, migrations fail, or `SQLite` pragmas fail to apply.
+pub fn establish_connection_with_url(
+    database_url: &str,
+) -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
+    let should_run_migrations = !Path::new(database_url).exists();
+    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+
+    let pool = Pool::builder()
+        .build(manager)
+        .map_err(|_| miette!("Error connecting to {}", database_url))?;
+
+    let mut conn = pool
+        .get()
+        .map_err(|err| miette!("Error acquiring connection for SQLite setup: {err}"))?;
+    if should_run_migrations {
+        run_migrations(&mut conn)?;
+    }
+    diesel::sql_query("PRAGMA busy_timeout = 5000;")
+        .execute(&mut conn)
+        .map_err(|err| miette!("Failed to apply SQLite busy_timeout: {err}"))?;
+    diesel::sql_query("PRAGMA journal_mode = WAL;")
+        .execute(&mut conn)
+        .map_err(|err| miette!("Failed to apply SQLite WAL mode: {err}"))?;
+
+    Ok(pool)
+}
+
 /// Build a connection pool for the `SQLite` database specified by the `DATABASE_URL` environment variable.
 ///
 /// # Errors
@@ -81,28 +113,8 @@ pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteCon
 
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| fallback.to_string_lossy().to_string());
-    let should_run_migrations = !Path::new(&database_url).exists();
-    let manager = ConnectionManager::<SqliteConnection>::new(database_url.clone());
-    let builder = Pool::builder();
 
-    let pool = builder
-        .build(manager)
-        .map_err(|_| miette!("Error connecting to {}", &database_url))?;
-
-    let mut conn = pool
-        .get()
-        .map_err(|err| miette!("Error acquiring connection for SQLite setup: {err}"))?;
-    if should_run_migrations {
-        run_migrations(&mut conn)?;
-    }
-    diesel::sql_query("PRAGMA busy_timeout = 5000;")
-        .execute(&mut conn)
-        .map_err(|err| miette!("Failed to apply SQLite busy_timeout: {err}"))?;
-    diesel::sql_query("PRAGMA journal_mode = WAL;")
-        .execute(&mut conn)
-        .map_err(|err| miette!("Failed to apply SQLite WAL mode: {err}"))?;
-
-    Ok(pool)
+    establish_connection_with_url(&database_url)
 }
 
 /// [`SqliteRuntimeState`] implements [`RuntimeState`] but with a `SQLite` backing
@@ -126,6 +138,31 @@ impl SqliteRuntimeState {
         // TODO: This channel clogs up easily if left un-checked.
         let (sender, receiver) = mpsc::channel(1024);
         let connection = establish_connection().expect("Failed to establish database connection");
+        Self {
+            connection: Arc::new(connection),
+            update_sender: sender,
+            update_receiver: Mutex::new(Some(receiver)),
+        }
+    }
+
+    /// Create a new [`SqliteRuntimeState`] backed by an isolated in-memory
+    /// `SQLite` database. Each call produces a separate database, making this
+    /// suitable for parallel tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the in-memory database connection pool cannot be established.
+    #[cfg(test)]
+    #[must_use]
+    pub fn new_in_memory() -> Self {
+        let db_name = Uuid::now_v7();
+        // `file:name?mode=memory&cache=shared` gives a named in-memory database
+        // that all connections in the pool share, avoiding the isolation problem
+        // that `:memory:` has with pooled connections.
+        let url = format!("file:{db_name}?mode=memory&cache=shared");
+        let (sender, receiver) = mpsc::channel(1024);
+        let connection =
+            establish_connection_with_url(&url).expect("Failed to establish in-memory database");
         Self {
             connection: Arc::new(connection),
             update_sender: sender,
@@ -311,7 +348,7 @@ mod tests {
     /// Test that reading a location returns the default value.
     #[tokio::test]
     async fn read_location_returns_default() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new();
+        let runtime_state = SqliteRuntimeState::new_in_memory();
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
@@ -327,7 +364,7 @@ mod tests {
     /// Test that we can write and listen for updates.
     #[tokio::test]
     async fn write_and_listen_for_updates() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new();
+        let runtime_state = SqliteRuntimeState::new_in_memory();
 
         let stream = runtime_state.listen()?;
 
@@ -359,7 +396,7 @@ mod tests {
     /// Test that we can read and write workflow run state.
     #[tokio::test]
     async fn write_and_read() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new();
+        let runtime_state = SqliteRuntimeState::new_in_memory();
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
@@ -382,7 +419,7 @@ mod tests {
     /// Test that we can read and write metadata
     #[tokio::test]
     async fn write_and_read_metadata() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new();
+        let runtime_state = SqliteRuntimeState::new_in_memory();
 
         let run_id = Uuid::now_v7();
         let attempt = 3;
@@ -400,7 +437,7 @@ mod tests {
     /// Test that metadata we write gets merged.
     #[tokio::test]
     async fn merge_metadata() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new();
+        let runtime_state = SqliteRuntimeState::new_in_memory();
 
         let run_id = Uuid::now_v7();
         let attempt = 4;
