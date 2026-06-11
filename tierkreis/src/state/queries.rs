@@ -8,7 +8,7 @@ use bitvec::vec::BitVec;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
-use miette::miette;
+use miette::{IntoDiagnostic, WrapErr, miette};
 
 use crate::location::Location;
 use crate::state::models::{NodeState, UpsertNodeState, Workflow, WorkflowRun};
@@ -19,12 +19,14 @@ fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
 
 fn encode_map_completed(map_completed: &BitVec) -> miette::Result<Vec<u8>> {
     serde_json::to_vec(map_completed)
-        .map_err(|err| miette!("Failed to serialize map_completed: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to serialize map_completed")
 }
 
 fn decode_map_completed(encoded: &[u8]) -> miette::Result<BitVec> {
     serde_json::from_slice(encoded)
-        .map_err(|err| miette!("Failed to deserialize map_completed: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to deserialize map_completed")
 }
 
 /// Load the run-attempt state for a workflow run if it exists.
@@ -42,10 +44,12 @@ pub fn read_workflowrun(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     wr::workflow_runs
         .filter(wr::id.eq(run_id.to_string()))
@@ -53,7 +57,8 @@ pub fn read_workflowrun(
         .order(wr::started_time.asc())
         .select(WorkflowRun::as_select())
         .first::<WorkflowRun>(&mut conn)
-        .map_err(|err| miette!("Failed to query workflow run: {err}"))
+        .into_diagnostic()
+        .wrap_err(miette!("Failed to query workflow run"))
 }
 
 /// Insert a workflow run row.
@@ -69,20 +74,20 @@ pub fn insert_workflow_run(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     diesel::insert_into(wr::workflow_runs)
         .values(run)
         .on_conflict((wr::id, wr::attempt))
         .do_nothing()
         .execute(&mut conn)
-        .map_err(|err| {
-            miette!(
-                "Failed to insert workflow run row for run {} attempt {}: {err}",
-                run.id,
-                run.attempt
-            )
-        })?;
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Failed to insert workflow run row for run {} attempt {}",
+            run.id,
+            run.attempt
+        ))?;
 
     Ok(())
 }
@@ -103,10 +108,12 @@ pub fn insert_default_workflowrun(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     // This workflow should exist already, this is just to have a valid insert
     // In the future this should not be necessary. Nil to make it clear it is not a real workflow.
@@ -120,7 +127,8 @@ pub fn insert_default_workflowrun(
     diesel::insert_or_ignore_into(wf::workflows)
         .values(&workflow)
         .execute(&mut conn)
-        .map_err(|err| miette!("Failed to insert workflow row for run {}: {err}", run_id))?;
+        .into_diagnostic()
+        .wrap_err("Failed to insert workflow row")?;
     let run = WorkflowRun {
         id: run_id.to_string(),
         attempt: attempt_i32,
@@ -150,10 +158,12 @@ pub fn insert_default_node_state(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     let row = UpsertNodeState {
         run_id: run_id.to_string(),
@@ -177,12 +187,10 @@ pub fn insert_default_node_state(
         .on_conflict((ns::run_id, ns::attempt, ns::node_location))
         .do_nothing()
         .execute(&mut conn)
-        .map_err(|err| {
-            miette!(
-                "Failed to ensure node state row for run {run_id} attempt {attempt} location {:?}: {err}",
-                loc
-            )
-        })?;
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Failed to ensure node state row for run {run_id} attempt {attempt} location {loc:?}"
+        ))?;
 
     Ok(())
 }
@@ -203,9 +211,12 @@ macro_rules! define_set_time_if_none {
 
             let mut conn = connection
                 .get()
-                .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+                .into_diagnostic()
+                .wrap_err("Failed to get SQLite connection from pool")?;
+
             let attempt_i32 = i32::try_from(attempt)
-                .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+                .into_diagnostic()
+                .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
             let now = Utc::now().naive_utc();
 
             let changed = diesel::update(
@@ -217,13 +228,10 @@ macro_rules! define_set_time_if_none {
             )
             .set(ns::$field.eq(now))
             .execute(&mut conn)
-            .map_err(|err| {
-                miette!(
-                    "Failed to set {} time for run {run_id} attempt {attempt} location {:?}: {err}",
-                    $label,
-                    loc
-                )
-            })?;
+            .into_diagnostic()
+            .wrap_err(miette!(
+                "Failed to ensure node state row for run {run_id} attempt {attempt} location {loc:?}"
+            ))?;
 
             Ok(changed > 0)
         }
@@ -253,9 +261,11 @@ pub fn set_error_if_none(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
     let now = Utc::now().naive_utc();
 
     let changed = diesel::update(
@@ -271,12 +281,10 @@ pub fn set_error_if_none(
         ns::error_detail.eq(detail),
     ))
     .execute(&mut conn)
-    .map_err(|err| {
-        miette!(
-            "Failed to set error state for run {run_id} attempt {attempt} location {:?}: {err}",
-            loc
-        )
-    })?;
+    .into_diagnostic()
+    .wrap_err(miette!(
+        "Failed to set error state for run {run_id} attempt {attempt} location {loc:?}",
+    ))?;
 
     Ok(changed > 0)
 }
@@ -297,9 +305,11 @@ pub fn set_cond_if_none(
 
     let mut db_conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     let changed = diesel::update(
         ns::node_states
@@ -310,12 +320,10 @@ pub fn set_cond_if_none(
     )
     .set(ns::cond.eq(cond))
     .execute(&mut db_conn)
-    .map_err(|err| {
-        miette!(
-            "Failed to set cond state for run {run_id} attempt {attempt} location {:?}: {err}",
-            loc
-        )
-    })?;
+    .into_diagnostic()
+    .wrap_err(miette!(
+        "Failed to set cond state for run {run_id} attempt {attempt} location {loc:?}"
+    ))?;
 
     Ok(changed > 0)
 }
@@ -336,11 +344,16 @@ pub fn set_loop_index(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
     let loop_index_i32 = i32::try_from(loop_index)
-        .map_err(|_| miette!("Loop index value {loop_index} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Loop index value {loop_index} does not fit into i32"
+        ))?;
 
     let changed = diesel::update(
         ns::node_states
@@ -355,12 +368,10 @@ pub fn set_loop_index(
     )
     .set(ns::loop_index.eq(loop_index_i32))
     .execute(&mut conn)
-    .map_err(|err| {
-        miette!(
-            "Failed to set loop index for run {run_id} attempt {attempt} location {:?}: {err}",
-            loc
-        )
-    })?;
+    .into_diagnostic()
+    .wrap_err(miette!(
+        "Failed to set loop index for run {run_id} attempt {attempt} location {loc:?}"
+    ))?;
 
     Ok(changed > 0)
 }
@@ -381,9 +392,11 @@ pub fn set_map_started_if_none(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
     let encoded = encode_map_completed(&BitVec::repeat(false, size as usize))?;
 
     let changed = diesel::update(
@@ -395,12 +408,10 @@ pub fn set_map_started_if_none(
     )
     .set(ns::map_completed.eq(encoded))
     .execute(&mut conn)
-    .map_err(|err| {
-        miette!(
-            "Failed to initialize map completion for run {run_id} attempt {attempt} location {:?}: {err}",
-            loc
-        )
-    })?;
+    .into_diagnostic()
+    .wrap_err(miette!(
+        "Failed to initialize map completion for run {run_id} attempt {attempt} location {loc:?}"
+    ))?;
 
     Ok(changed > 0)
 }
@@ -421,9 +432,11 @@ pub fn set_map_elem_complete(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     let map_completed = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
@@ -432,12 +445,10 @@ pub fn set_map_elem_complete(
         .select(ns::map_completed)
         .first::<Option<Vec<u8>>>(&mut conn)
         .optional()
-        .map_err(|err| {
-            miette!(
-                "Failed to load map completion for run {run_id} attempt {attempt} location {:?}: {err}",
-                loc
-            )
-        })?
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Failed to load map completion for run {run_id} attempt {attempt} location {loc:?}"
+        ))?
         .flatten();
 
     let Some(encoded) = map_completed else {
@@ -445,8 +456,9 @@ pub fn set_map_elem_complete(
     };
 
     let mut map_completed = decode_map_completed(&encoded)?;
-    let index_usize = usize::try_from(index)
-        .map_err(|_| miette!("Map completion index {index} does not fit into usize"))?;
+    let index_usize = usize::try_from(index).into_diagnostic().wrap_err(miette!(
+        "Map completion index {index} does not fit into usize"
+    ))?;
     if index_usize >= map_completed.len() {
         return Err(miette!(
             "Map completion index {index} out of bounds for map of size {}",
@@ -467,12 +479,10 @@ pub fn set_map_elem_complete(
     )
     .set(ns::map_completed.eq(updated))
     .execute(&mut conn)
-    .map_err(|err| {
-        miette!(
-            "Failed to update map completion for run {run_id} attempt {attempt} location {:?}: {err}",
-            loc
-        )
-    })?;
+    .into_diagnostic()
+    .wrap_err(miette!(
+        "Failed to update map completion for run {run_id} attempt {attempt} location {loc:?}"
+    ))?;
 
     Ok(changed > 0)
 }
@@ -493,35 +503,33 @@ pub fn read_node_state(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
     let db_node = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
         .filter(ns::node_location.eq(loc.clone()))
         .first::<NodeState>(&mut conn)
         .optional()
-        .map_err(|err| {
-            miette!(
-                "Failed to query node state for run {} attempt {} location {:?}: {err}",
-                run_id,
-                attempt,
-                loc
-            )
-        })?;
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Failed to query node state for run {run_id} attempt {attempt} location {loc:?}"
+        ))?;
 
     if let Some(db_node) = db_node {
         let loop_index = db_node
             .loop_index
             .map(|idx| {
-                u32::try_from(idx).map_err(|_| {
-                    miette!(
+                u32::try_from(idx)
+                    .into_diagnostic()
+                    .wrap_err(miette!(
                         "Stored loop index {idx} is invalid for run {run_id} attempt {attempt} location {:?}",
                         loc
-                    )
-                })
+                    ))
             })
             .transpose()?;
         let map_completed = db_node
@@ -565,10 +573,12 @@ pub fn add_run_metadata<S: BuildHasher>(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     let run_id_str = run_id.to_string();
 
@@ -580,7 +590,8 @@ pub fn add_run_metadata<S: BuildHasher>(
         Ok(run) => run,
         Err(diesel::result::Error::NotFound) => {
             insert_default_workflowrun(run_id, attempt, connection)
-                .map_err(|err| miette!("Failed to insert default run for metadata update: {err}"))?
+                .into_diagnostic()
+                .wrap_err(miette!("Failed to insert default run for metadata update"))?
         }
         Err(err) => {
             return Err(miette!(
@@ -590,21 +601,21 @@ pub fn add_run_metadata<S: BuildHasher>(
     };
 
     let mut metadata = serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata)
-        .map_err(|err| {
-            miette!(
-                "Failed to parse existing run metadata JSON for run {}: {err}",
-                run.id
-            )
-        })?;
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Failed to parse existing run metadata JSON for run {}",
+            run.id
+        ))?;
 
     metadata.extend(new_metadata);
 
-    let updated_metadata_json = serde_json::to_vec(&metadata).map_err(|err| {
-        miette!(
-            "Failed to serialize updated metadata to JSON for run {}: {err}",
-            run.id
-        )
-    })?;
+    let updated_metadata_json =
+        serde_json::to_vec(&metadata)
+            .into_diagnostic()
+            .wrap_err(miette!(
+                "Failed to serialize updated metadata to JSON for run {}",
+                run.id
+            ))?;
 
     diesel::update(
         wr::workflow_runs
@@ -613,13 +624,12 @@ pub fn add_run_metadata<S: BuildHasher>(
     )
     .set(wr::run_metadata.eq(updated_metadata_json))
     .execute(&mut conn)
-    .map_err(|err| {
-        miette!(
-            "Failed to update workflow run metadata for run {} attempt {}: {err}",
-            run_id,
-            attempt
-        )
-    })?;
+    .into_diagnostic()
+    .wrap_err(miette!(
+        "Failed to update workflow run metadata for run {} attempt {}",
+        run_id,
+        attempt
+    ))?;
 
     Ok(())
 }
@@ -639,10 +649,12 @@ pub fn read_run_metadata(
 
     let mut conn = connection
         .get()
-        .map_err(|err| miette!("Failed to get SQLite connection from pool: {err}"))?;
+        .into_diagnostic()
+        .wrap_err("Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
-        .map_err(|_| miette!("Attempt value {attempt} does not fit into i32"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Attempt value {attempt} does not fit into i32"))?;
 
     let run_id_str = run_id.to_string();
 
@@ -650,15 +662,15 @@ pub fn read_run_metadata(
         .filter(wr::id.eq(run_id_str.clone()))
         .filter(wr::attempt.eq(attempt_i32))
         .first::<WorkflowRun>(&mut conn)
-        .map_err(|err| miette!("Failed to query workflow run for metadata update: {err}"))?;
+        .into_diagnostic()
+        .wrap_err(miette!("Failed to query workflow run for metadata update"))?;
 
-    let metadata =
-        serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata).map_err(|err| {
-            miette!(
-                "Failed to parse existing run metadata JSON for run {}: {err}",
-                run.id
-            )
-        })?;
+    let metadata = serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata)
+        .into_diagnostic()
+        .wrap_err(miette!(
+            "Failed to parse existing run metadata JSON for run {}",
+            run.id
+        ))?;
 
     Ok(metadata)
 }
