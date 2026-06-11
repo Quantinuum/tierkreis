@@ -11,7 +11,7 @@ name = "tkr"
 
 [dependencies]
 axum = { version = "0.8.8", features = ["ws", "http2"] }
-bitvec = "1.0.1"
+bitvec = { version = "1.0.1", features = ["serde"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.0", features = ["derive"] }
 dashmap = "6.1.0"

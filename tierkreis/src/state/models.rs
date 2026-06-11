@@ -51,6 +51,9 @@ pub struct NodeState {
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
     pub error_time: Option<NaiveDateTime>,
+    pub cond: Option<bool>,
+    pub loop_index: Option<i32>,
+    pub map_completed: Option<Vec<u8>>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
 }
@@ -68,6 +71,9 @@ pub struct UpsertNodeState {
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
     pub error_time: Option<NaiveDateTime>,
+    pub cond: Option<bool>,
+    pub loop_index: Option<i32>,
+    pub map_completed: Option<Vec<u8>>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
 }
