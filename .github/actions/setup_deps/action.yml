@@ -24,7 +24,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y python${{ inputs.python_version }}-dev
+        sudo apt-get install -y libpython${{ inputs.python_version }}-dev
 
     - name: Set up uv & venv
       uses: astral-sh/setup-uv@v5
