@@ -590,7 +590,6 @@ pub fn add_run_metadata<S: BuildHasher>(
         Ok(run) => run,
         Err(diesel::result::Error::NotFound) => {
             insert_default_workflowrun(run_id, attempt, connection)
-                .into_diagnostic()
                 .wrap_err(miette!("Failed to insert default run for metadata update"))?
         }
         Err(err) => {

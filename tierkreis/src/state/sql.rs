@@ -20,7 +20,7 @@ use futures::{
     future::{self, BoxFuture},
     stream::BoxStream,
 };
-use miette::{WrapErr, miette};
+use miette::miette;
 use uuid::Uuid;
 
 use crate::{
@@ -69,7 +69,7 @@ pub fn establish_connection_with_url(
 
     let pool = Pool::builder()
         .build(manager)
-        .wrap_err(|_| miette!("Error connecting to {}", database_url))?;
+        .map_err(|_| miette!("Error connecting to {}", database_url))?;
 
     let mut conn = pool
         .get()
