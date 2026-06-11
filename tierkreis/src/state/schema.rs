@@ -23,6 +23,9 @@ diesel::table! {
         complete_time -> Nullable<Timestamp>,
         cancelled_time -> Nullable<Timestamp>,
         error_time -> Nullable<Timestamp>,
+        cond -> Nullable<Bool>,
+        loop_index -> Nullable<Integer>,
+        map_completed -> Nullable<Binary>,
         error -> Nullable<Text>,
         error_detail -> Nullable<Text>,
     }
