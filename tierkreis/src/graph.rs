@@ -2,7 +2,7 @@
 This module defines the Workflow graph representation.
 */
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use bitvec::vec::BitVec;
 use miette::{Context, IntoDiagnostic, miette};
@@ -59,10 +59,10 @@ pub enum NodeDefinition {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowGraph {
     graph: MultiPortGraph,
-    node_definitions: HashMap<NodeIndex, NodeDefinition>,
-    input_port_indices: HashMap<NodeIndex, HashMap<String, PortIndex>>,
-    output_port_indices: HashMap<NodeIndex, HashMap<String, PortIndex>>,
-    port_names: HashMap<PortIndex, String>,
+    node_definitions: BTreeMap<NodeIndex, NodeDefinition>,
+    input_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+    output_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+    port_names: BTreeMap<PortIndex, String>,
 
     output_node: NodeIndex,
 }
@@ -77,10 +77,10 @@ impl WorkflowGraph {
         let mut graph = MultiPortGraph::new();
         let idx = graph.add_node(graph_outputs.len(), 0);
 
-        let mut port_names = HashMap::new();
-        let mut output_node_input_port_indices = HashMap::new();
-        let mut input_port_indices = HashMap::new();
-        let output_port_indices = HashMap::new();
+        let mut port_names = BTreeMap::new();
+        let mut output_node_input_port_indices = BTreeMap::new();
+        let mut input_port_indices = BTreeMap::new();
+        let output_port_indices = BTreeMap::new();
 
         graph
             .inputs(idx)
@@ -92,7 +92,7 @@ impl WorkflowGraph {
 
         input_port_indices.insert(idx, output_node_input_port_indices);
 
-        let mut node_definitions = HashMap::new();
+        let mut node_definitions = BTreeMap::new();
         node_definitions.insert(idx, NodeDefinition::Output {});
 
         Self {
@@ -133,8 +133,8 @@ impl WorkflowGraph {
         let outputs: Vec<String> = outputs.into_iter().collect();
         let idx = self.graph.add_node(inputs.len(), outputs.len());
 
-        let mut node_input_port_indices = HashMap::new();
-        let mut node_output_port_indices = HashMap::new();
+        let mut node_input_port_indices = BTreeMap::new();
+        let mut node_output_port_indices = BTreeMap::new();
 
         self.graph
             .inputs(idx)
@@ -167,15 +167,15 @@ impl WorkflowGraph {
     /// state of the Workflow graph is invalid or corrupted.
     pub fn link_nodes_by_port_name(
         &mut self,
-        from: &NodeIndex,
+        from: NodeIndex,
         from_output: &str,
-        to: &NodeIndex,
+        to: NodeIndex,
         to_input: &str,
     ) -> miette::Result<()> {
         let res: miette::Result<()> = {
             let from_port = self
                 .output_port_indices
-                .get(from)
+                .get(&from)
                 .ok_or_else(|| miette!("Node `from` not found in port indices mapping: {from:?}"))?
                 .get(from_output)
                 .ok_or_else(|| {
@@ -183,7 +183,7 @@ impl WorkflowGraph {
                 })?;
             let to_port = self
                 .input_port_indices
-                .get(to)
+                .get(&to)
                 .ok_or_else(|| miette!("Node `to` not found in port indices mapping: {from:?}"))?
                 .get(to_input)
                 .ok_or_else(|| {
@@ -219,7 +219,7 @@ impl WorkflowGraph {
     /// if the port is not linked to a port on another node.
     pub fn connected_input_by_port_name(
         &self,
-        node: &NodeIndex,
+        node: NodeIndex,
         port_name: &str,
     ) -> miette::Result<(NodeIndex, PortIndex)> {
         let port = self.get_input_port_index(node, port_name)?;
@@ -233,10 +233,10 @@ impl WorkflowGraph {
     ///
     /// Will return Err if the provided `PortIndex` is not found in the Graph or
     /// if the port is not linked to a port on another node.
-    pub fn connected_input(&self, port: &PortIndex) -> miette::Result<(NodeIndex, PortIndex)> {
+    pub fn connected_input(&self, port: PortIndex) -> miette::Result<(NodeIndex, PortIndex)> {
         let connected_port = self
             .graph
-            .port_link(*port)
+            .port_link(port)
             .ok_or_else(|| miette!("Port link not found"))?
             .port();
         let connected_node = self
@@ -251,9 +251,9 @@ impl WorkflowGraph {
     /// # Errors
     ///
     /// Will return Err if the provided `PortIndex` is not found in the Graph.
-    pub fn get_port_name(&self, port: &PortIndex) -> miette::Result<&String> {
+    pub fn get_port_name(&self, port: PortIndex) -> miette::Result<&String> {
         self.port_names
-            .get(port)
+            .get(&port)
             .ok_or_else(|| miette!("Could not find port name for port id: {port:?}"))
     }
 
@@ -264,14 +264,15 @@ impl WorkflowGraph {
     /// Will return Err if the provided node index is not found or if the port name is not found.
     pub fn get_input_port_index(
         &self,
-        node: &NodeIndex,
+        node: NodeIndex,
         port_name: &str,
-    ) -> miette::Result<&PortIndex> {
+    ) -> miette::Result<PortIndex> {
         self.input_port_indices
-            .get(node)
+            .get(&node)
             .ok_or_else(|| miette!("Could not find node with index: {node:?}"))?
             .get(port_name)
             .ok_or_else(|| miette!("Could not find port id for port name: {port_name}"))
+            .copied()
     }
 
     /// Returns the `NodeIndex` for a specified `PortIndex`.
@@ -401,11 +402,11 @@ impl LegacyWorkflowGraph {
 
 struct ConversionState {
     pub graph: MultiPortGraph,
-    pub node_definitions: HashMap<NodeIndex, NodeDefinition>,
-    pub input_port_indices: HashMap<NodeIndex, HashMap<String, PortIndex>>,
-    pub output_port_indices: HashMap<NodeIndex, HashMap<String, PortIndex>>,
-    pub port_names: HashMap<PortIndex, String>,
-    pub to_link: HashMap<PortIndex, ValueRef>,
+    pub node_definitions: BTreeMap<NodeIndex, NodeDefinition>,
+    pub input_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+    pub output_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+    pub port_names: BTreeMap<PortIndex, String>,
+    pub to_link: BTreeMap<PortIndex, ValueRef>,
     pub output_node: Option<NodeIndex>,
 }
 
@@ -414,11 +415,11 @@ impl ConversionState {
         // Rought heuristic that we will likely have around 2 ports per node.
         let graph = MultiPortGraph::with_capacity(total_nodes, total_nodes * 2);
 
-        let node_definitions = HashMap::with_capacity(total_nodes);
-        let input_port_indices = HashMap::with_capacity(total_nodes);
-        let output_port_indices = HashMap::with_capacity(total_nodes);
-        let port_names = HashMap::new();
-        let to_link = HashMap::new();
+        let node_definitions = BTreeMap::new();
+        let input_port_indices = BTreeMap::new();
+        let output_port_indices = BTreeMap::new();
+        let port_names = BTreeMap::new();
+        let to_link = BTreeMap::new();
         let output_node = None;
 
         Self {
@@ -490,9 +491,9 @@ impl ConversionState {
     fn relink_node(
         idx: NodeIndex,
         graph: &mut MultiPortGraph,
-        input_port_indices: &mut HashMap<NodeIndex, HashMap<String, PortIndex>>,
-        output_port_indices: &mut HashMap<NodeIndex, HashMap<String, PortIndex>>,
-        port_names: &mut HashMap<PortIndex, String>,
+        input_port_indices: &mut BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+        output_port_indices: &mut BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+        port_names: &mut BTreeMap<PortIndex, String>,
     ) -> Result<NodeIndex, miette::Error> {
         // Re-link the single input and output
         let input = graph
@@ -851,7 +852,7 @@ impl ConversionState {
         inputs: impl IntoIterator<Item = (String, ValueRef)>,
         node_index: NodeIndex,
     ) {
-        let mut node_input_port_indices = HashMap::new();
+        let mut node_input_port_indices = BTreeMap::new();
         self.graph
             .inputs(node_index)
             .zip(inputs)
@@ -865,7 +866,7 @@ impl ConversionState {
     }
 
     fn build_outputs(&mut self, outputs: impl IntoIterator<Item = String>, node_index: NodeIndex) {
-        let mut node_output_port_indices = HashMap::new();
+        let mut node_output_port_indices = BTreeMap::new();
         self.graph
             .outputs(node_index)
             .zip(outputs)

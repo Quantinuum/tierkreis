@@ -17,7 +17,7 @@ use futures::{
     stream::{self, BoxStream, LocalBoxStream, select_all},
 };
 use miette::{Context, IntoDiagnostic, miette};
-use portgraph::NodeIndex;
+use portgraph::{NodeIndex, PortIndex};
 use tracing::instrument;
 
 use crate::{
@@ -167,19 +167,7 @@ impl Orchestrator {
         context: OrchestrationContext,
         workflow_graph: Arc<WorkflowGraph>,
     ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
-        let mut node_states = HashMap::new();
-        for node_id in workflow_graph.node_ids() {
-            let location = context.subworkflow_context.with_node(node_id);
-            let node_definition = workflow_graph
-                .node_definition(node_id)
-                .ok_or_else(|| miette!("Node definition not found"))?;
-            let node_state = context.workflow_state.read(&location).await?;
-            if let Some(error_msg) = node_state.error {
-                return Err(miette!("Workflow ended with error: {error_msg}"));
-            }
-
-            node_states.insert(node_id, (node_definition.clone(), node_state));
-        }
+        let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
 
         let output_state = node_states
             .get(&workflow_graph.output_idx())
@@ -189,7 +177,10 @@ impl Orchestrator {
             return Ok(stream::empty().boxed());
         }
 
-        let ready_nodes = prepare_ready_nodes(&context, &workflow_graph, &node_states).await?;
+        let ready_nodes: Vec<_> = Self::find_ready_nodes(&workflow_graph, &node_states).collect();
+        // Mark all ready nodes as scheduled.
+        Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
+
         let parent_location = context.subworkflow_context.clone();
         let graph_inputs = Arc::new(context.graph_inputs.clone());
         let workflow_state = Arc::clone(&context.workflow_state);
@@ -279,6 +270,133 @@ impl Orchestrator {
             .boxed_local())
     }
 
+    async fn collect_node_states(
+        context: &OrchestrationContext,
+        workflow_graph: &Arc<WorkflowGraph>,
+    ) -> miette::Result<HashMap<NodeIndex, (NodeDefinition, NodeState)>> {
+        let mut node_states = HashMap::new();
+        for node_id in workflow_graph.node_ids() {
+            let location = context.subworkflow_context.with_node(node_id);
+            let node_definition = workflow_graph
+                .node_definition(node_id)
+                .ok_or_else(|| miette!("Node definition not found"))?;
+            let node_state = context.workflow_state.read(&location).await?;
+            if let Some(error_msg) = node_state.error {
+                return Err(miette!("Workflow ended with error: {error_msg}"));
+            }
+
+            node_states.insert(node_id, (node_definition.clone(), node_state));
+        }
+        Ok(node_states)
+    }
+
+    /// Find nodes which are ready for execution, mark them as scheduled then return them.
+    fn find_ready_nodes<'a>(
+        workflow_graph: &'a WorkflowGraph,
+        node_states: &'a HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+    ) -> impl Iterator<Item = NodeIndex> {
+        // Find nodes that are ready for scheduling.
+        workflow_graph
+            // Traverse the graph to find nodes that are yet to run, starting
+            // from the output node.
+            //
+            // TODO: We shouldn't really need to sort every time
+            .toposort_filtered_from_output_node(
+                // Returns true if a node should be traversed.
+                |n| {
+                    let (definition, state) = node_states
+                        .get(&n)
+                        .expect("Node definition/state not found");
+
+                    let has_outputs = state.outputs.is_some();
+                    let not_already_scheduled = state.scheduled_time.is_none();
+                    // Always traverse control nodes.
+                    let is_control_flow = matches!(
+                        definition,
+                        NodeDefinition::Eval {}
+                            | NodeDefinition::Loop {}
+                            | NodeDefinition::Map { .. }
+                            | NodeDefinition::IfElse {}
+                    );
+                    !has_outputs && (not_already_scheduled || is_control_flow)
+                },
+                // Returns true if a port should be traversed.
+                |n, p| {
+                    let (definition, state) = node_states
+                        .get(&n)
+                        .expect("Node definition/state not found");
+                    if matches!(definition, NodeDefinition::IfElse {}) {
+                        should_traverse_if_else_port(workflow_graph, state.cond, p)
+                    } else {
+                        true
+                    }
+                },
+            )
+            // Of the nodes that have not yet run, find the nodes that can run.
+            // (Because their inputs are ready or otherwise.)
+            .filter(|n| {
+                let (definition, state) =
+                    node_states.get(n).expect("Node definition/state not found");
+                if matches!(definition, NodeDefinition::IfElse {}) {
+                    Self::if_else_ready(workflow_graph, node_states, *n, state)
+                } else {
+                    workflow_graph.all_inputs(*n, |incoming| {
+                        node_states
+                            .get(&incoming)
+                            .is_some_and(|(_, state)| state.outputs.is_some())
+                    })
+                }
+            })
+    }
+
+    // Returns true if an `IfElse` node is runnable.
+    fn if_else_ready(
+        workflow_graph: &WorkflowGraph,
+        node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+        n: NodeIndex,
+        state: &NodeState,
+    ) -> bool {
+        match state.cond {
+            None => Self::port_has_input(workflow_graph, node_states, n, "pred")
+                .expect("No `pred` port on `IfElse` node"),
+            Some(true) => Self::port_has_input(workflow_graph, node_states, n, "if_true")
+                .expect("No `if_true` port on `IfElse` node"),
+            Some(false) => Self::port_has_input(workflow_graph, node_states, n, "if_false")
+                .expect("No `if_false` port on `IfElse` node"),
+        }
+    }
+
+    // Returns true if a port on a node's input is available.
+    fn port_has_input(
+        workflow_graph: &WorkflowGraph,
+        node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+        n: NodeIndex,
+        port_name: &str,
+    ) -> miette::Result<bool> {
+        let (connected_node, _) = workflow_graph.connected_input_by_port_name(n, port_name)?;
+
+        Ok(node_states
+            .get(&connected_node)
+            .is_some_and(|(_, state)| state.outputs.is_some()))
+    }
+
+    async fn mark_nodes_scheduled(
+        context: &OrchestrationContext,
+        nodes: impl Iterator<Item = &NodeIndex>,
+    ) -> miette::Result<()> {
+        for node in nodes {
+            context
+                .workflow_state
+                .write(Event::Node(NodeEvent {
+                    loc: context.subworkflow_context.with_node(*node),
+                    status: crate::event::NodeStatus::Scheduled {},
+                }))
+                .await?;
+        }
+
+        Ok(())
+    }
+
     #[instrument(skip(self, workflow_graph, node_states), err)]
     fn build_if_else_action(
         &self,
@@ -291,11 +409,11 @@ impl Orchestrator {
         match cond {
             None => {
                 let (pred_node, connected_port) =
-                    workflow_graph.connected_input_by_port_name(&n, "pred")?;
+                    workflow_graph.connected_input_by_port_name(n, "pred")?;
                 let (_, pred_state) = node_states
                     .get(&pred_node)
                     .ok_or_else(|| miette!("Cannot find state for `pred` node"))?;
-                let connected_port_name = workflow_graph.get_port_name(&connected_port)?;
+                let connected_port_name = workflow_graph.get_port_name(connected_port)?;
 
                 let pred_bytes = load_asset(
                     &self.asset_storage_registry,
@@ -330,11 +448,11 @@ impl Orchestrator {
         port_name: &str,
     ) -> miette::Result<Action> {
         let (connected_node, connected_port) =
-            workflow_graph.connected_input_by_port_name(&n, port_name)?;
+            workflow_graph.connected_input_by_port_name(n, port_name)?;
         let (_, node_state) = node_states
             .get(&connected_node)
             .ok_or_else(|| miette!("Cannot find state for `{port_name}` node"))?;
-        let connected_port_name = workflow_graph.get_port_name(&connected_port)?;
+        let connected_port_name = workflow_graph.get_port_name(connected_port)?;
 
         let mut outputs = HashMap::new();
         let value = node_state
@@ -648,10 +766,10 @@ impl Orchestrator {
                                 .outputs
                                 .ok_or_else(|| miette!("No outputs!"))?;
 
-                            outputs.into_iter().for_each(|(k, v)| {
+                            for (k, v) in outputs {
                                 let entry = assets.entry(k).or_default();
                                 entry.push(v);
-                            });
+                            }
                         }
 
                         let outputs = assets
@@ -865,109 +983,13 @@ fn build_task_action(
     })
 }
 
-/// Find nodes which are ready for execution, mark them as scheduled then return them.
-#[instrument(skip(context, workflow_graph, node_states), err)]
-async fn prepare_ready_nodes(
-    context: &OrchestrationContext,
-    workflow_graph: &WorkflowGraph,
-    node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
-) -> miette::Result<Vec<NodeIndex>> {
-    // Find nodes that are ready for scheduling.
-    let ready_nodes: Vec<_> = workflow_graph
-        // TODO: We shouldn't really need to sort every time
-        .toposort_filtered_from_output_node(
-            |n| {
-                let (definition, state) = node_states
-                    .get(&n)
-                    .expect("Node definition/state not found");
-
-                let has_outputs = state.outputs.is_some();
-                let not_already_scheduled = state.scheduled_time.is_none();
-                let is_control_flow = matches!(
-                    definition,
-                    NodeDefinition::Eval {}
-                        | NodeDefinition::Loop {}
-                        | NodeDefinition::Map { .. }
-                        | NodeDefinition::IfElse {}
-                );
-                !has_outputs && (not_already_scheduled || is_control_flow)
-            },
-            |n, p| {
-                let (definition, state) = node_states
-                    .get(&n)
-                    .expect("Node definition/state not found");
-                if matches!(definition, NodeDefinition::IfElse {}) {
-                    should_traverse_if_else_port(workflow_graph, state.cond, p)
-                } else {
-                    true
-                }
-            },
-        )
-        .filter(|n| {
-            let (definition, state) = node_states
-                .get(n)
-                .expect("Node definition/state not found");
-            if matches!(definition, NodeDefinition::IfElse {}) {
-                match state.cond {
-                    None => {
-                        let (pred_node, _) = workflow_graph
-                            .connected_input_by_port_name(n, "pred")
-                            .expect("No `pred` port on `IfElse` node");
-
-                        node_states
-                            .get(&pred_node)
-                            .is_some_and(|(_, state)| state.outputs.is_some())
-                    }
-                    Some(true) => {
-                        let (if_true_node, _) = workflow_graph
-                            .connected_input_by_port_name(n, "if_true")
-                            .expect("No `if_true` port on `IfElse` node");
-
-                        node_states
-                            .get(&if_true_node)
-                            .is_some_and(|(_, state)| state.outputs.is_some())
-                    }
-                    Some(false) => {
-                        let (if_false_node, _) = workflow_graph
-                            .connected_input_by_port_name(n, "if_false")
-                            .expect("No `if_false` port on `IfElse` node");
-
-                        node_states
-                            .get(&if_false_node)
-                            .is_some_and(|(_, state)| state.outputs.is_some())
-                    }
-                }
-            } else {
-                workflow_graph.all_inputs(*n, |incoming| {
-                    node_states
-                        .get(&incoming)
-                        .is_some_and(|(_, state)| state.outputs.is_some())
-                })
-            }
-        })
-        .collect();
-
-    // Mark the ready nodes as scheduled.
-    for ready_node in &ready_nodes {
-        context
-            .workflow_state
-            .write(Event::Node(NodeEvent {
-                loc: context.subworkflow_context.with_node(*ready_node),
-                status: crate::event::NodeStatus::Scheduled {},
-            }))
-            .await?;
-    }
-
-    Ok(ready_nodes)
-}
-
 fn should_traverse_if_else_port(
     workflow_graph: &WorkflowGraph,
     node_cond: Option<bool>,
-    p: portgraph::PortIndex,
+    p: PortIndex,
 ) -> bool {
     let port_name = workflow_graph
-        .get_port_name(&p)
+        .get_port_name(p)
         .expect("Failed to get port name");
     match &**port_name {
         "pred" => true,
@@ -985,8 +1007,8 @@ fn collect_inputs(
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let mut inputs = HashMap::new();
     for (i, o) in workflow_graph.input_links(n) {
-        let input_name = workflow_graph.get_port_name(&i.into())?;
-        let output_name = workflow_graph.get_port_name(&o.into())?;
+        let input_name = workflow_graph.get_port_name(i.into())?;
+        let output_name = workflow_graph.get_port_name(o.into())?;
         let linked_node = workflow_graph.port_node(o)?;
         let (_, node_state) = node_states
             .get(&linked_node)
@@ -1065,7 +1087,7 @@ mod tests {
             ["a".to_string()],
         );
         workflow_graph
-            .link_nodes_by_port_name(&input1_idx, "a", &workflow_graph.output_idx(), "out1")
+            .link_nodes_by_port_name(input1_idx, "a", workflow_graph.output_idx(), "out1")
             .unwrap();
         let input2_idx = workflow_graph.add_node(
             NodeDefinition::Input {
@@ -1075,7 +1097,7 @@ mod tests {
             ["b".to_string()],
         );
         workflow_graph
-            .link_nodes_by_port_name(&input2_idx, "b", &workflow_graph.output_idx(), "out2")
+            .link_nodes_by_port_name(input2_idx, "b", workflow_graph.output_idx(), "out2")
             .unwrap();
         let workflow_graph = Arc::new(workflow_graph);
 
@@ -1129,7 +1151,7 @@ mod tests {
         );
 
         workflow_graph
-            .link_nodes_by_port_name(&input_idx, "a", &workflow_graph.output_idx(), "out")
+            .link_nodes_by_port_name(input_idx, "a", workflow_graph.output_idx(), "out")
             .unwrap();
         let workflow_graph = Arc::new(workflow_graph);
 
@@ -1218,9 +1240,9 @@ mod tests {
 
         subworkflow_graph
             .link_nodes_by_port_name(
-                &inner_a_input_idx,
+                inner_a_input_idx,
                 "a",
-                &subworkflow_graph.output_idx(),
+                subworkflow_graph.output_idx(),
                 "out",
             )
             .unwrap();
@@ -1260,13 +1282,13 @@ mod tests {
         );
 
         workflow_graph
-            .link_nodes_by_port_name(&a_input_idx, "a", &eval_idx, "a")
+            .link_nodes_by_port_name(a_input_idx, "a", eval_idx, "a")
             .unwrap();
         workflow_graph
-            .link_nodes_by_port_name(&subworkflow_input_idx, "subworkflow", &eval_idx, "graph")
+            .link_nodes_by_port_name(subworkflow_input_idx, "subworkflow", eval_idx, "graph")
             .unwrap();
         workflow_graph
-            .link_nodes_by_port_name(&eval_idx, "out", &workflow_graph.output_idx(), "out")
+            .link_nodes_by_port_name(eval_idx, "out", workflow_graph.output_idx(), "out")
             .unwrap();
         let workflow_graph = Arc::new(workflow_graph);
 
@@ -1429,13 +1451,13 @@ mod tests {
 
         let output_idx = workflow_graph.output_idx();
         workflow_graph
-            .link_nodes_by_port_name(&input_idx, "a", &add_idx, "a")
+            .link_nodes_by_port_name(input_idx, "a", add_idx, "a")
             .unwrap();
         workflow_graph
-            .link_nodes_by_port_name(&const_idx, "value", &add_idx, "b")
+            .link_nodes_by_port_name(const_idx, "value", add_idx, "b")
             .unwrap();
         workflow_graph
-            .link_nodes_by_port_name(&add_idx, "value", &output_idx, "out")
+            .link_nodes_by_port_name(add_idx, "value", output_idx, "out")
             .unwrap();
         let workflow_graph = Arc::new(workflow_graph);
 
@@ -1537,9 +1559,9 @@ mod tests {
 
         subworkflow_graph
             .link_nodes_by_port_name(
-                &inner_a_input_idx,
+                inner_a_input_idx,
                 "a",
-                &subworkflow_graph.output_idx(),
+                subworkflow_graph.output_idx(),
                 "out",
             )
             .unwrap();
@@ -1566,13 +1588,13 @@ mod tests {
         );
 
         workflow_graph
-            .link_nodes_by_port_name(&a_input_idx, "a", &eval_idx, "a")
+            .link_nodes_by_port_name(a_input_idx, "a", eval_idx, "a")
             .unwrap();
         workflow_graph
-            .link_nodes_by_port_name(&subworkflow_input_idx, "subworkflow", &eval_idx, "graph")
+            .link_nodes_by_port_name(subworkflow_input_idx, "subworkflow", eval_idx, "graph")
             .unwrap();
         workflow_graph
-            .link_nodes_by_port_name(&eval_idx, "out", &workflow_graph.output_idx(), "out")
+            .link_nodes_by_port_name(eval_idx, "out", workflow_graph.output_idx(), "out")
             .unwrap();
         let workflow_graph = Arc::new(workflow_graph);
 
