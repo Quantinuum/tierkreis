@@ -6,7 +6,7 @@ state of the Workflow so it can be monitored and restarted.
 use std::{collections::HashMap, hash::RandomState};
 
 use futures::{SinkExt, channel::mpsc};
-use miette::miette;
+use miette::{IntoDiagnostic, miette};
 
 use crate::{asset_storage::interface::AssetSpec, location::Location};
 
@@ -280,17 +280,20 @@ pub async fn send_running_loop(
 ///
 /// # Errors
 ///
-/// Will return Err if the channel for `event_sender` is full or closed.
+/// Will return Err if the channel for `event_sender` is full or closed or if the
+/// size of the map is larger than `u32`.
 pub async fn send_running_map(
     event_sender: &mut EventSender,
     loc: Location,
-    size: u32,
+    size: usize,
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
             loc: loc.clone(),
             status: NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapStarted { size }),
+                state_update: Some(RunningStateUpdate::MapStarted {
+                    size: u32::try_from(size).into_diagnostic()?,
+                }),
             },
         }))
         .await
@@ -305,17 +308,20 @@ pub async fn send_running_map(
 ///
 /// # Errors
 ///
-/// Will return Err if the channel for `event_sender` is full or closed.
+/// Will return Err if the channel for `event_sender` is full or closed or if the
+/// index of the map is larger than `u32`.
 pub async fn send_map_elem_complete(
     event_sender: &mut EventSender,
     loc: Location,
-    index: u32,
+    index: usize,
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
             loc: loc.clone(),
             status: NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapElemComplete { index }),
+                state_update: Some(RunningStateUpdate::MapElemComplete {
+                    index: u32::try_from(index).into_diagnostic()?,
+                }),
             },
         }))
         .await

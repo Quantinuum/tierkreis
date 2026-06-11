@@ -11,7 +11,7 @@ use std::{
 
 use bitvec::vec::BitVec;
 use futures::{
-    Stream, StreamExt, TryFutureExt,
+    FutureExt, Stream, StreamExt, TryFutureExt,
     channel::mpsc,
     future,
     stream::{self, BoxStream, LocalBoxStream, select_all},
@@ -62,20 +62,27 @@ pub enum ActionKind {
         /// The value to mark the node with.
         cond: bool,
     },
+    /// Mark the node as running with a particular loop index.
     SetRunningLoop {
+        /// The loop index to store in the node state.
         index: u32,
     },
+    /// Mark the node as running with a particular map size.
     SetRunningMap {
-        size: u32,
+        /// The size of the map to mark.
+        size: usize,
     },
+    /// Mark the node as partially complete for a particular element.
     SetMapElemComplete {
-        index: u32,
+        /// The map element to mark as complete.
+        index: usize,
     },
     /// Mark the node as complete with outputs.
     SetComplete {
         /// The output values for the node.
         outputs: HashMap<String, AssetSpec>,
     },
+    /// Mark the overall workflow as complete.
     WorkflowFinished {},
 }
 
@@ -161,6 +168,11 @@ impl Orchestrator {
     ///
     /// This function effectively flattens higher order graph execution into a stream of [`Action`]s
     /// that can then be processed by the [`perform_actions`] method.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the function fails to retrieve the state of nodes from the workflow context
+    /// or if it fails to record that nodes are being scheduled.
     #[instrument(skip(self, context, workflow_graph), err)]
     pub async fn build_actions(
         &self,
@@ -695,6 +707,7 @@ impl Orchestrator {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
     async fn build_map_actions(
         &self,
@@ -711,127 +724,190 @@ impl Orchestrator {
 
         Ok(match completed {
             None => {
-                let mut input_sets = Vec::new();
-                for mapped_port in mapped_ports {
-                    let unfolded_assets =
-                        unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port)?;
-
-                    if input_sets.is_empty() {
-                        input_sets.extend(iter::repeat_n(inputs.clone(), unfolded_assets.len()));
-                    }
-
-                    for (index, asset) in unfolded_assets.into_iter().enumerate() {
-                        let input_set = input_sets.get_mut(index).unwrap();
-                        input_set.insert(mapped_port.clone(), asset);
-                    }
-                }
-                let map_size = input_sets.len();
-
-                let loc_copy = loc.clone();
-
-                stream::iter(input_sets.into_iter().enumerate())
-                    .flat_map_unordered(None, move |(index, inputs)| {
-                        let map_loc = loc_copy.with_map_index(index as u32);
-                        self.build_actions(
-                            OrchestrationContext {
-                                subworkflow_context: map_loc,
-                                graph_inputs: inputs,
-                                workflow_state: Arc::clone(&workflow_state),
-                            },
-                            subgraph.clone(),
-                        )
-                        .try_flatten_stream()
-                        .boxed_local()
-                    })
-                    .chain(stream::once(future::ok(Action {
-                        loc,
-                        kind: ActionKind::SetRunningMap {
-                            size: map_size as u32,
-                        },
-                    })))
-                    .boxed_local()
+                self.build_initial_map_actions(
+                    workflow_state,
+                    mapped_ports,
+                    n,
+                    loc,
+                    inputs,
+                    subgraph,
+                )
+                .await?
             }
+            Some(completed) if completed.all() => self
+                .build_completed_map_action(
+                    workflow_graph,
+                    workflow_state,
+                    node_states,
+                    mapped_ports,
+                    n,
+                    loc,
+                    completed,
+                    inputs,
+                    subgraph,
+                )
+                .into_stream()
+                .boxed(),
             Some(completed) => {
-                let output_idx = subgraph.output_idx();
-
-                if completed.all() {
-                    return Ok(stream::once(async move {
-                        let mut assets: HashMap<String, Vec<_>> = HashMap::new();
-                        for index in 0..completed.len() {
-                            let map_loc = loc.with_map_index(index as u32);
-                            let subgraph_output_state =
-                                workflow_state.read(&map_loc.with_node(output_idx)).await?;
-
-                            let outputs = subgraph_output_state
-                                .outputs
-                                .ok_or_else(|| miette!("No outputs!"))?;
-
-                            for (k, v) in outputs {
-                                let entry = assets.entry(k).or_default();
-                                entry.push(v);
-                            }
-                        }
-
-                        let outputs = assets
-                            .into_iter()
-                            .map(|(k, v)| {
-                                let asset_spec = fold_assets(
-                                    &self.asset_storage_registry,
-                                    &self.default_storage_name,
-                                    v,
-                                )?;
-
-                                Ok((k, asset_spec))
-                            })
-                            .collect::<miette::Result<_>>()?;
-
-                        Ok(Action {
-                            loc,
-                            kind: ActionKind::SetComplete { outputs },
-                        })
-                    })
-                    .boxed());
-                }
-
-                stream::iter(completed.into_iter().enumerate())
-                    .filter(|(_index, completed)| future::ready(!completed))
-                    .flat_map_unordered(None, move |(index, _completed)| {
-                        let loc_copy = loc.clone();
-                        let map_loc = loc.with_map_index(index as u32);
-                        let map_loc_copy = map_loc.clone();
-                        self.build_actions(
-                            OrchestrationContext {
-                                subworkflow_context: map_loc,
-                                graph_inputs: inputs.clone(),
-                                workflow_state: Arc::clone(&workflow_state),
-                            },
-                            subgraph.clone(),
-                        )
-                        .try_flatten_stream()
-                        .chain({
-                            let workflow_state_copy = Arc::clone(&workflow_state);
-                            async move {
-                                let subgraph_output_state = workflow_state_copy
-                                    .read(&map_loc_copy.with_node(output_idx))
-                                    .await?;
-
-                                match subgraph_output_state.outputs {
-                                    None => Ok(stream::empty().boxed()),
-                                    Some(_) => Ok(stream::once(future::ok(Action {
-                                        loc: loc_copy,
-                                        kind: ActionKind::SetMapElemComplete {
-                                            index: index as u32,
-                                        },
-                                    }))
-                                    .boxed()),
-                                }
-                            }
-                            .try_flatten_stream()
-                        })
-                        .boxed_local()
-                    })
-                    .boxed_local()
+                self.build_subsequent_map_actions(
+                    workflow_state,
+                    mapped_ports,
+                    n,
+                    loc,
+                    completed,
+                    inputs,
+                    subgraph,
+                )
+                .await?
             }
+        })
+    }
+
+    #[instrument(skip(self, workflow_state, inputs, subgraph), err)]
+    async fn build_initial_map_actions(
+        &self,
+        workflow_state: Arc<dyn WorkflowState>,
+        mapped_ports: HashSet<String>,
+        n: NodeIndex,
+        loc: Location,
+        inputs: HashMap<String, AssetSpec>,
+        subgraph: Arc<WorkflowGraph>,
+    ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+        let mut input_sets = Vec::new();
+        for mapped_port in mapped_ports {
+            let unfolded_assets =
+                unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port)?;
+
+            if input_sets.is_empty() {
+                input_sets.extend(iter::repeat_n(inputs.clone(), unfolded_assets.len()));
+            }
+
+            for (index, asset) in unfolded_assets.into_iter().enumerate() {
+                let input_set = input_sets.get_mut(index).unwrap();
+                input_set.insert(mapped_port.clone(), asset);
+            }
+        }
+        let map_size = input_sets.len();
+
+        let loc_copy = loc.clone();
+
+        Ok(stream::iter(input_sets.into_iter().enumerate())
+            .flat_map_unordered(None, move |(index, inputs)| {
+                let map_loc = loc_copy.with_map_index(index);
+                self.build_actions(
+                    OrchestrationContext {
+                        subworkflow_context: map_loc,
+                        graph_inputs: inputs,
+                        workflow_state: Arc::clone(&workflow_state),
+                    },
+                    subgraph.clone(),
+                )
+                .try_flatten_stream()
+                .boxed_local()
+            })
+            .chain(stream::once(future::ok(Action {
+                loc,
+                kind: ActionKind::SetRunningMap { size: map_size },
+            })))
+            .boxed_local())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(skip(self, workflow_state), err)]
+    async fn build_subsequent_map_actions(
+        &self,
+        workflow_state: Arc<dyn WorkflowState>,
+        mapped_ports: HashSet<String>,
+        n: NodeIndex,
+        loc: Location,
+        completed: BitVec,
+        inputs: HashMap<String, AssetSpec>,
+        subgraph: Arc<WorkflowGraph>,
+    ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+        let output_idx = subgraph.output_idx();
+
+        Ok(stream::iter(completed.into_iter().enumerate())
+            .filter(|(_index, completed)| future::ready(!completed))
+            .flat_map_unordered(None, move |(index, _completed)| {
+                let loc_copy = loc.clone();
+                let map_loc = loc.with_map_index(index);
+                let map_loc_copy = map_loc.clone();
+                self.build_actions(
+                    OrchestrationContext {
+                        subworkflow_context: map_loc,
+                        graph_inputs: inputs.clone(),
+                        workflow_state: Arc::clone(&workflow_state),
+                    },
+                    subgraph.clone(),
+                )
+                .try_flatten_stream()
+                .chain({
+                    let workflow_state_copy = Arc::clone(&workflow_state);
+                    async move {
+                        let subgraph_output_state = workflow_state_copy
+                            .read(&map_loc_copy.with_node(output_idx))
+                            .await?;
+
+                        match subgraph_output_state.outputs {
+                            None => Ok(stream::empty().boxed()),
+                            Some(_) => Ok(stream::once(future::ok(Action {
+                                loc: loc_copy,
+                                kind: ActionKind::SetMapElemComplete { index },
+                            }))
+                            .boxed()),
+                        }
+                    }
+                    .try_flatten_stream()
+                })
+                .boxed_local()
+            })
+            .boxed_local())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(skip(self), err)]
+    async fn build_completed_map_action(
+        &self,
+        workflow_graph: Arc<WorkflowGraph>,
+        workflow_state: Arc<dyn WorkflowState>,
+        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        mapped_ports: HashSet<String>,
+        n: NodeIndex,
+        loc: Location,
+        completed: BitVec,
+        inputs: HashMap<String, AssetSpec>,
+        subgraph: Arc<WorkflowGraph>,
+    ) -> miette::Result<Action> {
+        let output_idx = subgraph.output_idx();
+
+        let mut assets: HashMap<String, Vec<_>> = HashMap::new();
+        for index in 0..completed.len() {
+            let map_loc = loc.with_map_index(index);
+            let subgraph_output_state = workflow_state.read(&map_loc.with_node(output_idx)).await?;
+
+            let outputs = subgraph_output_state
+                .outputs
+                .ok_or_else(|| miette!("No outputs!"))?;
+
+            for (k, v) in outputs {
+                let entry = assets.entry(k).or_default();
+                entry.push(v);
+            }
+        }
+
+        let outputs = assets
+            .into_iter()
+            .map(|(k, v)| {
+                let asset_spec =
+                    fold_assets(&self.asset_storage_registry, &self.default_storage_name, v)?;
+
+                Ok((k, asset_spec))
+            })
+            .collect::<miette::Result<_>>()?;
+
+        Ok(Action {
+            loc,
+            kind: ActionKind::SetComplete { outputs },
         })
     }
 
