@@ -25,7 +25,7 @@ use miette::miette;
 use uuid::Uuid;
 
 use crate::{
-    event::{Event, NodeStatus},
+    event::{Event, NodeStatus, RunningStateUpdate},
     location::Location,
     state::{
         WorkflowState,
@@ -39,8 +39,9 @@ use crate::{
         queries::{
             add_run_metadata, insert_default_node_state, insert_default_workflowrun,
             read_node_state, read_run_metadata, read_workflowrun, set_cancelled_if_none,
-            set_complete_if_none, set_error_if_none, set_queued_if_none, set_running_if_none,
-            set_scheduled_if_none,
+            set_complete_if_none, set_cond_if_none, set_error_if_none, set_loop_index,
+            set_map_elem_complete, set_map_started_if_none, set_queued_if_none,
+            set_running_if_none, set_scheduled_if_none,
         },
     },
 };
@@ -266,9 +267,21 @@ impl SqliteWorkflowState {
             NodeStatus::Queued => {
                 set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
             }
-            NodeStatus::Running { .. } => {
+            NodeStatus::Running { state_update: None } => {
                 set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
             }
+            NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Switching { cond }),
+            } => set_cond_if_none(&loc, self.run_id, self.attempt, cond, &self.global_state),
+            NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Looping { index }),
+            } => set_loop_index(&loc, self.run_id, self.attempt, index, &self.global_state),
+            NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::MapStarted { size }),
+            } => set_map_started_if_none(&loc, self.run_id, self.attempt, size, &self.global_state),
+            NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::MapElemComplete { index }),
+            } => set_map_elem_complete(&loc, self.run_id, self.attempt, index, &self.global_state),
             NodeStatus::Complete { outputs: _ } => {
                 set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
             }
