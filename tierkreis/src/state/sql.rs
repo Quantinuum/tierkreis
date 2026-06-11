@@ -8,7 +8,6 @@ state is not persisted beyond the lifetime of the process.
 use std::{
     collections::HashMap,
     env::{self, home_dir},
-    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -21,7 +20,7 @@ use futures::{
     future::{self, BoxFuture},
     stream::BoxStream,
 };
-use miette::miette;
+use miette::{WrapErr, miette};
 use uuid::Uuid;
 
 use crate::{
@@ -66,19 +65,17 @@ fn run_migrations(connection: &mut SqliteConnection) -> miette::Result<()> {
 pub fn establish_connection_with_url(
     database_url: &str,
 ) -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
-    let should_run_migrations = !Path::new(database_url).exists();
     let manager = ConnectionManager::<SqliteConnection>::new(database_url);
 
     let pool = Pool::builder()
         .build(manager)
-        .map_err(|_| miette!("Error connecting to {}", database_url))?;
+        .wrap_err(|_| miette!("Error connecting to {}", database_url))?;
 
     let mut conn = pool
         .get()
         .map_err(|err| miette!("Error acquiring connection for SQLite setup: {err}"))?;
-    if should_run_migrations {
-        run_migrations(&mut conn)?;
-    }
+    run_migrations(&mut conn)?;
+
     diesel::sql_query("PRAGMA busy_timeout = 5000;")
         .execute(&mut conn)
         .map_err(|err| miette!("Failed to apply SQLite busy_timeout: {err}"))?;
