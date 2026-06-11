@@ -20,14 +20,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Install Python dev headers
-      shell: bash
-      run: |
-        sudo apt-get install -y software-properties-common
-        sudo add-apt-repository -y ppa:deadsnakes/ppa
-        sudo apt-get update
-        sudo apt-get install -y python${{ inputs.python_version }}-dev
-
     - name: Set up uv & venv
       uses: astral-sh/setup-uv@v5
       with:
@@ -36,6 +28,15 @@ runs:
         cache-suffix: ${{ inputs.python_version }}
         python-version: ${{ inputs.python_version }}
         cache-dependency-glob: uv.lock
+
+    - name: Pin matrix Python for uv and PyO3
+      shell: bash
+      run: |
+        PYTHON_BIN="$(uv python find ${{ inputs.python_version }})"
+        echo "Using matrix Python: ${PYTHON_BIN}"
+        echo "UV_PYTHON=${PYTHON_BIN}" >> "$GITHUB_ENV"
+        echo "PYO3_PYTHON=${PYTHON_BIN}" >> "$GITHUB_ENV"
+        "${PYTHON_BIN}" --version
 
     - name: Set up just
       if: inputs.include_just == 'yes'
