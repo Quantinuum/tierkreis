@@ -57,8 +57,8 @@ dev = [
     { name = "isort", specifier = ">=6.0.1" },
     { name = "myst-nb", specifier = ">=1.4.0" },
     { name = "pydantic", specifier = ">=2.13.2" },
-    { name = "pyright", specifier = ">=1.1.400" },
-    { name = "pyscf", specifier = ">=2.9.0" },
+    { name = "pyright", specifier = ">=1.1.410" },
+    { name = "pyscf", specifier = ">=2.13.1" },
     { name = "pytest", specifier = ">=9.0.3,<10" },
     { name = "pytest-asyncio", specifier = ">=1.4.0,<1.5" },
     { name = "pytest-cov", specifier = ">=5.0,<8" },
@@ -69,13 +69,13 @@ dev = [
 docs = [
     { name = "furo", specifier = ">=2025.7.19" },
     { name = "myst-nb", specifier = ">=1.4.0" },
-    { name = "pyscf", specifier = ">=2.9.0" },
+    { name = "pyscf", specifier = ">=2.13.1" },
     { name = "sphinx", specifier = ">=8.2" },
     { name = "sphinx-autodoc2", specifier = ">=0.5.0" },
 ]
 lint = [
     { name = "isort", specifier = ">=6.0.1" },
-    { name = "pyright", specifier = ">=1.1.400" },
+    { name = "pyright", specifier = ">=1.1.410" },
     { name = "ruff", specifier = ">=0.15.11" },
 ]
 test = [
@@ -840,7 +840,7 @@ wheels = [
 
 [[package]]
 name = "guppylang"
-version = "0.21.15"
+version = "0.21.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "guppylang-internals" },
@@ -851,26 +851,26 @@ dependencies = [
     { name = "tqdm" },
     { name = "types-tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/41/89/c1c5e4b61711ac0b91b3e0613a0b5ae7f580148784413180b2334cf83729/guppylang-0.21.15.tar.gz", hash = "sha256:5fbae0b6ce400efec92a977c3fd9ac6d47073559837fcfa409f5572728676e65", size = 70176, upload-time = "2026-05-18T11:25:36.423Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/79/e148d43eebdbd0e670cfe983d2806c1d8199d4b69e45680a352d2a6c6265/guppylang-0.21.16.tar.gz", hash = "sha256:37ecb3267734540104ada3be1e12726f631edfba2b013efa8f8064cc324d7fda", size = 70378, upload-time = "2026-06-04T14:57:10.594Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/13/abe6637c898ea798ce0f6686834bf6afeed53fcb1af8f02d66faf4cfa694/guppylang-0.21.15-py3-none-any.whl", hash = "sha256:0cf3ac26db1e5d04ec2f9bc317bd343bdcd41bb5fd9a5108b9db2ca4b9267830", size = 66969, upload-time = "2026-05-18T11:25:34.53Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/6a/7120b688f8543ef39ac1d42d325233aacde677a562fe72e3e51f10e433ee/guppylang-0.21.16-py3-none-any.whl", hash = "sha256:22ada5f013d96574102b89d88c290449b23f9972a8f0e88e92227308b8aa275c", size = 67031, upload-time = "2026-06-04T14:57:09.183Z" },
 ]
 
 [[package]]
 name = "guppylang-internals"
-version = "0.36.0"
+version = "0.36.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hugr" },
     { name = "pytket" },
-    { name = "tket" },
+    { name = "tket", extra = ["pytket"] },
     { name = "tket-exts" },
     { name = "typing-extensions" },
     { name = "wasmtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/6f/49ccfe331095e26687517603cef7046e3de32a4563f1f4ffc37146c58f11/guppylang_internals-0.36.0.tar.gz", hash = "sha256:abb57302609f2da69367cb5969dee1fda7641d3b4da3783019693b59372b5914", size = 214524, upload-time = "2026-05-18T09:54:30.808Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/67/c2ea5658a28d1ea814a64e91cf0433197dd0e99a3eab1dc3538e14499634/guppylang_internals-0.36.1.tar.gz", hash = "sha256:3ee67ffdd7e97cf9273f9a65697c48fb192bb98f110c960931d6ea1f2b7f0934", size = 214605, upload-time = "2026-06-04T14:53:42.617Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/d4/6562f17250c2da62b2a99c53458efd36a6e9f0ab9b89c5cbe25f510933bf/guppylang_internals-0.36.0-py3-none-any.whl", hash = "sha256:6c784ad5a7ddc24fc720494b1ecd5e3515c9dfbc8c445d0b8326429c7ec4e62e", size = 267510, upload-time = "2026-05-18T09:54:29Z" },
+    { url = "https://files.pythonhosted.org/packages/31/ac/f66326c93cc7e0c74ec8a195d23c78690cb470c77519e77a4d4876f5d355/guppylang_internals-0.36.1-py3-none-any.whl", hash = "sha256:d70dc644bdfaff46b5b94b308aa90e4aa667c60b85f72a82fbc1ea729d2dfe51", size = 267518, upload-time = "2026-06-04T14:53:40.954Z" },
 ]
 
 [[package]]
@@ -1586,6 +1586,15 @@ wheels = [
 ]
 
 [[package]]
+name = "nest-asyncio2"
+version = "1.7.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/73/731debf26e27e0a0323d7bda270dc2f634b398e38f040a09da1f4351d0aa/nest_asyncio2-1.7.2.tar.gz", hash = "sha256:1921d70b92cc4612c374928d081552efb59b83d91b2b789d935c665fa01729a8", size = 14743, upload-time = "2026-02-13T00:34:04.386Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c5/3c/3179b85b0e1c3659f0369940200cd6d0fa900e6cefcc7ea0bc6dd0e29ffb/nest_asyncio2-1.7.2-py3-none-any.whl", hash = "sha256:f5dfa702f3f81f6a03857e9a19e2ba578c0946a4ad417b4c50a24d7ba641fe01", size = 7843, upload-time = "2026-02-13T00:34:02.691Z" },
+]
+
+[[package]]
 name = "networkx"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2195,20 +2204,20 @@ wheels = [
 
 [[package]]
 name = "pyright"
-version = "1.1.409"
+version = "1.1.410"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nodeenv" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/51/4e/3aa27f74211522dba7e9cbc3e74de779c6d4b654c54e50a4840623be8014/pyright-1.1.409.tar.gz", hash = "sha256:986ee05beca9e077c165758ad123667c679e050059a2546aa02473930394bc93", size = 4430434, upload-time = "2026-04-23T11:02:03.799Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/53/e4d8ea1391bd4355231be6f91bf239479aa0014260ed3fb5526eeb12a1f2/pyright-1.1.410.tar.gz", hash = "sha256:07a073b8ba6749826773c1269773efa11b93440d9a6aa60419d9a3172d6dc488", size = 4062013, upload-time = "2026-06-01T17:35:48.894Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/6b/330d8ebae582b30c2959a1ef4c3bc344ebde48c2ff0c3f113c4710735e11/pyright-1.1.409-py3-none-any.whl", hash = "sha256:aa3ea228cab90c845c7a60d28db7a844c04315356392aa09fafcee98c8c22fb3", size = 6438161, upload-time = "2026-04-23T11:02:01.309Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/33/288b5868fa00846dacf249633719d747893e54aebd196b9968ac1878a5d3/pyright-1.1.410-py3-none-any.whl", hash = "sha256:5e961bed37cacf96b3f7cd7b1da39b350a9239aa2e69138d0e88f728cfaf296c", size = 6082448, upload-time = "2026-06-01T17:35:46.387Z" },
 ]
 
 [[package]]
 name = "pyscf"
-version = "2.13.0"
+version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -2216,12 +2225,12 @@ dependencies = [
     { name = "scipy" },
     { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/ed/091bca997cf71b5a6a7a281259039182555ee1f1672b31ffff758b048819/pyscf-2.13.0.tar.gz", hash = "sha256:5381c77568cc894df57f82aca1f025275322ac52b32b5aa86806a4649baa1eae", size = 10766415, upload-time = "2026-04-21T15:18:16.185Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/c7/d688ecce52c7ffa241035f53aa6d2cfbf51740220f11ba82a540956fd779/pyscf-2.13.1.tar.gz", hash = "sha256:da286e944211a52cc83e08991a885b9aa674100114627ad29cf9afc60df61bc7", size = 11414173, upload-time = "2026-06-03T23:16:36.163Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/17/7248d4393c86bc785a80a1e2c12fe1a10455770d1f9aff244df934c4eb08/pyscf-2.13.0-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:adb3e0e03b652086cce5cab6a961deef1384bcc035a1bda314ca95699b8e6907", size = 36298814, upload-time = "2026-04-21T14:55:16.2Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/8e/9fa513e8d527411878299192a7014d39a192b8226922d00d19fed8e61ae9/pyscf-2.13.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:6b61bdb5baa854e551660d08766978ffe2343c2c42a54781a648df65799a3266", size = 35636646, upload-time = "2026-04-21T14:53:31.927Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/72/55bf2fa6578601a364d5733daac5212df3e95bd3be4fdb6c247a216a968a/pyscf-2.13.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:c2c4bbc47853640f18745e18a499537d83ce2ccbd9b63ba3ffd0ecb230f4e731", size = 45159508, upload-time = "2026-04-21T17:40:45.031Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/25/62a48b41d012bcc7ddb266950bb28c57808135f2b3197f09e4763bb02277/pyscf-2.13.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e58b2b30af70a104f43ffefcf17478a71f44596601efac0f04b4d2ee33e63ac9", size = 51971927, upload-time = "2026-04-21T15:17:44.044Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/81/8f516f9f594fcf45f3fd17ef8b295d14db27a85d11984c90020d979c09b8/pyscf-2.13.1-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:72a496ca7ddcad78b5bea1dd91c120839d94947b094f6938ee645153045c3b0a", size = 36963539, upload-time = "2026-06-03T22:54:52.396Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/26/f7a8a3d4ba158f5775083677518c9340b7a18990cd4ef70a63c3796d87ad/pyscf-2.13.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:a4afa38e97631c09c801936fb0b67c13970bceeaf2dcd3702c85a22ec0658fe8", size = 36301296, upload-time = "2026-06-03T22:52:38.102Z" },
+    { url = "https://files.pythonhosted.org/packages/00/13/5e8ca0828344d7274d6f5ae2d36d511ee220bf06851906a104ac9d4abaa6/pyscf-2.13.1-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:a9257364a29caaaea0381888a57b39c9ac0da8cb089b0a48e3721590262f2f56", size = 45825470, upload-time = "2026-06-04T01:24:29.987Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/42/8dbf4bcfb9a212b82fcff6cfa362054787a0a2e63e1e85821882bfae93f1/pyscf-2.13.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:27b991d37ff16137d28b7210f678f8a027264cb66590afdd2002c5b69001f8b3", size = 52637822, upload-time = "2026-06-03T23:16:08.061Z" },
 ]
 
 [[package]]
@@ -2594,25 +2603,26 @@ wheels = [
 
 [[package]]
 name = "qnexus"
-version = "0.37.1"
+version = "0.44.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "colorama" },
     { name = "httpx" },
     { name = "hugr" },
-    { name = "nest-asyncio" },
+    { name = "nest-asyncio2" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyjwt" },
     { name = "pytket" },
     { name = "quantinuum-schemas" },
     { name = "rich" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dc/2a/cf70afe05fc3fcc3b8b877a4434075a562e9618a7355955a57a4f4d1809f/qnexus-0.37.1.tar.gz", hash = "sha256:6b71988b971e637e444ffb6dda1c053c0ac120e3ad935db11f06b6ccf9c2ae3e", size = 431149, upload-time = "2025-11-19T11:38:13.322Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/63/2d3e11d31a7f45eb3fb2158bda39497dddb45b77b6f94ac09e6e79da4dbf/qnexus-0.44.0.tar.gz", hash = "sha256:40a850793741e6812b5b3627802c7c5f5b025233db23fe57b7a25bd4948c9756", size = 325248, upload-time = "2026-06-01T17:03:23.168Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/84/becca04c2c60e08c3b4bdea92a4342bc76ac211e2f985b6eb18c32a78045/qnexus-0.37.1-py3-none-any.whl", hash = "sha256:c9575acef6221c610beeeaf9aa69d61cfeefa46b3554e0b2cf1ad2afc935eecc", size = 70756, upload-time = "2025-11-19T11:38:12.128Z" },
+    { url = "https://files.pythonhosted.org/packages/19/53/8a064c0865d8cbadaa6c21af1f9a199dc5e28bae32224386a094f2db504b/qnexus-0.44.0-py3-none-any.whl", hash = "sha256:fabc2c96851fb59b4500d73103289c0d9e42ae5edc6f2647a556046da450ec06", size = 79949, upload-time = "2026-06-01T17:03:22.055Z" },
 ]
 
 [[package]]
@@ -3508,6 +3518,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/f0/416bc9d59675a1330b2d08d2f975e40cf4a3d70de39776b4e7a99506e71c/tket-0.13.1-cp310-abi3-win_amd64.whl", hash = "sha256:7b8c16dbe4af5dbc5a4381c9d17cbba4b103fe60254273f1eec2de08b70736be", size = 10218380, upload-time = "2026-05-19T13:31:28.394Z" },
 ]
 
+[package.optional-dependencies]
+pytket = [
+    { name = "pytket" },
+]
+
 [[package]]
 name = "tket-eccs"
 version = "0.5.1"
@@ -3812,7 +3827,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "hugr" },
-    { name = "qnexus", specifier = "==0.37.1" },
+    { name = "qnexus", specifier = "==0.44.0" },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-nexus-worker", editable = "tierkreis_workers/nexus_worker/api" },
 ]
@@ -3924,7 +3939,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pytket-quantinuum", specifier = ">=0.57.0" },
-    { name = "qnexus", specifier = "==0.37.1" },
+    { name = "qnexus", specifier = "==0.44.0" },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-quantinuum-worker", editable = "tierkreis_workers/quantinuum_worker/api" },
 ]
