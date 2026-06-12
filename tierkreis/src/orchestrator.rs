@@ -502,13 +502,14 @@ impl Orchestrator {
     fn build_input_action(
         graph_inputs: Arc<HashMap<String, AssetSpec>>,
         loc: Location,
-        name: &String,
+        name: &str,
     ) -> miette::Result<Action> {
-        let outputs: HashMap<String, AssetSpec> = graph_inputs
-            .iter()
-            .filter(|(k, _)| k == &name)
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let value = graph_inputs
+            .get(name)
+            .ok_or_else(|| miette!("Graph input not found: {name}"))?;
+        let mut outputs = HashMap::new();
+        outputs.insert(name.to_string(), value.clone());
+
         Ok(Action {
             loc,
             kind: ActionKind::SetComplete { outputs },
