@@ -148,10 +148,16 @@ impl Location {
     }
 
     /// Extend the [`Location`] struct with a Node component with the specified [`NodeIndex`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the index cannot be converted into a `u32`.
     #[must_use]
-    pub fn with_map_index(&self, index: u32) -> Location {
+    pub fn with_map_index(&self, index: usize) -> Location {
         let mut inner = self.0.clone();
-        inner.push(LocationComponent::MapIndex { index });
+        inner.push(LocationComponent::MapIndex {
+            index: u32::try_from(index).expect("Map index > U32_MAX"),
+        });
         Location(inner)
     }
 

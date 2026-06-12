@@ -5,6 +5,8 @@ Workflow Management system.
 #![warn(clippy::all, clippy::pedantic)]
 
 pub mod asset_storage;
+#[cfg(test)]
+pub mod builder;
 pub mod event;
 pub mod executor;
 pub mod graph;

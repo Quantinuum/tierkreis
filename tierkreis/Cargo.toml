@@ -38,3 +38,4 @@ which = { version = "8.0.2", features = ["regex"] }
 
 [dev-dependencies]
 rstest = "0.26.1"
+test-log = { version = "0.2.21", features = ["trace"] }
