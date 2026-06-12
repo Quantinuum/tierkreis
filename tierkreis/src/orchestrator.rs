@@ -771,7 +771,6 @@ impl Orchestrator {
             .boxed_local())
     }
 
-    #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, workflow_state, inputs, subgraph), fields(loc = %loc), err)]
     async fn build_subsequent_map_actions(
         &self,
