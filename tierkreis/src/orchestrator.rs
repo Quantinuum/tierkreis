@@ -23,7 +23,7 @@ use tracing::{debug, instrument};
 use crate::{
     asset_storage::{
         AssetStorageRegistry, fold_assets, interface::AssetSpec, load_asset, save_asset,
-        transfer_assets, unfold_asset,
+        unfold_asset,
     },
     event::{
         Event, EventReceiver, EventSender, NodeEvent, send_complete, send_map_elem_complete,
@@ -208,7 +208,7 @@ impl Orchestrator {
                 let loc = parent_location.with_node(n);
                 match definition {
                     NodeDefinition::Input { name } => stream_action_result(
-                        self.build_input_action(graph_inputs.clone(), loc, name),
+                        Self::build_input_action(graph_inputs.clone(), loc, name),
                     ),
                     NodeDefinition::Const { value } => {
                         stream_action_result(self.build_const_action(loc, value.clone()))
@@ -498,9 +498,8 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self), fields(loc = %loc), err)]
+    #[instrument(skip(graph_inputs), fields(loc = %loc), err)]
     fn build_input_action(
-        &self,
         graph_inputs: Arc<HashMap<String, AssetSpec>>,
         loc: Location,
         name: &String,
@@ -510,12 +509,6 @@ impl Orchestrator {
             .filter(|(k, _)| k == &name)
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
-        // TODO: It's a little bit unclear if this is desired behaviour.
-        let outputs = transfer_assets(
-            &self.asset_storage_registry,
-            &self.default_storage_name,
-            &outputs,
-        )?;
         Ok(Action {
             loc,
             kind: ActionKind::SetComplete { outputs },
@@ -593,15 +586,11 @@ impl Orchestrator {
             .await?;
 
         if let Some(subgraph_outputs) = subgraph_output_state.outputs {
-            // TODO: Unclear if this is desired behaviour.
-            let outputs = transfer_assets(
-                &self.asset_storage_registry,
-                &self.default_storage_name,
-                &subgraph_outputs,
-            )?;
             return Ok(stream::once(future::ok(Action {
                 loc,
-                kind: ActionKind::SetComplete { outputs },
+                kind: ActionKind::SetComplete {
+                    outputs: subgraph_outputs,
+                },
             }))
             .boxed());
         }
@@ -1355,7 +1344,7 @@ mod tests {
         let input_complete_outputs = input_complete_event.clone().outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &input_complete_outputs,
             json!({"a": 1}),
         );
@@ -1390,7 +1379,7 @@ mod tests {
         let output_complete_outputs = output_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &output_complete_outputs,
             json!({"out": 1}),
         );
@@ -1450,7 +1439,7 @@ mod tests {
             subworkflow_input_complete_event.clone().outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &subworkflow_input_complete_outputs,
             json!({"subworkflow": one_input_one_output}),
         );
@@ -1459,7 +1448,7 @@ mod tests {
         let a_input_complete_outputs = a_input_complete_event.clone().outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &a_input_complete_outputs,
             json!({"a": 1}),
         );
@@ -1489,7 +1478,7 @@ mod tests {
             inner_a_input_complete_event.clone().outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &inner_a_input_complete_outputs,
             json!({"a": 1}),
         );
@@ -1510,7 +1499,7 @@ mod tests {
         let inner_output_complete_outputs = inner_output_complete_event.clone().outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &inner_output_complete_outputs,
             json!({"out": 1}),
         );
@@ -1538,7 +1527,7 @@ mod tests {
         let output_complete_outputs = output_complete_event.outputs().unwrap();
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &output_complete_outputs,
             json!({"out": 1}),
         );
@@ -1717,7 +1706,7 @@ mod tests {
 
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            "memory", // Asset is not modified so it remains in memory.
             &outputs,
             json!({"out": 1}),
         );
