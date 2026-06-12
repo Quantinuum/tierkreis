@@ -3483,7 +3483,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.11" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.136.3" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
     { name = "tierkreis", editable = "tierkreis" },
