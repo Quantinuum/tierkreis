@@ -89,7 +89,7 @@ pub enum ActionKind {
 /// The context state for the orchestration
 #[derive(Debug, Clone)]
 pub struct OrchestrationContext {
-    subworkflow_context: Location,
+    parent_loc: Location,
     graph_inputs: HashMap<String, AssetSpec>,
     workflow_state: Arc<dyn WorkflowState>,
 }
@@ -101,7 +101,7 @@ impl OrchestrationContext {
         inputs: HashMap<String, AssetSpec>,
     ) -> Self {
         Self {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs,
             workflow_state: Arc::clone(workflow_state),
         }
@@ -193,7 +193,7 @@ impl Orchestrator {
         // Mark all ready nodes as scheduled.
         Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
 
-        let parent_location = context.subworkflow_context.clone();
+        let parent_location = context.parent_loc.clone();
         let graph_inputs = Arc::new(context.graph_inputs.clone());
         let workflow_state = Arc::clone(&context.workflow_state);
         let node_states = Arc::new(node_states);
@@ -288,7 +288,7 @@ impl Orchestrator {
     ) -> miette::Result<HashMap<NodeIndex, (NodeDefinition, NodeState)>> {
         let mut node_states = HashMap::new();
         for node_id in workflow_graph.node_ids() {
-            let location = context.subworkflow_context.with_node(node_id);
+            let location = context.parent_loc.with_node(node_id);
             let node_definition = workflow_graph
                 .node_definition(node_id)
                 .ok_or_else(|| miette!("Node definition not found"))?;
@@ -390,7 +390,7 @@ impl Orchestrator {
             context
                 .workflow_state
                 .write(Event::Node(NodeEvent {
-                    loc: context.subworkflow_context.with_node(*node),
+                    loc: context.parent_loc.with_node(*node),
                     status: crate::event::NodeStatus::Scheduled {},
                 }))
                 .await?;
@@ -609,7 +609,7 @@ impl Orchestrator {
         let stream = self
             .build_actions(
                 OrchestrationContext {
-                    subworkflow_context: loc,
+                    parent_loc: loc,
                     graph_inputs: inputs,
                     workflow_state: Arc::clone(&workflow_state),
                 },
@@ -666,7 +666,7 @@ impl Orchestrator {
                         return self
                             .build_actions(
                                 OrchestrationContext {
-                                    subworkflow_context: loop_loc,
+                                    parent_loc: loop_loc,
                                     graph_inputs: inputs,
                                     workflow_state: Arc::clone(&workflow_state),
                                 },
@@ -718,7 +718,12 @@ impl Orchestrator {
                     .await?
             }
             Some(completed) if completed.all() => self
-                .build_completed_map_action(workflow_state, loc, completed, subgraph)
+                .build_completed_map_action(
+                    workflow_state,
+                    loc,
+                    completed.len(),
+                    subgraph.output_idx(),
+                )
                 .into_stream()
                 .boxed(),
             Some(completed) => {
@@ -760,7 +765,7 @@ impl Orchestrator {
                 let map_loc = loc_copy.with_map_index(index);
                 self.build_actions(
                     OrchestrationContext {
-                        subworkflow_context: map_loc,
+                        parent_loc: map_loc,
                         graph_inputs: inputs,
                         workflow_state: Arc::clone(&workflow_state),
                     },
@@ -796,7 +801,7 @@ impl Orchestrator {
                 let map_loc_copy = map_loc.clone();
                 self.build_actions(
                     OrchestrationContext {
-                        subworkflow_context: map_loc,
+                        parent_loc: map_loc,
                         graph_inputs: inputs.clone(),
                         workflow_state: Arc::clone(&workflow_state),
                     },
@@ -826,18 +831,16 @@ impl Orchestrator {
             .boxed_local())
     }
 
-    #[instrument(skip(self, workflow_state, subgraph), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_state), fields(loc = %loc), err)]
     async fn build_completed_map_action(
         &self,
         workflow_state: Arc<dyn WorkflowState>,
         loc: Location,
-        completed: BitVec,
-        subgraph: Arc<WorkflowGraph>,
+        map_size: usize,
+        output_idx: NodeIndex,
     ) -> miette::Result<Action> {
-        let output_idx = subgraph.output_idx();
-
         let mut assets: HashMap<String, Vec<_>> = HashMap::new();
-        for index in 0..completed.len() {
+        for index in 0..map_size {
             let map_loc = loc.with_map_index(index);
             let subgraph_output_state = workflow_state.read(&map_loc.with_node(output_idx)).await?;
 
@@ -1291,7 +1294,7 @@ mod tests {
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state,
         };
@@ -1333,7 +1336,7 @@ mod tests {
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1359,7 +1362,7 @@ mod tests {
 
         workflow_state.write(input_complete_event).await?;
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1424,7 +1427,7 @@ mod tests {
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1466,7 +1469,7 @@ mod tests {
             .await?;
         workflow_state.write(a_input_complete_event).await?;
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1493,7 +1496,7 @@ mod tests {
 
         workflow_state.write(inner_a_input_complete_event).await?;
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1521,7 +1524,7 @@ mod tests {
         workflow_state.write(inner_output_complete_event).await?;
         workflow_state.write(eval_complete_event).await?;
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1567,7 +1570,7 @@ mod tests {
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1657,7 +1660,7 @@ mod tests {
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1758,7 +1761,7 @@ mod tests {
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_state: Arc::clone(&workflow_state),
         };
@@ -1824,7 +1827,7 @@ mod tests {
         let (workflow_state, state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let context = OrchestrationContext {
-            subworkflow_context: Location::root(),
+            parent_loc: Location::root(),
             graph_inputs: HashMap::new(),
             workflow_state: Arc::clone(&workflow_state),
         };
