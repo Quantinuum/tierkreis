@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+minimumReleaseAge: 20160 # 14 days
+minimumReleaseAgeStrict: true
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 43200 # 30 days, See https://pnpm.io/settings#trustpolicyignoreafter
