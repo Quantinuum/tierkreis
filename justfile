@@ -41,8 +41,8 @@ serve:
 
 [working-directory:'tierkreis_visualization/frontend']
 prod:
-	npm i
-	npm run build
+	pnpm i
+	pnpm run build
 
 stubs-generate dir:
   #!/usr/bin/env bash
