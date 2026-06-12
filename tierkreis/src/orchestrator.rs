@@ -18,7 +18,7 @@ use futures::{
 };
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 use crate::{
     asset_storage::{
@@ -316,21 +316,11 @@ impl Orchestrator {
             .toposort_filtered_from_output_node(
                 // Returns true if a node should be traversed.
                 |n| {
-                    let (definition, state) = node_states
+                    let (_definition, state) = node_states
                         .get(&n)
                         .expect("Node definition/state not found");
 
-                    let has_outputs = state.outputs.is_some();
-                    let not_already_scheduled = state.scheduled_time.is_none();
-                    // Always traverse control nodes.
-                    let is_control_flow = matches!(
-                        definition,
-                        NodeDefinition::Eval {}
-                            | NodeDefinition::Loop {}
-                            | NodeDefinition::Map { .. }
-                            | NodeDefinition::IfElse {}
-                    );
-                    !has_outputs && (not_already_scheduled || is_control_flow)
+                    state.outputs.is_none()
                 },
                 // Returns true if a port should be traversed.
                 |n, p| {
@@ -409,7 +399,7 @@ impl Orchestrator {
         Ok(())
     }
 
-    #[instrument(skip(self, workflow_graph, node_states), err)]
+    #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
     fn build_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
@@ -481,7 +471,7 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self, workflow_graph, node_states), err)]
+    #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
     fn build_eager_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
@@ -508,7 +498,7 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self), fields(loc = %loc), err)]
     fn build_input_action(
         &self,
         graph_inputs: Arc<HashMap<String, AssetSpec>>,
@@ -532,7 +522,7 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self), fields(loc = %loc), err)]
     fn build_const_action(
         &self,
         loc: Location,
@@ -553,7 +543,7 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self, workflow_graph, node_states), err)]
+    #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
     async fn build_output_actions(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
@@ -579,7 +569,7 @@ impl Orchestrator {
         Ok(stream::iter(actions).boxed())
     }
 
-    #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
+    #[instrument(skip(self, workflow_graph, workflow_state, node_states), fields(loc = %loc), err)]
     async fn build_eval_actions(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
@@ -630,7 +620,7 @@ impl Orchestrator {
         Ok(stream.boxed_local())
     }
 
-    #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
+    #[instrument(skip(self, workflow_graph, workflow_state, node_states), fields(loc = %loc), err)]
     async fn build_loop_actions(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
@@ -708,7 +698,7 @@ impl Orchestrator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[instrument(skip(self, workflow_graph, workflow_state, node_states), err)]
+    #[instrument(skip(self, workflow_graph, workflow_state, node_states), fields(loc = %loc), err)]
     async fn build_map_actions(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
@@ -724,51 +714,25 @@ impl Orchestrator {
 
         Ok(match completed {
             None => {
-                self.build_initial_map_actions(
-                    workflow_state,
-                    mapped_ports,
-                    n,
-                    loc,
-                    inputs,
-                    subgraph,
-                )
-                .await?
+                self.build_initial_map_actions(workflow_state, mapped_ports, loc, inputs, subgraph)
+                    .await?
             }
             Some(completed) if completed.all() => self
-                .build_completed_map_action(
-                    workflow_graph,
-                    workflow_state,
-                    node_states,
-                    mapped_ports,
-                    n,
-                    loc,
-                    completed,
-                    inputs,
-                    subgraph,
-                )
+                .build_completed_map_action(workflow_state, loc, completed, subgraph)
                 .into_stream()
                 .boxed(),
             Some(completed) => {
-                self.build_subsequent_map_actions(
-                    workflow_state,
-                    mapped_ports,
-                    n,
-                    loc,
-                    completed,
-                    inputs,
-                    subgraph,
-                )
-                .await?
+                self.build_subsequent_map_actions(workflow_state, loc, completed, inputs, subgraph)
+                    .await?
             }
         })
     }
 
-    #[instrument(skip(self, workflow_state, inputs, subgraph), err)]
+    #[instrument(skip(self, workflow_state, inputs, subgraph), fields(loc = %loc), err)]
     async fn build_initial_map_actions(
         &self,
         workflow_state: Arc<dyn WorkflowState>,
         mapped_ports: HashSet<String>,
-        n: NodeIndex,
         loc: Location,
         inputs: HashMap<String, AssetSpec>,
         subgraph: Arc<WorkflowGraph>,
@@ -813,12 +777,10 @@ impl Orchestrator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[instrument(skip(self, workflow_state), err)]
+    #[instrument(skip(self, workflow_state, inputs, subgraph), fields(loc = %loc), err)]
     async fn build_subsequent_map_actions(
         &self,
         workflow_state: Arc<dyn WorkflowState>,
-        mapped_ports: HashSet<String>,
-        n: NodeIndex,
         loc: Location,
         completed: BitVec,
         inputs: HashMap<String, AssetSpec>,
@@ -864,18 +826,12 @@ impl Orchestrator {
             .boxed_local())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self, workflow_state, subgraph), fields(loc = %loc), err)]
     async fn build_completed_map_action(
         &self,
-        workflow_graph: Arc<WorkflowGraph>,
         workflow_state: Arc<dyn WorkflowState>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
-        mapped_ports: HashSet<String>,
-        n: NodeIndex,
         loc: Location,
         completed: BitVec,
-        inputs: HashMap<String, AssetSpec>,
         subgraph: Arc<WorkflowGraph>,
     ) -> miette::Result<Action> {
         let output_idx = subgraph.output_idx();
@@ -948,6 +904,7 @@ impl Orchestrator {
         let mut task_plans = Vec::new();
         let mut event_sender = self.event_sender.clone();
         while let Some(Action { loc, kind }) = actions.next().await.transpose()? {
+            debug!("Running action at {loc}, kind: {kind:?}");
             match kind {
                 ActionKind::PerformTask {
                     worker_name,
@@ -1107,11 +1064,12 @@ fn collect_inputs(
 #[cfg(test)]
 mod tests {
     use futures::StreamExt;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use serde_json::json;
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
+        builder::*,
         event::{NodeEvent, NodeStatus},
         executor::{
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
@@ -1138,12 +1096,185 @@ mod tests {
         Arc::new(executor_registry)
     }
 
+    #[fixture]
+    fn one_input_one_output() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+        let a = input(&mut wf, "a");
+        let out = output(&wf, "out");
+
+        link(&mut wf, a, out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn two_inputs_two_outputs() -> WorkflowGraph {
+        let mut wf = workflow(["out1", "out2"]);
+        let a = input(&mut wf, "a");
+        let b = input(&mut wf, "b");
+        let out1 = output(&wf, "out1");
+        let out2 = output(&wf, "out2");
+
+        link(&mut wf, a, out1).expect("failed to link");
+        link(&mut wf, b, out2).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn simple_task() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+        let a = input(&mut wf, "a");
+        let c = constant(&mut wf, 3).expect("failed to serialize");
+        let add = task(&mut wf, "builtins", "iadd", ["a", "b"], ["value"]);
+        let out = output(&wf, "out");
+
+        link(&mut wf, a, (add, "a")).expect("failed to link");
+        link(&mut wf, c, (add, "b")).expect("failed to link");
+        link(&mut wf, (add, "value"), out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn doubler_plus() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+
+        let a = input(&mut wf, "a");
+        let b = input(&mut wf, "b");
+        let two = constant(&mut wf, 2).expect("failed to serialize");
+
+        let times = task(&mut wf, "builtins", "itimes", ["a", "b"], ["value"]);
+        let add = task(&mut wf, "builtins", "iadd", ["a", "b"], ["value"]);
+
+        link(&mut wf, a, (times, "a")).expect("failed to link");
+        link(&mut wf, two, (times, "b")).expect("failed to link");
+        link(&mut wf, (times, "value"), (add, "a")).expect("failed to link");
+        link(&mut wf, b, (add, "b")).expect("failed to link");
+
+        let out = output(&wf, "out");
+
+        link(&mut wf, (add, "value"), out).expect("failed to link");
+
+        wf
+    }
+    #[fixture]
+    fn simple_eval() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+        let a = input(&mut wf, "a");
+        let sub = input(&mut wf, "subworkflow");
+        let eval = eval(&mut wf, ["a"], ["out"]);
+        let out = output(&wf, "out");
+
+        link(&mut wf, a, (eval, "a")).expect("failed to link");
+        link(&mut wf, sub, (eval, "graph")).expect("failed to link");
+        link(&mut wf, (eval, "out"), out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn loop_body() -> WorkflowGraph {
+        let mut wf = workflow(["loop_acc", "should_continue"]);
+        let loop_acc_in = input(&mut wf, "loop_acc");
+        let one = constant(&mut wf, 1).expect("failed to serialize");
+        let limit = constant(&mut wf, 10).expect("failed to serialize");
+
+        let add = task(&mut wf, "builtins", "iadd", ["a", "b"], ["value"]);
+        let gt = task(&mut wf, "builtins", "igt", ["a", "b"], ["value"]);
+
+        link(&mut wf, loop_acc_in, (add, "a")).expect("failed to link");
+        link(&mut wf, one, (add, "b")).expect("failed to link");
+        link(&mut wf, limit, (gt, "a")).expect("failed to link");
+        link(&mut wf, (add, "value"), (gt, "b")).expect("failed to link");
+
+        let loop_acc_out = output(&wf, "loop_acc");
+        let should_continue = output(&wf, "should_continue");
+
+        link(&mut wf, (add, "value"), loop_acc_out).expect("failed to link");
+        link(&mut wf, (gt, "value"), should_continue).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn simple_loop() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+        let six = constant(&mut wf, 6).expect("failed to serialize");
+        let loop_body = constant(&mut wf, loop_body()).expect("failed to serialize");
+        let loop_node = loop_node(&mut wf, ["loop_acc"], ["loop_acc"]);
+        let out = output(&wf, "out");
+
+        link(&mut wf, six, (loop_node, "loop_acc")).expect("failed to link");
+        link(&mut wf, loop_body, (loop_node, "graph")).expect("failed to link");
+        link(&mut wf, (loop_node, "loop_acc"), out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn simple_map() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+
+        let list = constant(&mut wf, (0..21).collect::<Vec<_>>()).expect("failed to serialize");
+        let six = constant(&mut wf, 6).expect("failed to serialize");
+        let doubler_plus = constant(&mut wf, doubler_plus()).expect("failed to serialize");
+        let map = map_node(&mut wf, ["a"], ["b"], ["out"]);
+        let out = output(&wf, "out");
+
+        link(&mut wf, list, (map, "a")).expect("failed to link");
+        link(&mut wf, six, (map, "b")).expect("failed to link");
+        link(&mut wf, doubler_plus, (map, "graph")).expect("failed to link");
+        link(&mut wf, (map, "out"), out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn simple_if_else() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+
+        let one = constant(&mut wf, 1).expect("failed to serialize");
+        let two = constant(&mut wf, 2).expect("failed to serialize");
+        let pred = input(&mut wf, "pred");
+        let if_else = if_else(&mut wf);
+        let out = output(&wf, "out");
+
+        link(&mut wf, one, (if_else, "if_true")).expect("failed to link");
+        link(&mut wf, two, (if_else, "if_false")).expect("failed to link");
+        link(&mut wf, pred, (if_else, "pred")).expect("failed to link");
+        link(&mut wf, (if_else, "value"), out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
+    fn simple_eager_if_else() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+
+        let one = constant(&mut wf, 1).expect("failed to serialize");
+        let two = constant(&mut wf, 2).expect("failed to serialize");
+        let pred = input(&mut wf, "pred");
+        let eager_if_else = eager_if_else(&mut wf);
+        let out = output(&wf, "out");
+
+        link(&mut wf, one, (eager_if_else, "if_true")).expect("failed to link");
+        link(&mut wf, two, (eager_if_else, "if_false")).expect("failed to link");
+        link(&mut wf, pred, (eager_if_else, "pred")).expect("failed to link");
+        link(&mut wf, (eager_if_else, "value"), out).expect("failed to link");
+
+        wf
+    }
+
     // Test that we can plan a workflow with two input nodes.
     #[rstest]
-    #[case("memory")]
-    #[case("file")]
+    #[case::memory("memory")]
+    #[case::file("file")]
     #[tokio::test]
-    async fn plan_two_input_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
+    async fn plan_two_input_workflow(
+        #[case] default_storage_name: &str,
+        two_inputs_two_outputs: WorkflowGraph,
+    ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]);
         let executor_registry = test_executor_registry(&registry);
@@ -1154,28 +1285,7 @@ mod tests {
             "memory",
         )?;
 
-        let mut workflow_graph = WorkflowGraph::new(["out1".to_string(), "out2".to_string()]);
-        let input1_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-        workflow_graph
-            .link_nodes_by_port_name(input1_idx, "a", workflow_graph.output_idx(), "out1")
-            .unwrap();
-        let input2_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "b".to_string(),
-            },
-            [],
-            ["b".to_string()],
-        );
-        workflow_graph
-            .link_nodes_by_port_name(input2_idx, "b", workflow_graph.output_idx(), "out2")
-            .unwrap();
-        let workflow_graph = Arc::new(workflow_graph);
+        let workflow_graph = Arc::new(two_inputs_two_outputs);
 
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
@@ -1201,11 +1311,12 @@ mod tests {
 
     // Test that we can plan the first actions of a workflow and run them.
     #[rstest]
-    #[case("memory")]
-    #[case("file")]
+    #[case::memory("memory")]
+    #[case::file("file")]
     #[tokio::test]
     async fn plan_and_run_simple_io_workflow(
         #[case] default_storage_name: &str,
+        one_input_one_output: WorkflowGraph,
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
         let executor_registry = test_executor_registry(&registry);
@@ -1216,20 +1327,7 @@ mod tests {
             "memory",
         )?;
         let mut stream = orchestrator.listen()?;
-
-        let mut workflow_graph = WorkflowGraph::new(["out".to_string()]);
-        let input_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-
-        workflow_graph
-            .link_nodes_by_port_name(input_idx, "a", workflow_graph.output_idx(), "out")
-            .unwrap();
-        let workflow_graph = Arc::new(workflow_graph);
+        let workflow_graph = Arc::new(one_input_one_output);
 
         let inputs = input_sets[0].clone();
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
@@ -1246,7 +1344,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         let action0 = actions[0].as_ref().unwrap();
-        assert_eq!(action0.loc, Location::from_node_index_iter([input_idx]));
+        assert_eq!(action0.loc, Location::new("N1")?);
         assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
@@ -1299,32 +1397,16 @@ mod tests {
 
     // Test that we can plan the first actions of a workflow and run them.
     #[rstest]
-    #[case("memory")]
-    #[case("file")]
+    #[case::memory("memory")]
+    #[case::file("file")]
     #[tokio::test]
     async fn plan_and_run_simple_eval_workflow(
         #[case] default_storage_name: &str,
+        one_input_one_output: WorkflowGraph,
+        simple_eval: WorkflowGraph,
     ) -> miette::Result<()> {
-        let mut subworkflow_graph = WorkflowGraph::new(["out".to_string()]);
-        let inner_a_input_idx = subworkflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-
-        subworkflow_graph
-            .link_nodes_by_port_name(
-                inner_a_input_idx,
-                "a",
-                subworkflow_graph.output_idx(),
-                "out",
-            )
-            .unwrap();
-
         let (registry, input_sets, _dir) = test_storage_registry(
-            vec![json!({"a": 1, "subworkflow": subworkflow_graph})],
+            vec![json!({"a": 1, "subworkflow": one_input_one_output})],
             vec![],
         );
         let executor_registry = test_executor_registry(&registry);
@@ -1336,37 +1418,7 @@ mod tests {
         )?;
         let mut stream = orchestrator.listen()?;
 
-        let mut workflow_graph = WorkflowGraph::new(["out".to_string()]);
-        let a_input_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-        let subworkflow_input_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "subworkflow".to_string(),
-            },
-            [],
-            ["subworkflow".to_string()],
-        );
-        let eval_idx = workflow_graph.add_node(
-            NodeDefinition::Eval {},
-            ["graph".to_string(), "a".to_string()],
-            ["out".to_string()],
-        );
-
-        workflow_graph
-            .link_nodes_by_port_name(a_input_idx, "a", eval_idx, "a")
-            .unwrap();
-        workflow_graph
-            .link_nodes_by_port_name(subworkflow_input_idx, "subworkflow", eval_idx, "graph")
-            .unwrap();
-        workflow_graph
-            .link_nodes_by_port_name(eval_idx, "out", workflow_graph.output_idx(), "out")
-            .unwrap();
-        let workflow_graph = Arc::new(workflow_graph);
+        let workflow_graph = Arc::new(simple_eval);
 
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
@@ -1383,13 +1435,10 @@ mod tests {
 
         assert_eq!(actions.len(), 2);
         let action0 = actions[0].as_ref().unwrap();
-        assert_eq!(
-            action0.loc,
-            Location::from_node_index_iter([subworkflow_input_idx])
-        );
+        assert_eq!(action0.loc, Location::new("N2")?);
         assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
         let action1 = actions[1].as_ref().unwrap();
-        assert_eq!(action1.loc, Location::from_node_index_iter([a_input_idx]));
+        assert_eq!(action1.loc, Location::new("N1")?);
         assert!(matches!(action1.kind, ActionKind::SetComplete { .. }));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
@@ -1400,7 +1449,7 @@ mod tests {
             &registry,
             &orchestrator.default_storage_name,
             &subworkflow_input_complete_outputs,
-            json!({"subworkflow": subworkflow_graph}),
+            json!({"subworkflow": one_input_one_output}),
         );
 
         let a_input_complete_event = stream.next().await.unwrap();
@@ -1428,10 +1477,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         let action0 = actions[0].as_ref().unwrap();
-        assert_eq!(
-            action0.loc,
-            Location::from_node_index_iter([eval_idx, inner_a_input_idx])
-        );
+        assert_eq!(action0.loc, Location::new("N3.N1")?);
         assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
 
         orchestrator.perform_actions(stream::iter(actions)).await?;
@@ -1467,7 +1513,7 @@ mod tests {
         );
 
         let eval_complete_event = Event::Node(NodeEvent {
-            loc: Location::from_node_index_iter([eval_idx]),
+            loc: Location::new("N3")?,
             status: NodeStatus::Complete {
                 outputs: inner_output_complete_outputs.clone(),
             },
@@ -1499,43 +1545,14 @@ mod tests {
 
     // Test that we can plan the first actions of a workflow and run them.
     #[rstest]
-    #[case("memory")]
-    #[case("file")]
+    #[case::memory("memory")]
+    #[case::file("file")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn run_simple_task_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
-        let mut workflow_graph = WorkflowGraph::new(["out".to_string()]);
-        let input_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-        let const_idx = workflow_graph.add_node(
-            NodeDefinition::Const { value: 3.into() },
-            [],
-            ["value".to_string()],
-        );
-        let add_idx = workflow_graph.add_node(
-            NodeDefinition::Task {
-                worker_name: "builtin".to_string(),
-                task_name: "iadd".to_string(),
-            },
-            ["a".to_string(), "b".to_string()],
-            ["value".to_string()],
-        );
-
-        let output_idx = workflow_graph.output_idx();
-        workflow_graph
-            .link_nodes_by_port_name(input_idx, "a", add_idx, "a")
-            .unwrap();
-        workflow_graph
-            .link_nodes_by_port_name(const_idx, "value", add_idx, "b")
-            .unwrap();
-        workflow_graph
-            .link_nodes_by_port_name(add_idx, "value", output_idx, "out")
-            .unwrap();
-        let workflow_graph = Arc::new(workflow_graph);
+    async fn run_simple_task_workflow(
+        #[case] default_storage_name: &str,
+        simple_task: WorkflowGraph,
+    ) -> miette::Result<()> {
+        let workflow_graph = Arc::new(simple_task);
 
         let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
         let executor_registry = test_executor_registry(&registry);
@@ -1576,9 +1593,7 @@ mod tests {
             orchestrator.perform_actions(actions).await?;
         }
 
-        let a_input_state = workflow_state
-            .read(&Location::from_node_index_iter([input_idx]))
-            .await?;
+        let a_input_state = workflow_state.read(&Location::new("N1")?).await?;
 
         assert!(matches!(
             a_input_state,
@@ -1589,9 +1604,7 @@ mod tests {
             }
         ));
 
-        let subworkflow_input_state = workflow_state
-            .read(&Location::from_node_index_iter([const_idx]))
-            .await?;
+        let subworkflow_input_state = workflow_state.read(&Location::new("N2")?).await?;
 
         assert!(matches!(
             subworkflow_input_state,
@@ -1602,9 +1615,7 @@ mod tests {
             }
         ));
 
-        let output_state = workflow_state
-            .read(&Location::from_node_index_iter([output_idx]))
-            .await?;
+        let output_state = workflow_state.read(&Location::new("N0")?).await?;
 
         let outputs = output_state.outputs.expect("no outputs found");
 
@@ -1620,62 +1631,18 @@ mod tests {
 
     // Test that we can plan the first actions of a workflow and run them.
     #[rstest]
-    #[case("memory")]
-    #[case("file")]
+    #[case::memory("memory")]
+    #[case::file("file")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn run_simple_eval_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
-        let mut subworkflow_graph = WorkflowGraph::new(["out".to_string()]);
-        let inner_a_input_idx = subworkflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-
-        subworkflow_graph
-            .link_nodes_by_port_name(
-                inner_a_input_idx,
-                "a",
-                subworkflow_graph.output_idx(),
-                "out",
-            )
-            .unwrap();
-
-        let mut workflow_graph = WorkflowGraph::new(["out".to_string()]);
-        let a_input_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "a".to_string(),
-            },
-            [],
-            ["a".to_string()],
-        );
-        let subworkflow_input_idx = workflow_graph.add_node(
-            NodeDefinition::Input {
-                name: "subworkflow".to_string(),
-            },
-            [],
-            ["subworkflow".to_string()],
-        );
-        let eval_idx = workflow_graph.add_node(
-            NodeDefinition::Eval {},
-            ["graph".to_string(), "a".to_string()],
-            ["out".to_string()],
-        );
-
-        workflow_graph
-            .link_nodes_by_port_name(a_input_idx, "a", eval_idx, "a")
-            .unwrap();
-        workflow_graph
-            .link_nodes_by_port_name(subworkflow_input_idx, "subworkflow", eval_idx, "graph")
-            .unwrap();
-        workflow_graph
-            .link_nodes_by_port_name(eval_idx, "out", workflow_graph.output_idx(), "out")
-            .unwrap();
-        let workflow_graph = Arc::new(workflow_graph);
+    async fn run_simple_eval_workflow(
+        #[case] default_storage_name: &str,
+        one_input_one_output: WorkflowGraph,
+        simple_eval: WorkflowGraph,
+    ) -> miette::Result<()> {
+        let workflow_graph = Arc::new(simple_eval);
 
         let (registry, input_sets, _dir) = test_storage_registry(
-            vec![json!({"a": 1, "subworkflow": subworkflow_graph})],
+            vec![json!({"a": 1, "subworkflow": one_input_one_output})],
             vec![],
         );
         let executor_registry = test_executor_registry(&registry);
@@ -1715,9 +1682,7 @@ mod tests {
             orchestrator.perform_actions(actions).await?;
         }
 
-        let a_input_state = workflow_state
-            .read(&Location::from_node_index_iter([a_input_idx]))
-            .await?;
+        let a_input_state = workflow_state.read(&Location::new("N1")?).await?;
 
         assert!(matches!(
             a_input_state,
@@ -1728,9 +1693,7 @@ mod tests {
             }
         ));
 
-        let subworkflow_input_state = workflow_state
-            .read(&Location::from_node_index_iter([subworkflow_input_idx]))
-            .await?;
+        let subworkflow_input_state = workflow_state.read(&Location::new("N2")?).await?;
 
         assert!(matches!(
             subworkflow_input_state,
@@ -1759,10 +1722,89 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::one_input_one_output_3(one_input_one_output(), json!({"a": 3}), json!({"out": 3}))]
+    #[case::one_input_one_output_6(one_input_one_output(), json!({"a": 6}), json!({"out": 6}))]
+    #[case::two_inputs_two_outputs(two_inputs_two_outputs(), json!({"a": 1, "b": 3}), json!({"out1": 1, "out2": 3}))]
+    #[case::simple_task_1(simple_task(), json!({"a": 1}), json!({"out": 4}))]
+    #[case::simple_task_5(simple_task(), json!({"a": 5}), json!({"out": 8}))]
+    #[case::simple_eval(simple_eval(), json!({"a": 3, "subworkflow": one_input_one_output()}), json!({"out": 3}))]
+    #[case::simple_loop(simple_loop(), json!({}), json!({"out": 10}))]
+    #[case::simple_map(simple_map(), json!({}), json!({"out": (0..21).map(|x| x * 2 + 6).collect::<Vec<_>>()}))]
+    #[case::simple_if_else_true(simple_if_else(), json!({"pred": true}), json!({"out": 1}))]
+    #[case::simple_if_else_false(simple_if_else(), json!({"pred": false}), json!({"out": 2}))]
+    #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
+    #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
+    #[tokio::test]
+    #[test_log::test]
+    async fn run_workflows(
+        #[case] workflow_graph: WorkflowGraph,
+        #[case] inputs: serde_json::Value,
+        #[case] expected_outputs: serde_json::Value,
+    ) -> miette::Result<()> {
+        let default_storage_name = "memory";
+        let workflow_graph = Arc::new(workflow_graph);
+
+        let (registry, input_sets, _dir) = test_storage_registry(vec![inputs], vec![]);
+        let executor_registry = test_executor_registry(&registry);
+        let orchestrator = Orchestrator::try_new(
+            &registry,
+            &executor_registry,
+            default_storage_name,
+            "memory",
+        )?;
+
+        let (workflow_state, state_events) = InMemoryWorkflowState::test();
+        let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
+        let inputs = input_sets[0].clone();
+        let context = OrchestrationContext {
+            subworkflow_context: Location::root(),
+            graph_inputs: inputs.clone(),
+            workflow_state: Arc::clone(&workflow_state),
+        };
+        let updater = Updater::new(Arc::clone(&workflow_state));
+        let stream = orchestrator.listen()?;
+        let _task = tokio::spawn(async move {
+            updater.process(stream).await.unwrap();
+            println!("done listening");
+        });
+        let actions = orchestrator
+            .build_actions(context.clone(), workflow_graph.clone())
+            .await?;
+        orchestrator.perform_actions(actions).await?;
+        let mut state_chunks = state_events.ready_chunks(8);
+        while let Some(chunk) = state_chunks.next().await {
+            if chunk.iter().any(|updated| updated.stopped) {
+                break;
+            }
+            let actions = orchestrator
+                .build_actions(context.clone(), workflow_graph.clone())
+                .await?;
+            orchestrator.perform_actions(actions).await?;
+        }
+
+        let output_state = workflow_state
+            .read(&Location::from_node_index_iter([
+                workflow_graph.output_idx()
+            ]))
+            .await?;
+
+        let outputs = output_state.outputs.expect("no outputs found");
+
+        assert_registry_contains_values(
+            &registry,
+            &orchestrator.default_storage_name,
+            &outputs,
+            expected_outputs,
+        );
+
+        Ok(())
+    }
+
     // Test that we can plan the first actions of a workflow and run them.
     #[rstest]
-    #[case("memory")]
-    #[case("file")]
+    #[case::memory("memory")]
+    #[case::file("file")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn run_serialized_workflow(#[case] default_storage_name: &str) -> miette::Result<()> {
         let serialized_graph = include_str!("../tests/cli/data/sample_graph");

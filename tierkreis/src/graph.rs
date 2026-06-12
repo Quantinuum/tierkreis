@@ -176,18 +176,20 @@ impl WorkflowGraph {
             let from_port = self
                 .output_port_indices
                 .get(&from)
-                .ok_or_else(|| miette!("Node `from` not found in port indices mapping: {from:?}"))?
+                .ok_or_else(|| miette!("Node `from` not found in port indices mapping: {from:?}:{from_output}"))?
                 .get(from_output)
                 .ok_or_else(|| {
-                    miette!("Port `from_output` not found in port indices mapping: {from:?}")
+                    miette!("Port `from_output` not found in port indices mapping: {from:?}:{from_output}")
                 })?;
             let to_port = self
                 .input_port_indices
                 .get(&to)
-                .ok_or_else(|| miette!("Node `to` not found in port indices mapping: {from:?}"))?
+                .ok_or_else(|| {
+                    miette!("Node `to` not found in port indices mapping: {to:?}:{to_input}")
+                })?
                 .get(to_input)
                 .ok_or_else(|| {
-                    miette!("Port `to_input` not found in port indices mapping: {from:?}")
+                    miette!("Port `to_input` not found in port indices mapping: {to:?}:{to_input}")
                 })?;
             self.graph
                 .link_ports(*from_port, *to_port)
