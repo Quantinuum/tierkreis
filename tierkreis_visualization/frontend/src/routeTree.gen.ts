@@ -32,8 +32,8 @@ const WorkflowsWidNodesLocIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/workflows': typeof WorkflowsIndexRoute
-  '/workflows/$wid/nodes/$loc': typeof WorkflowsWidNodesLocIndexRoute
+  '/workflows/': typeof WorkflowsIndexRoute
+  '/workflows/$wid/nodes/$loc/': typeof WorkflowsWidNodesLocIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -48,7 +48,7 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/workflows' | '/workflows/$wid/nodes/$loc'
+  fullPaths: '/' | '/workflows/' | '/workflows/$wid/nodes/$loc/'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/workflows' | '/workflows/$wid/nodes/$loc'
   id: '__root__' | '/' | '/workflows/' | '/workflows/_/$wid/nodes/$loc/'
@@ -72,14 +72,14 @@ declare module '@tanstack/react-router' {
     '/workflows/': {
       id: '/workflows/'
       path: '/workflows'
-      fullPath: '/workflows'
+      fullPath: '/workflows/'
       preLoaderRoute: typeof WorkflowsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/workflows/_/$wid/nodes/$loc/': {
       id: '/workflows/_/$wid/nodes/$loc/'
       path: '/workflows/$wid/nodes/$loc'
-      fullPath: '/workflows/$wid/nodes/$loc'
+      fullPath: '/workflows/$wid/nodes/$loc/'
       preLoaderRoute: typeof WorkflowsWidNodesLocIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
