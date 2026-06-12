@@ -41,7 +41,7 @@ in
 
   languages.javascript = {
     enable = true;
-    npm.enable = true;
+    pnpm.enable = true;
     directory = "./tierkreis_visualization";
   };
   scripts.sbatch.exec = ''
