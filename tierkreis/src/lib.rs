@@ -54,7 +54,7 @@ mod tierkreis {
     #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
     #[serde(untagged)]
     enum ValueOrMapping {
-        Mapping(HashMap<String, Value>),
+        Mapping(HashMap<String, Option<Value>>),
         Value(Value),
     }
 
@@ -115,7 +115,8 @@ mod tierkreis {
         let outputs = runtime::run_workflow_in_memory(workflow_graph, inputs)
             .map_err(|err| convert_err(py, &err))?;
 
-        let mut outputs: HashMap<String, Value> = outputs
+        dbg!(&outputs);
+        let mut outputs: HashMap<String, Option<Value>> = outputs
             .into_iter()
             .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
             .collect::<miette::Result<_>>()
@@ -124,7 +125,10 @@ mod tierkreis {
         info!("done with outputs: {outputs:?}");
         if outputs.len() == 1 && outputs.contains_key("value") {
             Ok(ValueOrMapping::Value(
-                outputs.remove("value").expect("No single output value"),
+                outputs
+                    .remove("value")
+                    .flatten()
+                    .expect("No single output value"),
             ))
         } else {
             Ok(ValueOrMapping::Mapping(outputs))

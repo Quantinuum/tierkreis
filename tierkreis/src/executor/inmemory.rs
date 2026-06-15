@@ -70,6 +70,25 @@ where
     Ok(val)
 }
 
+fn extract_optional_value<'a, T>(
+    inputs: &'a HashMap<String, Vec<u8>>,
+    name: &str,
+) -> miette::Result<Option<T>>
+where
+    T: Deserialize<'a>,
+{
+    let val = inputs
+        .get(name)
+        .map(|asset| {
+            let val: Option<T> = serde_json::from_slice(&asset).into_diagnostic()?;
+            Ok::<_, miette::Report>(val)
+        })
+        .transpose()?
+        .flatten();
+
+    Ok(val)
+}
+
 fn output_value(
     outputs: &mut HashMap<String, Vec<u8>>,
     value: impl Serialize,
@@ -159,6 +178,21 @@ fn run_builtin(
                 "b".to_string(),
                 serde_json::to_vec(&value.1).into_diagnostic()?,
             );
+        }
+        "range" | "tkr_range" => {
+            let start: i64 = extract_value(inputs, "start")?;
+            let stop: i64 = extract_value(inputs, "stop")?;
+            let step: Option<i64> = extract_optional_value(inputs, "step")?;
+
+            let range = start..stop;
+
+            let out = if let Some(step) = step {
+                range.step_by(step as usize).collect::<Vec<_>>()
+            } else {
+                range.collect::<Vec<_>>()
+            };
+
+            output_value(&mut outputs, out)?;
         }
         "conjugate" => {
             let z: Complex64 = extract_value(inputs, "z")?;
