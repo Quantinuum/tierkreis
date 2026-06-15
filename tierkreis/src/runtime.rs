@@ -18,7 +18,6 @@ use miette::{
     miette,
 };
 use pyo3::{exceptions::PySyntaxError, prelude::*};
-use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -102,7 +101,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
                     Ok(()) => {},
                     Err(err) => {
                         eprintln!("{err}");
-                        std::process::exit(1);
+                        return
                     }
                 }
             }
@@ -118,18 +117,15 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
         if chunk.iter().any(|updated| updated.stopped) {
             break;
         }
-        info!("building actions");
         let actions = orchestrator
             .build_actions(context.clone(), Arc::clone(&workflow_graph))
             .await?;
-        info!("running actions");
         tokio::time::timeout(
             Duration::from_secs(2),
             orchestrator.perform_actions(actions),
         )
         .await
         .into_diagnostic()??;
-        info!("actions done");
     }
 
     let output_state = workflow_state

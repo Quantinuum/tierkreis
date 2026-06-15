@@ -24,32 +24,30 @@ mod tierkreis {
 
     use miette::IntoDiagnostic;
     use num_complex::Complex64;
-    use pyo3::{FromPyObject, PyErr, exceptions::PyValueError, prelude::*};
+    use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*};
     use serde::{Deserialize, Serialize};
     use tracing::info;
 
     use crate::{graph::LegacyWorkflowGraph, runtime};
 
     #[pymodule_init]
-    fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    fn init(_m: &Bound<'_, PyModule>) -> PyResult<()> {
         // console_subscriber::init();
         tracing_subscriber::fmt().compact().init();
         Ok(())
     }
 
-    /// Wrapper type for bridging miette and pyo3 errors.
-    struct MietteReport(miette::Report);
-
-    impl From<MietteReport> for PyErr {
-        fn from(err: MietteReport) -> Self {
-            PyValueError::new_err(err.0.to_string())
+    fn convert_err(py: Python<'_>, err: miette::Report) -> PyErr {
+        let py_err = PyValueError::new_err(err.to_string());
+        if let Some(help) = err.help() {
+            py_err.add_note(py, format!("\thelp: {help}")).unwrap();
         }
-    }
-
-    impl From<miette::Report> for MietteReport {
-        fn from(report: miette::Report) -> Self {
-            Self(report)
+        if let Some(related) = err.related() {
+            for related in related {
+                py_err.add_note(py, format!("related: {related}")).unwrap();
+            }
         }
+        py_err
     }
 
     #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
@@ -84,19 +82,26 @@ mod tierkreis {
 
     #[pyfunction]
     fn run_workflow(
+        py: Python<'_>,
         name: &str,
         workflow: &Bound<'_, PyAny>,
         inputs: ValueOrMapping,
-    ) -> Result<ValueOrMapping, MietteReport> {
+    ) -> PyResult<ValueOrMapping> {
         info!("starting workflow: '{name}'");
         let workflow_dump: String = workflow
             .call_method0("model_dump_json")
-            .into_diagnostic()?
+            .into_diagnostic()
+            .map_err(|err| convert_err(py, err))?
             .to_string();
 
-        let legacy_workflow: LegacyWorkflowGraph =
-            serde_json::from_str(&workflow_dump).into_diagnostic()?;
-        let workflow_graph = Arc::new(legacy_workflow.to_workflow_graph()?);
+        let legacy_workflow: LegacyWorkflowGraph = serde_json::from_str(&workflow_dump)
+            .into_diagnostic()
+            .map_err(|err| convert_err(py, err))?;
+        let workflow_graph = Arc::new(
+            legacy_workflow
+                .to_workflow_graph()
+                .map_err(|err| convert_err(py, err))?,
+        );
         println!("{}", serde_json::to_string_pretty(&workflow_graph).unwrap());
 
         let inputs = match inputs {
@@ -104,7 +109,9 @@ mod tierkreis {
                 let mut inputs = HashMap::new();
                 inputs.insert(
                     "value".to_string(),
-                    serialize_value(&value).into_diagnostic()?,
+                    serialize_value(&value)
+                        .into_diagnostic()
+                        .map_err(|err| convert_err(py, err))?,
                 );
                 inputs
             }
@@ -112,15 +119,18 @@ mod tierkreis {
                 .into_iter()
                 .map(|(k, v)| serialize_value(&v).map(|b| (k, b)))
                 .collect::<Result<HashMap<_, _>, _>>()
-                .into_diagnostic()?,
+                .into_diagnostic()
+                .map_err(|err| convert_err(py, err))?,
         };
 
-        let outputs = runtime::run_workflow_in_memory(workflow_graph, inputs)?;
+        let outputs = runtime::run_workflow_in_memory(workflow_graph, inputs)
+            .map_err(|err| convert_err(py, err))?;
 
         let mut outputs: HashMap<String, Value> = outputs
             .into_iter()
             .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
-            .collect::<Result<_, MietteReport>>()?;
+            .collect::<miette::Result<_>>()
+            .map_err(|err| convert_err(py, err))?;
 
         info!("done with outputs: {outputs:?}");
         if outputs.len() == 1 && outputs.contains_key("value") {

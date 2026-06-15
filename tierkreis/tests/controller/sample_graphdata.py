@@ -9,7 +9,7 @@ def doubler_plus() -> GraphData:
     two = g.const(2)
     mul = g.func("builtins.itimes", {"a": inp, "b": two})("value")
     out = g.func("builtins.iadd", {"a": mul, "b": intercept})("value")
-    g.output({"doubler_output": out})
+    g.output({"value": out})
     return g
 
 
@@ -19,7 +19,7 @@ def simple_eval() -> GraphData:
     six = g.const(6)
     doubler_const = g.const(doubler_plus())
     e = g.eval(doubler_const, {"doubler_input": six, "intercept": zero})
-    g.output({"simple_eval_output": e("doubler_output")})
+    g.output({"simple_eval_output": e("value")})
     return g
 
 
