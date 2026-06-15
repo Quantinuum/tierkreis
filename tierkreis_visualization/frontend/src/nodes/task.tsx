@@ -1,5 +1,5 @@
+import { bg_color } from "@/components/colors";
 import { InputHandleArray, OutputHandleArray } from "@/components/handles";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -8,11 +8,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
+import { fetchErrors, fetchNodeLogs } from "@/data/api";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
-import { OctagonAlert } from "lucide-react";
-import { fetchErrors, fetchNodeLogs } from "@/data/api";
-import { bg_color } from "@/components/colors";
 
 export function TaskNode({ data }: NodeProps<BackendNode>) {
   let name = data.title;
