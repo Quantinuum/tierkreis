@@ -80,7 +80,7 @@ where
     let val = inputs
         .get(name)
         .map(|asset| {
-            let val: Option<T> = serde_json::from_slice(&asset).into_diagnostic()?;
+            let val: Option<T> = serde_json::from_slice(asset).into_diagnostic()?;
             Ok::<_, miette::Report>(val)
         })
         .transpose()?
@@ -182,12 +182,14 @@ fn run_builtin(
         "range" | "tkr_range" => {
             let start: i64 = extract_value(inputs, "start")?;
             let stop: i64 = extract_value(inputs, "stop")?;
-            let step: Option<i64> = extract_optional_value(inputs, "step")?;
+            let maybe_step: Option<i64> = extract_optional_value(inputs, "step")?;
 
             let range = start..stop;
 
-            let out = if let Some(step) = step {
-                range.step_by(step as usize).collect::<Vec<_>>()
+            let out = if let Some(step) = maybe_step {
+                range
+                    .step_by(step.try_into().into_diagnostic()?)
+                    .collect::<Vec<_>>()
             } else {
                 range.collect::<Vec<_>>()
             };
