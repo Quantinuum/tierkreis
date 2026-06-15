@@ -49,7 +49,7 @@ macro_rules! getattr_or_early_return {
 
 #[tokio::main]
 pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
-    workflow_graph: Arc<WorkflowGraph>,
+    workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
@@ -101,12 +101,13 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
                     Ok(()) => {},
                     Err(err) => {
                         eprintln!("{err}");
-                        return
                     }
                 }
             }
         }
     });
+
+    let workflow_graph = Arc::new(workflow_graph);
     let actions = orchestrator
         .build_actions(context.clone(), Arc::clone(&workflow_graph))
         .await?;
@@ -225,7 +226,7 @@ pub fn run(path: &Path) -> miette::Result<()> {
 
         let legacy_workflow: LegacyWorkflowGraph =
             serde_json::from_str(&workflow_dump).into_diagnostic()?;
-        let workflow_graph = Arc::new(legacy_workflow.to_workflow_graph()?);
+        let workflow_graph = legacy_workflow.to_workflow_graph()?;
 
         let outputs = run_workflow_in_memory(workflow_graph, HashMap::new())?;
 
