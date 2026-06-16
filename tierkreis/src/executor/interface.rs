@@ -24,7 +24,6 @@ pub struct TaskPlan {
     /// The names and locations of the inputs to the task.
     pub inputs: HashMap<String, AssetSpec>,
     /// The names of the outputs of the task.
-    // TODO: We can find this out from the workers
     pub outputs: HashSet<String>,
     /// A specific [`AssetStorage`][crate::asset_storage::AssetStorage]
     /// from an [`AssetStorageRegistry`][crate::asset_storage::AssetStorageRegistry]

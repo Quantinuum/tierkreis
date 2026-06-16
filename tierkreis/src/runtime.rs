@@ -21,9 +21,10 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        AssetSpec, AssetStorage, AssetStorageRegistry, InMemoryStorage, load_assets, save_assets,
+        AssetSpec, AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage,
+        load_assets, save_assets,
     },
-    executor::{Executor, InMemoryExecutor},
+    executor::{Executor, InMemoryExecutor, SubprocessExecutor},
     graph::{LegacyWorkflowGraph, WorkflowGraph},
     location::Location,
     orchestrator::{OrchestrationContext, Orchestrator},
@@ -60,6 +61,50 @@ struct Runtime {
 }
 
 impl Runtime {
+    // TODO: Add a from_config function to build a Runtime from a configuration file.
+    #[allow(dead_code)]
+    fn persistent(path: &Path) -> miette::Result<Self> {
+        let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
+        asset_storage_registry.insert("memory".to_string(), Box::new(InMemoryStorage::new()));
+        asset_storage_registry.insert("file".to_string(), Box::new(FileAssetStorage::new(path)));
+        let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
+
+        let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
+        executor_registry.insert(
+            "memory".to_string(),
+            Box::new(InMemoryExecutor::try_new(
+                &asset_storage_registry,
+                "memory",
+            )?),
+        );
+        executor_registry.insert(
+            "subprocess".to_string(),
+            Box::new(SubprocessExecutor::try_new(
+                &asset_storage_registry,
+                "file",
+                "file",
+            )?),
+        );
+        let executor_registry = Arc::new(executor_registry);
+
+        let orchestrator = Orchestrator::try_new(
+            &asset_storage_registry,
+            &executor_registry,
+            "file",
+            "subprocess",
+        )?;
+
+        let runtime_state = Box::new(InMemoryRuntimeState::new());
+
+        Ok(Self {
+            orchestrator,
+            state: runtime_state,
+            asset_storage_registry,
+            workflow_graph: None,
+            inputs: HashMap::new(),
+        })
+    }
+
     // TODO: Add a from_config function to build a Runtime from a configuration file.
     fn memory() -> miette::Result<Self> {
         let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();

@@ -17,7 +17,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic, miette};
 
 /// [`AssetStorageRegistry`] is sharable mapping of configured [`AssetStorage`] names
 /// to various implementations.
@@ -281,10 +281,10 @@ pub fn transfer_assets<S: BuildHasher>(
                     "Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_from}"
                 ))?;
 
-                let asset = storage_from.load(&v.asset_key)?;
+                let asset = storage_from.load(&v.asset_key).wrap_err("Failed to load asset")?;
 
                 let asset_key = AssetKey::new();
-                storage_to.save(&asset_key, asset)?;
+                storage_to.save(&asset_key, asset).wrap_err("Failed to save asset")?;
                 Ok((
                     k.clone(),
                     AssetSpec {

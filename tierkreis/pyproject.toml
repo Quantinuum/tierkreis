@@ -49,5 +49,5 @@ ignore = []
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
 
-# [project.scripts]
-# tkr = "tierkreis.cli.tkr:main"
+[project.scripts]
+tkr-builtins = "tierkreis.builtins.main:main"
