@@ -136,7 +136,7 @@ impl Runtime {
 
         let inputs = save_assets(&self.asset_storage_registry, "memory", inputs)?;
         self.inputs.clone_from(&inputs);
-        // TODO: Maybe inputs should be part of the workflow state?
+        // TODO: Maybe inputs should be part of the workflow run state?
         let context = OrchestrationContext::new(&workflow_state, inputs);
         let workflow_graph = Arc::new(workflow_graph);
         let actions = self
@@ -217,12 +217,12 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     Ok(outputs)
 }
 
-/// Placeholder function for running a Workflow using the legacy python runtime.
+/// Run a Workflow in memory from a filepath to a python file containing a builder.
 ///
 /// # Errors
 ///
-/// Will return Err if various I/O issues occur, if the python runtime is unusable
-/// or if the provided filepath includes invalid python.
+/// Will return Err if various I/O issues occur, if the runtime is unusable or
+/// if the provided filepath includes invalid python.
 pub fn run(path: &Path) -> miette::Result<()> {
     Python::attach(|py| {
         let path = path.canonicalize().into_diagnostic()?;
@@ -300,6 +300,7 @@ pub fn run(path: &Path) -> miette::Result<()> {
             serde_json::from_str(&workflow_dump).into_diagnostic()?;
         let workflow_graph = legacy_workflow.to_workflow_graph()?;
 
+        // TODO: We cannot yet provide inputs to the workflow with this function.
         let outputs = run_workflow_in_memory(workflow_graph, HashMap::new())?;
 
         let outputs: HashMap<String, serde_json::Value> = outputs

@@ -513,7 +513,6 @@ impl Orchestrator {
             )
             .unwrap()
         });
-        // .ok_or_else(|| miette!("Graph input not found: {name}"))?;
         let mut outputs = HashMap::new();
         outputs.insert(name.to_string(), value);
 
