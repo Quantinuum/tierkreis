@@ -49,6 +49,6 @@
     "eslint-plugin-react-refresh": "^0.4.5",
     "openapi-typescript": "^7.10.1",
     "typescript": "^5.9.3",
-    "vite": "^7.3.2"
+    "vite": "^7.3.5"
   }
 }
