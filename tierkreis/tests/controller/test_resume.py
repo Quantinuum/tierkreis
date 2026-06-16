@@ -49,6 +49,7 @@ from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.models import Workflow
 from tierkreis.storage import read_outputs
+from tierkreis._tierkreis import run_workflow
 
 param_data: list[
     tuple[
@@ -208,6 +209,26 @@ def test_resume(  # noqa: PLR0913
         assert wf_metadata.completion_time is not None
         assert wf_metadata.duration is not None and wf_metadata.duration > 0
         assert wf_metadata.name == name
+
+
+@pytest.mark.parametrize(
+    ("graph", "output", "name", "workflow_id", "inputs"),
+    params,
+    ids=ids,
+)
+def test_runtime(  # noqa: PLR0913
+    graph: GraphData | Workflow,
+    output: dict[str, PType] | PType,
+    name: str,
+    workflow_id: int,
+    inputs: dict[str, PType] | PType,
+) -> None:
+    if isinstance(graph, Workflow):
+        g = graph.data
+    else:
+        g = graph
+    run_outputs = run_workflow(name, g, inputs)
+    assert output == run_outputs
 
 
 with_worker_param_data: list[

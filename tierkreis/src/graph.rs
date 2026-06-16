@@ -212,6 +212,19 @@ impl WorkflowGraph {
         self.graph.input_links(node)
     }
 
+    /// Returns an iterator of the names of the output ports for a paritcular node.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the provided `NodeIndex` is not found in the Graph.
+    pub fn output_names(&self, node: NodeIndex) -> miette::Result<impl Iterator<Item = &String>> {
+        Ok(self
+            .output_port_indices
+            .get(&node)
+            .ok_or_else(|| miette!("Node not found: {node:?}"))?
+            .keys())
+    }
+
     /// Returns the `NodeIndex` and `PortIndex` of the port linked to the provided
     /// input port name on a particular node.
     ///

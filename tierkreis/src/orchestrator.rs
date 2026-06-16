@@ -208,7 +208,7 @@ impl Orchestrator {
                 let loc = parent_location.with_node(n);
                 match definition {
                     NodeDefinition::Input { name } => stream_action_result(
-                        Self::build_input_action(graph_inputs.clone(), loc, name),
+                        self.build_input_action(graph_inputs.clone(), loc, name),
                     ),
                     NodeDefinition::Const { value } => {
                         stream_action_result(self.build_const_action(loc, value.clone()))
@@ -498,17 +498,23 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(graph_inputs), fields(loc = %loc), err)]
+    #[instrument(skip(self, graph_inputs), fields(loc = %loc), err)]
     fn build_input_action(
+        &self,
         graph_inputs: Arc<HashMap<String, AssetSpec>>,
         loc: Location,
         name: &str,
     ) -> miette::Result<Action> {
-        let value = graph_inputs
-            .get(name)
-            .ok_or_else(|| miette!("Graph input not found: {name}"))?;
+        let value = graph_inputs.get(name).cloned().unwrap_or_else(|| {
+            save_asset(
+                &self.asset_storage_registry,
+                &self.default_storage_name,
+                serde_json::to_vec(&serde_json::Value::Null).unwrap(),
+            )
+            .unwrap()
+        });
         let mut outputs = HashMap::new();
-        outputs.insert(name.to_string(), value.clone());
+        outputs.insert(name.to_string(), value);
 
         Ok(Action {
             loc,
@@ -709,8 +715,10 @@ impl Orchestrator {
             }
             Some(completed) if completed.all() => self
                 .build_completed_map_action(
+                    workflow_graph,
                     workflow_state,
                     loc,
+                    n,
                     completed.len(),
                     subgraph.output_idx(),
                 )
@@ -820,15 +828,20 @@ impl Orchestrator {
             .boxed_local())
     }
 
-    #[instrument(skip(self, workflow_state), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, workflow_state), fields(loc = %loc), err)]
     async fn build_completed_map_action(
         &self,
+        workflow_graph: Arc<WorkflowGraph>,
         workflow_state: Arc<dyn WorkflowState>,
         loc: Location,
+        n: NodeIndex,
         map_size: usize,
         output_idx: NodeIndex,
     ) -> miette::Result<Action> {
-        let mut assets: HashMap<String, Vec<_>> = HashMap::new();
+        let mut assets: HashMap<String, Vec<_>> = workflow_graph
+            .output_names(n)?
+            .map(|name| (name.clone(), Vec::new()))
+            .collect();
         for index in 0..map_size {
             let map_loc = loc.with_map_index(index);
             let subgraph_output_state = workflow_state.read(&map_loc.with_node(output_idx)).await?;
@@ -1043,8 +1056,10 @@ fn collect_inputs(
             .as_ref()
             .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
         let output_asset_spec = outputs.get(output_name).ok_or_else(|| {
+            let output_keys: Vec<_> = outputs.keys().collect();
             miette!(
-                "Could not get node output for node: {linked_node:?} and port name: {output_name}"
+                help = format!("Available outputs: {output_keys:?}"),
+                "Could not get node output for node: {linked_node:?} and port name: {output_name}",
             )
         })?;
 
