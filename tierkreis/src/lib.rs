@@ -24,7 +24,7 @@ mod tierkreis {
 
     use miette::IntoDiagnostic;
     use num_complex::Complex64;
-    use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*};
+    use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*, types::PyBytes};
     use serde::{Deserialize, Serialize};
     use tracing::info;
 
@@ -51,24 +51,38 @@ mod tierkreis {
         py_err
     }
 
-    #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
-    #[serde(untagged)]
+    #[derive(Debug, FromPyObject, IntoPyObject)]
+    enum ValueOrMappingOrBytes<'py> {
+        #[pyo3(transparent, annotation = "dict[str, bytes]")]
+        BytesMapping(HashMap<String, Bound<'py, PyBytes>>),
+        #[pyo3(transparent)]
+        ValueOrBytes(ValueOrMapping),
+    }
+
+    #[derive(Debug, FromPyObject, IntoPyObject)]
     enum ValueOrMapping {
+        #[pyo3(transparent, annotation = "Mapping")]
         Mapping(HashMap<String, Option<Value>>),
+        #[pyo3(transparent)]
         Value(Value),
     }
 
     #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
     #[serde(untagged)]
     enum Value {
+        #[pyo3(transparent, annotation = "bool")]
         Bool(bool),
+        #[pyo3(transparent, annotation = "int")]
         Int(i64),
+        #[pyo3(transparent, annotation = "float")]
         Float(f64),
+        #[pyo3(transparent, annotation = "str")]
         String(String),
+        #[pyo3(transparent, annotation = "complex")]
         Complex(Complex64),
+        #[pyo3(transparent, annotation = "Sequence")]
         List(Vec<Value>),
-        // TODO: Bytes pass-through is a bit unpredictable.
-        Bytes(Vec<u8>),
+        #[pyo3(transparent, annotation = "Mapping")]
         Dict(HashMap<String, Value>),
     }
 
@@ -77,7 +91,7 @@ mod tierkreis {
         py: Python<'_>,
         name: &str,
         workflow: &Bound<'_, PyAny>,
-        inputs: ValueOrMapping,
+        inputs: ValueOrMappingOrBytes,
     ) -> PyResult<ValueOrMapping> {
         info!("starting workflow: '{name}'");
         let workflow_dump: String = workflow
@@ -94,7 +108,12 @@ mod tierkreis {
             .map_err(|err| convert_err(py, &err))?;
 
         let inputs = match inputs {
-            ValueOrMapping::Value(value) => {
+            ValueOrMappingOrBytes::BytesMapping(bytes_mapping) => bytes_mapping
+                .into_iter()
+                .map(|(k, v)| Ok::<_, miette::Report>((k, v.extract().into_diagnostic()?)))
+                .collect::<Result<HashMap<String, Vec<u8>>, _>>()
+                .map_err(|err| convert_err(py, &err))?,
+            ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Value(value)) => {
                 let mut inputs = HashMap::new();
                 inputs.insert(
                     "value".to_string(),
@@ -104,7 +123,7 @@ mod tierkreis {
                 );
                 inputs
             }
-            ValueOrMapping::Mapping(inputs) => inputs
+            ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Mapping(inputs)) => inputs
                 .into_iter()
                 .map(|(k, v)| serde_json::to_vec(&v).map(|b| (k, b)))
                 .collect::<Result<HashMap<_, _>, _>>()
