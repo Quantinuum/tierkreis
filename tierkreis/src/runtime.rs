@@ -9,7 +9,6 @@ use std::{
     io::Read,
     path::Path,
     sync::{Arc, RwLock},
-    time::Duration,
 };
 
 use futures::StreamExt;
@@ -21,7 +20,9 @@ use pyo3::{exceptions::PySyntaxError, prelude::*};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::{AssetStorage, InMemoryStorage, load_assets, save_assets},
+    asset_storage::{
+        AssetSpec, AssetStorage, AssetStorageRegistry, InMemoryStorage, load_assets, save_assets,
+    },
     executor::{Executor, InMemoryExecutor},
     graph::{LegacyWorkflowGraph, WorkflowGraph},
     location::Location,
@@ -47,100 +48,171 @@ macro_rules! getattr_or_early_return {
     }};
 }
 
+struct Runtime {
+    orchestrator: Orchestrator,
+    state: Box<dyn RuntimeState>,
+    asset_storage_registry: AssetStorageRegistry,
+
+    // TODO: Hack to work around not storing graphs yet.
+    workflow_graph: Option<Arc<WorkflowGraph>>,
+    // TODO: Hack to work around not storing inputs yet.
+    inputs: HashMap<String, AssetSpec>,
+}
+
+impl Runtime {
+    // TODO: Add a from_config function to build a Runtime from a configuration file.
+    fn memory() -> miette::Result<Self> {
+        let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
+        let memory_storage = InMemoryStorage::new();
+        asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
+
+        let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
+
+        let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
+
+        executor_registry.insert(
+            "memory".to_string(),
+            Box::new(InMemoryExecutor::try_new(
+                &asset_storage_registry,
+                "memory",
+            )?),
+        );
+        let executor_registry = Arc::new(executor_registry);
+
+        let orchestrator = Orchestrator::try_new(
+            &asset_storage_registry,
+            &executor_registry,
+            "memory",
+            "memory",
+        )?;
+
+        let runtime_state = Box::new(InMemoryRuntimeState::new());
+
+        Ok(Self {
+            orchestrator,
+            state: runtime_state,
+            asset_storage_registry,
+            workflow_graph: None,
+            inputs: HashMap::new(),
+        })
+    }
+
+    async fn start<S: BuildHasher>(
+        &mut self,
+        // TODO: Take a workflow ID and load the graph instead of passing it
+        //workflow_id: Uuid,
+        workflow_graph: WorkflowGraph,
+        inputs: HashMap<String, Vec<u8>, S>,
+    ) -> miette::Result<(Uuid, u32)> {
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+
+        let workflow_state = self.state.workflow_state(run_id, attempt);
+        let updater = Updater::new(Arc::clone(&workflow_state));
+
+        // TODO: Hack to work around not having workflow run ids in events.
+        let stream = self.orchestrator.listen()?;
+        let _task = tokio::spawn(async move {
+            tokio::select! {
+                sig = tokio::signal::ctrl_c() => {
+                    match sig {
+                        Ok(()) => std::process::exit(130),
+                        Err(err) => {
+                            eprintln!("{err}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                res = updater.process(stream) => {
+                    match res {
+                        Ok(()) => {},
+                        Err(err) => {
+                            eprintln!("{err}");
+                        }
+                    }
+                }
+            }
+        });
+
+        let inputs = save_assets(&self.asset_storage_registry, "memory", inputs)?;
+        self.inputs.clone_from(&inputs);
+        // TODO: Maybe inputs should be part of the workflow state?
+        let context = OrchestrationContext::new(&workflow_state, inputs);
+        let workflow_graph = Arc::new(workflow_graph);
+        let actions = self
+            .orchestrator
+            .build_actions(context.clone(), Arc::clone(&workflow_graph))
+            .await?;
+        self.workflow_graph = Some(workflow_graph);
+
+        self.orchestrator.perform_actions(actions).await?;
+
+        Ok((run_id, attempt))
+    }
+
+    async fn run(&mut self) -> miette::Result<()> {
+        let state_events = self.state.listen()?;
+        let mut state_chunks = state_events.ready_chunks(32);
+
+        while let Some(chunk) = state_chunks.next().await {
+            if chunk.iter().any(|updated| updated.stopped) {
+                break;
+            }
+            // TODO: We should instead find the run ids and attempts that need to be updated.
+            let first_message = chunk.first().ok_or_else(|| miette!("No first message"))?;
+
+            let workflow_state = self
+                .state
+                .workflow_state(first_message.run_id, first_message.attempt);
+            // TODO: Handle inputs better here.
+            let context = OrchestrationContext::new(&workflow_state, self.inputs.clone());
+
+            let actions = self
+                .orchestrator
+                .build_actions(context, Arc::clone(self.workflow_graph.as_ref().unwrap()))
+                .await?;
+
+            self.orchestrator.perform_actions(actions).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn outputs(
+        &mut self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<HashMap<String, Vec<u8>>> {
+        let workflow_state = self.state.workflow_state(run_id, attempt);
+
+        let output_state = workflow_state
+            .read(&Location::from_node_index_iter([self
+                .workflow_graph
+                .as_ref()
+                .unwrap()
+                .output_idx()]))
+            .await?;
+
+        let outputs = load_assets(
+            &self.asset_storage_registry,
+            &output_state
+                .outputs
+                .ok_or_else(|| miette!("No output values on Output node."))?,
+        )?;
+
+        Ok(outputs)
+    }
+}
+
 #[tokio::main]
 pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
-    let memory_storage = InMemoryStorage::new();
-    asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
-
-    let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
-    let inputs = save_assets(&asset_storage_registry, "memory", inputs)?;
-
-    let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
-
-    executor_registry.insert(
-        "memory".to_string(),
-        Box::new(InMemoryExecutor::try_new(
-            &asset_storage_registry,
-            "memory",
-        )?),
-    );
-    let executor_registry = Arc::new(executor_registry);
-
-    let orchestrator = Orchestrator::try_new(
-        &asset_storage_registry,
-        &executor_registry,
-        "memory",
-        "memory",
-    )?;
-
-    let state = InMemoryRuntimeState::new();
-
-    let state_events = state.listen()?;
-    let workflow_state = state.workflow_state(Uuid::now_v7(), 0);
-
-    let context = OrchestrationContext::new(&workflow_state, inputs);
-    let updater = Updater::new(Arc::clone(&workflow_state));
-    let stream = orchestrator.listen()?;
-    let _task = tokio::spawn(async move {
-        tokio::select! {
-            sig = tokio::signal::ctrl_c() => {
-                match sig {
-                    Ok(()) => std::process::exit(130),
-                    Err(err) => {
-                        eprintln!("{err}");
-                        std::process::exit(1);
-                    }
-                }
-            }
-            res = updater.process(stream) => {
-                match res {
-                    Ok(()) => {},
-                    Err(err) => {
-                        eprintln!("{err}");
-                    }
-                }
-            }
-        }
-    });
-
-    let workflow_graph = Arc::new(workflow_graph);
-    let actions = orchestrator
-        .build_actions(context.clone(), Arc::clone(&workflow_graph))
-        .await?;
-    orchestrator.perform_actions(actions).await?;
-
-    let mut state_chunks = state_events.ready_chunks(32);
-    while let Some(chunk) = state_chunks.next().await {
-        if chunk.iter().any(|updated| updated.stopped) {
-            break;
-        }
-        let actions = orchestrator
-            .build_actions(context.clone(), Arc::clone(&workflow_graph))
-            .await?;
-        tokio::time::timeout(
-            Duration::from_secs(2),
-            orchestrator.perform_actions(actions),
-        )
-        .await
-        .into_diagnostic()??;
-    }
-
-    let output_state = workflow_state
-        .read(&Location::from_node_index_iter([
-            workflow_graph.output_idx()
-        ]))
-        .await?;
-
-    let outputs = load_assets(
-        &asset_storage_registry,
-        &output_state
-            .outputs
-            .ok_or_else(|| miette!("No output values on Output node."))?,
-    )?;
+    let mut runtime = Runtime::memory()?;
+    let (run_id, attempt) = runtime.start(workflow_graph, inputs).await?;
+    runtime.run().await?;
+    let outputs = runtime.outputs(run_id, attempt).await?;
 
     Ok(outputs)
 }
