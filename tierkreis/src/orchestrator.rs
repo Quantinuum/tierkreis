@@ -76,6 +76,8 @@ pub enum ActionKind {
     },
     /// Mark the node as partially complete for a particular element.
     SetMapElemComplete {
+        /// The size of the map.
+        size: usize,
         /// The map element to mark as complete.
         index: usize,
     },
@@ -86,6 +88,17 @@ pub enum ActionKind {
     },
     /// Mark the overall workflow as complete.
     WorkflowFinished {},
+}
+
+#[derive(Debug, Clone, Default)]
+struct ActionPlan {
+    tasks: Vec<TaskPlan>,
+    switching: Vec<(Location, bool)>,
+    looping: Vec<(Location, u32)>,
+    mapping: Vec<(Location, usize)>,
+    map_elem_complete: HashMap<Location, BitVec>,
+    node_complete: Vec<(Location, HashMap<String, AssetSpec>)>,
+    workflow_complete: bool,
 }
 
 /// The context state for the orchestration
@@ -396,15 +409,13 @@ impl Orchestrator {
         context: &OrchestrationContext,
         nodes: impl Iterator<Item = &NodeIndex>,
     ) -> miette::Result<()> {
-        for node in nodes {
-            context
-                .workflow_state
-                .write(Event::Node(NodeEvent {
-                    loc: context.parent_loc.with_node(*node),
-                    status: crate::event::NodeStatus::Scheduled {},
-                }))
-                .await?;
-        }
+        context
+            .workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: nodes.map(|n| context.parent_loc.with_node(*n)).collect(),
+                status: crate::event::NodeStatus::Scheduled {},
+            }))
+            .await?;
 
         Ok(())
     }
@@ -799,6 +810,7 @@ impl Orchestrator {
         subgraph: Arc<WorkflowGraph>,
     ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
         let output_idx = subgraph.output_idx();
+        let map_size = completed.len();
 
         Ok(stream::iter(completed.into_iter().enumerate())
             .filter(|(_index, completed)| future::ready(!completed))
@@ -826,7 +838,10 @@ impl Orchestrator {
                             None => Ok(stream::empty().boxed()),
                             Some(_) => Ok(stream::once(future::ok(Action {
                                 loc: loc_copy,
-                                kind: ActionKind::SetMapElemComplete { index },
+                                kind: ActionKind::SetMapElemComplete {
+                                    index,
+                                    size: map_size,
+                                },
                             }))
                             .boxed()),
                         }
@@ -916,7 +931,7 @@ impl Orchestrator {
     ) -> miette::Result<()> {
         // Build a list of tasks to dispatch to Executors and immediately
         // process everything else.
-        let mut task_plans = Vec::new();
+        let mut plan = ActionPlan::default();
         let mut event_sender = self.event_sender.clone();
         while let Some(Action { loc, kind }) = actions.next().await.transpose()? {
             debug!("Running action at {loc}, kind: {kind:?}");
@@ -926,7 +941,7 @@ impl Orchestrator {
                     task_name,
                     inputs,
                     outputs,
-                } => task_plans.push(TaskPlan {
+                } => plan.tasks.push(TaskPlan {
                     loc,
                     worker_name,
                     task_name,
@@ -936,24 +951,46 @@ impl Orchestrator {
                     ..Default::default()
                 }),
                 ActionKind::SetSwitching { cond } => {
-                    send_running_switching(&mut event_sender, loc, cond).await?;
+                    plan.switching.push((loc, cond));
                 }
                 ActionKind::SetRunningLoop { index } => {
-                    send_running_loop(&mut event_sender, loc, index).await?;
+                    plan.looping.push((loc, index));
                 }
                 ActionKind::SetRunningMap { size } => {
-                    send_running_map(&mut event_sender, loc, size).await?;
+                    plan.mapping.push((loc, size));
                 }
-                ActionKind::SetMapElemComplete { index } => {
-                    send_map_elem_complete(&mut event_sender, loc, index).await?;
+                ActionKind::SetMapElemComplete { index, size } => {
+                    let entry = plan
+                        .map_elem_complete
+                        .entry(loc)
+                        .or_insert_with(|| BitVec::repeat(false, size));
+                    entry.set(index, true);
                 }
                 ActionKind::SetComplete { outputs } => {
-                    send_complete(&mut event_sender, loc, outputs).await?;
+                    plan.node_complete.push((loc, outputs));
                 }
                 ActionKind::WorkflowFinished {} => {
-                    send_workflow_run_complete(&mut event_sender).await?;
+                    plan.workflow_complete = true;
                 }
             }
+        }
+
+        if !plan.node_complete.is_empty() {
+            let (locs, outputs) = plan.node_complete.into_iter().unzip();
+            send_complete(&mut event_sender, locs, outputs).await?;
+        }
+
+        for (loc, size) in plan.mapping {
+            send_running_map(&mut event_sender, loc, size).await?;
+        }
+        for (loc, bits) in plan.map_elem_complete {
+            send_map_elem_complete(&mut event_sender, loc, bits).await?;
+        }
+        for (loc, index) in plan.looping {
+            send_running_loop(&mut event_sender, loc, index).await?;
+        }
+        for (loc, cond) in plan.switching {
+            send_running_switching(&mut event_sender, loc, cond).await?;
         }
 
         let default_executor_name = &self.default_executor_name;
@@ -962,9 +999,13 @@ impl Orchestrator {
             .get(default_executor_name)
             .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Nodes")?;
         executor
-            .execute(task_plans)
+            .execute(plan.tasks)
             .await
             .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
+
+        if plan.workflow_complete {
+            send_workflow_run_complete(&mut event_sender).await?;
+        }
 
         Ok(())
     }
@@ -1287,11 +1328,34 @@ mod tests {
         wf
     }
 
+    async fn next_actions(
+        orchestrator: &Orchestrator,
+        workflow_graph: &Arc<WorkflowGraph>,
+        workflow_state: &Arc<dyn WorkflowState>,
+        inputs: &HashMap<String, AssetSpec>,
+    ) -> miette::Result<Vec<Action>> {
+        let context = OrchestrationContext {
+            parent_loc: Location::root(),
+            graph_inputs: inputs.clone(),
+            workflow_state: Arc::clone(workflow_state),
+        };
+        let actions = orchestrator
+            .build_actions(context, Arc::clone(workflow_graph))
+            .await?;
+        let actions = actions
+            .collect::<Vec<Result<_, _>>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(actions)
+    }
+
     // Test that we can plan a workflow with two input nodes.
     #[rstest]
     #[case::memory("memory")]
     #[case::file("file")]
     #[tokio::test]
+    #[test_log::test]
     async fn plan_two_input_workflow(
         #[case] default_storage_name: &str,
         two_inputs_two_outputs: WorkflowGraph,
@@ -1311,21 +1375,12 @@ mod tests {
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state,
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
         assert_eq!(actions.len(), 2);
-        let action0 = actions[0].as_ref().unwrap();
-        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
-        let action1 = actions[1].as_ref().unwrap();
-        assert!(matches!(action1.kind, ActionKind::SetComplete { .. }));
+        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
+        assert!(matches!(actions[1].kind, ActionKind::SetComplete { .. }));
 
         Ok(())
     }
@@ -1335,6 +1390,7 @@ mod tests {
     #[case::memory("memory")]
     #[case::file("file")]
     #[tokio::test]
+    #[test_log::test]
     async fn plan_and_run_simple_io_workflow(
         #[case] default_storage_name: &str,
         one_input_one_output: WorkflowGraph,
@@ -1353,63 +1409,50 @@ mod tests {
         let inputs = input_sets[0].clone();
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state: Arc::clone(&workflow_state),
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
         assert_eq!(actions.len(), 1);
-        let action0 = actions[0].as_ref().unwrap();
-        assert_eq!(action0.loc, Location::new("N1")?);
-        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
+        assert_eq!(actions[0].loc, Location::new("N1")?);
+        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
 
-        orchestrator.perform_actions(stream::iter(actions)).await?;
+        orchestrator
+            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .await?;
         let input_complete_event = stream.next().await.unwrap();
-        let input_complete_outputs = input_complete_event.clone().outputs().unwrap();
+        let input_complete_outputs = input_complete_event.clone().outputs();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &input_complete_outputs,
+            &input_complete_outputs[0],
             json!({"a": 1}),
         );
 
         workflow_state.write(input_complete_event).await?;
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state: Arc::clone(&workflow_state),
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
         assert_eq!(actions.len(), 2);
-        let action0 = actions[0].as_ref().unwrap();
         assert_eq!(
-            action0.loc,
+            actions[0].loc,
             Location::from_node_index_iter([workflow_graph.output_idx()])
         );
-        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
-        let action1 = actions[1].as_ref().unwrap();
+        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
         assert_eq!(
-            action1.loc,
+            actions[1].loc,
             Location::from_node_index_iter([workflow_graph.output_idx()])
         );
-        assert!(matches!(action1.kind, ActionKind::WorkflowFinished {}));
+        assert!(matches!(actions[1].kind, ActionKind::WorkflowFinished {}));
 
-        orchestrator.perform_actions(stream::iter(actions)).await?;
+        orchestrator
+            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .await?;
         let output_complete_event = stream.next().await.unwrap();
-        let output_complete_outputs = output_complete_event.outputs().unwrap();
+        let output_complete_outputs = output_complete_event.outputs();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &output_complete_outputs,
+            &output_complete_outputs[0],
             json!({"out": 1}),
         );
 
@@ -1421,6 +1464,7 @@ mod tests {
     #[case::memory("memory")]
     #[case::file("file")]
     #[tokio::test]
+    #[test_log::test]
     async fn plan_and_run_simple_eval_workflow(
         #[case] default_storage_name: &str,
         one_input_one_output: WorkflowGraph,
@@ -1444,120 +1488,91 @@ mod tests {
         let (workflow_state, _state_events) = InMemoryWorkflowState::test();
         let workflow_state: Arc<dyn WorkflowState> = Arc::new(workflow_state);
         let inputs = input_sets[0].clone();
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state: Arc::clone(&workflow_state),
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
         assert_eq!(actions.len(), 2);
-        let action0 = actions[0].as_ref().unwrap();
-        assert_eq!(action0.loc, Location::new("N2")?);
-        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
-        let action1 = actions[1].as_ref().unwrap();
-        assert_eq!(action1.loc, Location::new("N1")?);
-        assert!(matches!(action1.kind, ActionKind::SetComplete { .. }));
+        assert_eq!(actions[0].loc, Location::new("N2")?);
+        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
+        assert_eq!(actions[1].loc, Location::new("N1")?);
+        assert!(matches!(actions[1].kind, ActionKind::SetComplete { .. }));
 
-        orchestrator.perform_actions(stream::iter(actions)).await?;
-        let subworkflow_input_complete_event = stream.next().await.unwrap();
-        let subworkflow_input_complete_outputs =
-            subworkflow_input_complete_event.clone().outputs().unwrap();
+        orchestrator
+            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .await?;
+
+        let inputs_complete_event = stream.next().await.unwrap();
+        let inputs_complete_outputs = inputs_complete_event.clone().outputs();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &subworkflow_input_complete_outputs,
+            &inputs_complete_outputs[0],
             json!({"subworkflow": one_input_one_output}),
         );
-
-        let a_input_complete_event = stream.next().await.unwrap();
-        let a_input_complete_outputs = a_input_complete_event.clone().outputs().unwrap();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &a_input_complete_outputs,
+            &inputs_complete_outputs[1],
             json!({"a": 1}),
         );
 
-        workflow_state
-            .write(subworkflow_input_complete_event)
-            .await?;
-        workflow_state.write(a_input_complete_event).await?;
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state: Arc::clone(&workflow_state),
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        workflow_state.write(inputs_complete_event).await?;
+
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
         assert_eq!(actions.len(), 1);
-        let action0 = actions[0].as_ref().unwrap();
-        assert_eq!(action0.loc, Location::new("N3.N1")?);
-        assert!(matches!(action0.kind, ActionKind::SetComplete { .. }));
+        assert_eq!(actions[0].loc, Location::new("N3.N1")?);
+        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
 
-        orchestrator.perform_actions(stream::iter(actions)).await?;
-        let inner_a_input_complete_event = stream.next().await.unwrap();
-        let inner_a_input_complete_outputs =
-            inner_a_input_complete_event.clone().outputs().unwrap();
+        orchestrator
+            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .await?;
+        let inner_inputs_complete_event = stream.next().await.unwrap();
+        let inner_inputs_complete_outputs = inner_inputs_complete_event.clone().outputs();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &inner_a_input_complete_outputs,
+            &inner_inputs_complete_outputs[0],
             json!({"a": 1}),
         );
 
-        workflow_state.write(inner_a_input_complete_event).await?;
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state: Arc::clone(&workflow_state),
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        workflow_state.write(inner_inputs_complete_event).await?;
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
-        orchestrator.perform_actions(stream::iter(actions)).await?;
+        orchestrator
+            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .await?;
         let inner_output_complete_event = stream.next().await.unwrap();
-        let inner_output_complete_outputs = inner_output_complete_event.clone().outputs().unwrap();
+        let inner_output_complete_outputs = inner_output_complete_event.clone().outputs();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &inner_output_complete_outputs,
+            &inner_output_complete_outputs[0],
             json!({"out": 1}),
         );
 
         let eval_complete_event = Event::Node(NodeEvent {
-            loc: Location::new("N3")?,
+            locs: vec![Location::new("N3")?],
             status: NodeStatus::Complete {
-                outputs: inner_output_complete_outputs.clone(),
+                outputs: inner_output_complete_outputs,
             },
         });
         workflow_state.write(inner_output_complete_event).await?;
         workflow_state.write(eval_complete_event).await?;
-        let context = OrchestrationContext {
-            parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
-            workflow_state: Arc::clone(&workflow_state),
-        };
-        let actions = orchestrator
-            .build_actions(context, workflow_graph.clone())
-            .await?;
-        let actions = actions.collect::<Vec<_>>().await;
+        let actions =
+            next_actions(&orchestrator, &workflow_graph, &workflow_state, &inputs).await?;
 
-        orchestrator.perform_actions(stream::iter(actions)).await?;
+        orchestrator
+            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .await?;
         let output_complete_event = stream.next().await.unwrap();
-        let output_complete_outputs = output_complete_event.outputs().unwrap();
+        let output_complete_outputs = output_complete_event.outputs();
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
-            &output_complete_outputs,
+            &output_complete_outputs[0],
             json!({"out": 1}),
         );
 
@@ -1568,7 +1583,8 @@ mod tests {
     #[rstest]
     #[case::memory("memory")]
     #[case::file("file")]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    #[tokio::test]
+    #[test_log::test]
     async fn run_simple_task_workflow(
         #[case] default_storage_name: &str,
         simple_task: WorkflowGraph,
@@ -1654,7 +1670,8 @@ mod tests {
     #[rstest]
     #[case::memory("memory")]
     #[case::file("file")]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    #[tokio::test]
+    #[test_log::test]
     async fn run_simple_eval_workflow(
         #[case] default_storage_name: &str,
         one_input_one_output: WorkflowGraph,

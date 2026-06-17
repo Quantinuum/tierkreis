@@ -106,14 +106,14 @@ async fn process_finished_task(
                 let outputs =
                     transfer_assets(asset_storage_registry, &output_storage_name, &outputs);
                 match outputs {
-                    Ok(outputs) => send_complete(event_sender, loc, outputs).await?,
+                    Ok(outputs) => send_complete(event_sender, vec![loc], vec![outputs]).await?,
                     Err(err) => send_error(event_sender, loc, &err).await?,
                 }
             } else {
                 let stderr = background_task.stderr.await.ok();
                 event_sender
                     .send(Event::Node(NodeEvent {
-                        loc,
+                        locs: vec![loc],
                         status: NodeStatus::Error {
                             error: format!("Subprocess failed with exit code: {status}"),
                             detail: stderr,
@@ -576,7 +576,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[1].clone().outputs().unwrap_or_default(),
+            &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
         );
 
@@ -633,7 +633,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[1].clone().outputs().unwrap_or_default(),
+            &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
         );
 
@@ -689,11 +689,11 @@ mod tests {
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert!(events.contains(&Event::Node(NodeEvent {
-            loc: loc1.clone(),
+            locs: vec![loc1.clone()],
             status: NodeStatus::Running { state_update: None },
         })));
         assert!(events.contains(&Event::Node(NodeEvent {
-            loc: loc2.clone(),
+            locs: vec![loc2.clone()],
             status: NodeStatus::Running { state_update: None },
         })));
 
@@ -704,16 +704,16 @@ mod tests {
                 matches!(
                     event,
                     Event::Node(NodeEvent {
-                        loc,
+                        locs,
                         status: NodeStatus::Complete { .. }
-                    }) if loc == &loc1
+                    }) if locs == &vec![loc1.clone()]
                 )
             })
             .unwrap();
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &complete0.clone().outputs().unwrap_or_default(),
+            &complete0.clone().outputs()[0],
             json!({"value": "hello dave"}),
         );
         let complete1 = events
@@ -722,16 +722,16 @@ mod tests {
                 matches!(
                     event,
                     Event::Node(NodeEvent {
-                        loc,
+                        locs,
                         status: NodeStatus::Complete { .. }
-                    }) if loc == &loc2
+                    }) if locs == &vec![loc2.clone()]
                 )
             })
             .unwrap();
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &complete1.clone().outputs().unwrap_or_default(),
+            &complete1.clone().outputs()[0],
             json!({"value": "hi steve"}),
         );
 
@@ -783,7 +783,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[1].clone().outputs().unwrap_or_default(),
+            &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
         );
 
@@ -941,7 +941,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[1].clone().outputs().unwrap_or_default(),
+            &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
         );
 

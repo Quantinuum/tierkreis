@@ -291,46 +291,63 @@ impl SqliteWorkflowState {
     }
 
     fn handle_node_event(&self, event: NodeEvent, send_update: &mut bool) -> miette::Result<()> {
-        let loc = event.loc.clone();
-        insert_default_node_state(&loc, self.run_id, self.attempt, &self.global_state)?;
+        // TODO: This should not be a loop at all.
+        for loc in event.locs {
+            insert_default_node_state(&loc, self.run_id, self.attempt, &self.global_state)?;
 
-        *send_update = match event.status {
-            NodeStatus::Scheduled => {
-                set_scheduled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            NodeStatus::Queued => {
-                set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            NodeStatus::Running { state_update: None } => {
-                set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::Switching { cond }),
-            } => set_cond_if_none(&loc, self.run_id, self.attempt, cond, &self.global_state),
-            NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::Looping { index }),
-            } => set_loop_index(&loc, self.run_id, self.attempt, index, &self.global_state),
-            NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapStarted { size }),
-            } => set_map_started_if_none(&loc, self.run_id, self.attempt, size, &self.global_state),
-            NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapElemComplete { index }),
-            } => set_map_elem_complete(&loc, self.run_id, self.attempt, index, &self.global_state),
-            NodeStatus::Complete { outputs: _ } => {
-                set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            NodeStatus::Cancelled => {
-                set_cancelled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-            }
-            NodeStatus::Error { error, detail } => set_error_if_none(
-                &loc,
-                self.run_id,
-                self.attempt,
-                error,
-                detail,
-                &self.global_state,
-            ),
-        }?;
+            *send_update = match event.status {
+                NodeStatus::Scheduled => {
+                    set_scheduled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+                }
+                NodeStatus::Queued => {
+                    set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+                }
+                NodeStatus::Running { state_update: None } => {
+                    set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+                }
+                NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::Switching { cond }),
+                } => set_cond_if_none(&loc, self.run_id, self.attempt, cond, &self.global_state),
+                NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::Looping { index }),
+                } => set_loop_index(&loc, self.run_id, self.attempt, index, &self.global_state),
+                NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::MapStarted { size }),
+                } => set_map_started_if_none(
+                    &loc,
+                    self.run_id,
+                    self.attempt,
+                    size,
+                    &self.global_state,
+                ),
+                NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                } => set_map_elem_complete(
+                    &loc,
+                    self.run_id,
+                    self.attempt,
+                    &bits,
+                    &self.global_state,
+                ),
+                NodeStatus::Complete { outputs: _ } => {
+                    set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+                }
+                NodeStatus::Cancelled => {
+                    set_cancelled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+                }
+                NodeStatus::Error {
+                    ref error,
+                    ref detail,
+                } => set_error_if_none(
+                    &loc,
+                    self.run_id,
+                    self.attempt,
+                    error,
+                    detail.as_deref(),
+                    &self.global_state,
+                ),
+            }?;
+        }
         Ok(())
     }
 }
@@ -371,7 +388,7 @@ mod tests {
 
         workflow_state
             .write(Event::Node(NodeEvent {
-                loc: Location::root(),
+                locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
@@ -401,7 +418,7 @@ mod tests {
 
         workflow_state
             .write(Event::Node(NodeEvent {
-                loc: Location::root(),
+                locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
