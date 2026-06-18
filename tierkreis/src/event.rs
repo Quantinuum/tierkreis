@@ -30,7 +30,7 @@ impl Event {
         }
     }
 
-    /// Returns true if the event indicates that a node has some specific outputs.
+    /// Returns the outputs from locations specified in the event if any.
     #[must_use]
     pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
         match self {
@@ -87,8 +87,7 @@ impl NodeEvent {
         matches!(self.status, NodeStatus::Complete { .. })
     }
 
-    /// Returns the `outputs` field of a [`Status::Complete`] `status` and
-    /// None if the `status` field is any other variant.
+    /// Returns the outputs from locations specified in the event if any.
     #[must_use]
     pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
         match self.status {

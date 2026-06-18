@@ -322,13 +322,9 @@ impl SqliteWorkflowState {
                 ),
                 NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
-                } => set_map_elem_complete(
-                    &loc,
-                    self.run_id,
-                    self.attempt,
-                    &bits,
-                    &self.global_state,
-                ),
+                } => {
+                    set_map_elem_complete(&loc, self.run_id, self.attempt, bits, &self.global_state)
+                }
                 NodeStatus::Complete { outputs: _ } => {
                     set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
                 }
