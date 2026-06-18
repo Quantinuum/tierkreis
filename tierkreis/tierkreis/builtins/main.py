@@ -849,5 +849,9 @@ def at[T: PType](values: list[T], n: int) -> T:
     return values[n]
 
 
+def main():
+    worker.app(argv)
+
+
 if __name__ == "__main__":
     worker.app(argv)

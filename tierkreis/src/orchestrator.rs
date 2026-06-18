@@ -56,6 +56,8 @@ pub enum ActionKind {
         task_name: String,
         /// The input assets for the Task.
         inputs: HashMap<String, AssetSpec>,
+        /// The names of the outputs of the Task.
+        outputs: HashSet<String>,
     },
     /// Mark the node as switching with a particular value.
     SetSwitching {
@@ -294,7 +296,12 @@ impl Orchestrator {
                 .ok_or_else(|| miette!("Node definition not found"))?;
             let node_state = context.workflow_state.read(&location).await?;
             if let Some(error_msg) = node_state.error {
-                return Err(miette!("Workflow ended with error: {error_msg}"));
+                if let Some(detail) = node_state.error_detail {
+                    return Err(miette!(
+                        "Workflow ended with error: {error_msg}\ndetail: {detail}",
+                    ));
+                }
+                return Err(miette!("Workflow ended with error: {error_msg}",));
             }
 
             node_states.insert(node_id, (node_definition.clone(), node_state));
@@ -320,6 +327,9 @@ impl Orchestrator {
                         .get(&n)
                         .expect("Node definition/state not found");
 
+                    // TODO: This sometimes means even const/input nodes
+                    // are run multiple times if their state is yet
+                    // to be updated from the last orchestration round.
                     state.outputs.is_none()
                 },
                 // Returns true if a port should be traversed.
@@ -915,11 +925,13 @@ impl Orchestrator {
                     worker_name,
                     task_name,
                     inputs,
+                    outputs,
                 } => task_plans.push(TaskPlan {
                     loc,
                     worker_name,
                     task_name,
                     inputs,
+                    outputs,
                     output_storage_name: Some(self.default_storage_name.clone()),
                     ..Default::default()
                 }),
@@ -1010,6 +1022,7 @@ fn build_task_action(
     task_name: &str,
 ) -> miette::Result<Action> {
     let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+    let outputs = workflow_graph.output_names(n)?.cloned().collect();
 
     Ok(Action {
         loc,
@@ -1017,6 +1030,7 @@ fn build_task_action(
             worker_name: worker_name.to_string(),
             task_name: task_name.to_string(),
             inputs,
+            outputs,
         },
     })
 }

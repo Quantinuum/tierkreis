@@ -30,9 +30,7 @@ impl FileAssetStorage {
     }
 
     fn location(&self, key: &AssetKey) -> PathBuf {
-        let mut path = self.base_dir.clone();
-        path.push(key.to_string());
-        path
+        self.base_dir.join(key.to_string())
     }
 }
 

@@ -22,7 +22,7 @@ pub mod updater;
 mod tierkreis {
     use std::collections::HashMap;
 
-    use miette::IntoDiagnostic;
+    use miette::{Diagnostic, IntoDiagnostic};
     use num_complex::Complex64;
     use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*, types::PyBytes};
     use serde::{Deserialize, Serialize};
@@ -38,8 +38,19 @@ mod tierkreis {
         Ok(())
     }
 
-    fn convert_err(py: Python<'_>, err: &miette::Report) -> PyErr {
+    fn convert_err(py: Python<'_>, err: miette::Report) -> PyErr {
+        let boxed: Box<dyn Diagnostic + 'static> = err.into();
+        convert_diagnostic(py, &*boxed)
+    }
+
+    fn convert_diagnostic(py: Python<'_>, err: &dyn Diagnostic) -> PyErr {
         let py_err = PyValueError::new_err(err.to_string());
+
+        if let Some(source) = err.diagnostic_source() {
+            py_err.set_cause(py, Some(convert_diagnostic(py, source)));
+        } else if let Some(source) = err.source() {
+            py_err.set_cause(py, Some(convert_stderr(py, source)));
+        }
         if let Some(help) = err.help() {
             py_err.add_note(py, format!("\thelp: {help}")).unwrap();
         }
@@ -47,6 +58,14 @@ mod tierkreis {
             for related in related {
                 py_err.add_note(py, format!("related: {related}")).unwrap();
             }
+        }
+        py_err
+    }
+
+    fn convert_stderr(py: Python<'_>, err: &dyn std::error::Error) -> PyErr {
+        let py_err = PyValueError::new_err(err.to_string());
+        if let Some(source) = err.source() {
+            py_err.set_cause(py, Some(convert_stderr(py, source)));
         }
         py_err
     }
@@ -97,29 +116,29 @@ mod tierkreis {
         let workflow_dump: String = workflow
             .call_method0("model_dump_json")
             .into_diagnostic()
-            .map_err(|err| convert_err(py, &err))?
+            .map_err(|err| convert_err(py, err))?
             .to_string();
 
         let legacy_workflow: LegacyWorkflowGraph = serde_json::from_str(&workflow_dump)
             .into_diagnostic()
-            .map_err(|err| convert_err(py, &err))?;
+            .map_err(|err| convert_err(py, err))?;
         let workflow_graph = legacy_workflow
             .to_workflow_graph()
-            .map_err(|err| convert_err(py, &err))?;
+            .map_err(|err| convert_err(py, err))?;
 
         let inputs = match inputs {
             ValueOrMappingOrBytes::BytesMapping(bytes_mapping) => bytes_mapping
                 .into_iter()
                 .map(|(k, v)| Ok::<_, miette::Report>((k, v.extract().into_diagnostic()?)))
                 .collect::<Result<HashMap<String, Vec<u8>>, _>>()
-                .map_err(|err| convert_err(py, &err))?,
+                .map_err(|err| convert_err(py, err))?,
             ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Value(value)) => {
                 let mut inputs = HashMap::new();
                 inputs.insert(
                     "value".to_string(),
                     serde_json::to_vec(&value)
                         .into_diagnostic()
-                        .map_err(|err| convert_err(py, &err))?,
+                        .map_err(|err| convert_err(py, err))?,
                 );
                 inputs
             }
@@ -128,17 +147,17 @@ mod tierkreis {
                 .map(|(k, v)| serde_json::to_vec(&v).map(|b| (k, b)))
                 .collect::<Result<HashMap<_, _>, _>>()
                 .into_diagnostic()
-                .map_err(|err| convert_err(py, &err))?,
+                .map_err(|err| convert_err(py, err))?,
         };
 
         let outputs = runtime::run_workflow_in_memory(workflow_graph, inputs)
-            .map_err(|err| convert_err(py, &err))?;
+            .map_err(|err| convert_err(py, err))?;
 
         let mut outputs: HashMap<String, Option<Value>> = outputs
             .into_iter()
             .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
             .collect::<miette::Result<_>>()
-            .map_err(|err| convert_err(py, &err))?;
+            .map_err(|err| convert_err(py, err))?;
 
         info!("done with outputs: {outputs:?}");
         if outputs.len() == 1 && outputs.contains_key("value") {

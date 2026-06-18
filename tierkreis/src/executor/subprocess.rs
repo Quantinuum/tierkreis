@@ -53,7 +53,6 @@ struct BackgroundTaskPlan {
     worker_name: String,
     output_storage_name: String,
     worker_args: NamedTempFile,
-    done_file: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
 }
 
@@ -67,7 +66,6 @@ struct BackgroundTask {
     // Handles to temporary files to prevent deletion
     // until the task is complete.
     _worker_args: NamedTempFile,
-    _done_file: NamedTempFile,
 }
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
@@ -142,7 +140,6 @@ async fn start_task(
 
     let worker_args = internal_task.worker_args;
     let worker_args_path = worker_args.path();
-    let done_file = internal_task.done_file;
     let res = spawn_worker(&internal_task.worker_name, worker_args_path);
     let mut child = match res {
         Ok(child) => child,
@@ -165,7 +162,6 @@ async fn start_task(
             outputs,
             stderr,
             _worker_args: worker_args,
-            _done_file: done_file,
         }
     });
 
@@ -303,10 +299,10 @@ impl SubprocessExecutor {
         let task = tokio::task::spawn_blocking(|| {
             let re = Regex::new(r"tkr-.*-worker")
                 .into_diagnostic()
-                .wrap_err_with(|| "Failed to compile Worker name regex")?;
+                .wrap_err("Failed to compile Worker name regex")?;
             let paths = which_re(&re)
                 .into_diagnostic()
-                .wrap_err_with(|| "Failed to search for Worker binaries")?;
+                .wrap_err("Failed to search for Worker binaries")?;
             Ok(paths
                 .map(|path| WorkerSpec {
                     worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
@@ -325,8 +321,8 @@ impl SubprocessExecutor {
             &self.subprocess_storage_name,
             inputs,
         )?;
-        let inputs = write_input_paths(&inputs)
-            .wrap_err_with(|| "Failed to collect Worker input filepaths")?;
+        let inputs =
+            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
         Ok(inputs)
     }
 
@@ -348,14 +344,18 @@ impl SubprocessExecutor {
 fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
-) -> Result<tokio::process::Child, miette::Error> {
-    let child = Command::new(format!("tkr-{worker_name}"))
+) -> miette::Result<tokio::process::Child> {
+    let mut command = Command::new(format!("tkr-{worker_name}"));
+    command
         .arg(worker_args_path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = command
         .spawn()
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Could not spawn worker"))?;
+        .wrap_err_with(|| miette!("Could not spawn worker `tkr-{worker_name}`"))?;
+
     Ok(child)
 }
 
@@ -405,15 +405,27 @@ impl Executor for SubprocessExecutor {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
-                let inputs = self.build_inputs(&task_plan.inputs)?;
-                let (outputs, output_paths) = self.build_outputs(task_plan.outputs)?;
+                let inputs = self
+                    .build_inputs(&task_plan.inputs)
+                    .wrap_err("Failed to build task inputs")?;
+                let (outputs, output_paths) = self
+                    .build_outputs(task_plan.outputs)
+                    .wrap_err("Failed to build task outputs")?;
 
-                let worker_args = NamedTempFile::new().into_diagnostic()?;
+                let worker_args = NamedTempFile::new()
+                    .into_diagnostic()
+                    .wrap_err("Failed to create worker call args file.")?;
 
                 // Redirect the done_file to a temporary file as we
                 // do not need it to figure out if a process has
                 // completed currently.
-                let done_file = NamedTempFile::new().into_diagnostic()?;
+                let done_file = NamedTempFile::new()
+                    .into_diagnostic()
+                    .wrap_err("Failed to create `done` file")?;
+
+                let error_file = NamedTempFile::new()
+                    .into_diagnostic()
+                    .wrap_err("Failed to create `error` file")?;
 
                 serde_json::to_writer(
                     &worker_args,
@@ -421,11 +433,13 @@ impl Executor for SubprocessExecutor {
                         function_name: task_plan.task_name,
                         inputs,
                         outputs: output_paths,
-                        done_path: done_file.path().to_path_buf(),
+                        error_path: error_file.into_temp_path().to_path_buf(),
+                        done_path: done_file.into_temp_path().to_path_buf(),
                         ..Default::default()
                     },
                 )
-                .into_diagnostic()?;
+                .into_diagnostic()
+                .wrap_err("Failed to write worker call args")?;
 
                 let output_storage_name = task_plan
                     .output_storage_name
@@ -438,11 +452,11 @@ impl Executor for SubprocessExecutor {
                         worker_name: task_plan.worker_name,
                         output_storage_name,
                         worker_args,
-                        done_file,
                         outputs,
                     })
                     .await
-                    .into_diagnostic()?;
+                    .into_diagnostic()
+                    .wrap_err("Failed to enqueue background task.")?;
             }
 
             Ok(())
