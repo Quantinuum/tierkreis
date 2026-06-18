@@ -7,6 +7,7 @@ state is not persisted beyond the lifetime of the process.
 */
 use std::{
     collections::HashMap,
+    ops::BitOrAssign,
     sync::{Arc, Mutex},
 };
 
@@ -241,77 +242,82 @@ fn handle_node_event(
     send_update: &mut bool,
     node_event: NodeEvent,
 ) {
-    let node_state = run_state.nodes.entry(node_event.loc).or_default();
-    match node_event.status {
-        crate::event::NodeStatus::Scheduled => {
-            if node_state.scheduled_time.is_none() {
-                *send_update = true;
-                node_state.scheduled_time = Some(Utc::now());
+    for (idx, loc) in node_event.locs.into_iter().enumerate() {
+        let node_state = run_state.nodes.entry(loc).or_default();
+        match node_event.status {
+            crate::event::NodeStatus::Scheduled => {
+                if node_state.scheduled_time.is_none() {
+                    *send_update = true;
+                    node_state.scheduled_time = Some(Utc::now());
+                }
             }
-        }
-        crate::event::NodeStatus::Queued => {
-            if node_state.queued_time.is_none() {
-                *send_update = true;
-                node_state.queued_time = Some(Utc::now());
+            crate::event::NodeStatus::Queued => {
+                if node_state.queued_time.is_none() {
+                    *send_update = true;
+                    node_state.queued_time = Some(Utc::now());
+                }
             }
-        }
-        crate::event::NodeStatus::Running { state_update: None } => {
-            if node_state.running_time.is_none() {
-                *send_update = true;
-                node_state.running_time = Some(Utc::now());
+            crate::event::NodeStatus::Running { state_update: None } => {
+                if node_state.running_time.is_none() {
+                    *send_update = true;
+                    node_state.running_time = Some(Utc::now());
+                }
             }
-        }
-        crate::event::NodeStatus::Running {
-            state_update: Some(RunningStateUpdate::Switching { cond }),
-        } => {
-            if node_state.cond.is_none() {
-                *send_update = true;
-                node_state.cond = Some(cond);
+            crate::event::NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Switching { cond }),
+            } => {
+                if node_state.cond.is_none() {
+                    *send_update = true;
+                    node_state.cond = Some(cond);
+                }
             }
-        }
-        crate::event::NodeStatus::Running {
-            state_update: Some(RunningStateUpdate::Looping { index }),
-        } => {
-            if node_state.loop_index != Some(index) {
-                *send_update = true;
-                node_state.loop_index = Some(index);
+            crate::event::NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Looping { index }),
+            } => {
+                if node_state.loop_index != Some(index) {
+                    *send_update = true;
+                    node_state.loop_index = Some(index);
+                }
             }
-        }
-        crate::event::NodeStatus::Running {
-            state_update: Some(RunningStateUpdate::MapStarted { size }),
-        } => {
-            if node_state.map_completed.is_none() {
-                *send_update = true;
-                node_state.map_completed = Some(BitVec::repeat(false, size as usize));
+            crate::event::NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::MapStarted { size }),
+            } => {
+                if node_state.map_completed.is_none() {
+                    *send_update = true;
+                    node_state.map_completed = Some(BitVec::repeat(false, size as usize));
+                }
             }
-        }
-        crate::event::NodeStatus::Running {
-            state_update: Some(RunningStateUpdate::MapElemComplete { index }),
-        } => {
-            if let Some(map_completed) = node_state.map_completed.as_mut() {
-                map_completed.set(index as usize, true);
-                *send_update = true;
+            crate::event::NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+            } => {
+                if let Some(map_completed) = node_state.map_completed.as_mut() {
+                    map_completed.bitor_assign(bits);
+                    *send_update = true;
+                }
             }
-        }
-        crate::event::NodeStatus::Complete { outputs } => {
-            if node_state.complete_time.is_none() {
-                *send_update = true;
-                node_state.complete_time = Some(Utc::now());
-                node_state.outputs = Some(outputs);
+            crate::event::NodeStatus::Complete { ref outputs } => {
+                if node_state.complete_time.is_none() {
+                    *send_update = true;
+                    node_state.complete_time = Some(Utc::now());
+                    node_state.outputs = Some(outputs.get(idx).unwrap().clone());
+                }
             }
-        }
-        crate::event::NodeStatus::Cancelled => {
-            if node_state.cancelled_time.is_none() {
-                *send_update = true;
-                node_state.cancelled_time = Some(Utc::now());
+            crate::event::NodeStatus::Cancelled => {
+                if node_state.cancelled_time.is_none() {
+                    *send_update = true;
+                    node_state.cancelled_time = Some(Utc::now());
+                }
             }
-        }
-        crate::event::NodeStatus::Error { error, detail } => {
-            if node_state.error_time.is_none() {
-                *send_update = true;
-                node_state.error_time = Some(Utc::now());
-                node_state.error = Some(error);
-                node_state.error_detail = detail;
+            crate::event::NodeStatus::Error {
+                ref error,
+                ref detail,
+            } => {
+                if node_state.error_time.is_none() {
+                    *send_update = true;
+                    node_state.error_time = Some(Utc::now());
+                    node_state.error = Some(error.clone());
+                    node_state.error_detail.clone_from(detail);
+                }
             }
         }
     }
@@ -352,7 +358,7 @@ mod tests {
 
         workflow_state
             .write(Event::Node(NodeEvent {
-                loc: Location::root(),
+                locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
@@ -382,7 +388,7 @@ mod tests {
 
         workflow_state
             .write(Event::Node(NodeEvent {
-                loc: Location::root(),
+                locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;

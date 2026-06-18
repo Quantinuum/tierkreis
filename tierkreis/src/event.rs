@@ -5,6 +5,7 @@ state of the Workflow so it can be monitored and restarted.
 */
 use std::{collections::HashMap, hash::RandomState};
 
+use bitvec::vec::BitVec;
 use futures::{SinkExt, channel::mpsc};
 use miette::{IntoDiagnostic, miette};
 
@@ -29,12 +30,12 @@ impl Event {
         }
     }
 
-    /// Returns true if the event indicates that a node has some specific outputs.
+    /// Returns the outputs from locations specified in the event if any.
     #[must_use]
-    pub fn outputs(self) -> Option<HashMap<String, AssetSpec>> {
+    pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
         match self {
             Event::Node(node_event) => node_event.outputs(),
-            Event::WorkflowRun(_) => None,
+            Event::WorkflowRun(_) => Vec::new(),
         }
     }
 }
@@ -74,7 +75,7 @@ impl WorkflowRunEvent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeEvent {
     /// The location of the Node for this Event.
-    pub loc: Location,
+    pub locs: Vec<Location>,
     /// The new status of the Node.
     pub status: NodeStatus,
 }
@@ -86,13 +87,12 @@ impl NodeEvent {
         matches!(self.status, NodeStatus::Complete { .. })
     }
 
-    /// Returns the `outputs` field of a [`Status::Complete`] `status` and
-    /// None if the `status` field is any other variant.
+    /// Returns the outputs from locations specified in the event if any.
     #[must_use]
-    pub fn outputs(self) -> Option<HashMap<String, AssetSpec>> {
+    pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
         match self.status {
-            NodeStatus::Complete { outputs, .. } => Some(outputs),
-            _ => None,
+            NodeStatus::Complete { outputs, .. } => outputs,
+            _ => Vec::new(),
         }
     }
 }
@@ -129,7 +129,7 @@ pub enum RunningStateUpdate {
     /// An output for a `Map` node is ready at a specific index.
     MapElemComplete {
         /// The index in the data structure that has completed.
-        index: u32,
+        bits: BitVec,
     },
 }
 
@@ -147,8 +147,8 @@ pub enum NodeStatus {
     },
     /// The node is finished and has outputs.
     Complete {
-        /// The outputs from the node.
-        outputs: HashMap<String, AssetSpec>,
+        /// The outputs from the nodes
+        outputs: Vec<HashMap<String, AssetSpec>>,
     },
     /// The node has been cancelled.
     Cancelled,
@@ -181,7 +181,7 @@ pub type EventReceiver = mpsc::Receiver<Event>;
 pub async fn send_running(event_sender: &mut EventSender, loc: Location) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc,
+            locs: vec![loc],
             status: NodeStatus::Running { state_update: None },
         }))
         .await
@@ -196,7 +196,7 @@ pub async fn send_running(event_sender: &mut EventSender, loc: Location) -> miet
 pub async fn send_cancelled(event_sender: &mut EventSender, loc: Location) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc,
+            locs: vec![loc],
             status: NodeStatus::Cancelled {},
         }))
         .await
@@ -210,19 +210,16 @@ pub async fn send_cancelled(event_sender: &mut EventSender, loc: Location) -> mi
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_complete(
     event_sender: &mut EventSender,
-    loc: Location,
-    outputs: HashMap<String, AssetSpec, RandomState>,
+    locs: Vec<Location>,
+    outputs: Vec<HashMap<String, AssetSpec, RandomState>>,
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc: loc.clone(),
+            locs,
             status: NodeStatus::Complete { outputs },
         }))
         .await
-        .map_err(|err| {
-            miette!("Failed to send complete event: {err}")
-                .wrap_err(miette!("At location: {loc:?}"))
-        })
+        .map_err(|err| miette!("Failed to send complete event: {err}"))
 }
 
 /// Utility function to send a new [`Event`] with [`Status::Running`] and a conditional value
@@ -238,7 +235,7 @@ pub async fn send_running_switching(
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc: loc.clone(),
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             },
@@ -263,7 +260,7 @@ pub async fn send_running_loop(
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc: loc.clone(),
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             },
@@ -289,7 +286,7 @@ pub async fn send_running_map(
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc: loc.clone(),
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted {
                     size: u32::try_from(size).into_diagnostic()?,
@@ -313,15 +310,13 @@ pub async fn send_running_map(
 pub async fn send_map_elem_complete(
     event_sender: &mut EventSender,
     loc: Location,
-    index: usize,
+    bits: BitVec,
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc: loc.clone(),
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapElemComplete {
-                    index: u32::try_from(index).into_diagnostic()?,
-                }),
+                state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
             },
         }))
         .await
@@ -343,7 +338,7 @@ pub async fn send_error(
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {
-            loc,
+            locs: vec![loc],
             status: NodeStatus::Error {
                 error: err.to_string(),
                 detail: None,

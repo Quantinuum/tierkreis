@@ -63,7 +63,7 @@ mod tests {
 
         let stream = once(async {
             Event::Node(NodeEvent {
-                loc: Location::from_usize_iter([0]),
+                locs: vec![Location::from_usize_iter([0])],
                 status: NodeStatus::Running { state_update: None },
             })
         })

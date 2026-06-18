@@ -3,6 +3,7 @@ This module defines the queries for reading the workflow state from the `SQlite`
 */
 use std::collections::HashMap;
 use std::hash::BuildHasher;
+use std::ops::BitOr;
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -255,8 +256,8 @@ pub fn set_error_if_none(
     loc: &Location,
     run_id: uuid::Uuid,
     attempt: u32,
-    error: String,
-    detail: Option<String>,
+    error: &str,
+    detail: Option<&str>,
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
@@ -425,7 +426,7 @@ pub fn set_map_elem_complete(
     loc: &Location,
     run_id: uuid::Uuid,
     attempt: u32,
-    index: u32,
+    completed: &BitVec,
     connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
@@ -457,22 +458,13 @@ pub fn set_map_elem_complete(
         return Ok(false);
     };
 
-    let mut map_completed = decode_map_completed(&encoded)?;
-    let index_usize = usize::try_from(index)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Map completion index {index} does not fit into usize"))?;
-    if index_usize >= map_completed.len() {
-        return Err(miette!(
-            "Map completion index {index} out of bounds for map of size {}",
-            map_completed.len()
-        ));
-    }
-    if map_completed[index_usize] {
+    let map_completed = decode_map_completed(&encoded)?;
+    let new_map_completed = map_completed.bitor(completed);
+    if new_map_completed == *completed {
         return Ok(false);
     }
 
-    map_completed.set(index_usize, true);
-    let updated = encode_map_completed(&map_completed)?;
+    let updated = encode_map_completed(&new_map_completed)?;
     let changed = diesel::update(
         ns::node_states
             .filter(ns::run_id.eq(run_id.to_string()))
