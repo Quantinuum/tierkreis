@@ -129,7 +129,7 @@ pub enum RunningStateUpdate {
     /// An output for a `Map` node is ready at a specific index.
     MapElemComplete {
         /// The index in the data structure that has completed.
-        bits: BitVec,
+        bits: BitVec<u8>,
     },
 }
 
@@ -310,7 +310,7 @@ pub async fn send_running_map(
 pub async fn send_map_elem_complete(
     event_sender: &mut EventSender,
     loc: Location,
-    bits: BitVec,
+    bits: BitVec<u8>,
 ) -> miette::Result<()> {
     event_sender
         .send(Event::Node(NodeEvent {

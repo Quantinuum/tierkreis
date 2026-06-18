@@ -53,14 +53,16 @@ pub struct NodeState {
     pub error_time: Option<NaiveDateTime>,
     pub cond: Option<bool>,
     pub loop_index: Option<i32>,
+    pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
 }
 
-#[derive(Insertable, AsChangeset)]
+#[derive(Insertable, AsChangeset, Default)]
 #[diesel(belongs_to(WorkflowRun, foreign_key = run_id))]
 #[diesel(table_name = crate::state::schema::node_states)]
+#[diesel(treat_none_as_default_value = false)]
 pub struct UpsertNodeState {
     pub run_id: String,
     pub attempt: i32,
@@ -73,6 +75,7 @@ pub struct UpsertNodeState {
     pub error_time: Option<NaiveDateTime>,
     pub cond: Option<bool>,
     pub loop_index: Option<i32>,
+    pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
     pub error: Option<String>,
     pub error_detail: Option<String>,

@@ -12,6 +12,7 @@ CREATE TABLE `node_states`(
 	`error_time` TIMESTAMP,
 	`cond` BOOLEAN,
 	`loop_index` INTEGER,
+	`map_size` INTEGER,
 	`map_completed` BLOB,
 	`error` TEXT,
 	`error_detail` TEXT,

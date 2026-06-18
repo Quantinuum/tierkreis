@@ -53,7 +53,7 @@ pub struct NodeState {
     /// The state associated with a map if this Node is a `Map` node.
     ///
     /// This value tracks the number of elements being mapped over.
-    pub map_completed: Option<BitVec>,
+    pub map_completed: Option<BitVec<u8>>,
 
     /// The error message of the node if any.
     pub error: Option<String>,

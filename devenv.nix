@@ -14,6 +14,7 @@ in
     pkgs.bacon
     pkgs.cargo-nextest
     pkgs.sqlite
+    pkgs.diesel-cli
   ] ++ lib.optionals pkgs.stdenv.isDarwin darwinRuntimeLibraries;
 
   git-hooks.hooks = {

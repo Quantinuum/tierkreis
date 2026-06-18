@@ -96,7 +96,7 @@ struct ActionPlan {
     switching: Vec<(Location, bool)>,
     looping: Vec<(Location, u32)>,
     mapping: Vec<(Location, usize)>,
-    map_elem_complete: HashMap<Location, BitVec>,
+    map_elem_complete: HashMap<Location, BitVec<u8>>,
     node_complete: Vec<(Location, HashMap<String, AssetSpec>)>,
     workflow_complete: bool,
 }
@@ -724,7 +724,7 @@ impl Orchestrator {
         mapped_ports: HashSet<String>,
         n: NodeIndex,
         loc: Location,
-        completed: Option<BitVec>,
+        completed: Option<BitVec<u8>>,
     ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
         let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
         let subgraph = self.load_subgraph(&inputs)?;
@@ -805,7 +805,7 @@ impl Orchestrator {
         &self,
         workflow_state: Arc<dyn WorkflowState>,
         loc: Location,
-        completed: BitVec,
+        completed: BitVec<u8>,
         inputs: HashMap<String, AssetSpec>,
         subgraph: Arc<WorkflowGraph>,
     ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
