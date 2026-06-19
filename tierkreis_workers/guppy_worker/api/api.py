@@ -158,7 +158,6 @@ class squash_rz_phased_x(NamedTuple):
 
 class to_qir(NamedTuple):
     package: TKR[OpaqueType["hugr.package.Package"]]
-    format: TKR[str]
 
     @staticmethod
     def out() -> type[TKR[Union[bytes, str]]]:

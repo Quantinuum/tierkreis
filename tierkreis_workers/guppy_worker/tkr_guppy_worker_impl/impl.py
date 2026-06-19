@@ -1,11 +1,12 @@
 from typing import Annotated, Any
 
-from guppylang import comptime, guppy
+from guppylang.decorator import guppy
 from guppylang.emulator import EmulatorBuilder, EmulatorResult
-from guppylang.std.builtins import array, result
+from guppylang.std.builtins import array, result, comptime
 from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
 from hugr.qsystem.result import DataValue, QsysShot
+from hugr_qir.hugr_to_qir import hugr_to_qir
 from pytket import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.passes import BasePass, RemoveRedundancies, SquashRzPhasedX
@@ -224,25 +225,13 @@ def squash_rz_phased_x(package: Package) -> Package:
 
 
 @worker.task()
-def to_qir(package: Package, format: str) -> bytes | str:
+def to_qir(package: Package) -> bytes | str:
     """Convert a Hugr package to a QIR representation.
 
     :param package: The Hugr package to convert.
     :type package: Package
-    :param format: The format of the QIR.
-    :type format: str
     :return: The QIR representation of the Hugr package.
     :rtype: bytes | str
     """
-    try:
-        from hugr_qir.hugr_to_qir import hugr_to_qir
-        from hugr_qir.output import OutputFormat
-    except ImportError as e:
-        msg = "Failed to import hugr_qir module. Make sure it is installed."
-        raise ImportError(msg) from e
-
-    if format not in ["llvm-ir", "bitcode", "base64"]:
-        msg = f"Unsupported format: {format}"
-        raise ValueError(msg)
-    qir_bytes = hugr_to_qir(package, output_format=OutputFormat(format))
+    qir_bytes = hugr_to_qir(package.to_bytes())
     return qir_bytes

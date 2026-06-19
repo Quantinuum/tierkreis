@@ -3,7 +3,7 @@ from typing import NamedTuple
 import pytest
 import qnexus as qnx
 from guppy_worker import emulate, to_backend_result
-from guppylang import guppy
+from guppylang.decorator import guppy
 from guppylang.std.builtins import array, result
 from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
