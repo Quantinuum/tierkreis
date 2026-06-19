@@ -27,7 +27,7 @@ hpc = [
 dev = [
     "ipykernel>=6.29.5",
     "pytest",
-    "guppylang",
+    "guppylang >=0.21.0",
     "qnexus",
 ]
 build = ["build[uv]"]
