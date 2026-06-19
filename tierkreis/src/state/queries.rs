@@ -12,8 +12,11 @@ use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
 use diesel::upsert::excluded;
 use miette::{IntoDiagnostic, WrapErr, miette};
 
+use crate::asset_storage::AssetSpec;
 use crate::location::Location;
-use crate::state::models::{NodeState, UpsertNodeState, Workflow, WorkflowRun};
+use crate::state::models::{
+    NewNodeOutput, NodeOutput, NodeState, UpsertNodeState, Workflow, WorkflowRun,
+};
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
@@ -164,15 +167,23 @@ define_sql_function!(
     fn coalesce_blob(x: Nullable<Binary>, y: Nullable<Binary>) -> Nullable<Binary>;
 );
 
+define_sql_function!(
+    /// `COALESCE` for binary BLOB data.
+    fn changes() -> Integer;
+);
+
 /// Ensure a node-state row exists for the given run/location.
 ///
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed or the insert
 /// operation fails.
-pub fn update_node_state(
+pub fn update_node_state<S: BuildHasher>(
     connection: &Pool<ConnectionManager<SqliteConnection>>,
-    mut rows: Vec<UpsertNodeState>,
+    run_id: &str,
+    attempt: i32,
+    mut node_updates: Vec<UpsertNodeState>,
+    node_outputs: HashMap<Location, NewNodeOutput, S>,
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
 
@@ -181,28 +192,10 @@ pub fn update_node_state(
         .into_diagnostic()
         .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
-    // This is worse than it looks, typically a map_completed event
-    // should only occur for a single location.
-    for row in rows.iter_mut().filter(|row| row.map_completed.is_some()) {
-        let bytes: Option<Vec<u8>> = ns::node_states
-            .select(ns::map_completed)
-            .filter(ns::run_id.eq(&row.run_id))
-            .filter(ns::attempt.eq(row.attempt))
-            .filter(ns::node_location.eq(&row.node_location))
-            .get_result(&mut conn)
-            .optional()
-            .into_diagnostic()?
-            .flatten();
-
-        if let Some(existing) = bytes
-            && let Some(new) = row.map_completed.as_mut()
-        {
-            new.iter_mut().zip(existing).for_each(|(x, y)| *x |= y);
-        }
-    }
+    merge_map_complete_fields(&mut conn, run_id, attempt, &mut node_updates)?;
 
     let rows_affected = diesel::insert_into(ns::node_states)
-        .values(rows)
+        .values(node_updates)
         .on_conflict((ns::run_id, ns::attempt, ns::node_location))
         .do_update()
         .set((
@@ -243,7 +236,93 @@ pub fn update_node_state(
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to ensure node state rows"))?;
 
+    save_outputs(conn, run_id, attempt, node_outputs)?;
+
     Ok(rows_affected > 0)
+}
+
+fn save_outputs<S: BuildHasher>(
+    mut conn: diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+    run_id: &str,
+    attempt: i32,
+    node_outputs: HashMap<Location, NewNodeOutput, S>,
+) -> Result<(), miette::Error> {
+    use crate::state::schema::node_outputs::dsl as no;
+    use crate::state::schema::node_states::dsl as ns;
+
+    if !node_outputs.is_empty() {
+        let node_state_ids: HashMap<Location, i32> = ns::node_states
+            .select((ns::node_location, ns::id))
+            .filter(ns::run_id.eq(run_id))
+            .filter(ns::attempt.eq(attempt))
+            .filter(ns::node_location.eq_any(node_outputs.keys()))
+            .get_results(&mut conn)
+            .into_diagnostic()?
+            .into_iter()
+            .collect();
+
+        let db_outputs: Vec<_> = node_outputs
+            .into_iter()
+            .map(|(location, node_output)| {
+                (
+                    no::node_state_id.eq(node_state_ids.get(&location).unwrap()),
+                    node_output,
+                )
+            })
+            .collect();
+
+        diesel::insert_into(no::node_outputs)
+            .values(db_outputs)
+            .execute(&mut conn)
+            .into_diagnostic()?;
+    }
+    Ok(())
+}
+
+fn merge_map_complete_fields(
+    conn: &mut diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+    run_id: &str,
+    attempt: i32,
+    node_updates: &mut [UpsertNodeState],
+) -> miette::Result<()> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let mut map_complete_locations = node_updates
+        .iter()
+        .filter(|node_update| node_update.map_completed.is_some())
+        .map(|node_update| &node_update.node_location)
+        .peekable();
+
+    if map_complete_locations.peek().is_none() {
+        return Ok(());
+    }
+
+    let existing_map_locations: HashMap<Location, Vec<u8>> = ns::node_states
+        .select((ns::node_location, ns::map_completed.assume_not_null()))
+        .filter(ns::run_id.eq(run_id))
+        .filter(ns::attempt.eq(attempt))
+        .filter(ns::map_completed.is_not_null())
+        .filter(ns::node_location.eq_any(map_complete_locations))
+        .get_results(conn)
+        .into_diagnostic()?
+        .into_iter()
+        .collect();
+
+    for (node_location, node_update) in node_updates.iter_mut().filter_map(|node_update| {
+        node_update
+            .map_completed
+            .as_mut()
+            .map(|map_completed| (&node_update.node_location, map_completed))
+    }) {
+        if let Some(existing) = existing_map_locations.get(node_location) {
+            node_update
+                .iter_mut()
+                .zip(existing)
+                .for_each(|(x, y)| *x |= y);
+        }
+    }
+
+    Ok(())
 }
 
 /// Read the persisted node state for a workflow run at a given location.
@@ -309,6 +388,8 @@ pub fn read_node_state(
             })
             .transpose()?;
 
+        let outputs = read_outputs(conn, &db_node)?;
+
         Ok(crate::state::interface::NodeState {
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
             queued_time: db_node.queued_time.map(utc_timestamp),
@@ -321,11 +402,40 @@ pub fn read_node_state(
             map_completed,
             error: db_node.error.clone(),
             error_detail: db_node.error_detail.clone(),
-            ..Default::default()
+            outputs,
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
     }
+}
+
+fn read_outputs(
+    mut conn: diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+    db_node: &NodeState,
+) -> Result<Option<HashMap<String, AssetSpec>>, miette::Error> {
+    let outputs = if db_node.complete_time.is_some() {
+        let db_outputs: Vec<NodeOutput> = NodeOutput::belonging_to(db_node)
+            .get_results(&mut conn)
+            .into_diagnostic()?;
+        let outputs: HashMap<String, AssetSpec> = db_outputs
+            .into_iter()
+            .map(|db_output| {
+                Ok::<_, miette::Report>((
+                    db_output.name,
+                    AssetSpec {
+                        kind: db_output.asset_kind.parse()?,
+                        storage_name: db_output.storage_name,
+                        asset_key: db_output.asset_key.parse().into_diagnostic()?,
+                    },
+                ))
+            })
+            .collect::<Result<_, _>>()?;
+        Some(outputs)
+    } else {
+        None
+    };
+
+    Ok(outputs)
 }
 
 /// Merge additional metadata into the persisted run metadata for a workflow run.

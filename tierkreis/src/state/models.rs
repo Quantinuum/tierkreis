@@ -59,7 +59,7 @@ pub struct NodeState {
     pub error_detail: Option<String>,
 }
 
-#[derive(Insertable, AsChangeset, Default)]
+#[derive(Insertable, AsChangeset, Default, Debug)]
 #[diesel(belongs_to(WorkflowRun, foreign_key = run_id))]
 #[diesel(table_name = crate::state::schema::node_states)]
 #[diesel(treat_none_as_default_value = false)]
@@ -91,6 +91,15 @@ pub struct UpsertNodeState {
 pub struct NodeOutput {
     pub id: i32,
     pub node_state_id: i32,
+    pub name: String,
+    pub asset_kind: String,
+    pub storage_name: String,
+    pub asset_key: String,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = node_outputs)]
+pub struct NewNodeOutput {
     pub name: String,
     pub asset_kind: String,
     pub storage_name: String,

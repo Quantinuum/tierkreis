@@ -31,7 +31,7 @@ use crate::{
     state::{
         WorkflowState,
         interface::{NodeState, RuntimeState},
-        models::UpsertNodeState,
+        models::{NewNodeOutput, UpsertNodeState},
     },
 };
 use crate::{
@@ -293,14 +293,16 @@ impl SqliteWorkflowState {
     fn handle_node_event(&self, event: NodeEvent, send_update: &mut bool) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
-        let rows = event
+        let mut node_outputs = HashMap::new();
+        let node_updates = event
             .locs
             .into_iter()
-            .map(|loc| {
+            .enumerate()
+            .map(|(index, loc)| {
                 let mut row = UpsertNodeState {
                     run_id: self.run_id.to_string(),
                     attempt,
-                    node_location: loc,
+                    node_location: loc.clone(),
                     ..Default::default()
                 };
 
@@ -342,8 +344,21 @@ impl SqliteWorkflowState {
                         row.running_time = Some(now);
                         row.map_completed = Some(bits.clone().into_vec());
                     }
-                    NodeStatus::Complete { outputs: _ } => {
+                    NodeStatus::Complete { ref outputs } => {
                         row.complete_time = Some(now);
+                        if let Some(output) = outputs.get(index) {
+                            for (port, asset_spec) in output {
+                                node_outputs.insert(
+                                    loc.clone(),
+                                    NewNodeOutput {
+                                        name: port.clone(),
+                                        asset_kind: asset_spec.kind.to_string(),
+                                        storage_name: asset_spec.storage_name.clone(),
+                                        asset_key: asset_spec.asset_key.to_string(),
+                                    },
+                                );
+                            }
+                        }
                     }
                     NodeStatus::Cancelled => {
                         row.cancelled_time = Some(now);
@@ -361,7 +376,13 @@ impl SqliteWorkflowState {
                 Ok(row)
             })
             .collect::<miette::Result<Vec<_>>>()?;
-        *send_update = update_node_state(&self.global_state, rows)?;
+        *send_update = update_node_state(
+            &self.global_state,
+            &self.run_id.to_string(),
+            attempt,
+            node_updates,
+            node_outputs,
+        )?;
         Ok(())
     }
 }
@@ -371,7 +392,10 @@ mod tests {
 
     use std::ops::BitOr;
 
-    use crate::event::NodeStatus;
+    use crate::{
+        asset_storage::{AssetKey, AssetKind, AssetSpec},
+        event::NodeStatus,
+    };
 
     use super::*;
 
@@ -454,6 +478,40 @@ mod tests {
 
         assert!(node_state.scheduled_time.is_some());
         assert!(node_state.queued_time.is_some());
+
+        Ok(())
+    }
+
+    /// Test that we can read and write workflow run state.
+    #[tokio::test]
+    async fn write_and_read_outputs() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::new_in_memory();
+
+        let run_id = Uuid::now_v7();
+        let attempt = 2;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: vec![Location::root()],
+                status: NodeStatus::Complete {
+                    outputs: vec![outputs],
+                },
+            }))
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert!(node_state.outputs.is_some());
 
         Ok(())
     }
