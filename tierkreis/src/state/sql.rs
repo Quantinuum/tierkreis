@@ -11,6 +11,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use bitvec::vec::BitVec;
+use chrono::Utc;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -20,7 +22,7 @@ use futures::{
     future::{self, BoxFuture},
     stream::BoxStream,
 };
-use miette::miette;
+use miette::{IntoDiagnostic, miette};
 use uuid::Uuid;
 
 use crate::{
@@ -29,6 +31,7 @@ use crate::{
     state::{
         WorkflowState,
         interface::{NodeState, RuntimeState},
+        models::{NewNodeOutput, UpsertNodeState},
     },
 };
 use crate::{
@@ -36,11 +39,8 @@ use crate::{
     state::{
         interface::RunAttemptUpdated,
         queries::{
-            add_run_metadata, insert_default_node_state, insert_default_workflowrun,
-            read_node_state, read_run_metadata, read_workflowrun, set_cancelled_if_none,
-            set_complete_if_none, set_cond_if_none, set_error_if_none, set_loop_index,
-            set_map_elem_complete, set_map_started_if_none, set_queued_if_none,
-            set_running_if_none, set_scheduled_if_none,
+            add_run_metadata, insert_default_workflowrun, read_node_state, read_run_metadata,
+            read_workflowrun, update_node_state,
         },
     },
 };
@@ -291,59 +291,98 @@ impl SqliteWorkflowState {
     }
 
     fn handle_node_event(&self, event: NodeEvent, send_update: &mut bool) -> miette::Result<()> {
-        // TODO: This should not be a loop at all.
-        for loc in event.locs {
-            insert_default_node_state(&loc, self.run_id, self.attempt, &self.global_state)?;
+        let attempt = self.attempt.try_into().into_diagnostic()?;
+        let now = Utc::now().naive_utc();
+        let mut node_outputs = HashMap::new();
+        let node_updates = event
+            .locs
+            .into_iter()
+            .enumerate()
+            .map(|(index, loc)| {
+                let mut row = UpsertNodeState {
+                    run_id: self.run_id.to_string(),
+                    attempt,
+                    node_location: loc.clone(),
+                    ..Default::default()
+                };
 
-            *send_update = match event.status {
-                NodeStatus::Scheduled => {
-                    set_scheduled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
+                match event.status {
+                    NodeStatus::Scheduled => {
+                        row.scheduled_time = Some(now);
+                    }
+                    NodeStatus::Queued => {
+                        row.queued_time = Some(now);
+                    }
+                    NodeStatus::Running { state_update: None } => {
+                        row.running_time = Some(now);
+                    }
+                    NodeStatus::Running {
+                        state_update: Some(RunningStateUpdate::Switching { cond }),
+                    } => {
+                        row.running_time = Some(now);
+                        row.cond = Some(cond);
+                    }
+                    NodeStatus::Running {
+                        state_update: Some(RunningStateUpdate::Looping { index }),
+                    } => {
+                        row.running_time = Some(now);
+                        row.loop_index = Some(index.try_into().into_diagnostic()?);
+                    }
+                    NodeStatus::Running {
+                        state_update: Some(RunningStateUpdate::MapStarted { size }),
+                    } => {
+                        row.running_time = Some(now);
+                        row.map_size = Some(size.try_into().into_diagnostic()?);
+                        row.map_completed = Some(
+                            BitVec::<u8>::repeat(false, size.try_into().into_diagnostic()?)
+                                .into_vec(),
+                        );
+                    }
+                    NodeStatus::Running {
+                        state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                    } => {
+                        row.running_time = Some(now);
+                        row.map_completed = Some(bits.clone().into_vec());
+                    }
+                    NodeStatus::Complete { ref outputs } => {
+                        row.complete_time = Some(now);
+                        if let Some(output) = outputs.get(index) {
+                            for (port, asset_spec) in output {
+                                node_outputs.insert(
+                                    loc.clone(),
+                                    NewNodeOutput {
+                                        name: port.clone(),
+                                        asset_kind: asset_spec.kind.to_string(),
+                                        storage_name: asset_spec.storage_name.clone(),
+                                        asset_key: asset_spec.asset_key.to_string(),
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    NodeStatus::Cancelled => {
+                        row.cancelled_time = Some(now);
+                    }
+                    NodeStatus::Error {
+                        ref error,
+                        ref detail,
+                    } => {
+                        row.error_time = Some(now);
+                        row.error = Some(error.clone());
+                        row.error_detail.clone_from(detail);
+                    }
                 }
-                NodeStatus::Queued => {
-                    set_queued_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-                }
-                NodeStatus::Running { state_update: None } => {
-                    set_running_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-                }
-                NodeStatus::Running {
-                    state_update: Some(RunningStateUpdate::Switching { cond }),
-                } => set_cond_if_none(&loc, self.run_id, self.attempt, cond, &self.global_state),
-                NodeStatus::Running {
-                    state_update: Some(RunningStateUpdate::Looping { index }),
-                } => set_loop_index(&loc, self.run_id, self.attempt, index, &self.global_state),
-                NodeStatus::Running {
-                    state_update: Some(RunningStateUpdate::MapStarted { size }),
-                } => set_map_started_if_none(
-                    &loc,
-                    self.run_id,
-                    self.attempt,
-                    size,
-                    &self.global_state,
-                ),
-                NodeStatus::Running {
-                    state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
-                } => {
-                    set_map_elem_complete(&loc, self.run_id, self.attempt, bits, &self.global_state)
-                }
-                NodeStatus::Complete { outputs: _ } => {
-                    set_complete_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-                }
-                NodeStatus::Cancelled => {
-                    set_cancelled_if_none(&loc, self.run_id, self.attempt, &self.global_state)
-                }
-                NodeStatus::Error {
-                    ref error,
-                    ref detail,
-                } => set_error_if_none(
-                    &loc,
-                    self.run_id,
-                    self.attempt,
-                    error,
-                    detail.as_deref(),
-                    &self.global_state,
-                ),
-            }?;
-        }
+
+                Ok(row)
+            })
+            .collect::<miette::Result<Vec<_>>>()?;
+        *send_update = update_node_state(
+            &self.global_state,
+            &self.run_id.to_string(),
+            attempt,
+            node_updates,
+            node_outputs,
+        )?;
         Ok(())
     }
 }
@@ -351,7 +390,12 @@ impl SqliteWorkflowState {
 #[cfg(test)]
 mod tests {
 
-    use crate::event::NodeStatus;
+    use std::ops::BitOr;
+
+    use crate::{
+        asset_storage::{AssetKey, AssetKind, AssetSpec},
+        event::NodeStatus,
+    };
 
     use super::*;
 
@@ -422,6 +466,111 @@ mod tests {
         let node_state = workflow_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
+
+        workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: vec![Location::root()],
+                status: NodeStatus::Queued,
+            }))
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert!(node_state.scheduled_time.is_some());
+        assert!(node_state.queued_time.is_some());
+
+        Ok(())
+    }
+
+    /// Test that we can read and write workflow run state.
+    #[tokio::test]
+    async fn write_and_read_outputs() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::new_in_memory();
+
+        let run_id = Uuid::now_v7();
+        let attempt = 2;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: vec![Location::root()],
+                status: NodeStatus::Complete {
+                    outputs: vec![outputs],
+                },
+            }))
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert!(node_state.outputs.is_some());
+
+        Ok(())
+    }
+
+    /// Test that we can read and write workflow run state with `map_completed`.
+    #[tokio::test]
+    async fn write_and_read_map_completed() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::new_in_memory();
+
+        let run_id = Uuid::now_v7();
+        let attempt = 2;
+        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+
+        workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: vec![Location::root()],
+                status: NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
+                },
+            }))
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert!(node_state.map_completed.is_some());
+
+        let mut bits1 = BitVec::repeat(false, 2);
+        bits1.set(0, true);
+        workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: vec![Location::root()],
+                status: NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::MapElemComplete {
+                        bits: bits1.clone(),
+                    }),
+                },
+            }))
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert_eq!(node_state.map_completed, Some(bits1.clone()));
+
+        let mut bits2 = BitVec::repeat(false, 2);
+        bits2.set(1, true);
+        workflow_state
+            .write(Event::Node(NodeEvent {
+                locs: vec![Location::root()],
+                status: NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::MapElemComplete {
+                        bits: bits2.clone(),
+                    }),
+                },
+            }))
+            .await?;
+
+        let node_state = workflow_state.read(&Location::root()).await?;
+
+        assert_eq!(node_state.map_completed, Some(bits2.bitor(bits1)));
 
         Ok(())
     }

@@ -2,7 +2,7 @@
 This module defines the interface contracts that the various [`AssetStorage`]
 implementations must satisfy.
 */
-use std::{fmt::Display, path::PathBuf, time::SystemTime};
+use std::{fmt::Display, path::PathBuf, str::FromStr, time::SystemTime};
 
 use miette::miette;
 use uuid::Uuid;
@@ -29,6 +29,26 @@ pub enum AssetKind {
         /// in the filesystem.
         root: PathBuf,
     },
+}
+
+impl FromStr for AssetKind {
+    type Err = miette::Report;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "memory" => Ok(Self::Memory),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Display for AssetKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Memory => write!(f, "memory"),
+            _ => unimplemented!(),
+        }
+    }
 }
 
 /// [`AssetSpec`] describes how an Asset should be stored.
@@ -97,6 +117,14 @@ impl TryFrom<&str> for AssetKey {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Ok(Self(value.parse()?))
+    }
+}
+
+impl FromStr for AssetKey {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
     }
 }
 

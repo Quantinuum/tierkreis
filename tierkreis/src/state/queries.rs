@@ -3,31 +3,23 @@ This module defines the queries for reading the workflow state from the `SQlite`
 */
 use std::collections::HashMap;
 use std::hash::BuildHasher;
-use std::ops::BitOr;
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
+use diesel::upsert::excluded;
 use miette::{IntoDiagnostic, WrapErr, miette};
 
+use crate::asset_storage::AssetSpec;
 use crate::location::Location;
-use crate::state::models::{NodeState, UpsertNodeState, Workflow, WorkflowRun};
+use crate::state::models::{
+    NewNodeOutput, NodeOutput, NodeState, UpsertNodeState, Workflow, WorkflowRun,
+};
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
-}
-
-fn encode_map_completed(map_completed: &BitVec) -> miette::Result<Vec<u8>> {
-    serde_json::to_vec(map_completed)
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to serialize map_completed")
-}
-
-fn decode_map_completed(encoded: &[u8]) -> miette::Result<BitVec> {
-    serde_json::from_slice(encoded)
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to deserialize map_completed")
 }
 
 /// Load the run-attempt state for a workflow run if it exists.
@@ -145,18 +137,54 @@ pub fn insert_default_workflowrun(
     Ok(run)
 }
 
+define_sql_function!(
+    /// `COALESCE` for datetime data.
+    #[sql_name = "coalesce"]
+    fn coalesce_datetime(x: Nullable<Timestamp>, y: Nullable<Timestamp>) -> Nullable<Timestamp>;
+);
+
+define_sql_function!(
+    /// `COALESCE` for boolean data.
+    #[sql_name = "coalesce"]
+    fn coalesce_bool(x: Nullable<Bool>, y: Nullable<Bool>) -> Nullable<Bool>;
+);
+
+define_sql_function!(
+    /// `COALESCE` for integer data.
+    #[sql_name = "coalesce"]
+    fn coalesce_int(x: Nullable<Integer>, y: Nullable<Integer>) -> Nullable<Integer>;
+);
+
+define_sql_function!(
+    /// `COALESCE` for textual data.
+    #[sql_name = "coalesce"]
+    fn coalesce_text(x: Nullable<Text>, y: Nullable<Text>) -> Nullable<Text>;
+);
+
+define_sql_function!(
+    /// `COALESCE` for binary BLOB data.
+    #[sql_name = "coalesce"]
+    fn coalesce_blob(x: Nullable<Binary>, y: Nullable<Binary>) -> Nullable<Binary>;
+);
+
+define_sql_function!(
+    /// `COALESCE` for binary BLOB data.
+    fn changes() -> Integer;
+);
+
 /// Ensure a node-state row exists for the given run/location.
 ///
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed or the insert
 /// operation fails.
-pub fn insert_default_node_state(
-    loc: &Location,
-    run_id: uuid::Uuid,
-    attempt: u32,
+pub fn update_node_state<S: BuildHasher>(
     connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<()> {
+    run_id: &str,
+    attempt: i32,
+    mut node_updates: Vec<UpsertNodeState>,
+    node_outputs: HashMap<Location, NewNodeOutput, S>,
+) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
 
     let mut conn = connection
@@ -164,323 +192,137 @@ pub fn insert_default_node_state(
         .into_diagnostic()
         .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    merge_map_complete_fields(&mut conn, run_id, attempt, &mut node_updates)?;
 
-    let row = UpsertNodeState {
-        run_id: run_id.to_string(),
-        attempt: attempt_i32,
-        node_location: loc.clone(),
-        scheduled_time: None,
-        queued_time: None,
-        running_time: None,
-        complete_time: None,
-        cancelled_time: None,
-        error_time: None,
-        cond: None,
-        loop_index: None,
-        map_completed: None,
-        error: None,
-        error_detail: None,
-    };
-
-    diesel::insert_into(ns::node_states)
-        .values(&row)
+    let rows_affected = diesel::insert_into(ns::node_states)
+        .values(node_updates)
         .on_conflict((ns::run_id, ns::attempt, ns::node_location))
-        .do_nothing()
+        .do_update()
+        .set((
+            ns::scheduled_time.eq(coalesce_datetime(
+                ns::scheduled_time,
+                excluded(ns::scheduled_time),
+            )),
+            ns::queued_time.eq(coalesce_datetime(
+                ns::queued_time,
+                excluded(ns::queued_time),
+            )),
+            ns::running_time.eq(coalesce_datetime(
+                ns::running_time,
+                excluded(ns::running_time),
+            )),
+            ns::complete_time.eq(coalesce_datetime(
+                ns::complete_time,
+                excluded(ns::complete_time),
+            )),
+            ns::cancelled_time.eq(coalesce_datetime(
+                ns::cancelled_time,
+                excluded(ns::cancelled_time),
+            )),
+            ns::error_time.eq(coalesce_datetime(ns::error_time, excluded(ns::error_time))),
+            ns::cond.eq(coalesce_bool(ns::cond, excluded(ns::cond))),
+            ns::loop_index.eq(coalesce_int(ns::loop_index, excluded(ns::loop_index))),
+            ns::map_size.eq(coalesce_int(ns::map_size, excluded(ns::map_size))),
+            // Ordering intentionally reversed as we always want the excluded map_completed
+            // if it is not NULL.
+            ns::map_completed.eq(coalesce_blob(
+                excluded(ns::map_completed),
+                ns::map_completed,
+            )),
+            ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
+            ns::error_detail.eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
+        ))
         .execute(&mut conn)
         .into_diagnostic()
-        .wrap_err_with(||miette!(
-            "Failed to ensure node state row for run {run_id} attempt {attempt} location {loc:?}"
-        ))?;
+        .wrap_err_with(|| miette!("Failed to ensure node state rows"))?;
 
+    save_outputs(conn, run_id, attempt, node_outputs)?;
+
+    Ok(rows_affected > 0)
+}
+
+fn save_outputs<S: BuildHasher>(
+    mut conn: diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+    run_id: &str,
+    attempt: i32,
+    node_outputs: HashMap<Location, NewNodeOutput, S>,
+) -> Result<(), miette::Error> {
+    use crate::state::schema::node_outputs::dsl as no;
+    use crate::state::schema::node_states::dsl as ns;
+
+    if !node_outputs.is_empty() {
+        let node_state_ids: HashMap<Location, i32> = ns::node_states
+            .select((ns::node_location, ns::id))
+            .filter(ns::run_id.eq(run_id))
+            .filter(ns::attempt.eq(attempt))
+            .filter(ns::node_location.eq_any(node_outputs.keys()))
+            .get_results(&mut conn)
+            .into_diagnostic()?
+            .into_iter()
+            .collect();
+
+        let db_outputs: Vec<_> = node_outputs
+            .into_iter()
+            .map(|(location, node_output)| {
+                (
+                    no::node_state_id.eq(node_state_ids.get(&location).unwrap()),
+                    node_output,
+                )
+            })
+            .collect();
+
+        diesel::insert_into(no::node_outputs)
+            .values(db_outputs)
+            .execute(&mut conn)
+            .into_diagnostic()?;
+    }
     Ok(())
 }
 
-macro_rules! define_set_time_if_none {
-    ($fn_name:ident, $field:ident, $label:literal) => {
-        #[doc = "Set `"]
-        #[doc = stringify!($field)]
-        #[doc = "` iff it is currently unset. \n\n# Errors\n\nReturns an error if the connection pool cannot be accessed or the update fails."]
-
-        pub fn $fn_name(
-            loc: &Location,
-            run_id: uuid::Uuid,
-            attempt: u32,
-            connection: &Pool<ConnectionManager<SqliteConnection>>,
-        ) -> miette::Result<bool> {
-            use crate::state::schema::node_states::dsl as ns;
-
-            let mut conn = connection
-                .get()
-                .into_diagnostic()
-                .wrap_err_with(||"Failed to get SQLite connection from pool")?;
-
-            let attempt_i32 = i32::try_from(attempt)
-                .into_diagnostic()
-                .wrap_err_with(||miette!("Attempt value {attempt} does not fit into i32"))?;
-            let now = Utc::now().naive_utc();
-
-            let changed = diesel::update(
-                ns::node_states
-                    .filter(ns::run_id.eq(run_id.to_string()))
-                    .filter(ns::attempt.eq(attempt_i32))
-                    .filter(ns::node_location.eq(loc.clone()))
-                    .filter(ns::$field.is_null()),
-            )
-            .set(ns::$field.eq(now))
-            .execute(&mut conn)
-            .into_diagnostic()
-            .wrap_err_with(||miette!(
-                "Failed to ensure node state row for run {run_id} attempt {attempt} location {loc:?}"
-            ))?;
-
-            Ok(changed > 0)
-        }
-    };
-}
-
-define_set_time_if_none!(set_scheduled_if_none, scheduled_time, "scheduled");
-define_set_time_if_none!(set_queued_if_none, queued_time, "queued");
-define_set_time_if_none!(set_running_if_none, running_time, "running");
-define_set_time_if_none!(set_complete_if_none, complete_time, "complete");
-define_set_time_if_none!(set_cancelled_if_none, cancelled_time, "cancelled");
-
-/// Set error fields iff `error_time` is currently unset.
-///
-/// # Errors
-///
-/// Returns an error if the connection pool cannot be accessed or the update fails.
-pub fn set_error_if_none(
-    loc: &Location,
-    run_id: uuid::Uuid,
-    attempt: u32,
-    error: &str,
-    detail: Option<&str>,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<bool> {
+fn merge_map_complete_fields(
+    conn: &mut diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+    run_id: &str,
+    attempt: i32,
+    node_updates: &mut [UpsertNodeState],
+) -> miette::Result<()> {
     use crate::state::schema::node_states::dsl as ns;
 
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let now = Utc::now().naive_utc();
+    let mut map_complete_locations = node_updates
+        .iter()
+        .filter(|node_update| node_update.map_completed.is_some())
+        .map(|node_update| &node_update.node_location)
+        .peekable();
 
-    let changed = diesel::update(
-        ns::node_states
-            .filter(ns::run_id.eq(run_id.to_string()))
-            .filter(ns::attempt.eq(attempt_i32))
-            .filter(ns::node_location.eq(loc.clone()))
-            .filter(ns::error_time.is_null()),
-    )
-    .set((
-        ns::error_time.eq(now),
-        ns::error.eq(error),
-        ns::error_detail.eq(detail),
-    ))
-    .execute(&mut conn)
-    .into_diagnostic()
-    .wrap_err_with(|| {
-        miette!("Failed to set error state for run {run_id} attempt {attempt} location {loc:?}",)
-    })?;
-
-    Ok(changed > 0)
-}
-
-/// Set node cond state iff it is currently unset.
-///
-/// # Errors
-///
-/// Returns an error if the connection pool cannot be accessed or the update fails.
-pub fn set_cond_if_none(
-    loc: &Location,
-    run_id: uuid::Uuid,
-    attempt: u32,
-    cond: bool,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<bool> {
-    use crate::state::schema::node_states::dsl as ns;
-
-    let mut db_conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-
-    let changed = diesel::update(
-        ns::node_states
-            .filter(ns::run_id.eq(run_id.to_string()))
-            .filter(ns::attempt.eq(attempt_i32))
-            .filter(ns::node_location.eq(loc.clone()))
-            .filter(ns::cond.is_null()),
-    )
-    .set(ns::cond.eq(cond))
-    .execute(&mut db_conn)
-    .into_diagnostic()
-    .wrap_err_with(|| {
-        miette!("Failed to set cond state for run {run_id} attempt {attempt} location {loc:?}")
-    })?;
-
-    Ok(changed > 0)
-}
-
-/// Set node loop index iff it differs from the current value.
-///
-/// # Errors
-///
-/// Returns an error if the connection pool cannot be accessed, conversion fails, or the update fails.
-pub fn set_loop_index(
-    loc: &Location,
-    run_id: uuid::Uuid,
-    attempt: u32,
-    loop_index: u32,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<bool> {
-    use crate::state::schema::node_states::dsl as ns;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let loop_index_i32 = i32::try_from(loop_index)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Loop index value {loop_index} does not fit into i32"))?;
-
-    let changed = diesel::update(
-        ns::node_states
-            .filter(ns::run_id.eq(run_id.to_string()))
-            .filter(ns::attempt.eq(attempt_i32))
-            .filter(ns::node_location.eq(loc.clone()))
-            .filter(
-                ns::loop_index
-                    .ne(loop_index_i32)
-                    .or(ns::loop_index.is_null()),
-            ),
-    )
-    .set(ns::loop_index.eq(loop_index_i32))
-    .execute(&mut conn)
-    .into_diagnostic()
-    .wrap_err_with(|| {
-        miette!("Failed to set loop index for run {run_id} attempt {attempt} location {loc:?}")
-    })?;
-
-    Ok(changed > 0)
-}
-
-/// Initialize map completion state if it is currently unset.
-///
-/// # Errors
-///
-/// Returns an error if the connection pool cannot be accessed or the update fails.
-pub fn set_map_started_if_none(
-    loc: &Location,
-    run_id: uuid::Uuid,
-    attempt: u32,
-    size: u32,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<bool> {
-    use crate::state::schema::node_states::dsl as ns;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let encoded = encode_map_completed(&BitVec::repeat(false, size as usize))?;
-
-    let changed = diesel::update(
-        ns::node_states
-            .filter(ns::run_id.eq(run_id.to_string()))
-            .filter(ns::attempt.eq(attempt_i32))
-            .filter(ns::node_location.eq(loc.clone()))
-            .filter(ns::map_completed.is_null()),
-    )
-    .set(ns::map_completed.eq(encoded))
-    .execute(&mut conn)
-    .into_diagnostic()
-    .wrap_err_with(||miette!(
-        "Failed to initialize map completion for run {run_id} attempt {attempt} location {loc:?}"
-    ))?;
-
-    Ok(changed > 0)
-}
-
-/// Mark a map element as complete.
-///
-/// # Errors
-///
-/// Returns an error if the connection pool cannot be accessed, map state is invalid, or updates fail.
-pub fn set_map_elem_complete(
-    loc: &Location,
-    run_id: uuid::Uuid,
-    attempt: u32,
-    completed: &BitVec,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
-) -> miette::Result<bool> {
-    use crate::state::schema::node_states::dsl as ns;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-
-    let map_completed = ns::node_states
-        .filter(ns::run_id.eq(run_id.to_string()))
-        .filter(ns::attempt.eq(attempt_i32))
-        .filter(ns::node_location.eq(loc.clone()))
-        .select(ns::map_completed)
-        .first::<Option<Vec<u8>>>(&mut conn)
-        .optional()
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            miette!(
-                "Failed to load map completion for run {run_id} attempt {attempt} location {loc:?}"
-            )
-        })?
-        .flatten();
-
-    let Some(encoded) = map_completed else {
-        return Ok(false);
-    };
-
-    let map_completed = decode_map_completed(&encoded)?;
-    let new_map_completed = map_completed.bitor(completed);
-    if new_map_completed == *completed {
-        return Ok(false);
+    if map_complete_locations.peek().is_none() {
+        return Ok(());
     }
 
-    let updated = encode_map_completed(&new_map_completed)?;
-    let changed = diesel::update(
-        ns::node_states
-            .filter(ns::run_id.eq(run_id.to_string()))
-            .filter(ns::attempt.eq(attempt_i32))
-            .filter(ns::node_location.eq(loc.clone())),
-    )
-    .set(ns::map_completed.eq(updated))
-    .execute(&mut conn)
-    .into_diagnostic()
-    .wrap_err_with(|| {
-        miette!(
-            "Failed to update map completion for run {run_id} attempt {attempt} location {loc:?}"
-        )
-    })?;
+    let existing_map_locations: HashMap<Location, Vec<u8>> = ns::node_states
+        .select((ns::node_location, ns::map_completed.assume_not_null()))
+        .filter(ns::run_id.eq(run_id))
+        .filter(ns::attempt.eq(attempt))
+        .filter(ns::map_completed.is_not_null())
+        .filter(ns::node_location.eq_any(map_complete_locations))
+        .get_results(conn)
+        .into_diagnostic()?
+        .into_iter()
+        .collect();
 
-    Ok(changed > 0)
+    for (node_location, node_update) in node_updates.iter_mut().filter_map(|node_update| {
+        node_update
+            .map_completed
+            .as_mut()
+            .map(|map_completed| (&node_update.node_location, map_completed))
+    }) {
+        if let Some(existing) = existing_map_locations.get(node_location) {
+            node_update
+                .iter_mut()
+                .zip(existing)
+                .for_each(|(x, y)| *x |= y);
+        }
+    }
+
+    Ok(())
 }
 
 /// Read the persisted node state for a workflow run at a given location.
@@ -533,8 +375,20 @@ pub fn read_node_state(
         let map_completed = db_node
             .map_completed
             .as_deref()
-            .map(decode_map_completed)
+            .map(|x| {
+                let mut bits = BitVec::from_slice(x);
+                bits.truncate(
+                    db_node
+                        .map_size
+                        .ok_or_else(|| miette!("Could not get map size from node state"))?
+                        .try_into()
+                        .into_diagnostic()?,
+                );
+                Ok::<_, miette::Report>(bits)
+            })
             .transpose()?;
+
+        let outputs = read_outputs(conn, &db_node)?;
 
         Ok(crate::state::interface::NodeState {
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
@@ -548,11 +402,40 @@ pub fn read_node_state(
             map_completed,
             error: db_node.error.clone(),
             error_detail: db_node.error_detail.clone(),
-            ..Default::default()
+            outputs,
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
     }
+}
+
+fn read_outputs(
+    mut conn: diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+    db_node: &NodeState,
+) -> Result<Option<HashMap<String, AssetSpec>>, miette::Error> {
+    let outputs = if db_node.complete_time.is_some() {
+        let db_outputs: Vec<NodeOutput> = NodeOutput::belonging_to(db_node)
+            .get_results(&mut conn)
+            .into_diagnostic()?;
+        let outputs: HashMap<String, AssetSpec> = db_outputs
+            .into_iter()
+            .map(|db_output| {
+                Ok::<_, miette::Report>((
+                    db_output.name,
+                    AssetSpec {
+                        kind: db_output.asset_kind.parse()?,
+                        storage_name: db_output.storage_name,
+                        asset_key: db_output.asset_key.parse().into_diagnostic()?,
+                    },
+                ))
+            })
+            .collect::<Result<_, _>>()?;
+        Some(outputs)
+    } else {
+        None
+    };
+
+    Ok(outputs)
 }
 
 /// Merge additional metadata into the persisted run metadata for a workflow run.
