@@ -11,13 +11,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use futures::StreamExt;
 use miette::{
     Error, IntoDiagnostic, LabeledSpan, MietteDiagnostic, NamedSource, SourceOffset, SourceSpan,
     miette,
 };
 use pyo3::{exceptions::PySyntaxError, prelude::*};
-use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -105,11 +103,49 @@ impl Runtime<SqliteRuntimeState> {
             inputs: HashMap::new(),
         })
     }
+
+    // TODO: Add a from_config function to build a Runtime from a configuration file.
+    async fn sqlite_memory() -> miette::Result<Self> {
+        let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
+        let memory_storage = InMemoryStorage::new();
+        asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
+
+        let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
+
+        let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
+
+        executor_registry.insert(
+            "memory".to_string(),
+            Box::new(InMemoryExecutor::try_new(
+                &asset_storage_registry,
+                "memory",
+            )?),
+        );
+        let executor_registry = Arc::new(executor_registry);
+
+        let orchestrator = Orchestrator::try_new(
+            &asset_storage_registry,
+            &executor_registry,
+            "memory",
+            "memory",
+        )?;
+
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        Ok(Self {
+            orchestrator,
+            state: runtime_state,
+            asset_storage_registry,
+            workflow_graph: None,
+            inputs: HashMap::new(),
+        })
+    }
 }
 
 impl Runtime<InMemoryRuntimeState> {
     // TODO: Add a from_config function to build a Runtime from a configuration file.
-    async fn memory() -> miette::Result<Self> {
+    #[allow(dead_code)]
+    fn memory() -> miette::Result<Self> {
         let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
         let memory_storage = InMemoryStorage::new();
         asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
@@ -208,7 +244,7 @@ impl<RS: RuntimeState> Runtime<RS> {
         let mut state_recv = self.state.listen()?;
 
         loop {
-            let workflow_state = {
+            let (run_id, attempt) = {
                 // WARNING: It's very important that we drop this `updated` ref
                 // in order for the orchestrator to be able to send updates later on
                 // as this channel uses a RW lock that is held as long as this ref exists.
@@ -218,22 +254,17 @@ impl<RS: RuntimeState> Runtime<RS> {
                 if updated.stopped {
                     break;
                 }
-                let workflow_state = self
-                    .state
-                    .workflow_state(updated.run_id, updated.attempt)
-                    .await?;
-                Arc::new(workflow_state)
+                (updated.run_id, updated.attempt)
             };
+            let workflow_state = self.state.workflow_state(run_id, attempt).await?;
+            let workflow_state = Arc::new(workflow_state);
 
             // TODO: Handle inputs better here.
             let context = OrchestrationContext::new(&workflow_state, self.inputs.clone());
 
             let actions = self
                 .orchestrator
-                .build_actions(
-                    context.clone(),
-                    self.workflow_graph.as_ref().cloned().unwrap(),
-                )
+                .build_actions(context.clone(), self.workflow_graph.clone().unwrap())
                 .await?;
             self.orchestrator.perform_actions(actions).await?;
             state_recv.changed().await.into_diagnostic()?;
@@ -273,7 +304,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut runtime = Runtime::memory().await?;
+    let mut runtime = Runtime::sqlite_memory().await?;
     let (run_id, attempt) = runtime.start(workflow_graph, inputs).await?;
     runtime.run().await?;
     let outputs = runtime.outputs(run_id, attempt).await?;

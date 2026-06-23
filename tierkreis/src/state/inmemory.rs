@@ -8,14 +8,13 @@ state is not persisted beyond the lifetime of the process.
 use std::{
     collections::HashMap,
     ops::BitOrAssign,
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{Arc, Mutex},
 };
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
 use dashmap::DashMap;
-use futures::{SinkExt, StreamExt, stream::BoxStream};
-use miette::{Context, IntoDiagnostic, miette};
+use miette::miette;
 use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
@@ -232,27 +231,31 @@ fn handle_node_event(
     mut run_state: dashmap::mapref::one::RefMut<'_, (Uuid, u32), RunAttemptState>,
     node_event: &NodeEvent,
 ) {
+    let now = Utc::now();
     for (idx, loc) in node_event.locs.iter().enumerate() {
         let node_state = run_state.nodes.entry(loc.clone()).or_default();
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
-                    node_state.scheduled_time = Some(Utc::now());
+                    node_state.scheduled_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Queued => {
                 if node_state.queued_time.is_none() {
-                    node_state.queued_time = Some(Utc::now());
+                    node_state.queued_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Running { state_update: None } => {
                 if node_state.running_time.is_none() {
-                    node_state.running_time = Some(Utc::now());
+                    node_state.running_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if node_state.cond.is_none() {
                     node_state.cond = Some(cond);
                 }
@@ -260,6 +263,9 @@ fn handle_node_event(
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if node_state.loop_index != Some(index) {
                     node_state.loop_index = Some(index);
                 }
@@ -267,6 +273,9 @@ fn handle_node_event(
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted { size }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if node_state.map_completed.is_none() {
                     node_state.map_completed = Some(BitVec::repeat(false, size as usize));
                 }
@@ -274,19 +283,22 @@ fn handle_node_event(
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if let Some(map_completed) = node_state.map_completed.as_mut() {
                     map_completed.bitor_assign(bits);
                 }
             }
             crate::event::NodeStatus::Complete { ref outputs } => {
                 if node_state.complete_time.is_none() {
-                    node_state.complete_time = Some(Utc::now());
+                    node_state.complete_time = Some(now);
                     node_state.outputs = Some(outputs.get(idx).unwrap().clone());
                 }
             }
             crate::event::NodeStatus::Cancelled => {
                 if node_state.cancelled_time.is_none() {
-                    node_state.cancelled_time = Some(Utc::now());
+                    node_state.cancelled_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Error {
@@ -294,7 +306,7 @@ fn handle_node_event(
                 ref detail,
             } => {
                 if node_state.error_time.is_none() {
-                    node_state.error_time = Some(Utc::now());
+                    node_state.error_time = Some(now);
                     node_state.error = Some(error.clone());
                     node_state.error_detail.clone_from(detail);
                 }

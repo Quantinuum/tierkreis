@@ -170,6 +170,12 @@ define_sql_function!(
     fn changes() -> Integer;
 );
 
+define_sql_function!(
+    /// `MAX` for integer data.
+    #[sql_name = "max"]
+    fn max_int(x: Nullable<Integer>, y: Nullable<Integer>) -> Nullable<Integer>;
+);
+
 /// Ensure a node-state row exists for the given run/location.
 ///
 /// # Errors
@@ -181,7 +187,7 @@ pub async fn update_node_state(
     run_id: &str,
     attempt: i32,
     mut node_updates: Vec<UpsertNodeState>,
-    node_outputs: HashMap<Location, NewNodeOutput>,
+    node_outputs: Vec<(Location, NewNodeOutput)>,
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
 
@@ -192,7 +198,7 @@ pub async fn update_node_state(
             // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
             let mut rows_affected = 0;
             for node_update in node_updates {
-                let row_affected = diesel::insert_into(ns::node_states)
+                rows_affected += diesel::insert_into(ns::node_states)
                     .values(node_update)
                     .on_conflict((ns::run_id, ns::attempt, ns::node_location))
                     .do_update()
@@ -220,7 +226,9 @@ pub async fn update_node_state(
                         ns::error_time
                             .eq(coalesce_datetime(ns::error_time, excluded(ns::error_time))),
                         ns::cond.eq(coalesce_bool(ns::cond, excluded(ns::cond))),
-                        ns::loop_index.eq(coalesce_int(ns::loop_index, excluded(ns::loop_index))),
+                        // Ordering intentionally reversed as we always want the excluded loop_index
+                        // if it is not NULL.
+                        ns::loop_index.eq(coalesce_int(excluded(ns::loop_index), ns::loop_index)),
                         ns::map_size.eq(coalesce_int(ns::map_size, excluded(ns::map_size))),
                         // Ordering intentionally reversed as we always want the excluded map_completed
                         // if it is not NULL.
@@ -234,8 +242,6 @@ pub async fn update_node_state(
                     ))
                     .execute(conn)
                     .await?;
-
-                rows_affected += row_affected;
             }
 
             save_outputs(conn, run_id, attempt, node_outputs).await?;
@@ -248,21 +254,22 @@ pub async fn update_node_state(
     .into_diagnostic()
 }
 
-async fn save_outputs<S: BuildHasher>(
+async fn save_outputs(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     attempt: i32,
-    node_outputs: HashMap<Location, NewNodeOutput, S>,
+    node_outputs: Vec<(Location, NewNodeOutput)>,
 ) -> Result<(), diesel::result::Error> {
     use crate::state::schema::node_outputs::dsl as no;
     use crate::state::schema::node_states::dsl as ns;
 
     if !node_outputs.is_empty() {
+        let locations = node_outputs.iter().map(|(x, _)| x);
         let node_state_ids: HashMap<Location, i32> = ns::node_states
             .select((ns::node_location, ns::id))
             .filter(ns::run_id.eq(run_id))
             .filter(ns::attempt.eq(attempt))
-            .filter(ns::node_location.eq_any(node_outputs.keys()))
+            .filter(ns::node_location.eq_any(locations))
             .get_results(conn)
             .await?
             .into_iter()
@@ -271,7 +278,6 @@ async fn save_outputs<S: BuildHasher>(
         let db_outputs: Vec<_> = node_outputs
             .into_iter()
             .map(|(location, node_output)| {
-                dbg!(&location, &node_output);
                 (
                     no::node_state_id.eq(node_state_ids.get(&location).unwrap()),
                     node_output,
@@ -283,6 +289,8 @@ async fn save_outputs<S: BuildHasher>(
         for db_output in db_outputs {
             diesel::insert_into(no::node_outputs)
                 .values(db_output)
+                .on_conflict((no::node_state_id, no::name)) // TODO: Might need a unique index?
+                .do_nothing()
                 .execute(conn)
                 .await?;
         }

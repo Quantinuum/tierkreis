@@ -33,8 +33,8 @@ mod tierkreis {
     #[allow(clippy::unnecessary_wraps)]
     #[pymodule_init]
     fn init(_m: &Bound<'_, PyModule>) -> PyResult<()> {
-        console_subscriber::init();
-        // tracing_subscriber::fmt().compact().init();
+        // console_subscriber::init();
+        tracing_subscriber::fmt().compact().init();
         Ok(())
     }
 

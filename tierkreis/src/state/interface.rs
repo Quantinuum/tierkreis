@@ -64,6 +64,8 @@ pub struct NodeState {
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
+    /// [`WorkflowState`] is the implementation of the [`WorkflowState`] trait that is associated
+    /// with this [`RuntimeState`] implementation and returned by the `workflow_state` method.
     type WorkflowState: WorkflowState;
     /// Retrieve a handle to a [`WorkflowState`] depending on the `run_id` and attempt number.
     ///

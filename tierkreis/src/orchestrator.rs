@@ -125,7 +125,7 @@ impl<WS: WorkflowState> OrchestrationContext<WS> {
         Self {
             parent_loc: Location::root(),
             graph_inputs: inputs,
-            workflow_state: Arc::clone(&workflow_state),
+            workflow_state: Arc::clone(workflow_state),
         }
     }
 }

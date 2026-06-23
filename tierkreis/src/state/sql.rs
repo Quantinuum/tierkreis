@@ -50,7 +50,7 @@ use crate::{
 /// Embedded Diesel migrations
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
-fn run_migrations<'a>(conn: Object<SyncConnectionWrapper<SqliteConnection>>) -> miette::Result<()> {
+fn run_migrations(conn: Object<SyncConnectionWrapper<SqliteConnection>>) -> miette::Result<()> {
     let mut harness = AsyncMigrationHarness::new(conn);
     harness
         .run_pending_migrations(MIGRATIONS)
@@ -129,10 +129,9 @@ pub struct SqliteRuntimeState {
 impl SqliteRuntimeState {
     /// Create a new [`SqliteRuntimeState`] instance.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the `SQLite` database connection pool cannot be established.
-    #[must_use]
+    /// Will return Err if the `SQLite` database connection pool cannot be established.
     pub async fn try_new() -> miette::Result<Self> {
         let (sender, receiver) = watch::channel(RunAttemptUpdated {
             attempt: 0,
@@ -154,11 +153,9 @@ impl SqliteRuntimeState {
     /// `SQLite` database. Each call produces a separate database, making this
     /// suitable for parallel tests.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the in-memory database connection pool cannot be established.
-    // #[cfg(test)]
-    #[must_use]
+    /// Will return Err if the in-memory database connection pool cannot be established.
     pub async fn try_new_in_memory() -> miette::Result<Self> {
         let db_name = Uuid::now_v7();
         // `file:name?mode=memory&cache=shared` gives a named in-memory database
@@ -239,6 +236,8 @@ impl RuntimeState for SqliteRuntimeState {
 /// with [`SqlRuntimeState`].
 pub struct SqliteWorkflowState {
     pool: ConnPool,
+    // Only one thread can write to an SQLite db at a time, so we use a RWLock to
+    // control access to the ConnPool.
     lock: Arc<RwLock<()>>,
     update_sender: watch::Sender<RunAttemptUpdated>,
     run_id: Uuid,
@@ -261,7 +260,7 @@ impl WorkflowState for SqliteWorkflowState {
                 Self::handle_run_event(&mut send_workflow_stopped, run_event);
             }
             Event::Node(ref node_event) => self.handle_node_event(node_event).await?,
-        };
+        }
 
         self.update_sender.send_modify(|run_attempt_updated| {
             run_attempt_updated.run_id = self.run_id;
@@ -318,7 +317,7 @@ impl SqliteWorkflowState {
     async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
-        let mut node_outputs = HashMap::new();
+        let mut node_outputs = Vec::new();
         let node_updates = event
             .locs
             .iter()
@@ -373,7 +372,7 @@ impl SqliteWorkflowState {
                         row.complete_time = Some(now);
                         if let Some(output) = outputs.get(index) {
                             for (port, asset_spec) in output {
-                                node_outputs.insert(
+                                node_outputs.push((
                                     loc.clone(),
                                     NewNodeOutput {
                                         name: port.clone(),
@@ -381,7 +380,7 @@ impl SqliteWorkflowState {
                                         storage_name: asset_spec.storage_name.clone(),
                                         asset_key: asset_spec.asset_key.to_string(),
                                     },
-                                );
+                                ));
                             }
                         }
                     }
