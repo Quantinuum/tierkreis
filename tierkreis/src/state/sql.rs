@@ -8,21 +8,23 @@ state is not persisted beyond the lifetime of the process.
 use std::{
     collections::HashMap,
     env::{self, home_dir},
+    fmt::Debug,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
-use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use futures::{
-    FutureExt, SinkExt, StreamExt,
-    channel::mpsc,
-    future::{self, BoxFuture},
-    stream::BoxStream,
+use deadpool::Runtime;
+use diesel::SqliteConnection;
+use diesel_async::{
+    AsyncMigrationHarness,
+    pooled_connection::{AsyncDieselConnectionManager, deadpool::Object},
+    sync_connection_wrapper::SyncConnectionWrapper,
 };
-use miette::{IntoDiagnostic, miette};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
+use miette::{Context, IntoDiagnostic, miette};
+use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 
 use crate::{
@@ -48,13 +50,17 @@ use crate::{
 /// Embedded Diesel migrations
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
-fn run_migrations(connection: &mut SqliteConnection) -> miette::Result<()> {
-    connection
+fn run_migrations<'a>(conn: Object<SyncConnectionWrapper<SqliteConnection>>) -> miette::Result<()> {
+    let mut harness = AsyncMigrationHarness::new(conn);
+    harness
         .run_pending_migrations(MIGRATIONS)
         .map_err(|err| miette!("Failed to run SQLite migrations: {err}"))?;
 
     Ok(())
 }
+
+type ConnPool =
+    diesel_async::pooled_connection::deadpool::Pool<SyncConnectionWrapper<SqliteConnection>>;
 
 /// Build a connection pool for the given `database_url`.
 ///
@@ -62,26 +68,23 @@ fn run_migrations(connection: &mut SqliteConnection) -> miette::Result<()> {
 ///
 /// Returns an error when the pool cannot be built, a connection cannot be
 /// acquired, migrations fail, or `SQLite` pragmas fail to apply.
-pub fn establish_connection_with_url(
-    database_url: &str,
-) -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
-    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+pub async fn build_conn_pool_with_url(database_url: &str) -> miette::Result<ConnPool> {
+    let manager =
+        AsyncDieselConnectionManager::<SyncConnectionWrapper<SqliteConnection>>::new(database_url);
 
-    let pool = Pool::builder()
-        .build(manager)
-        .map_err(|_| miette!("Error connecting to {}", database_url))?;
+    let pool = diesel_async::pooled_connection::deadpool::Pool::builder(manager)
+        .runtime(Runtime::Tokio1)
+        .wait_timeout(Some(Duration::from_secs(1)))
+        .build()
+        .into_diagnostic()?;
 
-    let mut conn = pool
+    let conn = pool
         .get()
-        .map_err(|err| miette!("Error acquiring connection for SQLite setup: {err}"))?;
-    run_migrations(&mut conn)?;
+        .await
+        .into_diagnostic()
+        .wrap_err("Error acquiring connection from pool")?;
 
-    diesel::sql_query("PRAGMA busy_timeout = 5000;")
-        .execute(&mut conn)
-        .map_err(|err| miette!("Failed to apply SQLite busy_timeout: {err}"))?;
-    diesel::sql_query("PRAGMA journal_mode = WAL;")
-        .execute(&mut conn)
-        .map_err(|err| miette!("Failed to apply SQLite WAL mode: {err}"))?;
+    run_migrations(conn)?;
 
     Ok(pool)
 }
@@ -93,7 +96,7 @@ pub fn establish_connection_with_url(
 /// Returns an error when the database directory cannot be created, the pool cannot
 /// be built, a connection cannot be acquired, migrations fail, or `SQLite` pragmas
 /// fail to apply.
-pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteConnection>>> {
+pub async fn build_conn_pool() -> miette::Result<ConnPool> {
     let fallback = home_dir()
         .unwrap_or_else(|| "/tmp".into())
         .join(".tierkreis/checkpoints/tierkreis.sqlite");
@@ -111,17 +114,16 @@ pub fn establish_connection() -> miette::Result<Pool<ConnectionManager<SqliteCon
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| fallback.to_string_lossy().to_string());
 
-    establish_connection_with_url(&database_url)
+    build_conn_pool_with_url(&database_url).await
 }
 
 /// [`SqliteRuntimeState`] implements [`RuntimeState`] but with a `SQLite` backing
 /// that will be persisted in a `SQLite` database.
-#[derive(Debug)]
 pub struct SqliteRuntimeState {
-    connection: Arc<Pool<ConnectionManager<SqliteConnection>>>,
-    //inner: Arc<InMemoryRuntimeStateInner>,
-    update_sender: mpsc::Sender<RunAttemptUpdated>,
-    update_receiver: Mutex<Option<mpsc::Receiver<RunAttemptUpdated>>>,
+    pool: ConnPool,
+    lock: Arc<RwLock<()>>,
+    update_sender: watch::Sender<RunAttemptUpdated>,
+    update_receiver: Mutex<Option<watch::Receiver<RunAttemptUpdated>>>,
 }
 
 impl SqliteRuntimeState {
@@ -131,15 +133,21 @@ impl SqliteRuntimeState {
     ///
     /// Panics if the `SQLite` database connection pool cannot be established.
     #[must_use]
-    pub fn new() -> Self {
-        // TODO: This channel clogs up easily if left un-checked.
-        let (sender, receiver) = mpsc::channel(1024);
-        let connection = establish_connection().expect("Failed to establish database connection");
-        Self {
-            connection: Arc::new(connection),
+    pub async fn try_new() -> miette::Result<Self> {
+        let (sender, receiver) = watch::channel(RunAttemptUpdated {
+            attempt: 0,
+            run_id: Uuid::nil(),
+            stopped: false,
+        });
+        let pool = build_conn_pool()
+            .await
+            .wrap_err("Failed to establish database connection")?;
+        Ok(Self {
+            pool,
+            lock: Arc::new(RwLock::new(())),
             update_sender: sender,
             update_receiver: Mutex::new(Some(receiver)),
-        }
+        })
     }
 
     /// Create a new [`SqliteRuntimeState`] backed by an isolated in-memory
@@ -149,50 +157,69 @@ impl SqliteRuntimeState {
     /// # Panics
     ///
     /// Panics if the in-memory database connection pool cannot be established.
-    #[cfg(test)]
+    // #[cfg(test)]
     #[must_use]
-    pub fn new_in_memory() -> Self {
+    pub async fn try_new_in_memory() -> miette::Result<Self> {
         let db_name = Uuid::now_v7();
         // `file:name?mode=memory&cache=shared` gives a named in-memory database
         // that all connections in the pool share, avoiding the isolation problem
         // that `:memory:` has with pooled connections.
         let url = format!("file:{db_name}?mode=memory&cache=shared");
-        let (sender, receiver) = mpsc::channel(1024);
-        let connection =
-            establish_connection_with_url(&url).expect("Failed to establish in-memory database");
-        Self {
-            connection: Arc::new(connection),
+        let (sender, receiver) = watch::channel(RunAttemptUpdated {
+            attempt: 0,
+            run_id: Uuid::nil(),
+            stopped: false,
+        });
+        let pool = build_conn_pool_with_url(&url)
+            .await
+            .wrap_err("Failed to establish in-memory database")?;
+        Ok(Self {
+            pool,
+            lock: Arc::new(RwLock::new(())),
             update_sender: sender,
             update_receiver: Mutex::new(Some(receiver)),
-        }
+        })
     }
 }
 
-impl Default for SqliteRuntimeState {
-    fn default() -> Self {
-        Self::new()
+impl Debug for SqliteRuntimeState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SqliteRuntimeState")
     }
 }
 
 impl RuntimeState for SqliteRuntimeState {
-    fn workflow_state(&self, run_id: Uuid, attempt: u32) -> Arc<dyn WorkflowState> {
+    type WorkflowState = SqliteWorkflowState;
+
+    async fn workflow_state(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<SqliteWorkflowState> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
         // Insert the default if the value does not yet exist.
         // Cannot return errors from this trait method, so best-effort initialize.
-        let run = read_workflowrun(run_id, attempt, &self.connection);
+        let run = read_workflowrun(&mut conn, run_id, attempt).await;
         // Should fail?
         if run.is_err() {
-            _ = insert_default_workflowrun(run_id, attempt, &self.connection);
+            _ = insert_default_workflowrun(&mut conn, run_id, attempt).await?;
         }
 
-        Arc::new(SqliteWorkflowState {
-            global_state: self.connection.clone(),
+        Ok(SqliteWorkflowState {
+            pool: self.pool.clone(),
+            lock: self.lock.clone(),
             update_sender: self.update_sender.clone(),
             run_id,
             attempt,
         })
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'static, RunAttemptUpdated>> {
+    fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>> {
         let receiver = {
             let mut receiver = self
                 .update_receiver
@@ -204,79 +231,77 @@ impl RuntimeState for SqliteRuntimeState {
             ))?
         };
 
-        Ok(receiver.boxed())
+        Ok(receiver)
     }
 }
 
 /// [`SqlWorkflowState`] is an implementation of [`WorkflowState`] that shares storage
 /// with [`SqlRuntimeState`].
-#[derive(Debug)]
 pub struct SqliteWorkflowState {
-    global_state: Arc<Pool<ConnectionManager<SqliteConnection>>>,
-    update_sender: mpsc::Sender<RunAttemptUpdated>,
+    pool: ConnPool,
+    lock: Arc<RwLock<()>>,
+    update_sender: watch::Sender<RunAttemptUpdated>,
     run_id: Uuid,
     attempt: u32,
 }
 
-impl SqliteWorkflowState {}
+impl Debug for SqliteWorkflowState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SqliteWorkflowState({}, {})", self.run_id, self.attempt)
+    }
+}
 
 impl WorkflowState for SqliteWorkflowState {
-    fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
-        let mut send_update = false;
+    async fn write(&self, event: Event) -> miette::Result<()> {
         let mut send_workflow_stopped = false;
+        let _lock = self.lock.write().await;
 
-        let res = match event {
-            Event::WorkflowRun(run_event) => {
-                let _: () = Self::handle_run_event(&mut send_workflow_stopped, &run_event);
-                Ok(())
+        match event {
+            Event::WorkflowRun(ref run_event) => {
+                Self::handle_run_event(&mut send_workflow_stopped, run_event);
             }
-            Event::Node(node_event) => self.handle_node_event(node_event, &mut send_update),
+            Event::Node(ref node_event) => self.handle_node_event(node_event).await?,
         };
 
-        if res.is_err() {
-            return future::ready(res).boxed();
-        }
-
-        let mut update_sender = self.update_sender.clone();
-        async move {
-            if send_update || send_workflow_stopped {
-                update_sender
-                    .send(RunAttemptUpdated {
-                        run_id: self.run_id,
-                        attempt: self.attempt,
-                        stopped: send_workflow_stopped,
-                    })
-                    .await
-                    .map_err(|err| miette!("Send failed: {err}"))?;
-            }
-            Ok(())
-        }
-        .boxed()
+        self.update_sender.send_modify(|run_attempt_updated| {
+            run_attempt_updated.run_id = self.run_id;
+            run_attempt_updated.attempt = self.attempt;
+            run_attempt_updated.stopped |= send_workflow_stopped;
+        });
+        Ok(())
     }
 
-    fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>> {
-        let node_state = read_node_state(self.run_id, self.attempt, location, &self.global_state);
-
-        future::ready(node_state).boxed()
+    async fn read(&self, location: &Location) -> miette::Result<NodeState> {
+        let _lock = self.lock.read().await;
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        read_node_state(&mut conn, self.run_id, self.attempt, location).await
     }
 
-    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
-        future::ready(add_run_metadata(
-            self.run_id,
-            self.attempt,
-            metadata,
-            &self.global_state,
-        ))
-        .boxed()
+    async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
+        let _lock = self.lock.write().await;
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        add_run_metadata(&mut conn, self.run_id, self.attempt, metadata).await
     }
 
-    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>> {
-        future::ready(read_run_metadata(
-            self.run_id,
-            self.attempt,
-            &self.global_state,
-        ))
-        .boxed()
+    async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
+        let _lock = self.lock.read().await;
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        read_run_metadata(&mut conn, self.run_id, self.attempt).await
     }
 }
 
@@ -290,13 +315,13 @@ impl SqliteWorkflowState {
         }
     }
 
-    fn handle_node_event(&self, event: NodeEvent, send_update: &mut bool) -> miette::Result<()> {
+    async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
         let mut node_outputs = HashMap::new();
         let node_updates = event
             .locs
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(index, loc)| {
                 let mut row = UpsertNodeState {
@@ -376,13 +401,22 @@ impl SqliteWorkflowState {
                 Ok(row)
             })
             .collect::<miette::Result<Vec<_>>>()?;
-        *send_update = update_node_state(
-            &self.global_state,
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+
+        update_node_state(
+            &mut conn,
             &self.run_id.to_string(),
             attempt,
             node_updates,
             node_outputs,
-        )?;
+        )
+        .await?;
         Ok(())
     }
 }
@@ -400,13 +434,13 @@ mod tests {
     use super::*;
 
     /// Test that reading a location returns the default value.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn read_location_returns_default() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let node_state = workflow_state.read(&Location::root()).await?;
 
@@ -416,15 +450,15 @@ mod tests {
     }
 
     /// Test that we can write and listen for updates.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn write_and_listen_for_updates() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let stream = runtime_state.listen()?;
+        let mut recv = runtime_state.listen()?;
 
         let run_id = Uuid::now_v7();
         let attempt = 1;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         workflow_state
             .write(Event::Node(NodeEvent {
@@ -433,14 +467,13 @@ mod tests {
             }))
             .await?;
 
-        let updated = stream.take(1).collect::<Vec<_>>().await;
-        assert_eq!(updated.len(), 1);
+        let updated = recv.borrow_and_update();
         assert_eq!(
-            updated[0],
+            *updated,
             RunAttemptUpdated {
                 run_id,
                 attempt,
-                stopped: false
+                stopped: false,
             }
         );
 
@@ -448,13 +481,13 @@ mod tests {
     }
 
     /// Test that we can read and write workflow run state.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn write_and_read() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         workflow_state
             .write(Event::Node(NodeEvent {
@@ -483,13 +516,13 @@ mod tests {
     }
 
     /// Test that we can read and write workflow run state.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn write_and_read_outputs() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let mut outputs = HashMap::new();
         outputs.insert(
@@ -517,13 +550,13 @@ mod tests {
     }
 
     /// Test that we can read and write workflow run state with `map_completed`.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn write_and_read_map_completed() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         workflow_state
             .write(Event::Node(NodeEvent {
@@ -576,13 +609,13 @@ mod tests {
     }
 
     /// Test that we can read and write metadata
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn write_and_read_metadata() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
         let run_id = Uuid::now_v7();
         let attempt = 3;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_state.add_metadata(metadata.clone()).await?;
@@ -594,13 +627,13 @@ mod tests {
         Ok(())
     }
     /// Test that metadata we write gets merged.
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn merge_metadata() -> miette::Result<()> {
-        let runtime_state = SqliteRuntimeState::new_in_memory();
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
         let run_id = Uuid::now_v7();
         let attempt = 4;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_state.add_metadata(metadata1.clone()).await?;

@@ -2,14 +2,15 @@
 This module defines the [`Location`] struct that is used throughout the Tierkreis
 runtime to specify the place in a Workflow graph that something has happened.
 */
+use diesel::backend::Backend;
+use diesel::sqlite::Sqlite;
 use miette::{IntoDiagnostic, miette};
 use portgraph::NodeIndex;
 use std::str::FromStr;
 
 use diesel::deserialize::{self, FromSql};
-use diesel::serialize::{self, Output, ToSql};
+use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::sqlite::{Sqlite, SqliteValue};
 use diesel::{AsExpression, FromSqlRow};
 
 /// A component of the path for a [`Location`].
@@ -194,13 +195,16 @@ impl FromStr for Location {
 impl ToSql<Text, Sqlite> for Location {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
         out.set_value(self.to_string());
-        Ok(serialize::IsNull::No)
+        Ok(IsNull::No)
     }
 }
 
-impl FromSql<Text, Sqlite> for Location {
-    fn from_sql(value: SqliteValue<'_, '_, '_>) -> deserialize::Result<Self> {
-        let serialized = <String as FromSql<Text, Sqlite>>::from_sql(value)?;
+impl<DB: Backend> FromSql<Text, DB> for Location
+where
+    String: FromSql<Text, DB>,
+{
+    fn from_sql(value: DB::RawValue<'_>) -> deserialize::Result<Self> {
+        let serialized = <String as FromSql<Text, DB>>::from_sql(value)?;
         serialized.parse::<Location>().map_err(Into::into)
     }
 }
