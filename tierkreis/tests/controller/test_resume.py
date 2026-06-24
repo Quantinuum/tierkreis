@@ -227,6 +227,10 @@ def test_runtime(  # noqa: PLR0913
         g = graph.data
     else:
         g = graph
+
+    if "defaults" in name:
+        pytest.skip("default arguments not supported")
+
     run_outputs = run_workflow(name, g, inputs)
     assert output == run_outputs
 

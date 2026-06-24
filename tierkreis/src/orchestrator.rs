@@ -526,16 +526,11 @@ impl Orchestrator {
         loc: Location,
         name: &str,
     ) -> miette::Result<Action> {
-        let value = graph_inputs.get(name).cloned().unwrap_or_else(|| {
-            save_asset(
-                &self.asset_storage_registry,
-                &self.default_storage_name,
-                serde_json::to_vec(&serde_json::Value::Null).unwrap(),
-            )
-            .unwrap()
-        });
+        let value = graph_inputs
+            .get(name)
+            .ok_or_else(|| miette!("Input not found for port: {name}"))?;
         let mut outputs = HashMap::new();
-        outputs.insert(name.to_string(), value);
+        outputs.insert(name.to_string(), value.clone());
 
         Ok(Action {
             loc,
