@@ -187,7 +187,7 @@ storage_ids = ["FileStorage", "In-memory"]
 )
 def test_resume(  # noqa: PLR0913
     storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
-    graph: GraphData,
+    graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
     name: str,
     workflow_id: int,

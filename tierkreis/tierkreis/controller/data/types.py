@@ -368,8 +368,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         return ser
 
     if issubclass(origin, complex):
-        return complex(real=ser[0], imag=ser[1]) # type: ignore complex is T
-    
+        return complex(real=ser[0], imag=ser[1])  # type: ignore complex is T
+
     if origin is Package:
         return Package.from_bytes(ser)  # type: ignore Package is T
 

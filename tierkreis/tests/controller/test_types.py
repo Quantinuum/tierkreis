@@ -99,6 +99,7 @@ ptypes: Sequence[PType] = [
     DummyDictConvertible(a=11),
     DummyListConvertible(a=5),
     DummyBaseModel(a=5, b=b"some bytes"),
+    complex(1, -1),
 ]
 
 

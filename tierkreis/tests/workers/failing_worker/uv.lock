@@ -177,7 +177,7 @@ provides-extras = ["hpc"]
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]
 dev = [
-    { name = "guppylang" },
+    { name = "guppylang", specifier = ">=0.21.0" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "pytest" },
     { name = "qnexus" },
