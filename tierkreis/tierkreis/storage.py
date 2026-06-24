@@ -1,6 +1,7 @@
 """Implementation to access node storage data."""
 
 from typing import get_args, get_origin
+from typing_extensions import is_protocol
 
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
@@ -39,7 +40,7 @@ def _read_output(
         origin = get_origin(annotation)
         if origin is TKR:
             args = get_args(annotation)
-            if len(args) == 1 and is_ptype(args[0]):
+            if len(args) == 1 and is_ptype(args[0]) and not is_protocol(args[0]):
                 return ptype_from_bytes(storage.read_output(Loc(), port_name), args[0])
 
         return ptype_from_bytes(storage.read_output(Loc(), port_name))
