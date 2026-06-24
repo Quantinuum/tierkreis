@@ -43,7 +43,7 @@ def test_shell_executor():
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
-    assert actual_output == b'Hello "world"\n'
+    assert actual_output == "Hello world"
     assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
     data = storage.read_executor_data()
@@ -66,7 +66,7 @@ def test_suppress_env():
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
-    assert actual_output == b'Hello "world"\n'
+    assert actual_output == "Hello world"
     assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
     data = storage.read_executor_data()
@@ -154,7 +154,7 @@ def test_stdinout_executor():
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
-    assert actual_output == b'Hello "world"\n'
+    assert actual_output == "Hello world"
     assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
     data = storage.read_executor_data()
@@ -201,7 +201,7 @@ def test_task_executor():
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
-    assert actual_output == b'Goodbye cruel "world"\n'
+    assert actual_output == "Goodbye cruel world"
     assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
     data = storage.read_executor_data()
@@ -253,7 +253,7 @@ def test_multiple_executor():
     storage.clean_graph_files()
     run_graph(storage, executor, g, {"value": "world"})
     actual_output = read_outputs(g, storage)
-    assert actual_output == b'Hello beautiful "world"\n'
+    assert actual_output == "Hello beautiful world"
     assert storage._exec_data_path(Loc()).parent.exists()
     node_loc = Loc("-.N1")
     data = storage.read_executor_data()

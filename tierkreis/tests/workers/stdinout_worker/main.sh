@@ -1,3 +1,3 @@
 #! /usr/bin/env bash
-in=$(cat)
-echo Hello $in
+in=$(cat | tr -d '"')
+echo "\"Hello $in\""
