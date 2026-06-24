@@ -223,7 +223,7 @@ impl Orchestrator {
                 let loc = parent_location.with_node(n);
                 match definition {
                     NodeDefinition::Input { name } => stream_action_result(
-                        self.build_input_action(graph_inputs.clone(), loc, name),
+                        Self::build_input_action(graph_inputs.clone(), loc, name),
                     ),
                     NodeDefinition::Const { value } => {
                         stream_action_result(self.build_const_action(loc, value.clone()))
@@ -519,9 +519,8 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self, graph_inputs), fields(loc = %loc), err)]
+    #[instrument(skip(graph_inputs), fields(loc = %loc), err)]
     fn build_input_action(
-        &self,
         graph_inputs: Arc<HashMap<String, AssetSpec>>,
         loc: Location,
         name: &str,
