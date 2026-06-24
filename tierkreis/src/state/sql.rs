@@ -201,9 +201,13 @@ impl RuntimeState for SqliteRuntimeState {
             .wrap_err("Error acquiring connection from pool")?;
         // Insert the default if the value does not yet exist.
         // Cannot return errors from this trait method, so best-effort initialize.
-        let run = read_workflowrun(&mut conn, run_id, attempt).await;
+        let run = {
+            let _lock = self.lock.read().await;
+            read_workflowrun(&mut conn, run_id, attempt).await
+        };
         // Should fail?
         if run.is_err() {
+            let _lock = self.lock.write().await;
             _ = insert_default_workflowrun(&mut conn, run_id, attempt).await?;
         }
 
