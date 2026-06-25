@@ -70,8 +70,6 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// Retrieve a handle to a [`WorkflowState`] depending on the `run_id` and attempt number.
     ///
     /// If the backing data for the [`WorkflowState`] does not exist, create it.
-    ///
-    /// The [`WorkflowState`] comes inside an `Arc` such that it can be shared between threads.
     fn workflow_state(
         &self,
         run_id: Uuid,

@@ -274,9 +274,9 @@ impl SubprocessExecutor {
         }
 
         let background_asset_storage_registry = Arc::clone(asset_storage_registry);
-        let (task_sender, task_receiver) = mpsc::channel(1024);
-        let (event_sender, event_receiver) = mpsc::channel(1024);
-        let (cancel_sender, cancel_receiver) = mpsc::channel(1024);
+        let (task_sender, task_receiver) = mpsc::channel(64);
+        let (event_sender, event_receiver) = mpsc::channel(64);
+        let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         tokio::spawn(process_tasks(
             task_receiver,
             cancel_receiver,

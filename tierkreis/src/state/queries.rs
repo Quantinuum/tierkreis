@@ -98,11 +98,6 @@ pub async fn insert_default_workflowrun(
 ) -> miette::Result<WorkflowRun> {
     use crate::state::schema::workflows::dsl as wf;
 
-    // let mut conn = connection
-    //     .get()
-    //     .into_diagnostic()
-    //     .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
-
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
         .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;

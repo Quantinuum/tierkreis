@@ -161,7 +161,7 @@ impl Orchestrator {
         default_storage_name: &str,
         default_executor_name: &str,
     ) -> miette::Result<Self> {
-        let (sender, receiver) = mpsc::channel(1024);
+        let (sender, receiver) = mpsc::channel(128);
 
         let asset_storage_registry_lock = asset_storage_registry
             .read()
