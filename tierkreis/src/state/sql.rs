@@ -97,6 +97,17 @@ pub async fn build_conn_pool_with_url(database_url: &str) -> miette::Result<Conn
 /// be built, a connection cannot be acquired, migrations fail, or `SQLite` pragmas
 /// fail to apply.
 pub async fn build_conn_pool() -> miette::Result<ConnPool> {
+    let database_url = match env::var("DATABASE_URL") {
+        Ok(database_url) => database_url,
+        Err(_err) => resolve_default_db_path()
+            .wrap_err("No `DATABASE_URL` set, trying default fall back file paths")?
+            .to_string_lossy()
+            .to_string(),
+    };
+    build_conn_pool_with_url(&database_url).await
+}
+
+fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
     let fallback = home_dir()
         .unwrap_or_else(|| "/tmp".into())
         .join(".tierkreis/checkpoints/tierkreis.sqlite");
@@ -110,11 +121,7 @@ pub async fn build_conn_pool() -> miette::Result<ConnPool> {
             )
         })?;
     }
-
-    let database_url =
-        env::var("DATABASE_URL").unwrap_or_else(|_| fallback.to_string_lossy().to_string());
-
-    build_conn_pool_with_url(&database_url).await
+    Ok(fallback)
 }
 
 /// [`SqliteRuntimeState`] implements [`RuntimeState`] but with a `SQLite` backing
