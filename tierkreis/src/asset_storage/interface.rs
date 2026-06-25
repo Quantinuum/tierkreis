@@ -4,7 +4,8 @@ implementations must satisfy.
 */
 use std::{fmt::Display, path::PathBuf, str::FromStr, time::SystemTime};
 
-use miette::miette;
+use miette::{Context, IntoDiagnostic, miette};
+use url::Url;
 use uuid::Uuid;
 
 /// [`AssetKind`] is used to categorize [`AssetSpec`] and [`AssetStorage`] implementations
@@ -35,9 +36,15 @@ impl FromStr for AssetKind {
     type Err = miette::Report;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        let url = Url::from_str(s).into_diagnostic()?;
+        match url.scheme() {
             "memory" => Ok(Self::Memory),
-            _ => unimplemented!(),
+            "file" => Ok(Self::File {
+                root: url.path().parse().into_diagnostic().wrap_err_with(|| {
+                    miette!("Failed to parse root folder location, for url: {url}")
+                })?,
+            }),
+            scheme => Err(miette!("Unknown scheme: {scheme}")),
         }
     }
 }
@@ -45,8 +52,8 @@ impl FromStr for AssetKind {
 impl Display for AssetKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Memory => write!(f, "memory"),
-            _ => unimplemented!(),
+            Self::Memory => write!(f, "memory://process"),
+            Self::File { root } => write!(f, "file://{}", root.to_string_lossy()),
         }
     }
 }
@@ -158,4 +165,25 @@ pub trait AssetStorage: Send + Sync {
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
     fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::memory(AssetKind::Memory, "memory://process")]
+    #[case::empty_root(AssetKind::File { root: "/".parse().unwrap() }, "file:///")]
+    #[case::tmp_dir(AssetKind::File { root: "/tmp".parse().unwrap() }, "file:///tmp")]
+    fn test_asset_kind_to_from_str(
+        #[case] asset_kind: AssetKind,
+        #[case] expected_str: &str,
+    ) -> miette::Result<()> {
+        assert_eq!(asset_kind.to_string(), expected_str);
+        let parsed: AssetKind = expected_str.parse()?;
+        assert_eq!(parsed, asset_kind);
+        Ok(())
+    }
 }
