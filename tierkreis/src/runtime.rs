@@ -27,7 +27,7 @@ use crate::{
     graph::{LegacyWorkflowGraph, WorkflowGraph},
     location::Location,
     orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState, WorkflowState},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState, WorkflowRunState},
     updater::Updater,
 };
 
@@ -105,6 +105,7 @@ impl Runtime<SqliteRuntimeState> {
     }
 
     // TODO: Add a from_config function to build a Runtime from a configuration file.
+    #[allow(dead_code)]
     async fn sqlite_memory() -> miette::Result<Self> {
         let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
         let memory_storage = InMemoryStorage::new();
@@ -191,12 +192,12 @@ impl<RS: RuntimeState> Runtime<RS> {
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)>
     where
-        <RS as RuntimeState>::WorkflowState: 'static,
+        <RS as RuntimeState>::WorkflowRunState: 'static,
     {
         let run_id = Uuid::now_v7();
         let attempt = 0;
 
-        let workflow_state = self.state.workflow_state(run_id, attempt).await?;
+        let workflow_state = self.state.workflow_run_state(run_id, attempt).await?;
         let workflow_state = Arc::new(workflow_state);
         let updater = Updater::new(Arc::clone(&workflow_state));
 
@@ -256,7 +257,7 @@ impl<RS: RuntimeState> Runtime<RS> {
                 }
                 (updated.run_id, updated.attempt)
             };
-            let workflow_state = self.state.workflow_state(run_id, attempt).await?;
+            let workflow_state = self.state.workflow_run_state(run_id, attempt).await?;
             let workflow_state = Arc::new(workflow_state);
 
             // TODO: Handle inputs better here.
@@ -278,7 +279,7 @@ impl<RS: RuntimeState> Runtime<RS> {
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
-        let workflow_state = self.state.workflow_state(run_id, attempt).await?;
+        let workflow_state = self.state.workflow_run_state(run_id, attempt).await?;
 
         let output_state = workflow_state
             .read(&Location::from_node_index_iter([self

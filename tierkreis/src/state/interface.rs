@@ -1,6 +1,6 @@
 /*!
 This module defines the interface contracts that the various [`RuntimeState`]
-and [`WorkflowState`] implementations must satisfy.
+and [`WorkflowRunState`] implementations must satisfy.
 */
 use std::{collections::HashMap, fmt::Debug};
 
@@ -27,7 +27,7 @@ pub struct RunAttemptUpdated {
 /// in the Workflow graph can be in.
 ///
 /// This state is built up by reading [`Event`] messages and can be queried
-/// by the [`WorkflowState`] interface.
+/// by the [`WorkflowRunState`] interface.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NodeState {
     /// The time at which the node was scheduled by the [`Orchestrator`] if any.
@@ -64,17 +64,17 @@ pub struct NodeState {
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
-    /// [`WorkflowState`] is the implementation of the [`WorkflowState`] trait that is associated
+    /// [`WorkflowRunState`] is the implementation of the [`WorkflowRunState`] trait that is associated
     /// with this [`RuntimeState`] implementation and returned by the `workflow_state` method.
-    type WorkflowState: WorkflowState;
-    /// Retrieve a handle to a [`WorkflowState`] depending on the `run_id` and attempt number.
+    type WorkflowRunState: WorkflowRunState;
+    /// Retrieve a handle to a [`WorkflowRunState`] depending on the `run_id` and attempt number.
     ///
-    /// If the backing data for the [`WorkflowState`] does not exist, create it.
-    fn workflow_state(
+    /// If the backing data for the [`WorkflowRunState`] does not exist, create it.
+    fn workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
-    ) -> impl Future<Output = miette::Result<Self::WorkflowState>> + Send;
+    ) -> impl Future<Output = miette::Result<Self::WorkflowRunState>> + Send;
     /// Listen for updates about *all* of the running workflows.
     ///
     /// # Errors
@@ -83,9 +83,9 @@ pub trait RuntimeState: Debug + Send + Sync {
     fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>>;
 }
 
-/// [`WorkflowState`] is an interface to the state of an individual Workflow run attempt.
-pub trait WorkflowState: Debug + Send + Sync {
-    /// Update the [`WorkflowState`] from an [`Event`].
+/// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
+pub trait WorkflowRunState: Debug + Send + Sync {
+    /// Update the [`WorkflowRunState`] from an [`Event`].
     fn write(&self, event: Event) -> impl Future<Output = miette::Result<()>> + Send;
     /// Read the state of a Node at the specified [`Location`].
     ///

@@ -1,19 +1,19 @@
 /*!
 This module defines the [Updater] struct which provides a way to consume a stream
-of [Event] and write each event to a [`WorkflowState`].
+of [Event] and write each event to a [`WorkflowRunState`].
 */
 use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 
-use crate::{event::Event, state::WorkflowState};
+use crate::{event::Event, state::WorkflowRunState};
 
-/// [Updater] encapsulates a [`WorkflowState`] and allows the processing of [Event]s.
-pub struct Updater<WS: WorkflowState> {
+/// [Updater] encapsulates a [`WorkflowRunState`] and allows the processing of [Event]s.
+pub struct Updater<WS: WorkflowRunState> {
     state: Arc<WS>,
 }
 
-impl<WS: WorkflowState> Updater<WS> {
+impl<WS: WorkflowRunState> Updater<WS> {
     /// Construct a new [Updater].
     pub fn new(state: Arc<WS>) -> Self {
         Self { state }
@@ -25,7 +25,7 @@ impl<WS: WorkflowState> Updater<WS> {
     /// # Errors
     ///
     /// Will return Err if the updater fails to write the [Event] to
-    /// the contained [`WorkflowState`].
+    /// the contained [`WorkflowRunState`].
     pub async fn process(
         self,
         mut stream: impl Stream<Item = Event> + Unpin,
@@ -50,7 +50,7 @@ mod tests {
     use crate::{
         event::{NodeEvent, NodeStatus},
         location::Location,
-        state::inmemory::InMemoryWorkflowState,
+        state::inmemory::InMemoryWorkflowRunState,
     };
 
     use super::*;
@@ -58,7 +58,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn consume_single_event() -> miette::Result<()> {
-        let (state, _events) = InMemoryWorkflowState::test();
+        let (state, _events) = InMemoryWorkflowRunState::test();
         let updater = Updater::new(Arc::new(state));
 
         let stream = once(async {
