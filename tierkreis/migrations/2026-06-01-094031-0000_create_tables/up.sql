@@ -36,6 +36,8 @@ CREATE TABLE `node_outputs`(
 	FOREIGN KEY (`node_state_id`) REFERENCES `node_states`(`id`)
 );
 
+CREATE UNIQUE INDEX `node_outputs_state_id_name` ON `node_outputs` (`node_state_id`, `name`);
+
 CREATE TABLE `workflow_runs`(
 	`id` TEXT NOT NULL,
 	`attempt` INTEGER NOT NULL,

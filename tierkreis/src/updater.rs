@@ -9,13 +9,13 @@ use futures::{Stream, StreamExt};
 use crate::{event::Event, state::WorkflowState};
 
 /// [Updater] encapsulates a [`WorkflowState`] and allows the processing of [Event]s.
-pub struct Updater {
-    state: Arc<dyn WorkflowState>,
+pub struct Updater<WS: WorkflowState> {
+    state: Arc<WS>,
 }
 
-impl Updater {
+impl<WS: WorkflowState> Updater<WS> {
     /// Construct a new [Updater].
-    pub fn new(state: Arc<dyn WorkflowState>) -> Self {
+    pub fn new(state: Arc<WS>) -> Self {
         Self { state }
     }
 

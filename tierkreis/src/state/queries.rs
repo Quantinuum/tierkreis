@@ -6,10 +6,15 @@ use std::hash::BuildHasher;
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
+use diesel::sqlite::Sqlite;
 use diesel::upsert::excluded;
+use diesel::{
+    BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
+    SelectableHelper, define_sql_function,
+};
+use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use miette::{IntoDiagnostic, WrapErr, miette};
 
 use crate::asset_storage::AssetSpec;
@@ -28,17 +33,12 @@ fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
 ///
 /// If the run does not exists.
 /// Returns an error when the connection pool cannot be accessed.
-pub fn read_workflowrun(
+pub async fn read_workflowrun(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<WorkflowRun> {
     use crate::state::schema::workflow_runs::dsl as wr;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -49,7 +49,8 @@ pub fn read_workflowrun(
         .filter(wr::attempt.eq(attempt_i32))
         .order(wr::started_time.asc())
         .select(WorkflowRun::as_select())
-        .first::<WorkflowRun>(&mut conn)
+        .first::<WorkflowRun>(conn)
+        .await
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to query workflow run"))
 }
@@ -59,22 +60,18 @@ pub fn read_workflowrun(
 /// # Errors
 ///
 /// Returns an error when the insert fails.
-pub fn insert_workflow_run(
+pub async fn insert_workflow_run(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run: &WorkflowRun,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<()> {
     use crate::state::schema::workflow_runs::dsl as wr;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
     diesel::insert_into(wr::workflow_runs)
         .values(run)
         .on_conflict((wr::id, wr::attempt))
         .do_nothing()
-        .execute(&mut conn)
+        .execute(conn)
+        .await
         .into_diagnostic()
         .wrap_err_with(|| {
             miette!(
@@ -94,17 +91,12 @@ pub fn insert_workflow_run(
 ///
 /// Returns an error when the connection pool cannot be accessed or the insert
 /// fails.
-pub fn insert_default_workflowrun(
+pub async fn insert_default_workflowrun(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<WorkflowRun> {
     use crate::state::schema::workflows::dsl as wf;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -121,7 +113,8 @@ pub fn insert_default_workflowrun(
 
     diesel::insert_or_ignore_into(wf::workflows)
         .values(&workflow)
-        .execute(&mut conn)
+        .execute(conn)
+        .await
         .into_diagnostic()
         .wrap_err_with(|| "Failed to insert workflow row")?;
     let run = WorkflowRun {
@@ -133,7 +126,7 @@ pub fn insert_default_workflowrun(
         started_time: None,
     };
 
-    insert_workflow_run(&run, connection)?;
+    insert_workflow_run(conn, &run).await?;
     Ok(run)
 }
 
@@ -172,92 +165,108 @@ define_sql_function!(
     fn changes() -> Integer;
 );
 
+define_sql_function!(
+    /// `MAX` for integer data.
+    #[sql_name = "max"]
+    fn max_int(x: Nullable<Integer>, y: Nullable<Integer>) -> Nullable<Integer>;
+);
+
 /// Ensure a node-state row exists for the given run/location.
 ///
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed or the insert
 /// operation fails.
-pub fn update_node_state<S: BuildHasher>(
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
+pub async fn update_node_state(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     attempt: i32,
     mut node_updates: Vec<UpsertNodeState>,
-    node_outputs: HashMap<Location, NewNodeOutput, S>,
+    node_outputs: Vec<(Location, NewNodeOutput)>,
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
 
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
+    conn.transaction(|conn| {
+        async move {
+            merge_map_complete_fields(conn, run_id, attempt, &mut node_updates).await?;
 
-    merge_map_complete_fields(&mut conn, run_id, attempt, &mut node_updates)?;
+            // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
+            let mut rows_affected = 0;
+            for node_update in node_updates {
+                rows_affected += diesel::insert_into(ns::node_states)
+                    .values(node_update)
+                    .on_conflict((ns::run_id, ns::attempt, ns::node_location))
+                    .do_update()
+                    .set((
+                        ns::scheduled_time.eq(coalesce_datetime(
+                            ns::scheduled_time,
+                            excluded(ns::scheduled_time),
+                        )),
+                        ns::queued_time.eq(coalesce_datetime(
+                            ns::queued_time,
+                            excluded(ns::queued_time),
+                        )),
+                        ns::running_time.eq(coalesce_datetime(
+                            ns::running_time,
+                            excluded(ns::running_time),
+                        )),
+                        ns::complete_time.eq(coalesce_datetime(
+                            ns::complete_time,
+                            excluded(ns::complete_time),
+                        )),
+                        ns::cancelled_time.eq(coalesce_datetime(
+                            ns::cancelled_time,
+                            excluded(ns::cancelled_time),
+                        )),
+                        ns::error_time
+                            .eq(coalesce_datetime(ns::error_time, excluded(ns::error_time))),
+                        ns::cond.eq(coalesce_bool(ns::cond, excluded(ns::cond))),
+                        // Ordering intentionally reversed as we always want the excluded loop_index
+                        // if it is not NULL.
+                        ns::loop_index.eq(coalesce_int(excluded(ns::loop_index), ns::loop_index)),
+                        ns::map_size.eq(coalesce_int(ns::map_size, excluded(ns::map_size))),
+                        // Ordering intentionally reversed as we always want the excluded map_completed
+                        // if it is not NULL.
+                        ns::map_completed.eq(coalesce_blob(
+                            excluded(ns::map_completed),
+                            ns::map_completed,
+                        )),
+                        ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
+                        ns::error_detail
+                            .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
+                    ))
+                    .execute(conn)
+                    .await?;
+            }
 
-    let rows_affected = diesel::insert_into(ns::node_states)
-        .values(node_updates)
-        .on_conflict((ns::run_id, ns::attempt, ns::node_location))
-        .do_update()
-        .set((
-            ns::scheduled_time.eq(coalesce_datetime(
-                ns::scheduled_time,
-                excluded(ns::scheduled_time),
-            )),
-            ns::queued_time.eq(coalesce_datetime(
-                ns::queued_time,
-                excluded(ns::queued_time),
-            )),
-            ns::running_time.eq(coalesce_datetime(
-                ns::running_time,
-                excluded(ns::running_time),
-            )),
-            ns::complete_time.eq(coalesce_datetime(
-                ns::complete_time,
-                excluded(ns::complete_time),
-            )),
-            ns::cancelled_time.eq(coalesce_datetime(
-                ns::cancelled_time,
-                excluded(ns::cancelled_time),
-            )),
-            ns::error_time.eq(coalesce_datetime(ns::error_time, excluded(ns::error_time))),
-            ns::cond.eq(coalesce_bool(ns::cond, excluded(ns::cond))),
-            ns::loop_index.eq(coalesce_int(ns::loop_index, excluded(ns::loop_index))),
-            ns::map_size.eq(coalesce_int(ns::map_size, excluded(ns::map_size))),
-            // Ordering intentionally reversed as we always want the excluded map_completed
-            // if it is not NULL.
-            ns::map_completed.eq(coalesce_blob(
-                excluded(ns::map_completed),
-                ns::map_completed,
-            )),
-            ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
-            ns::error_detail.eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
-        ))
-        .execute(&mut conn)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to ensure node state rows"))?;
+            save_outputs(conn, run_id, attempt, node_outputs).await?;
 
-    save_outputs(conn, run_id, attempt, node_outputs)?;
-
-    Ok(rows_affected > 0)
+            Ok::<_, diesel::result::Error>(rows_affected > 0)
+        }
+        .scope_boxed()
+    })
+    .await
+    .into_diagnostic()
 }
 
-fn save_outputs<S: BuildHasher>(
-    mut conn: diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+async fn save_outputs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     attempt: i32,
-    node_outputs: HashMap<Location, NewNodeOutput, S>,
-) -> Result<(), miette::Error> {
+    node_outputs: Vec<(Location, NewNodeOutput)>,
+) -> Result<(), diesel::result::Error> {
     use crate::state::schema::node_outputs::dsl as no;
     use crate::state::schema::node_states::dsl as ns;
 
     if !node_outputs.is_empty() {
+        let locations = node_outputs.iter().map(|(x, _)| x);
         let node_state_ids: HashMap<Location, i32> = ns::node_states
             .select((ns::node_location, ns::id))
             .filter(ns::run_id.eq(run_id))
             .filter(ns::attempt.eq(attempt))
-            .filter(ns::node_location.eq_any(node_outputs.keys()))
-            .get_results(&mut conn)
-            .into_diagnostic()?
+            .filter(ns::node_location.eq_any(locations))
+            .get_results(conn)
+            .await?
             .into_iter()
             .collect();
 
@@ -271,29 +280,34 @@ fn save_outputs<S: BuildHasher>(
             })
             .collect();
 
-        diesel::insert_into(no::node_outputs)
-            .values(db_outputs)
-            .execute(&mut conn)
-            .into_diagnostic()?;
+        // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
+        for db_output in db_outputs {
+            diesel::insert_into(no::node_outputs)
+                .values(db_output)
+                .on_conflict((no::node_state_id, no::name)) // TODO: Might need a unique index?
+                .do_nothing()
+                .execute(conn)
+                .await?;
+        }
     }
     Ok(())
 }
 
-fn merge_map_complete_fields(
-    conn: &mut diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+async fn merge_map_complete_fields(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     attempt: i32,
     node_updates: &mut [UpsertNodeState],
-) -> miette::Result<()> {
+) -> Result<(), diesel::result::Error> {
     use crate::state::schema::node_states::dsl as ns;
 
-    let mut map_complete_locations = node_updates
+    let map_complete_locations: Vec<_> = node_updates
         .iter()
         .filter(|node_update| node_update.map_completed.is_some())
         .map(|node_update| &node_update.node_location)
-        .peekable();
+        .collect();
 
-    if map_complete_locations.peek().is_none() {
+    if map_complete_locations.is_empty() {
         return Ok(());
     }
 
@@ -304,7 +318,7 @@ fn merge_map_complete_fields(
         .filter(ns::map_completed.is_not_null())
         .filter(ns::node_location.eq_any(map_complete_locations))
         .get_results(conn)
-        .into_diagnostic()?
+        .await?
         .into_iter()
         .collect();
 
@@ -331,18 +345,13 @@ fn merge_map_complete_fields(
 ///
 /// Returns an error when the connection pool cannot be accessed or the node state
 /// lookup fails.
-pub fn read_node_state(
+pub async fn read_node_state(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
     loc: &Location,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<crate::state::interface::NodeState> {
     use crate::state::schema::node_states::dsl as ns;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -351,7 +360,8 @@ pub fn read_node_state(
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
         .filter(ns::node_location.eq(loc.clone()))
-        .first::<NodeState>(&mut conn)
+        .first::<NodeState>(conn)
+        .await
         .optional()
         .into_diagnostic()
         .wrap_err_with(|| {
@@ -388,7 +398,7 @@ pub fn read_node_state(
             })
             .transpose()?;
 
-        let outputs = read_outputs(conn, &db_node)?;
+        let outputs = read_outputs(conn, &db_node).await?;
 
         Ok(crate::state::interface::NodeState {
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
@@ -409,13 +419,14 @@ pub fn read_node_state(
     }
 }
 
-fn read_outputs(
-    mut conn: diesel::r2d2::PooledConnection<ConnectionManager<SqliteConnection>>,
+async fn read_outputs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     db_node: &NodeState,
 ) -> Result<Option<HashMap<String, AssetSpec>>, miette::Error> {
     let outputs = if db_node.complete_time.is_some() {
         let db_outputs: Vec<NodeOutput> = NodeOutput::belonging_to(db_node)
-            .get_results(&mut conn)
+            .get_results(conn)
+            .await
             .into_diagnostic()?;
         let outputs: HashMap<String, AssetSpec> = db_outputs
             .into_iter()
@@ -444,18 +455,13 @@ fn read_outputs(
 ///
 /// Returns an error when the connection pool cannot be accessed, the run lookup
 /// fails, metadata JSON cannot be parsed or serialized, or the update fails.
-pub fn add_run_metadata<S: BuildHasher>(
+pub async fn add_run_metadata<S: BuildHasher>(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
     new_metadata: HashMap<String, String, S>,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<()> {
     use crate::state::schema::workflow_runs::dsl as wr;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -466,13 +472,13 @@ pub fn add_run_metadata<S: BuildHasher>(
     let run = wr::workflow_runs
         .filter(wr::id.eq(run_id_str.clone()))
         .filter(wr::attempt.eq(attempt_i32))
-        .first::<WorkflowRun>(&mut conn);
+        .first::<WorkflowRun>(conn)
+        .await;
     let run = match run {
         Ok(run) => run,
-        Err(diesel::result::Error::NotFound) => {
-            insert_default_workflowrun(run_id, attempt, connection)
-                .wrap_err_with(|| miette!("Failed to insert default run for metadata update"))?
-        }
+        Err(diesel::result::Error::NotFound) => insert_default_workflowrun(conn, run_id, attempt)
+            .await
+            .wrap_err_with(|| miette!("Failed to insert default run for metadata update"))?,
         Err(err) => {
             return Err(miette!(
                 "Failed to query workflow run for metadata update: {err}"
@@ -506,7 +512,8 @@ pub fn add_run_metadata<S: BuildHasher>(
             .filter(wr::attempt.eq(attempt_i32)),
     )
     .set(wr::run_metadata.eq(updated_metadata_json))
-    .execute(&mut conn)
+    .execute(conn)
+    .await
     .into_diagnostic()
     .wrap_err_with(|| {
         miette!(
@@ -525,17 +532,12 @@ pub fn add_run_metadata<S: BuildHasher>(
 ///
 /// Returns an error when the connection pool cannot be accessed, the run lookup
 /// fails, or the metadata JSON cannot be parsed.
-pub fn read_run_metadata(
+pub async fn read_run_metadata(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
-    connection: &Pool<ConnectionManager<SqliteConnection>>,
 ) -> miette::Result<HashMap<String, String>> {
     use crate::state::schema::workflow_runs::dsl as wr;
-
-    let mut conn = connection
-        .get()
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to get SQLite connection from pool")?;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -546,7 +548,8 @@ pub fn read_run_metadata(
     let run = wr::workflow_runs
         .filter(wr::id.eq(run_id_str.clone()))
         .filter(wr::attempt.eq(attempt_i32))
-        .first::<WorkflowRun>(&mut conn)
+        .first::<WorkflowRun>(conn)
+        .await
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to query workflow run for metadata update"))?;
 

@@ -14,13 +14,8 @@ use std::{
 use bitvec::vec::BitVec;
 use chrono::Utc;
 use dashmap::DashMap;
-use futures::{
-    FutureExt, SinkExt, StreamExt,
-    channel::mpsc,
-    future::{self, BoxFuture},
-    stream::BoxStream,
-};
 use miette::miette;
+use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -57,16 +52,19 @@ struct InMemoryRuntimeStateInner {
 #[derive(Debug)]
 pub struct InMemoryRuntimeState {
     inner: Arc<InMemoryRuntimeStateInner>,
-    update_sender: mpsc::Sender<RunAttemptUpdated>,
-    update_receiver: Mutex<Option<mpsc::Receiver<RunAttemptUpdated>>>,
+    update_sender: watch::Sender<RunAttemptUpdated>,
+    update_receiver: Mutex<Option<watch::Receiver<RunAttemptUpdated>>>,
 }
 
 impl InMemoryRuntimeState {
     /// Create a new [`InMemoryRuntimeState`] instance.
     #[must_use]
     pub fn new() -> Self {
-        // TODO: This channel clogs up easily if left un-checked.
-        let (sender, receiver) = mpsc::channel(1024);
+        let (sender, receiver) = watch::channel(RunAttemptUpdated {
+            attempt: 0,
+            run_id: Uuid::nil(),
+            stopped: false,
+        });
         Self {
             inner: Arc::new(InMemoryRuntimeStateInner {
                 runs: DashMap::new(),
@@ -85,12 +83,18 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
-    fn workflow_state(&self, run_id: Uuid, attempt: u32) -> Arc<dyn WorkflowState> {
+    type WorkflowState = InMemoryWorkflowState;
+
+    async fn workflow_state(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<InMemoryWorkflowState> {
         let entry = self.inner.runs.entry((run_id, attempt));
         // Insert the default if the value does not yet exist.
         entry.or_default();
 
-        Arc::new(InMemoryWorkflowState {
+        Ok(InMemoryWorkflowState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
             run_id,
@@ -98,19 +102,19 @@ impl RuntimeState for InMemoryRuntimeState {
         })
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'static, RunAttemptUpdated>> {
+    fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>> {
         let receiver = {
             let mut receiver = self
                 .update_receiver
                 .try_lock()
                 .map_err(|err| miette!("Failed to listen: {}", err))?;
 
-            receiver.take().ok_or_else(|| {
-                miette!("Failed to listen: InMemoryGlobalState is already being listened to.")
-            })?
+            receiver.take().ok_or(miette!(
+                "Failed to listen: InMemoryRuntimeState is already being listened to."
+            ))?
         };
 
-        Ok(receiver.boxed())
+        Ok(receiver)
     }
 }
 
@@ -119,7 +123,7 @@ impl RuntimeState for InMemoryRuntimeState {
 #[derive(Debug)]
 pub struct InMemoryWorkflowState {
     global_state: Arc<InMemoryRuntimeStateInner>,
-    update_sender: mpsc::Sender<RunAttemptUpdated>,
+    update_sender: watch::Sender<RunAttemptUpdated>,
     run_id: Uuid,
     attempt: u32,
 }
@@ -133,7 +137,7 @@ impl InMemoryWorkflowState {
     /// Will panic if `listen` returns an error, but this should be impossible.
     #[cfg(test)]
     #[must_use]
-    pub fn test() -> (Self, BoxStream<'static, RunAttemptUpdated>) {
+    pub fn test() -> (Self, watch::Receiver<RunAttemptUpdated>) {
         let global_state = InMemoryRuntimeState::new();
         let events = global_state.listen().unwrap();
         global_state
@@ -154,77 +158,63 @@ impl InMemoryWorkflowState {
 
 impl WorkflowState for InMemoryWorkflowState {
     #[instrument]
-    fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>> {
+    async fn write(&self, event: Event) -> miette::Result<()> {
         let global_state = &self.global_state;
         let run_state = global_state
             .runs
             .entry((self.run_id, self.attempt))
             .or_default();
 
-        let mut send_update = false;
         let mut send_workflow_stopped = false;
 
         match event {
-            Event::WorkflowRun(run_event) => {
-                handle_run_event(&mut send_workflow_stopped, &run_event);
+            Event::WorkflowRun(ref run_event) => {
+                handle_run_event(&mut send_workflow_stopped, run_event);
             }
-            Event::Node(node_event) => handle_node_event(run_state, &mut send_update, node_event),
+            Event::Node(ref node_event) => handle_node_event(run_state, node_event),
         }
 
-        let mut update_sender = self.update_sender.clone();
-        async move {
-            if send_update || send_workflow_stopped {
-                update_sender
-                    .send(RunAttemptUpdated {
-                        run_id: self.run_id,
-                        attempt: self.attempt,
-                        stopped: send_workflow_stopped,
-                    })
-                    .await
-                    .map_err(|err| miette!("Send failed: {err}"))?;
-            }
-            Ok(())
-        }
-        .boxed()
+        self.update_sender.send_modify(|run_attempt_updated| {
+            run_attempt_updated.run_id = self.run_id;
+            run_attempt_updated.attempt = self.attempt;
+            run_attempt_updated.stopped |= send_workflow_stopped;
+        });
+        Ok(())
     }
 
     #[instrument]
-    fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>> {
-        let global_state = &self.global_state;
-        let res = || {
-            let run_state = global_state
-                .runs
-                .get(&(self.run_id, self.attempt))
-                .ok_or_else(|| {
-                    miette!(
-                        "Run Attempt with id {} and attempt {} not found",
-                        self.run_id,
-                        self.attempt
-                    )
-                })?;
-            let state = run_state
-                .value()
-                .nodes
-                .get(location)
-                .cloned()
-                .unwrap_or_default();
+    async fn read(&self, location: &Location) -> miette::Result<NodeState> {
+        let run_state = self
+            .global_state
+            .runs
+            .get(&(self.run_id, self.attempt))
+            .ok_or_else(|| {
+                miette!(
+                    "Run Attempt with id {} and attempt {} not found",
+                    self.run_id,
+                    self.attempt
+                )
+            })?;
+        let state = run_state
+            .value()
+            .nodes
+            .get(location)
+            .cloned()
+            .unwrap_or_default();
 
-            Ok(state.clone())
-        };
-
-        future::ready(res()).boxed()
+        Ok(state.clone())
     }
 
-    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
+    async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         entry.or_default().metadata.extend(metadata);
-        future::ok(()).boxed()
+        Ok(())
     }
 
-    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>> {
+    async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         let metadata = entry.or_default().value().metadata.clone();
-        future::ok(metadata).boxed()
+        Ok(metadata)
     }
 }
 
@@ -239,73 +229,76 @@ fn handle_run_event(send_workflow_stopped: &mut bool, run_event: &WorkflowRunEve
 
 fn handle_node_event(
     mut run_state: dashmap::mapref::one::RefMut<'_, (Uuid, u32), RunAttemptState>,
-    send_update: &mut bool,
-    node_event: NodeEvent,
+    node_event: &NodeEvent,
 ) {
-    for (idx, loc) in node_event.locs.into_iter().enumerate() {
-        let node_state = run_state.nodes.entry(loc).or_default();
+    let now = Utc::now();
+    for (idx, loc) in node_event.locs.iter().enumerate() {
+        let node_state = run_state.nodes.entry(loc.clone()).or_default();
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
-                    *send_update = true;
-                    node_state.scheduled_time = Some(Utc::now());
+                    node_state.scheduled_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Queued => {
                 if node_state.queued_time.is_none() {
-                    *send_update = true;
-                    node_state.queued_time = Some(Utc::now());
+                    node_state.queued_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Running { state_update: None } => {
                 if node_state.running_time.is_none() {
-                    *send_update = true;
-                    node_state.running_time = Some(Utc::now());
+                    node_state.running_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if node_state.cond.is_none() {
-                    *send_update = true;
                     node_state.cond = Some(cond);
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if node_state.loop_index != Some(index) {
-                    *send_update = true;
                     node_state.loop_index = Some(index);
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted { size }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if node_state.map_completed.is_none() {
-                    *send_update = true;
                     node_state.map_completed = Some(BitVec::repeat(false, size as usize));
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
             } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
                 if let Some(map_completed) = node_state.map_completed.as_mut() {
                     map_completed.bitor_assign(bits);
-                    *send_update = true;
                 }
             }
             crate::event::NodeStatus::Complete { ref outputs } => {
                 if node_state.complete_time.is_none() {
-                    *send_update = true;
-                    node_state.complete_time = Some(Utc::now());
+                    node_state.complete_time = Some(now);
                     node_state.outputs = Some(outputs.get(idx).unwrap().clone());
                 }
             }
             crate::event::NodeStatus::Cancelled => {
                 if node_state.cancelled_time.is_none() {
-                    *send_update = true;
-                    node_state.cancelled_time = Some(Utc::now());
+                    node_state.cancelled_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Error {
@@ -313,8 +306,7 @@ fn handle_node_event(
                 ref detail,
             } => {
                 if node_state.error_time.is_none() {
-                    *send_update = true;
-                    node_state.error_time = Some(Utc::now());
+                    node_state.error_time = Some(now);
                     node_state.error = Some(error.clone());
                     node_state.error_detail.clone_from(detail);
                 }
@@ -336,7 +328,7 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let node_state = workflow_state.read(&Location::root()).await?;
 
@@ -350,11 +342,11 @@ mod tests {
     async fn write_and_listen_for_updates() -> miette::Result<()> {
         let runtime_state = InMemoryRuntimeState::new();
 
-        let stream = runtime_state.listen()?;
+        let mut recv = runtime_state.listen()?;
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         workflow_state
             .write(Event::Node(NodeEvent {
@@ -363,14 +355,13 @@ mod tests {
             }))
             .await?;
 
-        let updated = stream.take(1).collect::<Vec<_>>().await;
-        assert_eq!(updated.len(), 1);
+        let updated = recv.borrow_and_update();
         assert_eq!(
-            updated[0],
+            *updated,
             RunAttemptUpdated {
                 run_id,
                 attempt,
-                stopped: false
+                stopped: false,
             }
         );
 
@@ -384,7 +375,7 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         workflow_state
             .write(Event::Node(NodeEvent {
@@ -407,7 +398,7 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_state.add_metadata(metadata.clone()).await?;
@@ -426,7 +417,7 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt);
+        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_state.add_metadata(metadata1.clone()).await?;

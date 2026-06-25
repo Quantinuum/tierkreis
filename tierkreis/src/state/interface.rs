@@ -2,18 +2,18 @@
 This module defines the interface contracts that the various [`RuntimeState`]
 and [`WorkflowState`] implementations must satisfy.
 */
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug};
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
-use futures::{future::BoxFuture, stream::BoxStream};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{asset_storage::AssetSpec, event::Event, location::Location};
 
 /// [`RunAttemptUpdated`] is a struct that is emitted by the [`RuntimeState`] interface
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RunAttemptUpdated {
     /// The unique identifier of the run.
     pub run_id: Uuid,
@@ -64,30 +64,39 @@ pub struct NodeState {
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
+    /// [`WorkflowState`] is the implementation of the [`WorkflowState`] trait that is associated
+    /// with this [`RuntimeState`] implementation and returned by the `workflow_state` method.
+    type WorkflowState: WorkflowState;
     /// Retrieve a handle to a [`WorkflowState`] depending on the `run_id` and attempt number.
     ///
     /// If the backing data for the [`WorkflowState`] does not exist, create it.
-    ///
-    /// The [`WorkflowState`] comes inside an `Arc` such that it can be shared between threads.
-    fn workflow_state(&self, run_id: Uuid, attempt: u32) -> Arc<dyn WorkflowState>;
+    fn workflow_state(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> impl Future<Output = miette::Result<Self::WorkflowState>> + Send;
     /// Listen for updates about *all* of the running workflows.
     ///
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    fn listen(&self) -> miette::Result<BoxStream<'static, RunAttemptUpdated>>;
+    fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>>;
 }
 
 /// [`WorkflowState`] is an interface to the state of an individual Workflow run attempt.
 pub trait WorkflowState: Debug + Send + Sync {
     /// Update the [`WorkflowState`] from an [`Event`].
-    fn write(&self, event: Event) -> BoxFuture<'_, miette::Result<()>>;
+    fn write(&self, event: Event) -> impl Future<Output = miette::Result<()>> + Send;
     /// Read the state of a Node at the specified [`Location`].
     ///
     /// If the `location` has no existing state, a default [`NodeState`] will be returned.
-    fn read(&self, location: &Location) -> BoxFuture<'_, miette::Result<NodeState>>;
+    fn read(&self, location: &Location) -> impl Future<Output = miette::Result<NodeState>> + Send;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
-    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
+    fn add_metadata(
+        &self,
+        metadata: HashMap<String, String>,
+    ) -> impl Future<Output = miette::Result<()>> + Send;
     /// Read the metadata for the Workflow run.
-    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
+    fn read_metadata(&self)
+    -> impl Future<Output = miette::Result<HashMap<String, String>>> + Send;
 }
