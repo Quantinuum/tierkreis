@@ -343,7 +343,7 @@ impl Orchestrator {
             .toposort_filtered_from_output_node(
                 // Returns true if a node should be traversed.
                 |n| {
-                    let (_definition, state) = node_states
+                    let (definition, state) = node_states
                         .get(&n)
                         .expect("Node definition/state not found");
 
@@ -351,6 +351,13 @@ impl Orchestrator {
                     // are run multiple times if their state is yet
                     // to be updated from the last orchestration round.
                     state.outputs.is_none()
+                        && !(matches!(
+                            definition,
+                            NodeDefinition::Task { .. }
+                                | NodeDefinition::Input { .. }
+                                | NodeDefinition::Const { .. }
+                                | NodeDefinition::Output {}
+                        ) && state.scheduled_time.is_some())
                 },
                 // Returns true if a port should be traversed.
                 |n, p| {
