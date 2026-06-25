@@ -1,9 +1,17 @@
 """Implementation to access node storage data."""
 
+from typing import get_args, get_origin
+from typing_extensions import is_protocol
+
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.models import TModel
-from tierkreis.controller.data.types import PType, is_optional, ptype_from_bytes
+from tierkreis.controller.data.models import TKR, TModel
+from tierkreis.controller.data.types import (
+    PType,
+    is_optional,
+    is_ptype,
+    ptype_from_bytes,
+)
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
@@ -29,6 +37,12 @@ def _read_output(
     then do not raise on EntryNotFound.
     """
     try:
+        origin = get_origin(annotation)
+        if origin is TKR:
+            args = get_args(annotation)
+            if len(args) == 1 and is_ptype(args[0]) and not is_protocol(args[0]):
+                return ptype_from_bytes(storage.read_output(Loc(), port_name), args[0])
+
         return ptype_from_bytes(storage.read_output(Loc(), port_name))
     except EntryNotFoundError as exc:
         if annotation and is_optional(annotation):

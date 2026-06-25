@@ -149,7 +149,7 @@ class TierkreisEncoder(json.JSONEncoder):
             return {"__tkr_bytes__": True, "bytes": b64encode(o).decode()}
 
         if isinstance(o, complex):
-            return {"__tkr_complex__": [o.real, o.imag]}
+            return [o.real, o.imag]
 
         return super().default(o)
 
@@ -165,9 +165,6 @@ class TierkreisDecoder(json.JSONDecoder):
         """Try to decode an object containing bytes."""
         if "__tkr_bytes__" in d and "bytes" in d:
             return b64decode(d["bytes"])
-
-        if "__tkr_complex__" in d:
-            return complex(*d["__tkr_complex__"])
 
         return d
 
@@ -367,8 +364,12 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         # just return the value in its "raw" form.
         return ser
 
-    if issubclass(origin, (bool, int, float, complex, str, bytes, NoneType)):
+    if issubclass(origin, (bool, int, float, str, bytes, NoneType)):
         return ser
+
+    if issubclass(origin, complex):
+        return complex(real=ser[0], imag=ser[1])  # type: ignore complex is T
+
     if origin is Package:
         return Package.from_bytes(ser)  # type: ignore Package is T
 
@@ -398,6 +399,12 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
 
     if issubclass(origin, Struct):
+        if isinstance(ser, Sequence):
+            xs = [
+                coerce_from_annotation(x, annotation)
+                for (x, annotation) in zip(ser, origin.__annotations__.values())
+            ]
+            return cast("T", origin(*xs))
         d = {
             k: coerce_from_annotation(ser[k], v)
             for k, v in origin.__annotations__.items()
