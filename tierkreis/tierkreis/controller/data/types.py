@@ -399,6 +399,12 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
 
     if issubclass(origin, Struct):
+        if isinstance(ser, Sequence):
+            xs = [
+                coerce_from_annotation(x, annotation)
+                for (x, annotation) in zip(ser, origin.__annotations__.values())
+            ]
+            return cast("T", origin(*xs))
         d = {
             k: coerce_from_annotation(ser[k], v)
             for k, v in origin.__annotations__.items()
