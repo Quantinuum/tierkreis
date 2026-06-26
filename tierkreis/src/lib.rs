@@ -15,7 +15,6 @@ pub mod orchestrator;
 pub mod runtime;
 pub mod server;
 pub mod state;
-pub mod updater;
 
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]

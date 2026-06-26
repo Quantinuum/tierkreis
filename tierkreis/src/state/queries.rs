@@ -10,8 +10,8 @@ use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
 use diesel::sqlite::Sqlite;
 use diesel::upsert::excluded;
 use diesel::{
-    BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
-    SelectableHelper, define_sql_function,
+    BelongingToDsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension,
+    QueryDsl, SelectableHelper, define_sql_function,
 };
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -20,8 +20,8 @@ use miette::{IntoDiagnostic, WrapErr, miette};
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
 use crate::state::models::{
-    NewNodeOutput, NewWorkflowRunInput, NodeOutput, NodeState, UpsertNodeState, Workflow,
-    WorkflowRun, WorkflowRunInput,
+    NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
+    UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
 };
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
@@ -57,8 +57,8 @@ pub async fn read_workflow(
 /// Returns an error when the insert fails.
 pub async fn insert_workflow(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    workflow: &Workflow,
-) -> miette::Result<()> {
+    workflow: &NewWorkflow<'_>,
+) -> diesel::result::QueryResult<()> {
     use crate::state::schema::workflows::dsl as wf;
 
     diesel::insert_into(wf::workflows)
@@ -66,9 +66,7 @@ pub async fn insert_workflow(
         .on_conflict(wf::id)
         .do_nothing()
         .execute(conn)
-        .await
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to insert workflow with id: {}", workflow.id,))?;
+        .await?;
 
     Ok(())
 }
@@ -79,11 +77,12 @@ pub async fn insert_workflow(
 ///
 /// If the run does not exists.
 /// Returns an error when the connection pool cannot be accessed.
-pub async fn read_workflowrun(
+pub async fn read_workflow_run(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
-) -> miette::Result<WorkflowRun> {
+) -> miette::Result<(WorkflowRun, WorkflowRunAttempt)> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
     use crate::state::schema::workflow_runs::dsl as wr;
 
     let attempt_i32 = i32::try_from(attempt)
@@ -92,10 +91,10 @@ pub async fn read_workflowrun(
 
     wr::workflow_runs
         .filter(wr::id.eq(run_id.to_string()))
-        .filter(wr::attempt.eq(attempt_i32))
-        .order(wr::started_time.asc())
-        .select(WorkflowRun::as_select())
-        .first::<WorkflowRun>(conn)
+        .inner_join(wra::workflow_run_attempts)
+        .filter(wra::attempt.eq(attempt_i32))
+        .select((WorkflowRun::as_select(), WorkflowRunAttempt::as_select()))
+        .first::<(WorkflowRun, WorkflowRunAttempt)>(conn)
         .await
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to query workflow run"))
@@ -108,73 +107,24 @@ pub async fn read_workflowrun(
 /// Returns an error when the insert fails.
 pub async fn insert_workflow_run(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    run: &WorkflowRun,
-) -> miette::Result<()> {
+    run: &NewWorkflowRun<'_>,
+) -> diesel::result::QueryResult<WorkflowRun> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
     use crate::state::schema::workflow_runs::dsl as wr;
 
-    diesel::insert_into(wr::workflow_runs)
+    let workflow_run = diesel::insert_into(wr::workflow_runs)
         .values(run)
-        .on_conflict((wr::id, wr::attempt))
-        .do_nothing()
+        .on_conflict_do_nothing()
+        .returning(WorkflowRun::as_returning())
+        .get_result(conn)
+        .await?;
+
+    diesel::insert_into(wra::workflow_run_attempts)
+        .values(wra::workflow_run_id.eq(&workflow_run.id))
         .execute(conn)
-        .await
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            miette!(
-                "Failed to insert workflow run row for run {} attempt {}",
-                run.id,
-                run.attempt
-            )
-        })?;
+        .await?;
 
-    Ok(())
-}
-
-/// Insert a default workflow run row for a given run ID and attempt.
-/// Also insert a default workflow row if it does not already exist.
-///
-/// # Errors
-///
-/// Returns an error when the connection pool cannot be accessed or the insert
-/// fails.
-pub async fn insert_default_workflowrun(
-    conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    run_id: uuid::Uuid,
-    attempt: u32,
-) -> miette::Result<WorkflowRun> {
-    use crate::state::schema::workflows::dsl as wf;
-
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-
-    // This workflow should exist already, this is just to have a valid insert
-    // In the future this should not be necessary. Nil to make it clear it is not a real workflow.
-    let workflow_id = uuid::Uuid::nil().to_string();
-    let workflow = Workflow {
-        id: workflow_id.clone(),
-        name: None,
-        created_time: Some(Utc::now().naive_utc()),
-        definition: Vec::new(),
-    };
-
-    diesel::insert_or_ignore_into(wf::workflows)
-        .values(&workflow)
-        .execute(conn)
-        .await
-        .into_diagnostic()
-        .wrap_err_with(|| "Failed to insert workflow row")?;
-    let run = WorkflowRun {
-        id: run_id.to_string(),
-        attempt: attempt_i32,
-        workflow_id: workflow_id.clone(),
-        run_metadata: br"{}".to_vec(),
-        status: None,
-        started_time: None,
-    };
-
-    insert_workflow_run(conn, &run).await?;
-    Ok(run)
+    Ok(workflow_run)
 }
 
 define_sql_function!(
@@ -431,15 +381,14 @@ pub async fn read_node_state(
 pub async fn insert_workflow_run_inputs(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     workflow_inputs: impl Iterator<Item = NewWorkflowRunInput<'_>>,
-) -> miette::Result<()> {
+) -> diesel::result::QueryResult<()> {
     use crate::state::schema::workflow_run_inputs::dsl as wri;
 
     for workflow_input in workflow_inputs {
         diesel::insert_into(wri::workflow_run_inputs)
             .values(workflow_input)
             .execute(conn)
-            .await
-            .into_diagnostic()?;
+            .await?;
     }
 
     Ok(())
@@ -554,19 +503,24 @@ async fn read_outputs(
     Ok(outputs)
 }
 
+define_sql_function!(
+    /// Patch a jsonb BLOB with a jsonb format patch, returning the patched copy.
+    fn jsonb_patch(t: Binary, p: Binary) -> Binary;
+);
+
 /// Merge additional metadata into the persisted run metadata for a workflow run.
 ///
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed, the run lookup
 /// fails, metadata JSON cannot be parsed or serialized, or the update fails.
-pub async fn add_run_metadata<S: BuildHasher>(
+pub async fn add_run_attempt_metadata<S: BuildHasher>(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
     new_metadata: HashMap<String, String, S>,
 ) -> miette::Result<()> {
-    use crate::state::schema::workflow_runs::dsl as wr;
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -574,49 +528,14 @@ pub async fn add_run_metadata<S: BuildHasher>(
 
     let run_id_str = run_id.to_string();
 
-    let run = wr::workflow_runs
-        .filter(wr::id.eq(run_id_str.clone()))
-        .filter(wr::attempt.eq(attempt_i32))
-        .first::<WorkflowRun>(conn)
-        .await;
-    let run = match run {
-        Ok(run) => run,
-        Err(diesel::result::Error::NotFound) => insert_default_workflowrun(conn, run_id, attempt)
-            .await
-            .wrap_err_with(|| miette!("Failed to insert default run for metadata update"))?,
-        Err(err) => {
-            return Err(miette!(
-                "Failed to query workflow run for metadata update: {err}"
-            ));
-        }
-    };
-
-    let mut metadata = serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata)
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            miette!(
-                "Failed to parse existing run metadata JSON for run {}",
-                run.id
-            )
-        })?;
-
-    metadata.extend(new_metadata);
-
-    let updated_metadata_json = serde_json::to_vec(&metadata)
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            miette!(
-                "Failed to serialize updated metadata to JSON for run {}",
-                run.id
-            )
-        })?;
+    let new_metadata = serde_json::to_vec(&new_metadata).into_diagnostic()?;
 
     diesel::update(
-        wr::workflow_runs
-            .filter(wr::id.eq(run_id_str))
-            .filter(wr::attempt.eq(attempt_i32)),
+        wra::workflow_run_attempts
+            .filter(wra::workflow_run_id.eq(run_id_str))
+            .filter(wra::attempt.eq(attempt_i32)),
     )
-    .set(wr::run_metadata.eq(updated_metadata_json))
+    .set(wra::run_metadata.eq(jsonb_patch(wra::run_metadata, new_metadata)))
     .execute(conn)
     .await
     .into_diagnostic()
@@ -631,18 +550,23 @@ pub async fn add_run_metadata<S: BuildHasher>(
     Ok(())
 }
 
+define_sql_function!(
+    /// Validate that x is valid JSON and return the string representation.
+    fn json(x: Binary) -> Text;
+);
+
 /// Read the persisted metadata for a workflow run.
 ///
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed, the run lookup
 /// fails, or the metadata JSON cannot be parsed.
-pub async fn read_run_metadata(
+pub async fn read_run_attempt_metadata(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
 ) -> miette::Result<HashMap<String, String>> {
-    use crate::state::schema::workflow_runs::dsl as wr;
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
 
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
@@ -650,20 +574,21 @@ pub async fn read_run_metadata(
 
     let run_id_str = run_id.to_string();
 
-    let run = wr::workflow_runs
-        .filter(wr::id.eq(run_id_str.clone()))
-        .filter(wr::attempt.eq(attempt_i32))
-        .first::<WorkflowRun>(conn)
+    let metadata = wra::workflow_run_attempts
+        .filter(wra::workflow_run_id.eq(&run_id_str))
+        .filter(wra::attempt.eq(attempt_i32))
+        .select(json(wra::run_metadata))
+        .first::<String>(conn)
         .await
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to query workflow run for metadata update"))?;
 
-    let metadata = serde_json::from_slice::<HashMap<String, String>>(&run.run_metadata)
+    let metadata = serde_json::from_str::<HashMap<String, String>>(&metadata)
         .into_diagnostic()
         .wrap_err_with(|| {
             miette!(
                 "Failed to parse existing run metadata JSON for run {}",
-                run.id
+                run_id_str
             )
         })?;
 

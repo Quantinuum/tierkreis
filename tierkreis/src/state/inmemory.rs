@@ -20,10 +20,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec,
-    event::{Event, WorkflowRunEvent},
-    graph::WorkflowGraph,
-    state::interface::RunAttemptUpdated,
+    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
+    state::interface::RuntimeWatchState,
 };
 use crate::{
     event::{NodeEvent, RunningStateUpdate},
@@ -57,19 +55,15 @@ struct InMemoryRuntimeStateInner {
 #[derive(Debug)]
 pub struct InMemoryRuntimeState {
     inner: Arc<InMemoryRuntimeStateInner>,
-    update_sender: watch::Sender<RunAttemptUpdated>,
-    update_receiver: Mutex<Option<watch::Receiver<RunAttemptUpdated>>>,
+    update_sender: watch::Sender<RuntimeWatchState>,
+    update_receiver: Mutex<Option<watch::Receiver<RuntimeWatchState>>>,
 }
 
 impl InMemoryRuntimeState {
     /// Create a new [`InMemoryRuntimeState`] instance.
     #[must_use]
     pub fn new() -> Self {
-        let (sender, receiver) = watch::channel(RunAttemptUpdated {
-            attempt: 0,
-            run_id: Uuid::nil(),
-            stopped: false,
-        });
+        let (sender, receiver) = watch::channel(RuntimeWatchState::default());
         Self {
             inner: Arc::new(InMemoryRuntimeStateInner {
                 workflows: DashMap::new(),
@@ -118,6 +112,10 @@ impl RuntimeState for InMemoryRuntimeState {
         entry.workflow_id = workflow_id;
         entry.inputs = inputs;
 
+        self.update_sender.send_modify(|active_runs| {
+            active_runs.active_runs.insert((run_id, attempt));
+        });
+
         Ok(InMemoryWorkflowRunState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
@@ -143,7 +141,7 @@ impl RuntimeState for InMemoryRuntimeState {
         })
     }
 
-    fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>> {
+    fn listen(&self) -> miette::Result<watch::Receiver<RuntimeWatchState>> {
         let receiver = {
             let mut receiver = self
                 .update_receiver
@@ -164,7 +162,7 @@ impl RuntimeState for InMemoryRuntimeState {
 #[derive(Debug)]
 pub struct InMemoryWorkflowRunState {
     global_state: Arc<InMemoryRuntimeStateInner>,
-    update_sender: watch::Sender<RunAttemptUpdated>,
+    update_sender: watch::Sender<RuntimeWatchState>,
     workflow_id: Uuid,
     run_id: Uuid,
     attempt: u32,
@@ -179,13 +177,18 @@ impl InMemoryWorkflowRunState {
     /// Will panic if `listen` returns an error, but this should be impossible.
     #[cfg(test)]
     #[must_use]
-    pub fn test() -> (Self, watch::Receiver<RunAttemptUpdated>) {
+    pub fn test() -> (Self, watch::Receiver<RuntimeWatchState>) {
         let global_state = InMemoryRuntimeState::new();
         let events = global_state.listen().unwrap();
         global_state
             .inner
             .runs
             .insert((Uuid::nil(), 0), RunAttemptState::default());
+        global_state
+            .update_sender
+            .send_modify(|run_attempt_updated| {
+                run_attempt_updated.active_runs.insert((Uuid::nil(), 0));
+            });
         (
             Self {
                 global_state: Arc::clone(&global_state.inner),
@@ -222,7 +225,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
     }
 
     #[instrument]
-    async fn write(&self, event: Event) -> miette::Result<()> {
+    async fn write(&self, event: WorkflowRunEvent) -> miette::Result<()> {
         let global_state = &self.global_state;
         let run_state = global_state
             .runs
@@ -232,16 +235,23 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         let mut send_workflow_stopped = false;
 
         match event {
-            Event::WorkflowRun(ref run_event) => {
-                handle_run_event(&mut send_workflow_stopped, run_event);
-            }
-            Event::Node(ref node_event) => handle_node_event(run_state, node_event),
+            WorkflowRunEvent::Started {} => {}
+            WorkflowRunEvent::Cancelled {}
+            | WorkflowRunEvent::Errored {}
+            | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+            WorkflowRunEvent::NodeEvent(ref node_event) => handle_node_event(run_state, node_event),
         }
 
         self.update_sender.send_modify(|run_attempt_updated| {
-            run_attempt_updated.run_id = self.run_id;
-            run_attempt_updated.attempt = self.attempt;
-            run_attempt_updated.stopped |= send_workflow_stopped;
+            if send_workflow_stopped {
+                run_attempt_updated
+                    .active_runs
+                    .remove(&(self.run_id, self.attempt));
+            } else {
+                run_attempt_updated
+                    .active_runs
+                    .insert((self.run_id, self.attempt));
+            }
         });
         Ok(())
     }
@@ -279,15 +289,6 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         let metadata = entry.or_default().value().metadata.clone();
         Ok(metadata)
-    }
-}
-
-fn handle_run_event(send_workflow_stopped: &mut bool, run_event: &WorkflowRunEvent) {
-    match run_event {
-        WorkflowRunEvent::Started {} => {}
-        WorkflowRunEvent::Cancelled {}
-        | WorkflowRunEvent::Errored {}
-        | WorkflowRunEvent::Completed {} => *send_workflow_stopped = true,
     }
 }
 
@@ -381,6 +382,8 @@ fn handle_node_event(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use crate::event::NodeStatus;
 
     use super::*;
@@ -417,19 +420,18 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
 
         let updated = recv.borrow_and_update();
+        let expected_runs = HashSet::from_iter([(run_id, attempt)]);
         assert_eq!(
             *updated,
-            RunAttemptUpdated {
-                run_id,
-                attempt,
-                stopped: false,
+            RuntimeWatchState {
+                active_runs: expected_runs,
             }
         );
 
@@ -448,7 +450,7 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))

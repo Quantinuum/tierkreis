@@ -33,6 +33,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    workflow_run_attempts (id) {
+        id -> Integer,
+        workflow_run_id -> Text,
+        attempt -> Integer,
+        run_metadata -> Binary,
+        status -> Nullable<Text>,
+        started_time -> Nullable<Timestamp>,
+    }
+}
+
+diesel::table! {
     workflow_run_inputs (id) {
         id -> Integer,
         workflow_run_id -> Text,
@@ -44,13 +55,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    workflow_runs (id, attempt) {
+    workflow_runs (id) {
         id -> Text,
-        attempt -> Integer,
         workflow_id -> Text,
-        run_metadata -> Binary,
-        status -> Nullable<Text>,
-        started_time -> Nullable<Timestamp>,
     }
 }
 
@@ -64,11 +71,14 @@ diesel::table! {
 }
 
 diesel::joinable!(node_outputs -> node_states (node_state_id));
+diesel::joinable!(workflow_run_attempts -> workflow_runs (workflow_run_id));
+diesel::joinable!(workflow_run_inputs -> workflow_runs (workflow_run_id));
 diesel::joinable!(workflow_runs -> workflows (workflow_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     node_outputs,
     node_states,
+    workflow_run_attempts,
     workflow_run_inputs,
     workflow_runs,
     workflows,

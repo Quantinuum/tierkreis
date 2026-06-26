@@ -2,25 +2,30 @@
 This module defines the interface contracts that the various [`RuntimeState`]
 and [`WorkflowRunState`] implementations must satisfy.
 */
-use std::{collections::HashMap, fmt::Debug};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+};
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use crate::{asset_storage::AssetSpec, event::Event, graph::WorkflowGraph, location::Location};
+use crate::{
+    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph, location::Location,
+};
 
 /// [`RunAttemptUpdated`] is a struct that is emitted by the [`RuntimeState`] interface
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RunAttemptUpdated {
-    /// The unique identifier of the run.
-    pub run_id: Uuid,
-    /// The number of the run attempt, typically sequential.
-    pub attempt: u32,
-    /// Whether the workflow is complete/cancelled/errored and no further orchestration is required.
-    pub stopped: bool,
+///
+/// Not necessarily representative of all workflow runs that are not finished,
+/// but rather an in-memory cache of that is used by the runtime to decide
+/// what to run next. The [`RuntimeState`] is responsible for u
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RuntimeWatchState {
+    /// The set of runs currently being executed by the runtime.
+    pub active_runs: HashSet<(Uuid, u32)>,
 }
 
 /// [`NodeState`] is a struct that stores the possible state that a node
@@ -98,7 +103,7 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>>;
+    fn listen(&self) -> miette::Result<watch::Receiver<RuntimeWatchState>>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
@@ -114,7 +119,7 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         &self,
     ) -> impl Future<Output = miette::Result<HashMap<String, AssetSpec>>> + Send;
     /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].
-    fn write(&self, event: Event) -> impl Future<Output = miette::Result<()>> + Send;
+    fn write(&self, event: WorkflowRunEvent) -> impl Future<Output = miette::Result<()>> + Send;
     /// Read the state of a Node at the specified [`Location`].
     ///
     /// If the `location` has no existing state, a default [`NodeState`] will be returned.
