@@ -1,6 +1,8 @@
 #![allow(missing_docs)]
 use crate::location::Location;
-use crate::state::schema::{node_outputs, node_states, workflow_runs, workflows};
+use crate::state::schema::{
+    node_outputs, node_states, workflow_run_inputs, workflow_runs, workflows,
+};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 
@@ -13,6 +15,7 @@ use diesel::prelude::*;
 pub struct Workflow {
     pub id: String, // UUID string
     pub name: Option<String>,
+    pub definition: Vec<u8>, // JSON blob
     pub created_time: Option<NaiveDateTime>,
 }
 
@@ -82,6 +85,32 @@ pub struct UpsertNodeState {
 }
 
 // -----------------------------------------------------------------------------
+// Workflow Run Inputs
+// -----------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
+#[diesel(belongs_to(WorkflowRun, foreign_key = workflow_run_id))]
+#[diesel(table_name = workflow_run_inputs)]
+pub struct WorkflowRunInput {
+    pub id: i32,
+    pub workflow_run_id: String,
+    pub name: String,
+    pub asset_kind: String,
+    pub storage_name: String,
+    pub asset_key: String,
+}
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = workflow_run_inputs)]
+pub struct NewWorkflowRunInput<'a> {
+    pub workflow_run_id: &'a str,
+    pub name: &'a str,
+    pub asset_kind: String,
+    pub storage_name: &'a str,
+    pub asset_key: String,
+}
+
+// -----------------------------------------------------------------------------
 // Node Outputs
 // -----------------------------------------------------------------------------
 
@@ -99,9 +128,9 @@ pub struct NodeOutput {
 
 #[derive(Insertable, Debug, Clone)]
 #[diesel(table_name = node_outputs)]
-pub struct NewNodeOutput {
-    pub name: String,
+pub struct NewNodeOutput<'a> {
+    pub name: &'a str,
     pub asset_kind: String,
-    pub storage_name: String,
+    pub storage_name: &'a str,
     pub asset_key: String,
 }

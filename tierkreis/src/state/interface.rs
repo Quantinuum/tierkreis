@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use crate::{asset_storage::AssetSpec, event::Event, location::Location};
+use crate::{asset_storage::AssetSpec, event::Event, graph::WorkflowGraph, location::Location};
 
 /// [`RunAttemptUpdated`] is a struct that is emitted by the [`RuntimeState`] interface
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
@@ -67,10 +67,28 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// [`WorkflowRunState`] is the implementation of the [`WorkflowRunState`] trait that is associated
     /// with this [`RuntimeState`] implementation and returned by the `workflow_run_state` method.
     type WorkflowRunState: WorkflowRunState;
+
+    /// Retrieve the [`WorkflowGraph`] specified by id.
+    fn load_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> impl Future<Output = miette::Result<WorkflowGraph>> + Send;
+    /// Save a [`WorkflowGraph`] and return a new id.
+    fn save_workflow(
+        &self,
+        workflow_graph: WorkflowGraph,
+    ) -> impl Future<Output = miette::Result<Uuid>> + Send;
+
+    /// Create a new [`WorkflowRunState`] for a Workflow in the [`RuntimeState`] specified by id.
+    fn new_workflow_run_state(
+        &self,
+        workflow_id: Uuid,
+        inputs: HashMap<String, AssetSpec>,
+    ) -> impl Future<Output = miette::Result<Self::WorkflowRunState>> + Send;
     /// Retrieve a handle to a [`WorkflowRunState`] depending on the `run_id` and attempt number.
     ///
     /// If the backing data for the [`WorkflowRunState`] does not exist, create it.
-    fn workflow_run_state(
+    fn get_workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
@@ -85,7 +103,17 @@ pub trait RuntimeState: Debug + Send + Sync {
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
 pub trait WorkflowRunState: Debug + Send + Sync {
-    /// Update the [`WorkflowRunState`] from an [`Event`].
+    /// Retrieve the id for the [`WorkflowGraph`] associated with this Workflow run attempt.
+    fn workflow_id(&self) -> Uuid;
+    /// Retrieve the `run_id` associated with this `WorkflowRunState`.
+    fn run_id(&self) -> Uuid;
+    /// Retrieve the `attempt` associated with this `WorkflowRunState`.
+    fn attempt(&self) -> u32;
+    /// Retrieve the workflow inputs associated with this `WorkflowRunState`.
+    fn load_inputs(
+        &self,
+    ) -> impl Future<Output = miette::Result<HashMap<String, AssetSpec>>> + Send;
+    /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].
     fn write(&self, event: Event) -> impl Future<Output = miette::Result<()>> + Send;
     /// Read the state of a Node at the specified [`Location`].
     ///

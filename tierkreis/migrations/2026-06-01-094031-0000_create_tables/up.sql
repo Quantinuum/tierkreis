@@ -23,7 +23,8 @@ CREATE TABLE `node_states`(
 CREATE TABLE `workflows`(
 	`id` TEXT NOT NULL PRIMARY KEY,
 	`name` TEXT,
-	`created_time` TIMESTAMP
+	`created_time` TIMESTAMP,
+	`definition` BLOB NOT NULL
 );
 
 CREATE TABLE `node_outputs`(
@@ -49,3 +50,12 @@ CREATE TABLE `workflow_runs`(
 	FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`)
 );
 
+CREATE TABLE `workflow_run_inputs` (
+	`id` INTEGER NOT NULL PRIMARY KEY,
+	`workflow_run_id` TEXT NOT NULL,
+	`name` TEXT NOT NULL,
+	`asset_kind` TEXT NOT NULL,
+	`storage_name` TEXT NOT NULL,
+	`asset_key` TEXT NOT NULL,
+	FOREIGN KEY (`workflow_run_id`) REFERENCES `workflow_runs` (`id`)
+)

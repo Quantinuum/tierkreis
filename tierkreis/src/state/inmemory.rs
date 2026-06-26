@@ -20,7 +20,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
+    asset_storage::AssetSpec,
     event::{Event, WorkflowRunEvent},
+    graph::WorkflowGraph,
     state::interface::RunAttemptUpdated,
 };
 use crate::{
@@ -35,6 +37,8 @@ use crate::{
 /// [`RunAttemptState`] is the full state of a run.
 #[derive(Debug, Default)]
 struct RunAttemptState {
+    workflow_id: Uuid,
+    inputs: HashMap<String, AssetSpec>,
     nodes: HashMap<Location, NodeState>,
     metadata: HashMap<String, String>,
 }
@@ -44,6 +48,7 @@ struct RunAttemptState {
 /// references.
 #[derive(Debug, Default)]
 struct InMemoryRuntimeStateInner {
+    workflows: DashMap<Uuid, WorkflowGraph>,
     runs: DashMap<(Uuid, u32), RunAttemptState>,
 }
 
@@ -67,6 +72,7 @@ impl InMemoryRuntimeState {
         });
         Self {
             inner: Arc::new(InMemoryRuntimeStateInner {
+                workflows: DashMap::new(),
                 runs: DashMap::new(),
             }),
 
@@ -85,18 +91,53 @@ impl Default for InMemoryRuntimeState {
 impl RuntimeState for InMemoryRuntimeState {
     type WorkflowRunState = InMemoryWorkflowRunState;
 
-    async fn workflow_run_state(
+    async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
+        let workflow = self
+            .inner
+            .workflows
+            .get(&workflow_id)
+            .ok_or_else(|| miette!("Workflow not found with workflow id: {workflow_id}"))?;
+        Ok(workflow.clone())
+    }
+
+    async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
+        let workflow_id = Uuid::now_v7();
+        self.inner.workflows.insert(workflow_id, workflow_graph);
+        Ok(workflow_id)
+    }
+
+    async fn new_workflow_run_state(
         &self,
-        run_id: Uuid,
-        attempt: u32,
-    ) -> miette::Result<InMemoryWorkflowRunState> {
-        let entry = self.inner.runs.entry((run_id, attempt));
-        // Insert the default if the value does not yet exist.
-        entry.or_default();
+        workflow_id: Uuid,
+        inputs: HashMap<String, AssetSpec>,
+    ) -> miette::Result<Self::WorkflowRunState> {
+        let run_id = Uuid::now_v7();
+        let attempt = 0;
+
+        let mut entry = self.inner.runs.entry((run_id, attempt)).or_default();
+        entry.workflow_id = workflow_id;
+        entry.inputs = inputs;
 
         Ok(InMemoryWorkflowRunState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
+            workflow_id: entry.workflow_id,
+            run_id,
+            attempt,
+        })
+    }
+
+    async fn get_workflow_run_state(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<InMemoryWorkflowRunState> {
+        let entry = self.inner.runs.entry((run_id, attempt)).or_default();
+
+        Ok(InMemoryWorkflowRunState {
+            global_state: Arc::clone(&self.inner),
+            update_sender: self.update_sender.clone(),
+            workflow_id: entry.workflow_id,
             run_id,
             attempt,
         })
@@ -124,6 +165,7 @@ impl RuntimeState for InMemoryRuntimeState {
 pub struct InMemoryWorkflowRunState {
     global_state: Arc<InMemoryRuntimeStateInner>,
     update_sender: watch::Sender<RunAttemptUpdated>,
+    workflow_id: Uuid,
     run_id: Uuid,
     attempt: u32,
 }
@@ -148,6 +190,7 @@ impl InMemoryWorkflowRunState {
             Self {
                 global_state: Arc::clone(&global_state.inner),
                 update_sender: global_state.update_sender.clone(),
+                workflow_id: Uuid::nil(),
                 run_id: Uuid::nil(),
                 attempt: 0,
             },
@@ -157,6 +200,27 @@ impl InMemoryWorkflowRunState {
 }
 
 impl WorkflowRunState for InMemoryWorkflowRunState {
+    fn workflow_id(&self) -> Uuid {
+        self.workflow_id
+    }
+
+    fn run_id(&self) -> Uuid {
+        self.run_id
+    }
+
+    fn attempt(&self) -> u32 {
+        self.attempt
+    }
+
+    async fn load_inputs(&self) -> miette::Result<HashMap<String, AssetSpec>> {
+        let run = self
+            .global_state
+            .runs
+            .get(&(self.run_id, self.attempt))
+            .ok_or_else(|| miette!("Workflow run not found"))?;
+        Ok(run.inputs.clone())
+    }
+
     #[instrument]
     async fn write(&self, event: Event) -> miette::Result<()> {
         let global_state = &self.global_state;
@@ -328,7 +392,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
 
@@ -346,7 +412,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         workflow_run_state
             .write(Event::Node(NodeEvent {
@@ -375,7 +443,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         workflow_run_state
             .write(Event::Node(NodeEvent {
@@ -398,7 +468,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_run_state.add_metadata(metadata.clone()).await?;
@@ -417,7 +489,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_run_state.add_metadata(metadata1.clone()).await?;

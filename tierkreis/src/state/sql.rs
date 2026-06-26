@@ -15,11 +15,10 @@ use std::{
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
-use deadpool::Runtime;
+use deadpool::{Runtime, managed::Object};
 use diesel::SqliteConnection;
 use diesel_async::{
-    AsyncMigrationHarness,
-    pooled_connection::{AsyncDieselConnectionManager, deadpool::Object},
+    AsyncMigrationHarness, pooled_connection::AsyncDieselConnectionManager,
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -28,7 +27,21 @@ use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 
 use crate::{
-    event::{Event, NodeStatus, RunningStateUpdate},
+    asset_storage::AssetSpec,
+    event::{Event, NodeEvent, WorkflowRunEvent},
+    graph::WorkflowGraph,
+    state::{
+        interface::RunAttemptUpdated,
+        models::{NewWorkflowRunInput, Workflow, WorkflowRun},
+        queries::{
+            add_run_metadata, insert_default_workflowrun, insert_workflow, insert_workflow_run,
+            insert_workflow_run_inputs, read_node_state, read_run_metadata, read_workflow,
+            read_workflow_run_inputs, read_workflowrun, update_node_state,
+        },
+    },
+};
+use crate::{
+    event::{NodeStatus, RunningStateUpdate},
     location::Location,
     state::{
         WorkflowRunState,
@@ -36,21 +49,15 @@ use crate::{
         models::{NewNodeOutput, UpsertNodeState},
     },
 };
-use crate::{
-    event::{NodeEvent, WorkflowRunEvent},
-    state::{
-        interface::RunAttemptUpdated,
-        queries::{
-            add_run_metadata, insert_default_workflowrun, read_node_state, read_run_metadata,
-            read_workflowrun, update_node_state,
-        },
-    },
-};
 
 /// Embedded Diesel migrations
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
-fn run_migrations(conn: Object<SyncConnectionWrapper<SqliteConnection>>) -> miette::Result<()> {
+fn run_migrations(
+    conn: diesel_async::pooled_connection::deadpool::Object<
+        SyncConnectionWrapper<SqliteConnection>,
+    >,
+) -> miette::Result<()> {
     let mut harness = AsyncMigrationHarness::new(conn);
     harness
         .run_pending_migrations(MIGRATIONS)
@@ -184,6 +191,19 @@ impl SqliteRuntimeState {
             update_receiver: Mutex::new(Some(receiver)),
         })
     }
+
+    async fn get_conn(
+        &self,
+    ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
+    {
+        let conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        Ok(conn)
+    }
 }
 
 impl Debug for SqliteRuntimeState {
@@ -195,33 +215,93 @@ impl Debug for SqliteRuntimeState {
 impl RuntimeState for SqliteRuntimeState {
     type WorkflowRunState = SqliteWorkflowRunState;
 
-    async fn workflow_run_state(
+    async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
+        let mut conn = self.get_conn().await?;
+        let _lock = self.lock.read().await;
+        let workflow = read_workflow(&mut conn, workflow_id).await?;
+        serde_json::from_slice(&workflow.definition).into_diagnostic()
+    }
+
+    async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
+        let id = Uuid::now_v7();
+        let workflow = Workflow {
+            id: id.to_string(),
+            name: None,
+            created_time: Some(Utc::now().naive_utc()),
+            definition: serde_json::to_vec(&workflow_graph).into_diagnostic()?,
+        };
+        let mut conn = self.get_conn().await?;
+        let _lock = self.lock.write().await;
+        insert_workflow(&mut conn, &workflow).await?;
+        Ok(id)
+    }
+
+    async fn new_workflow_run_state(
+        &self,
+        workflow_id: Uuid,
+        inputs: HashMap<String, crate::asset_storage::AssetSpec>,
+    ) -> miette::Result<Self::WorkflowRunState> {
+        let mut conn = self.get_conn().await?;
+        let _lock = self.lock.write().await;
+        let run_id = Uuid::now_v7();
+        let run_id_str = run_id.to_string();
+        let attempt = 0;
+        let run = WorkflowRun {
+            id: run_id_str.clone(),
+            attempt,
+            workflow_id: workflow_id.to_string(),
+            run_metadata: br"{}".to_vec(),
+            status: None,
+            started_time: None,
+        };
+        insert_workflow_run(&mut conn, &run).await?;
+
+        let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
+            workflow_run_id: &run_id_str,
+            name,
+            asset_kind: asset.kind.to_string(),
+            storage_name: &asset.storage_name,
+            asset_key: asset.asset_key.to_string(),
+        });
+
+        insert_workflow_run_inputs(&mut conn, workflow_inputs).await?;
+
+        Ok(SqliteWorkflowRunState {
+            pool: self.pool.clone(),
+            lock: self.lock.clone(),
+            update_sender: self.update_sender.clone(),
+            workflow_id,
+            run_id,
+            attempt: 0,
+        })
+    }
+
+    async fn get_workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<SqliteWorkflowRunState> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
+        let mut conn = self.get_conn().await?;
         // Insert the default if the value does not yet exist.
         // Cannot return errors from this trait method, so best-effort initialize.
         let run = {
             let _lock = self.lock.read().await;
             read_workflowrun(&mut conn, run_id, attempt).await
         };
-        // Should fail?
-        if run.is_err() {
-            let _lock = self.lock.write().await;
-            _ = insert_default_workflowrun(&mut conn, run_id, attempt).await?;
-        }
+        let workflow_id = match run {
+            Ok(run) => run.workflow_id.parse().into_diagnostic()?,
+            Err(_err) => {
+                let _lock = self.lock.write().await;
+                let run = insert_default_workflowrun(&mut conn, run_id, attempt).await?;
+                run.workflow_id.parse().into_diagnostic()?
+            }
+        };
 
         Ok(SqliteWorkflowRunState {
             pool: self.pool.clone(),
             lock: self.lock.clone(),
             update_sender: self.update_sender.clone(),
+            workflow_id,
             run_id,
             attempt,
         })
@@ -251,6 +331,7 @@ pub struct SqliteWorkflowRunState {
     // control access to the ConnPool.
     lock: Arc<RwLock<()>>,
     update_sender: watch::Sender<RunAttemptUpdated>,
+    workflow_id: Uuid,
     run_id: Uuid,
     attempt: u32,
 }
@@ -266,6 +347,29 @@ impl Debug for SqliteWorkflowRunState {
 }
 
 impl WorkflowRunState for SqliteWorkflowRunState {
+    fn workflow_id(&self) -> Uuid {
+        self.workflow_id
+    }
+
+    fn run_id(&self) -> Uuid {
+        self.run_id
+    }
+
+    fn attempt(&self) -> u32 {
+        self.attempt
+    }
+
+    async fn load_inputs(&self) -> miette::Result<HashMap<String, AssetSpec>> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let _lock = self.lock.read().await;
+        read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
+    }
+
     async fn write(&self, event: Event) -> miette::Result<()> {
         let mut send_workflow_stopped = false;
         let _lock = self.lock.write().await;
@@ -286,35 +390,35 @@ impl WorkflowRunState for SqliteWorkflowRunState {
     }
 
     async fn read(&self, location: &Location) -> miette::Result<NodeState> {
-        let _lock = self.lock.read().await;
         let mut conn = self
             .pool
             .get()
             .await
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
+        let _lock = self.lock.read().await;
         read_node_state(&mut conn, self.run_id, self.attempt, location).await
     }
 
     async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
-        let _lock = self.lock.write().await;
         let mut conn = self
             .pool
             .get()
             .await
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
+        let _lock = self.lock.write().await;
         add_run_metadata(&mut conn, self.run_id, self.attempt, metadata).await
     }
 
     async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
-        let _lock = self.lock.read().await;
         let mut conn = self
             .pool
             .get()
             .await
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
+        let _lock = self.lock.read().await;
         read_run_metadata(&mut conn, self.run_id, self.attempt).await
     }
 }
@@ -390,9 +494,9 @@ impl SqliteWorkflowRunState {
                                 node_outputs.push((
                                     loc.clone(),
                                     NewNodeOutput {
-                                        name: port.clone(),
+                                        name: port,
                                         asset_kind: asset_spec.kind.to_string(),
-                                        storage_name: asset_spec.storage_name.clone(),
+                                        storage_name: &asset_spec.storage_name,
                                         asset_key: asset_spec.asset_key.to_string(),
                                     },
                                 ));
@@ -437,7 +541,6 @@ impl SqliteWorkflowRunState {
 
 #[cfg(test)]
 mod tests {
-
     use std::ops::BitOr;
 
     use crate::{
@@ -454,7 +557,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
 
@@ -472,7 +577,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 1;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         workflow_run_state
             .write(Event::Node(NodeEvent {
@@ -501,7 +608,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         workflow_run_state
             .write(Event::Node(NodeEvent {
@@ -536,7 +645,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let mut outputs = HashMap::new();
         outputs.insert(
@@ -570,7 +681,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         workflow_run_state
             .write(Event::Node(NodeEvent {
@@ -629,7 +742,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 3;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_run_state.add_metadata(metadata.clone()).await?;
@@ -647,7 +762,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 4;
-        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state
+            .get_workflow_run_state(run_id, attempt)
+            .await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
         workflow_run_state.add_metadata(metadata1.clone()).await?;
