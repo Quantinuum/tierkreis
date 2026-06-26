@@ -27,7 +27,7 @@ use crate::{
     graph::{LegacyWorkflowGraph, WorkflowGraph},
     location::Location,
     orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState, WorkflowState},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState, WorkflowRunState},
     updater::Updater,
 };
 
@@ -105,6 +105,7 @@ impl Runtime<SqliteRuntimeState> {
     }
 
     // TODO: Add a from_config function to build a Runtime from a configuration file.
+    #[allow(dead_code)]
     async fn sqlite_memory() -> miette::Result<Self> {
         let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
         let memory_storage = InMemoryStorage::new();
@@ -191,14 +192,14 @@ impl<RS: RuntimeState> Runtime<RS> {
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)>
     where
-        <RS as RuntimeState>::WorkflowState: 'static,
+        <RS as RuntimeState>::WorkflowRunState: 'static,
     {
         let run_id = Uuid::now_v7();
         let attempt = 0;
 
-        let workflow_state = self.state.workflow_state(run_id, attempt).await?;
-        let workflow_state = Arc::new(workflow_state);
-        let updater = Updater::new(Arc::clone(&workflow_state));
+        let workflow_run_state = self.state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = Arc::new(workflow_run_state);
+        let updater = Updater::new(Arc::clone(&workflow_run_state));
 
         // TODO: Hack to work around not having workflow run ids in events.
         let stream = self.orchestrator.listen()?;
@@ -227,7 +228,7 @@ impl<RS: RuntimeState> Runtime<RS> {
         let inputs = save_assets(&self.asset_storage_registry, "memory", inputs)?;
         self.inputs.clone_from(&inputs);
         // TODO: Maybe inputs should be part of the workflow run state?
-        let context = OrchestrationContext::new(&workflow_state, inputs);
+        let context = OrchestrationContext::new(&workflow_run_state, inputs);
         let workflow_graph = Arc::new(workflow_graph);
         let actions = self
             .orchestrator
@@ -256,11 +257,11 @@ impl<RS: RuntimeState> Runtime<RS> {
                 }
                 (updated.run_id, updated.attempt)
             };
-            let workflow_state = self.state.workflow_state(run_id, attempt).await?;
-            let workflow_state = Arc::new(workflow_state);
+            let workflow_run_state = self.state.workflow_run_state(run_id, attempt).await?;
+            let workflow_run_state = Arc::new(workflow_run_state);
 
             // TODO: Handle inputs better here.
-            let context = OrchestrationContext::new(&workflow_state, self.inputs.clone());
+            let context = OrchestrationContext::new(&workflow_run_state, self.inputs.clone());
 
             let actions = self
                 .orchestrator
@@ -278,9 +279,9 @@ impl<RS: RuntimeState> Runtime<RS> {
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
-        let workflow_state = self.state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = self.state.workflow_run_state(run_id, attempt).await?;
 
-        let output_state = workflow_state
+        let output_state = workflow_run_state
             .read(&Location::from_node_index_iter([self
                 .workflow_graph
                 .as_ref()

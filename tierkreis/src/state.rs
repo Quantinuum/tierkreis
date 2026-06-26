@@ -1,6 +1,6 @@
 /*!
 This module defines the interface and some standard implementations of [`RuntimeState`]
-and [`WorkflowState`].
+and [`WorkflowRunState`].
 */
 pub mod inmemory;
 pub mod interface;
@@ -10,6 +10,6 @@ pub mod queries;
 pub mod schema;
 pub mod sql;
 
-pub use inmemory::{InMemoryRuntimeState, InMemoryWorkflowState};
-pub use interface::{RuntimeState, WorkflowState};
-pub use sql::{SqliteRuntimeState, SqliteWorkflowState};
+pub use inmemory::{InMemoryRuntimeState, InMemoryWorkflowRunState};
+pub use interface::{RuntimeState, WorkflowRunState};
+pub use sql::{SqliteRuntimeState, SqliteWorkflowRunState};

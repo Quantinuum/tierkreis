@@ -27,7 +27,7 @@ use crate::{
     event::{NodeEvent, RunningStateUpdate},
     location::Location,
     state::{
-        WorkflowState,
+        WorkflowRunState,
         interface::{NodeState, RuntimeState},
     },
 };
@@ -40,7 +40,7 @@ struct RunAttemptState {
 }
 
 /// [`InMemoryRuntimeStateInner`] is a shared struct that can be accessed
-/// by both [`InMemoryRuntimeState`] and [`InMemoryWorkflowState`] through shared
+/// by both [`InMemoryRuntimeState`] and [`InMemoryWorkflowRunState`] through shared
 /// references.
 #[derive(Debug, Default)]
 struct InMemoryRuntimeStateInner {
@@ -83,18 +83,18 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
-    type WorkflowState = InMemoryWorkflowState;
+    type WorkflowRunState = InMemoryWorkflowRunState;
 
-    async fn workflow_state(
+    async fn workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
-    ) -> miette::Result<InMemoryWorkflowState> {
+    ) -> miette::Result<InMemoryWorkflowRunState> {
         let entry = self.inner.runs.entry((run_id, attempt));
         // Insert the default if the value does not yet exist.
         entry.or_default();
 
-        Ok(InMemoryWorkflowState {
+        Ok(InMemoryWorkflowRunState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
             run_id,
@@ -118,18 +118,18 @@ impl RuntimeState for InMemoryRuntimeState {
     }
 }
 
-/// [`InMemoryWorkflowState`] is an implementation of [`WorkflowState`] that shares storage
+/// [`InMemoryWorkflowRunState`] is an implementation of [`WorkflowRunState`] that shares storage
 /// with [`InMemoryRuntimeState`].
 #[derive(Debug)]
-pub struct InMemoryWorkflowState {
+pub struct InMemoryWorkflowRunState {
     global_state: Arc<InMemoryRuntimeStateInner>,
     update_sender: watch::Sender<RunAttemptUpdated>,
     run_id: Uuid,
     attempt: u32,
 }
 
-impl InMemoryWorkflowState {
-    /// Create a test instance of [`InMemoryWorkflowState`] along with a stream of events from a
+impl InMemoryWorkflowRunState {
+    /// Create a test instance of [`InMemoryWorkflowRunState`] along with a stream of events from a
     /// paired [`InMemoryRuntimeState`].
     ///
     /// # Panics
@@ -156,7 +156,7 @@ impl InMemoryWorkflowState {
     }
 }
 
-impl WorkflowState for InMemoryWorkflowState {
+impl WorkflowRunState for InMemoryWorkflowRunState {
     #[instrument]
     async fn write(&self, event: Event) -> miette::Result<()> {
         let global_state = &self.global_state;
@@ -328,9 +328,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert_eq!(node_state, NodeState::default());
 
@@ -346,9 +346,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
@@ -375,16 +375,16 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
 
@@ -398,12 +398,12 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
-        workflow_state.add_metadata(metadata.clone()).await?;
+        workflow_run_state.add_metadata(metadata.clone()).await?;
 
-        let read_metadata = workflow_state.read_metadata().await?;
+        let read_metadata = workflow_run_state.read_metadata().await?;
 
         assert_eq!(metadata, read_metadata);
 
@@ -417,15 +417,15 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
-        workflow_state.add_metadata(metadata1.clone()).await?;
+        workflow_run_state.add_metadata(metadata1.clone()).await?;
 
         let metadata2 = HashMap::from_iter([("baz".to_string(), "boo".to_string())]);
-        workflow_state.add_metadata(metadata2.clone()).await?;
+        workflow_run_state.add_metadata(metadata2.clone()).await?;
 
-        let read_metadata = workflow_state.read_metadata().await?;
+        let read_metadata = workflow_run_state.read_metadata().await?;
 
         metadata1.extend(metadata2.into_iter());
         assert_eq!(metadata1, read_metadata);

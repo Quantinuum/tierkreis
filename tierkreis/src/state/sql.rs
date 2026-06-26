@@ -31,7 +31,7 @@ use crate::{
     event::{Event, NodeStatus, RunningStateUpdate},
     location::Location,
     state::{
-        WorkflowState,
+        WorkflowRunState,
         interface::{NodeState, RuntimeState},
         models::{NewNodeOutput, UpsertNodeState},
     },
@@ -193,13 +193,13 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
-    type WorkflowState = SqliteWorkflowState;
+    type WorkflowRunState = SqliteWorkflowRunState;
 
-    async fn workflow_state(
+    async fn workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
-    ) -> miette::Result<SqliteWorkflowState> {
+    ) -> miette::Result<SqliteWorkflowRunState> {
         let mut conn = self
             .pool
             .get()
@@ -218,7 +218,7 @@ impl RuntimeState for SqliteRuntimeState {
             _ = insert_default_workflowrun(&mut conn, run_id, attempt).await?;
         }
 
-        Ok(SqliteWorkflowState {
+        Ok(SqliteWorkflowRunState {
             pool: self.pool.clone(),
             lock: self.lock.clone(),
             update_sender: self.update_sender.clone(),
@@ -243,9 +243,9 @@ impl RuntimeState for SqliteRuntimeState {
     }
 }
 
-/// [`SqlWorkflowState`] is an implementation of [`WorkflowState`] that shares storage
+/// [`SqlWorkflowRunState`] is an implementation of [`WorkflowRunState`] that shares storage
 /// with [`SqlRuntimeState`].
-pub struct SqliteWorkflowState {
+pub struct SqliteWorkflowRunState {
     pool: ConnPool,
     // Only one thread can write to an SQLite db at a time, so we use a RWLock to
     // control access to the ConnPool.
@@ -255,13 +255,17 @@ pub struct SqliteWorkflowState {
     attempt: u32,
 }
 
-impl Debug for SqliteWorkflowState {
+impl Debug for SqliteWorkflowRunState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SqliteWorkflowState({}, {})", self.run_id, self.attempt)
+        write!(
+            f,
+            "SqliteWorkflowRunState({}, {})",
+            self.run_id, self.attempt
+        )
     }
 }
 
-impl WorkflowState for SqliteWorkflowState {
+impl WorkflowRunState for SqliteWorkflowRunState {
     async fn write(&self, event: Event) -> miette::Result<()> {
         let mut send_workflow_stopped = false;
         let _lock = self.lock.write().await;
@@ -315,7 +319,7 @@ impl WorkflowState for SqliteWorkflowState {
     }
 }
 
-impl SqliteWorkflowState {
+impl SqliteWorkflowRunState {
     fn handle_run_event(send_workflow_stopped: &mut bool, run_event: &WorkflowRunEvent) {
         match run_event {
             WorkflowRunEvent::Started {} => {}
@@ -450,9 +454,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert_eq!(node_state, NodeState::default());
 
@@ -468,9 +472,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 1;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
@@ -497,27 +501,27 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Queued,
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
         assert!(node_state.queued_time.is_some());
@@ -532,7 +536,7 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let mut outputs = HashMap::new();
         outputs.insert(
@@ -543,7 +547,7 @@ mod tests {
                 asset_key: AssetKey::new(),
             },
         );
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Complete {
@@ -552,7 +556,7 @@ mod tests {
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.outputs.is_some());
 
@@ -566,9 +570,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 2;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
@@ -577,13 +581,13 @@ mod tests {
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.map_completed.is_some());
 
         let mut bits1 = BitVec::repeat(false, 2);
         bits1.set(0, true);
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
@@ -594,13 +598,13 @@ mod tests {
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert_eq!(node_state.map_completed, Some(bits1.clone()));
 
         let mut bits2 = BitVec::repeat(false, 2);
         bits2.set(1, true);
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
@@ -611,7 +615,7 @@ mod tests {
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert_eq!(node_state.map_completed, Some(bits2.bitor(bits1)));
 
@@ -625,12 +629,12 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 3;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
-        workflow_state.add_metadata(metadata.clone()).await?;
+        workflow_run_state.add_metadata(metadata.clone()).await?;
 
-        let read_metadata = workflow_state.read_metadata().await?;
+        let read_metadata = workflow_run_state.read_metadata().await?;
 
         assert_eq!(metadata, read_metadata);
 
@@ -643,15 +647,15 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 4;
-        let workflow_state = runtime_state.workflow_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
-        workflow_state.add_metadata(metadata1.clone()).await?;
+        workflow_run_state.add_metadata(metadata1.clone()).await?;
 
         let metadata2 = HashMap::from_iter([("baz".to_string(), "boo".to_string())]);
-        workflow_state.add_metadata(metadata2.clone()).await?;
+        workflow_run_state.add_metadata(metadata2.clone()).await?;
 
-        let read_metadata = workflow_state.read_metadata().await?;
+        let read_metadata = workflow_run_state.read_metadata().await?;
 
         metadata1.extend(metadata2.into_iter());
         assert_eq!(metadata1, read_metadata);
