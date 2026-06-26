@@ -3444,6 +3444,7 @@ name = "tierkreis"
 version = "2.0.12"
 source = { editable = "tierkreis" }
 dependencies = [
+    { name = "build", extra = ["uv"] },
     { name = "hugr" },
     { name = "pydantic" },
 ]
@@ -3454,9 +3455,6 @@ hpc = [
 ]
 
 [package.dev-dependencies]
-build = [
-    { name = "build", extra = ["uv"] },
-]
 dev = [
     { name = "guppylang" },
     { name = "ipykernel" },
@@ -3466,6 +3464,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "build", extras = ["uv"] },
     { name = "hugr" },
     { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
     { name = "pydantic", specifier = "~=2.5" },
@@ -3473,7 +3472,6 @@ requires-dist = [
 provides-extras = ["hpc"]
 
 [package.metadata.requires-dev]
-build = [{ name = "build", extras = ["uv"] }]
 dev = [
     { name = "guppylang", specifier = ">=0.21.0" },
     { name = "ipykernel", specifier = ">=6.29.5" },
