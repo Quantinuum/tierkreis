@@ -65,7 +65,7 @@ pub struct NodeState {
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
     /// [`WorkflowRunState`] is the implementation of the [`WorkflowRunState`] trait that is associated
-    /// with this [`RuntimeState`] implementation and returned by the `workflow_state` method.
+    /// with this [`RuntimeState`] implementation and returned by the `workflow_run_state` method.
     type WorkflowRunState: WorkflowRunState;
     /// Retrieve a handle to a [`WorkflowRunState`] depending on the `run_id` and attempt number.
     ///

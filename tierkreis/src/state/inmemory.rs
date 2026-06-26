@@ -328,9 +328,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert_eq!(node_state, NodeState::default());
 
@@ -346,9 +346,9 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
@@ -375,16 +375,16 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
-        workflow_state
+        workflow_run_state
             .write(Event::Node(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
 
-        let node_state = workflow_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
 
@@ -398,12 +398,12 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
-        workflow_state.add_metadata(metadata.clone()).await?;
+        workflow_run_state.add_metadata(metadata.clone()).await?;
 
-        let read_metadata = workflow_state.read_metadata().await?;
+        let read_metadata = workflow_run_state.read_metadata().await?;
 
         assert_eq!(metadata, read_metadata);
 
@@ -417,15 +417,15 @@ mod tests {
 
         let run_id = Uuid::now_v7();
         let attempt = 0;
-        let workflow_state = runtime_state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = runtime_state.workflow_run_state(run_id, attempt).await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
-        workflow_state.add_metadata(metadata1.clone()).await?;
+        workflow_run_state.add_metadata(metadata1.clone()).await?;
 
         let metadata2 = HashMap::from_iter([("baz".to_string(), "boo".to_string())]);
-        workflow_state.add_metadata(metadata2.clone()).await?;
+        workflow_run_state.add_metadata(metadata2.clone()).await?;
 
-        let read_metadata = workflow_state.read_metadata().await?;
+        let read_metadata = workflow_run_state.read_metadata().await?;
 
         metadata1.extend(metadata2.into_iter());
         assert_eq!(metadata1, read_metadata);
