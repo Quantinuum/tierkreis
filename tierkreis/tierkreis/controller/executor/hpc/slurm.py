@@ -51,6 +51,11 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
     if spec.queue is not None:
         lines.append(f"{_COMMAND_PREFIX} --partition={spec.queue}")
 
+    if spec.resource.gres is not None:
+        lines.append(f"{_COMMAND_PREFIX} --gres={','.join(spec.resource.gres)}")
+    if spec.resource.qpus is not None:
+        lines.append(f"{_COMMAND_PREFIX} --qpu={','.join(spec.resource.qpus)}")
+
     # 4. User settings
     lines.append("\n# --- User Details ---")
     if spec.account is not None:

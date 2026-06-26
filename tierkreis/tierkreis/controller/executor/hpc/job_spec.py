@@ -33,13 +33,17 @@ class ResourceSpec(BaseModel):
         nodes (int): Number of compute nodes, defaults to 1.
         cores_per_node (int | None): Number of cores to use per node, defaults to 1.
         memory_gb (int | None): Memory per node in GB, defaults to 4.
-        gpus_per_nod (int | None): Physical GPUs to reserve on the node, defaults to 0.
+        gpus_per_node (int | None): Physical GPUs to reserve on the node, defaults to 0.
+        qpus (list[str] | None): Named QPUs, defaults to None.
+        gres (list[str] | None): Generic resources to reserve on the node, defaults to None.
     """
 
     nodes: int = 1
     cores_per_node: int | None = 1
     memory_gb: int | None = 4
     gpus_per_node: int | None = 0
+    qpus: list[str] | None = None  # QRMI
+    gres: list[str] | None = None
 
 
 class UserSpec(BaseModel):
