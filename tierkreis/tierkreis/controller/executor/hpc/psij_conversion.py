@@ -72,6 +72,10 @@ def spec_to_psij(spec: JobSpec, target_scheduler: str | None = None) -> psij.Job
                 target_scheduler + "." + k.strip("-"): v
                 for k, v in spec.extra_scheduler_args.items()
             })
+    if spec.resource.gres and target_scheduler == "slurm":
+        custom_attrs[f"{target_scheduler}.gres"] = ",".join(spec.resource.gres)
+    if spec.resource.qpus and target_scheduler == "slurm":
+        custom_attrs[f"{target_scheduler}.qpu"] = ",".join(spec.resource.qpus)
 
     if spec.user and spec.user.mail:
         logger.warning("User email is not natively supported in psij.")
@@ -165,6 +169,13 @@ def psij_to_spec(psij_spec: psij.JobSpec) -> JobSpec:
         extra_args: dict[str, str | None] = {}
         if psij_spec.attributes.custom_attributes:
             for k, v in psij_spec.attributes.custom_attributes.items():
+                if k == "slurm.gres":
+                    resource.gres = str(v).split(",") if v else None
+                    continue
+                if k == "slurm.qpu":
+                    resource.qpus = str(v).split(",") if v else None
+                    continue
+
                 if k in ["slurm.mail-user", "pbs.m"]:
                     user = UserSpec(mail=str(v))
                     continue

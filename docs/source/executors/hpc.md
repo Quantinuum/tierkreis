@@ -47,6 +47,17 @@ The following resources can be specified:
 - Cores per node, how many cpus are assigned to a node
 - Memory, GBs of memory assigned to a node
 - GPUs, number of GPUs assigned to a node
+- **SLURM Only** QPUs, addressed by name (e.g. `"helios"`)
+- **SLURM Only** generic resources (gres), named general resources (e.g. `"gpu:tesla:2"`) 
+
+```{warning}
+Resources are defined by the administrators of the HPC site.
+This mainly affects QPUs and GPUs.
+This means that behavior can differ between sites.
+Make sure to read the appropriate documentation.
+
+For example, one site might specify `--qpus` as legal flag while others would use `--gres=qpu:1`.
+```
 
 ### User
 
