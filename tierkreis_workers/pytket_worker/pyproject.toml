@@ -26,7 +26,6 @@ build-backend = "hatchling.build"
 
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-pytket-worker = { workspace = true }
 
 [project.scripts]

@@ -5,7 +5,6 @@ requires-python = ">=3.12"
 dependencies = ["tierkreis", "ruff", "tkr-hello-world-worker"]
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-hello-world-worker = { workspace = true }
 
 [build-system]

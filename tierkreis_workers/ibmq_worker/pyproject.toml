@@ -18,7 +18,6 @@ build-backend = "hatchling.build"
 
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-ibmq-worker = { workspace = true }
 
 [project.scripts]

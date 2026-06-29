@@ -15,6 +15,8 @@ exclude = [
 exclude-newer = "P7D"
 required-version = ">=0.11.21"
 
+[tool.uv.sources]
+tierkreis = { workspace = true }
 
 [dependency-groups]
 # Default dev dependency group
