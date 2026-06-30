@@ -4,13 +4,13 @@ import qnexus as qnx
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendinfo import BackendInfo
 from pytket.backends.backendresult import BackendResult
-from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
 from pytket.passes import BasePass
 from qnexus.models import IssuerEnum
 from qnexus.models.references import ExecutionResultRef
 from tierkreis.exceptions import TierkreisError
 
 from .default_pass_quantinuum import default_compilation_pass
+from .mock_pyqir import QuantinuumBackend
 from tierkreis import Worker
 
 worker = Worker("quantinuum_worker")

@@ -6,11 +6,11 @@ from guppylang.std.builtins import array, result, comptime
 from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
 from hugr.qsystem.result import DataValue, QsysShot
-from hugr_qir.hugr_to_qir import hugr_to_qir
 from pytket import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.passes import BasePass, RemoveRedundancies, SquashRzPhasedX
 from tierkreis.controller.data.core import Deserializer, Serializer
+from tierkreis.exceptions import TierkreisError
 from tket.passes import NormalizeGuppy, PytketHugrPass
 
 from tierkreis import Worker
@@ -233,5 +233,10 @@ def to_qir(package: Package) -> bytes | str:
     :return: The QIR representation of the Hugr package.
     :rtype: bytes | str
     """
+    try:
+        from hugr_qir.hugr_to_qir import hugr_to_qir
+    except ImportError | ModuleNotFoundError:
+        msg = "Could not resolve hugr_qir.hugr_to_qir. Please ensure that the hugr_qir package is installed."
+        raise TierkreisError(msg)
     qir_bytes = hugr_to_qir(package.to_bytes())
     return qir_bytes
