@@ -17,7 +17,6 @@ build-backend = "hatchling.build"
 
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-qulacs-worker = { workspace = true }
 
 [project.scripts]

@@ -14,7 +14,6 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-qsci-worker = { workspace = true }
 
 [build-system]

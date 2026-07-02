@@ -21,7 +21,6 @@ build-backend = "hatchling.build"
 
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-guppy-worker = { workspace = true }
 
 [project.scripts]

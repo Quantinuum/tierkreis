@@ -19,7 +19,6 @@ build-backend = "hatchling.build"
 
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-quantinuum-worker = { workspace = true }
 
 [project.scripts]

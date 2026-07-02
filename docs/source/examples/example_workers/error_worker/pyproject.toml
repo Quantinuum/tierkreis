@@ -5,7 +5,6 @@ requires-python = ">=3.12"
 dependencies = ["pydantic", "tierkreis", "ruff", "tkr-error-worker"]
 
 [tool.uv.sources]
-tierkreis = { workspace = true }
 tkr-error-worker = { workspace = true }
 
 [build-system]
