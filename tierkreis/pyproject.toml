@@ -49,5 +49,10 @@ ignore = []
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
 
+[tool.maturin.generate-ci.github]
+zig = true
+trusted-publishing = true
+publishing-environment = "pypi"
+
 [project.scripts]
 tkr-builtins = "tierkreis.builtins.main:main"
