@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import logging
 from pathlib import Path
 from time import time_ns
 from typing import override
@@ -43,7 +44,13 @@ class ControllerFileStorage(ControllerStorage):
         tmp_dir = Path(f"/tmp/{uid}/tierkreis/archive/{self.workflow_id}/{time_ns()}")
         tmp_dir.mkdir(parents=True, exist_ok=True)
         if self.exists(path):
-            shutil.move(path, tmp_dir)
+            try:
+                shutil.move(path, tmp_dir)
+            except OSError as e:
+                logging.warning(
+                    "Failed to move %s to %s for deletion: %s", path, tmp_dir, e
+                )
+                shutil.rmtree(path, ignore_errors=True)
 
     @override
     def exists(self, path: Path) -> bool:
