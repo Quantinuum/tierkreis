@@ -55,6 +55,7 @@ from .stubs import (
     flatten,
     take,
     drop,
+    at,
 )
 
 __all__ = [
@@ -112,4 +113,5 @@ __all__ = [
     "flatten",
     "take",
     "drop",
+    "at",
 ]
