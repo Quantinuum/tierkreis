@@ -66,7 +66,7 @@ def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity
     else:
         lines.append(f"{_COMMAND_PREFIX} -j oe")
     if spec.output_path is None:
-        spec.output_path = Path(f"./{spec.job_name}.o%j")
+        spec.output_path = Path(f"./{spec.job_name}.o")
     lines.append(f"{_COMMAND_PREFIX} -o {spec.output_path}")
 
     # 6. MPI
@@ -99,6 +99,11 @@ def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity
                 f"{_COMMAND_PREFIX} -l {spec.container.engine}_env_file"
                 f"={spec.container.env_file}",
             )  # check if this makes sense for others beside enroot
+
+    # 9.5 Load modules
+    lines.append("\n# --- Load Modules ---")
+    for module in spec.modules:
+        lines.append(f"module load {module}")
 
     # 10. User Command, (prologue), command, (epilogue)
     lines.append("\n# --- User Command ---")

@@ -92,6 +92,11 @@ def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexi
         lines.append(f"export {key}={value or '""'}")
     # 9. Container logic
 
+    # 9.5 Load modules
+    lines.append("\n# --- Load Modules ---")
+    for module in spec.modules:
+        lines.append(f"module load {module}")
+
     # 10. User Command, (prologue), command, (epilogue)
     lines.append("\n# --- User Command ---")
     if spec.mpi is not None:
