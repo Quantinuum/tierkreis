@@ -127,6 +127,7 @@ class JobSpec(BaseModel):
     error_path: Path | None = None
     extra_scheduler_args: dict[str, str | None] = Field(default_factory=dict)
     environment: dict[str, str] = Field(default_factory=dict)
+    modules: list[str] = Field(default_factory=list)
     include_no_check_directory_flag: bool = False
 
 
