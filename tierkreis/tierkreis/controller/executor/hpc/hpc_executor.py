@@ -63,6 +63,8 @@ def run_hpc_executor(
     executor: HPCExecutor,
     launcher_name: str,
     worker_call_args_path: Path,
+    *,
+    run_tkr=True,
 ) -> ExecutorDebugData:
     """Run a worker function on an HPC executor.
 
@@ -81,7 +83,11 @@ def run_hpc_executor(
     logger.info("START %s %s", launcher_name, worker_call_args_path)
 
     spec = executor.spec.model_copy()
-    if executor.launchers_path:
+
+    if run_tkr:
+        spec.command = f"cd {executor.launchers_path} && {spec.command} tkr-{launcher_name.replace('_', '-')}"
+
+    elif executor.launchers_path:
         spec.command = f"cd {executor.launchers_path}/{launcher_name} && {spec.command}"
 
     spec.command += " " + str(worker_call_args_path)
