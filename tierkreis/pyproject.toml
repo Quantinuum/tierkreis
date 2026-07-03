@@ -49,5 +49,11 @@ ignore = []
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
 
+[tool.maturin.generate-ci.github]
+# generate-ci has been modified a bit so this isn't going to re-create the
+# github actions workflow directly.
+trusted-publishing = true
+publishing-environment = "pypi"
+
 [project.scripts]
 tkr-builtins = "tierkreis.builtins.main:main"

@@ -36,9 +36,10 @@ fn main() -> miette::Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Command::Run { from_file, .. } => {
-            tierkreis::runtime::run(&from_file)?;
-        }
+        Command::Run {
+            from_file: _from_file,
+            ..
+        } => {}
         Command::Serve {} => {
             tierkreis::server::serve()?;
         }

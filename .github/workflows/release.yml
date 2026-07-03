@@ -26,7 +26,6 @@ jobs:
 
       - name: Build Python package
         run: |
-          uv build tierkreis
           uv build tierkreis_visualization
           uv build tierkreis_workers/aer_worker
           uv build tierkreis_workers/aer_worker/api
