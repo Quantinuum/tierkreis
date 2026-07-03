@@ -844,7 +844,7 @@ def drop[T: PType](values: list[T], n: int) -> list[T]:
 
 @worker.task()
 def at[T: PType](values: list[T], n: int) -> T:
-    if len(values) > n:
+    if n >= len(values):
         raise IndexError
     return values[n]
 
