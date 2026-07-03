@@ -23,6 +23,9 @@ def _serialize_emulator_result(result: EmulatorResult) -> list[dict[str, DataVal
 
 
 def _deserialize_emulator_result(result: Any) -> EmulatorResult:
+    if isinstance(result, list):
+        shots = [QsysShot(s) for shot in result for s in shot]
+        return EmulatorResult(shots)
     shots = [QsysShot([s]) for shot in result for s in shot.items()]
     return EmulatorResult(shots)
 
