@@ -1,0 +1,23 @@
+[project]
+name = "tkr-gpu-worker-impl"
+version = "0.2.1"
+description = "A Tierkreis worker for GPUs."
+authors = [ {name = "Quantinuum Tierkreis Team"} ]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "tierkreis",
+    "tkr-gpu-worker",
+    "torch",
+    "torchvision"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+tkr-gpu-worker = { workspace = true }
+
+[project.scripts]
+tkr-gpu-worker = "tkr_gpu_worker_impl.main:main"
