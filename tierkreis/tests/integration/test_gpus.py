@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import NamedTuple
 from uuid import UUID
@@ -138,11 +139,12 @@ def test_guppy_nexus_integration() -> None:
     default = UvExecutor(test_workers_path, storage.logs_path)
     executor = MultipleExecutor(default, {"pbs": pbs_executor}, {"gpu_worker": "pbs"})
     storage.clean_graph_files()
-    run_graph(storage, executor, wf, inputs)
+    run_graph(storage, executor, wf, inputs, polling_interval_seconds=5)
     out = read_outputs(wf, storage)
     print(out)
     assert out is not None
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     test_guppy_nexus_integration()
