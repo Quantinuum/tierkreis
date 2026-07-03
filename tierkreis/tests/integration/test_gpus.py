@@ -56,6 +56,9 @@ def pbs(storage: ControllerStorage) -> PBSExecutor:
         walltime="00:15:00",
         queue="normal",
         extra_scheduler_args={"-P": "59001004"},
+        modules=[
+            "cuda/12.8.1",
+        ],
     )
     executor = PBSExecutor(
         spec=spec,
