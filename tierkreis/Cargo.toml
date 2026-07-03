@@ -23,7 +23,7 @@ futures = "0.3.32"
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
 num-complex = { version = "0.4", features = ["serde"] }
 portgraph = { version = "0.16.1", features = ["serde"] }
-pyo3 = { version = "0.29.0", features = ["auto-initialize", "anyhow", "abi3", "abi3t", "num-complex"] }
+pyo3 = { version = "0.29.0", features = ["abi3", "abi3t", "num-complex"] }
 regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
