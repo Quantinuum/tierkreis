@@ -38,7 +38,6 @@ jobs:
           python-version: |
             3.14
             3.14t
-            3.15t
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -73,7 +72,6 @@ jobs:
           python-version: |
             3.14
             3.14t
-            3.15t
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -156,7 +154,6 @@ jobs:
           python-version: |
             3.14
             3.14t
-            3.15t
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
