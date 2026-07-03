@@ -68,6 +68,34 @@ def start_execute_job(
 
 
 @worker.task()
+def start_single_job(
+    project_name: str,
+    job_name: str,
+    circuit: ExecutionProgram,
+    n_shots: int,
+    backend_config: BackendConfig,
+) -> ExecuteJobRef:
+    """Wrapper around `qnx.start_execute_job`.
+
+    :param project_name: The name of the nexus project to start the job in.
+    :type project_name: str
+    :param job_name: The name of the job to start.
+    :type job_name: str
+    :param circuit: The circuit to execute.
+    :type circuit: ExecutionProgram
+    :param n_shots: The number of shots for the circuit.
+    :type n_shots: int
+    :param backend_config: The backend configuration to use.
+    :type backend_config: BackendConfig
+    :return: A reference to the started execution job.
+    :rtype: ExecuteJobRef
+    """
+    my_project_ref = qnx.projects.get_or_create(name=project_name)
+    qnx.context.set_active_project(my_project_ref)
+    return qnx.start_execute_job(circuit, n_shots, backend_config, job_name)
+
+
+@worker.task()
 def is_running(execute_ref: ExecuteJobRef) -> bool:
     """Wrapper around `qnx.jobs.status`.
 
