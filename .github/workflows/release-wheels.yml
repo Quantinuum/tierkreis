@@ -1,13 +1,9 @@
 name: Release Wheels
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - '*'
   workflow_dispatch:
+  release:
+    types: [created]
 
 permissions:
   contents: read
