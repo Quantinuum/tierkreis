@@ -173,7 +173,7 @@ impl<RS: RuntimeState> Runtime<RS> {
         let run_id = Uuid::now_v7();
         let attempt = 0;
 
-        let workflow_run_state = self.state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
         let workflow_run_state = Arc::new(workflow_run_state);
         let updater = Updater::new(Arc::clone(&workflow_run_state));
 
@@ -233,7 +233,7 @@ impl<RS: RuntimeState> Runtime<RS> {
                 }
                 (updated.run_id, updated.attempt)
             };
-            let workflow_run_state = self.state.workflow_run_state(run_id, attempt).await?;
+            let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
             let workflow_run_state = Arc::new(workflow_run_state);
 
             // TODO: Handle inputs better here.
@@ -255,7 +255,7 @@ impl<RS: RuntimeState> Runtime<RS> {
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
-        let workflow_run_state = self.state.workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
 
         let output_state = workflow_run_state
             .read(&Location::from_node_index_iter([self

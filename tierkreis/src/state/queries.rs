@@ -20,11 +20,57 @@ use miette::{IntoDiagnostic, WrapErr, miette};
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
 use crate::state::models::{
-    NewNodeOutput, NodeOutput, NodeState, UpsertNodeState, Workflow, WorkflowRun,
+    NewNodeOutput, NewWorkflowRunInput, NodeOutput, NodeState, UpsertNodeState, Workflow,
+    WorkflowRun, WorkflowRunInput,
 };
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
+}
+
+/// Read a workflow graph from the workflows table.
+///
+/// # Errors
+///
+/// Returns an error when the insert fails.
+pub async fn read_workflow(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    workflow_id: uuid::Uuid,
+) -> miette::Result<Workflow> {
+    use crate::state::schema::workflows::dsl as wf;
+
+    let workflow = wf::workflows
+        .find(workflow_id.to_string())
+        .select(Workflow::as_select())
+        .get_result(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Failed to select workflow with id: {}", workflow_id))?;
+
+    Ok(workflow)
+}
+
+/// Insert a workflow graph to the workflows table.
+///
+/// # Errors
+///
+/// Returns an error when the insert fails.
+pub async fn insert_workflow(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    workflow: &Workflow,
+) -> miette::Result<()> {
+    use crate::state::schema::workflows::dsl as wf;
+
+    diesel::insert_into(wf::workflows)
+        .values(workflow)
+        .on_conflict(wf::id)
+        .do_nothing()
+        .execute(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Failed to insert workflow with id: {}", workflow.id,))?;
+
+    Ok(())
 }
 
 /// Load the run-attempt state for a workflow run if it exists.
@@ -109,6 +155,7 @@ pub async fn insert_default_workflowrun(
         id: workflow_id.clone(),
         name: None,
         created_time: Some(Utc::now().naive_utc()),
+        definition: Vec::new(),
     };
 
     diesel::insert_or_ignore_into(wf::workflows)
@@ -182,7 +229,7 @@ pub async fn update_node_state(
     run_id: &str,
     attempt: i32,
     mut node_updates: Vec<UpsertNodeState>,
-    node_outputs: Vec<(Location, NewNodeOutput)>,
+    node_outputs: Vec<(Location, NewNodeOutput<'_>)>,
 ) -> miette::Result<bool> {
     use crate::state::schema::node_states::dsl as ns;
 
@@ -239,7 +286,7 @@ pub async fn update_node_state(
                     .await?;
             }
 
-            save_outputs(conn, run_id, attempt, node_outputs).await?;
+            insert_outputs(conn, run_id, attempt, node_outputs).await?;
 
             Ok::<_, diesel::result::Error>(rows_affected > 0)
         }
@@ -247,50 +294,6 @@ pub async fn update_node_state(
     })
     .await
     .into_diagnostic()
-}
-
-async fn save_outputs(
-    conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    run_id: &str,
-    attempt: i32,
-    node_outputs: Vec<(Location, NewNodeOutput)>,
-) -> Result<(), diesel::result::Error> {
-    use crate::state::schema::node_outputs::dsl as no;
-    use crate::state::schema::node_states::dsl as ns;
-
-    if !node_outputs.is_empty() {
-        let locations = node_outputs.iter().map(|(x, _)| x);
-        let node_state_ids: HashMap<Location, i32> = ns::node_states
-            .select((ns::node_location, ns::id))
-            .filter(ns::run_id.eq(run_id))
-            .filter(ns::attempt.eq(attempt))
-            .filter(ns::node_location.eq_any(locations))
-            .get_results(conn)
-            .await?
-            .into_iter()
-            .collect();
-
-        let db_outputs: Vec<_> = node_outputs
-            .into_iter()
-            .map(|(location, node_output)| {
-                (
-                    no::node_state_id.eq(node_state_ids.get(&location).unwrap()),
-                    node_output,
-                )
-            })
-            .collect();
-
-        // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
-        for db_output in db_outputs {
-            diesel::insert_into(no::node_outputs)
-                .values(db_output)
-                .on_conflict((no::node_state_id, no::name)) // TODO: Might need a unique index?
-                .do_nothing()
-                .execute(conn)
-                .await?;
-        }
-    }
-    Ok(())
 }
 
 async fn merge_map_complete_fields(
@@ -417,6 +420,108 @@ pub async fn read_node_state(
     } else {
         Ok(crate::state::interface::NodeState::default())
     }
+}
+
+/// Insert persisted workflow inputs for a workflow run.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the workflow run
+/// input inserts fail.
+pub async fn insert_workflow_run_inputs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    workflow_inputs: impl Iterator<Item = NewWorkflowRunInput<'_>>,
+) -> miette::Result<()> {
+    use crate::state::schema::workflow_run_inputs::dsl as wri;
+
+    for workflow_input in workflow_inputs {
+        diesel::insert_into(wri::workflow_run_inputs)
+            .values(workflow_input)
+            .execute(conn)
+            .await
+            .into_diagnostic()?;
+    }
+
+    Ok(())
+}
+
+/// Read the persisted workflow inputs for a workflow run.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the workflow run
+/// inputs lookup fails.
+pub async fn read_workflow_run_inputs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    workflow_run_id: &str,
+) -> miette::Result<HashMap<String, AssetSpec>> {
+    use crate::state::schema::workflow_run_inputs::dsl as wri;
+
+    let inputs = wri::workflow_run_inputs
+        .select(WorkflowRunInput::as_select())
+        .filter(wri::workflow_run_id.eq(workflow_run_id))
+        .get_results(conn)
+        .await
+        .into_diagnostic()?;
+
+    let inputs = inputs
+        .into_iter()
+        .map(|input| {
+            let asset = AssetSpec {
+                asset_key: input.asset_key.parse().into_diagnostic()?,
+                kind: input.asset_kind.parse()?,
+                storage_name: input.storage_name,
+            };
+
+            Ok((input.name, asset))
+        })
+        .collect::<miette::Result<HashMap<_, _>>>()?;
+
+    Ok(inputs)
+}
+
+async fn insert_outputs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+    node_outputs: Vec<(Location, NewNodeOutput<'_>)>,
+) -> Result<(), diesel::result::Error> {
+    use crate::state::schema::node_outputs::dsl as no;
+    use crate::state::schema::node_states::dsl as ns;
+
+    if !node_outputs.is_empty() {
+        let locations = node_outputs.iter().map(|(x, _)| x);
+        let node_state_ids: HashMap<Location, i32> = ns::node_states
+            .select((ns::node_location, ns::id))
+            .filter(ns::run_id.eq(run_id))
+            .filter(ns::attempt.eq(attempt))
+            .filter(ns::node_location.eq_any(locations))
+            .get_results(conn)
+            .await?
+            .into_iter()
+            .collect();
+
+        let db_outputs: Vec<_> = node_outputs
+            .into_iter()
+            .map(|(location, node_output)| {
+                (
+                    no::node_state_id.eq(node_state_ids.get(&location).unwrap()),
+                    node_output,
+                )
+            })
+            .collect();
+
+        // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
+        for db_output in db_outputs {
+            diesel::insert_into(no::node_outputs)
+                .values(db_output)
+                .on_conflict((no::node_state_id, no::name)) // TODO: Might need a unique index?
+                .do_nothing()
+                .execute(conn)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 async fn read_outputs(
