@@ -18,6 +18,7 @@ from tierkreis.controller import run_graph
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import Workflow
 from tierkreis.controller.executor.hpc.pbs import PBSExecutor
+from tierkreis.controller.executor.hpc.slurm import SLURMExecutor
 from tierkreis.controller.executor.multiple import MultipleExecutor
 from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
@@ -47,6 +48,27 @@ from tierkreis.controller.executor.hpc.job_spec import (
 #     )
 
 
+def slurm(storage: ControllerStorage) -> SLURMExecutor:
+    spec = JobSpec(
+        job_name="test_job",
+        account="q0000132",
+        command="uv run",
+        resource=ResourceSpec(
+            nodes=1, memory_gb=None, gpus_per_node=None, gres=["gpu:1"]
+        ),
+        walltime="00:15:00",
+        modules=[
+            "cuda/13.3",
+        ],
+    )
+    executor = SLURMExecutor(
+        spec=spec,
+        registry_path=Path.home() / "Projects" / "tierkreis",
+        logs_path=storage.logs_path,
+    )
+    return executor
+
+
 def pbs(storage: ControllerStorage) -> PBSExecutor:
     spec = JobSpec(
         job_name="test_job",
@@ -64,7 +86,6 @@ def pbs(storage: ControllerStorage) -> PBSExecutor:
         spec=spec,
         registry_path=Path.home() / "Projects" / "tierkreis",
         logs_path=storage.logs_path,
-        command="qsub",
     )
     return executor
 
@@ -131,8 +152,13 @@ def test_guppy_nexus_integration() -> None:
         UUID(int=1), name="test_integration", do_cleanup=True
     )
     pbs_executor = pbs(storage)
+    slurm_executor = slurm(storage)
     default = ShellExecutor(None, storage.workflow_dir)
-    executor = MultipleExecutor(default, {"pbs": pbs_executor}, {"gpu_worker": "pbs"})
+    executor = MultipleExecutor(
+        default,
+        {"pbs": pbs_executor, "slurm": slurm_executor},
+        {"gpu_worker": "slurm"},  # pbs
+    )
     storage.clean_graph_files()
     run_graph(storage, executor, wf, inputs, polling_interval_seconds=1)
     # storage = debug_graph(wf, inputs)
