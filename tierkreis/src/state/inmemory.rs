@@ -127,7 +127,7 @@ impl RuntimeState for InMemoryRuntimeState {
         })
     }
 
-    async fn get_workflow_run_state(
+    async fn load_workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
@@ -393,7 +393,7 @@ mod tests {
         let run_id = Uuid::now_v7();
         let attempt = 0;
         let workflow_run_state = runtime_state
-            .get_workflow_run_state(run_id, attempt)
+            .load_workflow_run_state(run_id, attempt)
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -413,7 +413,7 @@ mod tests {
         let run_id = Uuid::now_v7();
         let attempt = 0;
         let workflow_run_state = runtime_state
-            .get_workflow_run_state(run_id, attempt)
+            .load_workflow_run_state(run_id, attempt)
             .await?;
 
         workflow_run_state
@@ -444,7 +444,7 @@ mod tests {
         let run_id = Uuid::now_v7();
         let attempt = 0;
         let workflow_run_state = runtime_state
-            .get_workflow_run_state(run_id, attempt)
+            .load_workflow_run_state(run_id, attempt)
             .await?;
 
         workflow_run_state
@@ -469,7 +469,7 @@ mod tests {
         let run_id = Uuid::now_v7();
         let attempt = 0;
         let workflow_run_state = runtime_state
-            .get_workflow_run_state(run_id, attempt)
+            .load_workflow_run_state(run_id, attempt)
             .await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
@@ -490,7 +490,7 @@ mod tests {
         let run_id = Uuid::now_v7();
         let attempt = 0;
         let workflow_run_state = runtime_state
-            .get_workflow_run_state(run_id, attempt)
+            .load_workflow_run_state(run_id, attempt)
             .await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);

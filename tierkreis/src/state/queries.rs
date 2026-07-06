@@ -28,7 +28,7 @@ fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
 }
 
-/// Insert a workflow run row.
+/// Read a workflow graph from the workflows table.
 ///
 /// # Errors
 ///
@@ -50,7 +50,7 @@ pub async fn read_workflow(
     Ok(workflow)
 }
 
-/// Insert a workflow run row.
+/// Insert a workflow graph to the workflows table.
 ///
 /// # Errors
 ///
