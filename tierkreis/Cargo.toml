@@ -6,8 +6,9 @@ edition = "2024"
 [lib]
 crate-type = ["rlib", "cdylib"]
 
-[[bin]]
-name = "tkr"
+# Disabled until feature-parity with the existing CLI tool.
+# [[bin]]
+# name = "tkr"
 
 [dependencies]
 axum = { version = "0.8.8", features = ["ws", "http2"] }

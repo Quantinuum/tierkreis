@@ -57,3 +57,4 @@ publishing-environment = "pypi"
 
 [project.scripts]
 tkr-builtins = "tierkreis.builtins.main:main"
+tkr = "tierkreis.cli.tkr:main"
