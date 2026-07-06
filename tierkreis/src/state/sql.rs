@@ -216,8 +216,8 @@ impl RuntimeState for SqliteRuntimeState {
     type WorkflowRunState = SqliteWorkflowRunState;
 
     async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
-        let mut conn = self.get_conn().await?;
         let _lock = self.lock.read().await;
+        let mut conn = self.get_conn().await?;
         let workflow = read_workflow(&mut conn, workflow_id).await?;
         serde_json::from_slice(&workflow.definition).into_diagnostic()
     }
@@ -230,8 +230,8 @@ impl RuntimeState for SqliteRuntimeState {
             created_time: Some(Utc::now().naive_utc()),
             definition: serde_json::to_vec(&workflow_graph).into_diagnostic()?,
         };
-        let mut conn = self.get_conn().await?;
         let _lock = self.lock.write().await;
+        let mut conn = self.get_conn().await?;
         insert_workflow(&mut conn, &workflow).await?;
         Ok(id)
     }
@@ -241,8 +241,8 @@ impl RuntimeState for SqliteRuntimeState {
         workflow_id: Uuid,
         inputs: HashMap<String, crate::asset_storage::AssetSpec>,
     ) -> miette::Result<Self::WorkflowRunState> {
-        let mut conn = self.get_conn().await?;
         let _lock = self.lock.write().await;
+        let mut conn = self.get_conn().await?;
         let run_id = Uuid::now_v7();
         let run_id_str = run_id.to_string();
         let attempt = 0;
@@ -360,19 +360,14 @@ impl WorkflowRunState for SqliteWorkflowRunState {
     }
 
     async fn load_inputs(&self) -> miette::Result<HashMap<String, AssetSpec>> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
         let _lock = self.lock.read().await;
+        let mut conn = self.get_conn().await?;
         read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
     }
 
     async fn write(&self, event: Event) -> miette::Result<()> {
-        let mut send_workflow_stopped = false;
         let _lock = self.lock.write().await;
+        let mut send_workflow_stopped = false;
 
         match event {
             Event::WorkflowRun(ref run_event) => {
@@ -390,40 +385,38 @@ impl WorkflowRunState for SqliteWorkflowRunState {
     }
 
     async fn read(&self, location: &Location) -> miette::Result<NodeState> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
         let _lock = self.lock.read().await;
+        let mut conn = self.get_conn().await?;
         read_node_state(&mut conn, self.run_id, self.attempt, location).await
     }
 
     async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
         let _lock = self.lock.write().await;
+        let mut conn = self.get_conn().await?;
         add_run_metadata(&mut conn, self.run_id, self.attempt, metadata).await
     }
 
     async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
         let _lock = self.lock.read().await;
+        let mut conn = self.get_conn().await?;
         read_run_metadata(&mut conn, self.run_id, self.attempt).await
     }
 }
 
 impl SqliteWorkflowRunState {
+    async fn get_conn(
+        &self,
+    ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
+    {
+        let conn = self
+            .pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        Ok(conn)
+    }
+
     fn handle_run_event(send_workflow_stopped: &mut bool, run_event: &WorkflowRunEvent) {
         match run_event {
             WorkflowRunEvent::Started {} => {}
