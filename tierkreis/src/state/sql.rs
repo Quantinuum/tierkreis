@@ -16,9 +16,9 @@ use std::{
 use bitvec::vec::BitVec;
 use chrono::Utc;
 use deadpool::{Runtime, managed::Object};
-use diesel::SqliteConnection;
+use diesel::{SqliteConnection, sql_query};
 use diesel_async::{
-    AsyncMigrationHarness, pooled_connection::AsyncDieselConnectionManager,
+    AsyncMigrationHarness, RunQueryDsl, pooled_connection::AsyncDieselConnectionManager,
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -85,12 +85,16 @@ pub async fn build_conn_pool_with_url(database_url: &str) -> miette::Result<Conn
         .build()
         .into_diagnostic()?;
 
-    let conn = pool
+    let mut conn = pool
         .get()
         .await
         .into_diagnostic()
         .wrap_err("Error acquiring connection from pool")?;
 
+    sql_query("PRAGMA journal_mode=WAL")
+        .execute(&mut conn)
+        .await
+        .into_diagnostic()?;
     run_migrations(conn)?;
 
     Ok(pool)
