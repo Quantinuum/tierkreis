@@ -2,7 +2,7 @@
 name = "tierkreis"
 description = "Python client and utilities for tierkreis."
 readme = "README.md"
-version = "2.0.12"
+version = "2.1.0"
 authors = [
     { name = "Seyon Sivarajah", email = "seyon.sivarajah@quantinuum.com" },
     { name = "Lukas Heidemann", email = "lukas.heidemann@quantinuum.com" },
