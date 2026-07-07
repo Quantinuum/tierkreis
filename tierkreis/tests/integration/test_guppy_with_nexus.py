@@ -11,7 +11,7 @@ from nexus_worker import cost, upload_hugr
 from pytket_worker import backend_result_to_dict
 
 from tierkreis.builder import Graph
-from tierkreis.builtins.stubs import append, at, gt, tkr_range
+from tierkreis.builtins.stubs import append, gt, tkr_range
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import Workflow
 from tierkreis.graphs.nexus.submit_poll_hugr import (
@@ -61,19 +61,17 @@ def guppy_nexus_graph() -> Workflow[MyInputs, TKR[dict[str, list[str]]]]:
     ## false case: cost < 0: simulate on nexus
 
     empty_list = graph.task(tkr_range(graph.const(0), graph.const(0), graph.const(1)))
-    shots = graph.task(append(empty_list, graph.inputs.shots))
     hugrs = graph.task(append(empty_list, graph.inputs.package))  # type: ignore
-    simulate = graph.eval(
+    if_false = graph.eval(
         nexus_submit_and_poll_hugr(),
         JobInputs(
             project_name=graph.inputs.project_name,
             job_name=graph.inputs.job_name,
-            n_shots=shots,
+            n_shots=graph.inputs.shots,
             backend_config=graph.inputs.backend_config,  # type: ignore
             hugrs=hugrs,  # type: ignore
         ),
     )
-    if_false = graph.task(at(simulate, graph.const(0)))
 
     out = graph.ifelse(pred, if_true, if_false)
 
