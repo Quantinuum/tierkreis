@@ -29,6 +29,7 @@ class HPCExecutor(Protocol):
         script_fn (Callable[[JobSpec], str]): A template function to generate the
             submission script from.
         command (str): The base command to use.
+        use_tkr (bool): Whether to use tkr-<name>-worker scripts or not. Defaults to True.
     """
 
     launchers_path: Path | None
@@ -37,6 +38,7 @@ class HPCExecutor(Protocol):
     spec: JobSpec
     script_fn: Callable[[JobSpec], str]
     command: str
+    use_tkr: bool = True
 
     def job_id(self, std_out: str) -> str: ...
 
@@ -81,7 +83,17 @@ def run_hpc_executor(
     logger.info("START %s %s", launcher_name, worker_call_args_path)
 
     spec = executor.spec.model_copy()
-    if executor.launchers_path:
+
+    if executor.use_tkr:
+        # Run the script instead
+        cd_command = (
+            f"cd {executor.launchers_path} && " if executor.launchers_path else ""
+        )
+        spec.command = (
+            f"{cd_command}{spec.command} tkr-{launcher_name.replace('_', '-')}"
+        )
+
+    elif executor.launchers_path:
         spec.command = f"cd {executor.launchers_path}/{launcher_name} && {spec.command}"
 
     spec.command += " " + str(worker_call_args_path)

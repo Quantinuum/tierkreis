@@ -120,6 +120,8 @@ class PJSUBExecutor:
         logs_path: Path,
         spec: JobSpec,
         command: str = "pjsub",
+        *,
+        use_tkr: bool = True,
     ) -> None:
         self.launchers_path = registry_path
         self.logs_path = logs_path
@@ -127,6 +129,7 @@ class PJSUBExecutor:
         self.spec = spec
         self.script_fn: Callable[[JobSpec], str] = generate_pjsub_script
         self.command = command
+        self.use_tkr = use_tkr
 
     def job_id(self, std_out: str) -> str:
         pattern = re.compile(r"(\d+)")

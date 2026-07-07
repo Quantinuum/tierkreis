@@ -122,6 +122,8 @@ class PBSExecutor:
         logs_path: Path,
         spec: JobSpec,
         command: str = "qsub",
+        *,
+        use_tkr: bool = True,
     ) -> None:
         """An executor for the PBS submission system.
 
@@ -134,6 +136,7 @@ class PBSExecutor:
         self.spec = spec
         self.script_fn: Callable[[JobSpec], str] = generate_pbs_script
         self.command = command
+        self.use_tkr = use_tkr
 
     def job_id(self, std_out: str) -> str:
         pattern = re.compile(r"(\d+)")
