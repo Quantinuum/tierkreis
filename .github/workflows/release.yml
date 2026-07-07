@@ -31,6 +31,8 @@ jobs:
           uv build tierkreis_workers/aer_worker/api
           uv build tierkreis_workers/ibmq_worker
           uv build tierkreis_workers/ibmq_worker/api
+          uv build tierkreis_workers/guppy_worker
+          uv build tierkreis_workers/guppy_worker/api
           uv build tierkreis_workers/nexus_worker
           uv build tierkreis_workers/nexus_worker/api
           uv build tierkreis_workers/pytket_worker
