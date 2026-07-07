@@ -33,9 +33,17 @@ runs:
       if: inputs.include_just == 'yes'
       uses: extractions/setup-just@v3
 
+    - name: Set up pnpm
+      if: inputs.include_node == 'yes'
+      uses: pnpm/action-setup@v4
+      with:
+        run_install: false
+
     - name: Set up node
       uses: actions/setup-node@v5
       if: inputs.include_node == 'yes'
       with:
         node-version: "24.8.0"
+        cache: "pnpm"
+        cache-dependency-path: tierkreis_visualization/frontend/pnpm-lock.yaml
         package-manager-cache: false
