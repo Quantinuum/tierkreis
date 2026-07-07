@@ -3,7 +3,7 @@ name = "tierkreis"
 description = "The Tierkreis Scientific Workflow Management System."
 version = "0.1.0"
 edition = "2024"
-license-file = "../LICENCE"
+license-file = "LICENSE"
 repository = "https://github.com/Quantinuum/tierkreis"
 documentation = "https://quantinuum.github.io/tierkreis/"
 

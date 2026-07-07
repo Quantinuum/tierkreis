@@ -11,7 +11,7 @@ authors = [
     { name = "Matthew Burke", email = "matthew.burke@quantinuum.com" },
     { name = "Philipp Seitz", email = "philipp.seitz@quantinuum.com" },
 ]
-license = {file = "../LICENCE"}
+license = {file = "LICENSE"}
 
 requires-python = ">=3.12"
 dependencies = [
