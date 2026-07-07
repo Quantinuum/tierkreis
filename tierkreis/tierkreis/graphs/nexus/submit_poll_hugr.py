@@ -4,12 +4,12 @@
 from typing import NamedTuple
 
 from tierkreis.builder import Graph
-from tierkreis.builtins import tkr_sleep
+from tierkreis.builtins import tkr_sleep, at
 from tierkreis.models import OpaqueType, TKR, Workflow
 from tierkreis.nexus_worker import (
     get_results,
     is_running,
-    start_execute_job,
+    start_single_job,
     upload_hugr,
 )
 
@@ -44,13 +44,13 @@ class JobInputs(NamedTuple):
 
     project_name: TKR[str]
     job_name: TKR[str]
-    hugrs: TKR[list[Package]]
-    n_shots: TKR[list[int]]
+    hugrs: TKR[Package]
+    n_shots: TKR[int]
     backend_config: TKR[OpaqueType["qnexus.BackendConfig"]]
 
 
 class _LoopOutputs(NamedTuple):
-    results: TKR[list[BackendResult]]
+    results: TKR[BackendResult]
     should_continue: TKR[bool]
 
 
@@ -76,33 +76,32 @@ def _polling_loop_body(
         g.task(tkr_sleep(g.const(polling_interval))),
         g.const(value=False),
     )
-    results = g.ifelse(pred, g.const([]), g.task(get_results(g.inputs)))
+    results = g.ifelse(pred, g.const([0]), g.task(get_results(g.inputs)))
+    result = g.task(at(results, g.const(0)))  # type: ignore[arg-type] # type: ignore[arg-type]
 
-    return g.finish_with_outputs(_LoopOutputs(results=results, should_continue=wait))
+    return g.finish_with_outputs(_LoopOutputs(results=result, should_continue=wait))
 
 
 def nexus_submit_and_poll_hugr(
     polling_interval: float = 30.0,
-) -> Workflow[JobInputs, TKR[list[BackendResult]]]:
+) -> Workflow[JobInputs, TKR[BackendResult]]:
     """Construct a graph submitting and polling a nexus job.
 
     :param polling_interval: The polling interval in seconds, defaults to 30.0
     :type polling_interval: float, optional
     :return: A graph performing submission and polling.
-    :rtype: Graph[JobInputs, TKR[list[BackendResult]]]
+    :rtype: Graph[JobInputs, TKR[BackendResult]]
     """
-    g = Graph(JobInputs, TKR[list[BackendResult]])
-    upload_inputs = g.map(
-        lambda x: UploadHugrInputs(g.inputs.project_name, x),
-        g.inputs.hugrs,
+    g = Graph(JobInputs, TKR[BackendResult])
+    program = g.eval(
+        upload_hugr_graph(), UploadHugrInputs(g.inputs.project_name, g.inputs.hugrs)
     )
-    programmes = g.map(upload_hugr_graph(), upload_inputs)
 
     ref = g.task(
-        start_execute_job(
+        start_single_job(
             g.inputs.project_name,
             g.inputs.job_name,
-            programmes,  # type: ignore[arg-type]
+            program,  # type: ignore[arg-type]
             g.inputs.n_shots,
             g.inputs.backend_config,  # type: ignore[arg-type]
         ),

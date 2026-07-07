@@ -92,6 +92,11 @@ def generate_pjsub_script(spec: JobSpec) -> str:  # noqa: C901 complexity to cov
 
     # 9. Container logic
 
+    # 9.5 Load modules
+    lines.append("\n# --- Load Modules ---")
+    for module in spec.modules:
+        lines.append(f"module load {module}")
+
     # 10. User Command, (prologue), command, (epilogue)
     lines.append("\n# --- User Command ---")
     lines.append(spec.command)
@@ -115,6 +120,8 @@ class PJSUBExecutor:
         logs_path: Path,
         spec: JobSpec,
         command: str = "pjsub",
+        *,
+        use_tkr: bool = True,
     ) -> None:
         self.launchers_path = registry_path
         self.logs_path = logs_path
@@ -122,6 +129,7 @@ class PJSUBExecutor:
         self.spec = spec
         self.script_fn: Callable[[JobSpec], str] = generate_pjsub_script
         self.command = command
+        self.use_tkr = use_tkr
 
     def job_id(self, std_out: str) -> str:
         pattern = re.compile(r"(\d+)")

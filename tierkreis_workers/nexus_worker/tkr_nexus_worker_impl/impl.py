@@ -2,10 +2,11 @@ import logging
 from datetime import datetime
 
 import qnexus as qnx
+from qnexus.models.job_status import JobStatusEnum
 from hugr.package import Package
+from hugr.qsystem.result import QsysResult
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
-from pytket.backends.status import StatusEnum
 from qnexus import BackendConfig
 from qnexus.exceptions import ResourceFetchFailed
 from qnexus.models.references import (
@@ -68,6 +69,34 @@ def start_execute_job(
 
 
 @worker.task()
+def start_single_job(
+    project_name: str,
+    job_name: str,
+    circuit: ExecutionProgram,
+    n_shots: int,
+    backend_config: BackendConfig,
+) -> ExecuteJobRef:
+    """Wrapper around `qnx.start_execute_job`.
+
+    :param project_name: The name of the nexus project to start the job in.
+    :type project_name: str
+    :param job_name: The name of the job to start.
+    :type job_name: str
+    :param circuit: The circuit to execute.
+    :type circuit: ExecutionProgram
+    :param n_shots: The number of shots for the circuit.
+    :type n_shots: int
+    :param backend_config: The backend configuration to use.
+    :type backend_config: BackendConfig
+    :return: A reference to the started execution job.
+    :rtype: ExecuteJobRef
+    """
+    my_project_ref = qnx.projects.get_or_create(name=project_name)
+    qnx.context.set_active_project(my_project_ref)
+    return qnx.start_execute_job(circuit, n_shots, backend_config, job_name)
+
+
+@worker.task()
 def is_running(execute_ref: ExecuteJobRef) -> bool:
     """Wrapper around `qnx.jobs.status`.
 
@@ -82,11 +111,11 @@ def is_running(execute_ref: ExecuteJobRef) -> bool:
     except ResourceFetchFailed:
         return True
 
-    if st in [StatusEnum.CANCELLING, StatusEnum.CANCELLED, StatusEnum.ERROR]:
+    if st in [JobStatusEnum.CANCELLING, JobStatusEnum.CANCELLED, JobStatusEnum.ERROR]:
         msg = f"Job status was {st}"
         raise TierkreisError(msg)
 
-    return st != StatusEnum.COMPLETED
+    return st != JobStatusEnum.COMPLETED
 
 
 @worker.task()
@@ -106,6 +135,9 @@ def get_results(execute_ref: ExecuteJobRef) -> list[BackendResult]:
             msg = f"Result incomplete: {ref_result}"
             raise TierkreisError(msg)
         result = ref_result.download_result()
+
+        if isinstance(result, QsysResult):
+            result = result.to_pytket()
         assert isinstance(result, BackendResult)
         backend_results.append(result)
     return backend_results

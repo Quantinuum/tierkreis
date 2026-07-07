@@ -71,6 +71,42 @@ class start_execute_job(NamedTuple):
         return "nexus_worker"
 
 
+class start_single_job(NamedTuple):
+    project_name: TKR[str]
+    job_name: TKR[str]
+    circuit: TKR[
+        Union[
+            OpaqueType["qnexus.models.references.CircuitRef"],
+            OpaqueType["qnexus.models.references.HUGRRef"],
+            OpaqueType["qnexus.models.references.QIRRef"],
+        ]
+    ]
+    n_shots: TKR[int]
+    backend_config: TKR[
+        Union[
+            OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"],
+            OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"],
+        ]
+    ]
+
+    @staticmethod
+    def out() -> type[TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]]:
+        return TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]
+
+    @property
+    def namespace(self) -> str:
+        return "nexus_worker"
+
+
 class is_running(NamedTuple):
     execute_ref: TKR[OpaqueType["qnexus.models.references.ExecuteJobRef"]]
 
