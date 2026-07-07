@@ -1,8 +1,8 @@
 [project]
 name = "tierkreis"
-description = "Python client and utilities for tierkreis."
+description = "The Tierkreis Scientific Workflow Management System."
 readme = "README.md"
-version = "2.1.0"
+version = "2.1.1"
 authors = [
     { name = "Seyon Sivarajah", email = "seyon.sivarajah@quantinuum.com" },
     { name = "Lukas Heidemann", email = "lukas.heidemann@quantinuum.com" },
@@ -11,6 +11,7 @@ authors = [
     { name = "Matthew Burke", email = "matthew.burke@quantinuum.com" },
     { name = "Philipp Seitz", email = "philipp.seitz@quantinuum.com" },
 ]
+license = {file = "../LICENCE"}
 
 requires-python = ">=3.12"
 dependencies = [
@@ -58,3 +59,7 @@ publishing-environment = "pypi"
 [project.scripts]
 tkr-builtins = "tierkreis.builtins.main:main"
 tkr = "tierkreis.cli.tkr:main"
+
+[project.urls]
+repository = "https://github.com/Quantinuum/tierkreis"
+documentation = "https://quantinuum.github.io/tierkreis/"

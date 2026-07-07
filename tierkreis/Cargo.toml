@@ -1,7 +1,11 @@
 [package]
 name = "tierkreis"
+description = "The Tierkreis Scientific Workflow Management System."
 version = "0.1.0"
 edition = "2024"
+license-file = "../LICENCE"
+repository = "https://github.com/Quantinuum/tierkreis"
+documentation = "https://quantinuum.github.io/tierkreis/"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
@@ -28,7 +32,7 @@ pyo3 = { version = "0.29.0", features = ["abi3", "abi3t", "num-complex"] }
 regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-libsqlite3-sys = { version = "0.35.0", features = ["bundled"] }
+libsqlite3-sys = { version = "0.37.0", features = ["bundled"] }
 tempfile = "3.27.0"
 thiserror = "2.0.18"
 tokio = { version = "1.50.0", features = ["net", "process", "rt-multi-thread", "signal"] }
