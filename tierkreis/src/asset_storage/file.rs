@@ -3,13 +3,14 @@ This module defines the [`FileAssetStorage`] struct which implements [`AssetStor
 by storing files in a single directory.
 */
 
-use std::{
-    fs::File,
-    io::{Read, Write},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
+use futures::future::{BoxFuture, FutureExt};
 use miette::{Context, IntoDiagnostic, miette};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 
@@ -41,29 +42,47 @@ impl AssetStorage for FileAssetStorage {
         }
     }
 
-    fn exists(&self, key: &AssetKey) -> miette::Result<bool> {
+    fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>> {
         let location = self.location(key);
-        location.try_exists().into_diagnostic().wrap_err_with(|| {
-            miette!("Could not determine whether file exists at location: {location:?}")
-        })
+        async move {
+            tokio::fs::try_exists(&location)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    miette!("Could not determine whether file exists at location: {location:?}")
+                })
+        }
+        .boxed()
     }
 
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()> {
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>> {
         let location = self.location(key);
-        let mut file = File::create(self.location(key))
-            .into_diagnostic()
-            .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
-        file.write_all(&value).into_diagnostic()?;
-        Ok(())
+        async move {
+            let mut file = File::create(&location)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
+
+            file.write_all(&value).await.into_diagnostic()?;
+
+            Ok(())
+        }
+        .boxed()
     }
 
-    fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>> {
+    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>> {
         let location = self.location(key);
-        let mut file = File::open(self.location(key))
-            .into_diagnostic()
-            .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
-        let mut value = Vec::new();
-        file.read_to_end(&mut value).into_diagnostic()?;
-        Ok(value)
+        async move {
+            let mut file = File::open(&location)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
+
+            let mut value = Vec::new();
+            file.read_to_end(&mut value).await.into_diagnostic()?;
+
+            Ok(value)
+        }
+        .boxed()
     }
 }

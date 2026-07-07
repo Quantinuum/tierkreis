@@ -246,7 +246,7 @@ async fn process_finished_task(
         }
     };
 
-    let outputs = save_assets(asset_storage_registry, &output_storage_name, outputs);
+    let outputs = save_assets(asset_storage_registry, &output_storage_name, outputs).await;
     match outputs {
         Ok(outputs) => send_complete(event_sender, vec![loc], vec![outputs]).await?,
         Err(err) => send_error(event_sender, loc, &err).await?,
@@ -267,7 +267,7 @@ async fn start_task(
     let output_storage_name = internal_task.output_storage_name;
     send_running(event_sender, loc.clone()).await?;
 
-    let res = load_assets(asset_storage_registry, &task_plan.inputs);
+    let res = load_assets(asset_storage_registry, &task_plan.inputs).await;
 
     let inputs = match res {
         Ok(inputs) => inputs,
@@ -364,13 +364,11 @@ impl InMemoryExecutor {
     ///
     /// This function will return Err if the specified `output_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`].
-    pub fn try_new(
+    pub async fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry
-            .read()
-            .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
+        let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
@@ -472,8 +470,8 @@ mod tests {
 
     #[tokio::test]
     async fn inmemory_workers() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
-        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         let workers = executor.workers().await?;
 
@@ -495,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory(#[case] default_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
-            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]);
+            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
 
         let task_plans = vec![TaskPlan {
             worker_name: "builtin".to_string(),
@@ -505,7 +503,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -532,7 +530,8 @@ mod tests {
             default_storage_name,
             &events[1].clone().outputs()[0],
             json!({"value": 4}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -548,7 +547,7 @@ mod tests {
         #[case] default_storage_name: &str,
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
-            test_storage_registry(vec![], vec![json!({"a": 1, "b": 3})]);
+            test_storage_registry(vec![], vec![json!({"a": 1, "b": 3})]).await;
 
         let task_plans = vec![TaskPlan {
             worker_name: "builtin".to_string(),
@@ -558,7 +557,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -584,7 +583,8 @@ mod tests {
             default_storage_name,
             &events[1].clone().outputs()[0],
             json!({"value": 4}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -599,7 +599,8 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"a": 1, "b": 3}), json!({"a": 4, "b": 8})],
             vec![],
-        );
+        )
+        .await;
 
         let loc1 = Location::from_usize_iter([0]);
         let loc2 = Location::from_usize_iter([1]);
@@ -623,7 +624,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -657,7 +658,8 @@ mod tests {
             default_storage_name,
             &complete0.clone().outputs()[0],
             json!({"value": 4}),
-        );
+        )
+        .await;
         let complete1 = events
             .iter()
             .find(|event| {
@@ -675,7 +677,8 @@ mod tests {
             default_storage_name,
             &complete1.clone().outputs()[0],
             json!({"value": 12}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -686,7 +689,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_execute_before_listen() -> miette::Result<()> {
         let (registry, input_sets, _) =
-            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]);
+            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
 
         let task_plans = vec![TaskPlan {
             worker_name: "builtin".to_string(),
@@ -696,7 +699,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -722,7 +725,8 @@ mod tests {
             "memory",
             &events[1].clone().outputs()[0],
             json!({"value": 4}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -731,7 +735,7 @@ mod tests {
     // errors when they occur
     #[tokio::test]
     async fn execute_inmemory_error() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
         let task_plans = vec![TaskPlan {
             worker_name: "builtin".to_string(),
             // builtin-worker has no task called "backflip"
@@ -741,7 +745,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -775,7 +779,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_cancel() -> miette::Result<()> {
         let (registry, input_sets, _) =
-            test_storage_registry(vec![json!({"delay_seconds": 1})], vec![]);
+            test_storage_registry(vec![json!({"delay_seconds": 1})], vec![]).await;
 
         let loc = Location::from_usize_iter([0]);
         let task_plans = vec![TaskPlan {
@@ -787,7 +791,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -819,8 +823,8 @@ mod tests {
     // it will not error.
     #[tokio::test]
     async fn execute_inmemory_cancel_non_existent() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
-        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(vec![loc]).await?;
@@ -833,7 +837,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_cancel_completed() -> miette::Result<()> {
         let (registry, input_sets, _) =
-            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]);
+            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
 
         let loc = Location::from_usize_iter([0]);
         let task_plans = vec![TaskPlan {
@@ -845,7 +849,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -871,7 +875,8 @@ mod tests {
             "memory",
             &events[1].clone().outputs()[0],
             json!({"value": 4}),
-        );
+        )
+        .await;
 
         executor.cancel(vec![loc]).await?;
 

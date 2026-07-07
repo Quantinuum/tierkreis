@@ -104,7 +104,7 @@ async fn process_finished_task(
         Ok(status) => {
             if status.success() {
                 let outputs =
-                    transfer_assets(asset_storage_registry, &output_storage_name, &outputs);
+                    transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
                 match outputs {
                     Ok(outputs) => send_complete(event_sender, vec![loc], vec![outputs]).await?,
                     Err(err) => send_error(event_sender, loc, &err).await?,
@@ -251,14 +251,12 @@ impl SubprocessExecutor {
     ///
     /// This function will return Err if the specified `subprocess_storage_name` or
     /// `output_storage_name` does not exist inside the [`AssetStorageRegistry`].
-    pub fn try_new(
+    pub async fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         subprocess_storage_name: &str,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry
-            .read()
-            .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
+        let asset_storage_registry_lock = asset_storage_registry.read().await;
         if let Some(subprocess_storage) = asset_storage_registry_lock.get(subprocess_storage_name) {
             if !matches!(subprocess_storage.kind(), AssetKind::File { .. }) {
                 return Err(miette!(
@@ -312,7 +310,7 @@ impl SubprocessExecutor {
         task.await.into_diagnostic()?
     }
 
-    fn build_inputs(
+    async fn build_inputs(
         &self,
         inputs: &HashMap<String, AssetSpec>,
     ) -> Result<HashMap<String, PathBuf>, miette::Error> {
@@ -320,18 +318,20 @@ impl SubprocessExecutor {
             &self.asset_storage_registry,
             &self.subprocess_storage_name,
             inputs,
-        )?;
+        )
+        .await?;
         let inputs =
             write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
         Ok(inputs)
     }
 
-    fn build_outputs(&self, outputs: HashSet<String>) -> Result<OutputSpecs, miette::Error> {
+    async fn build_outputs(&self, outputs: HashSet<String>) -> Result<OutputSpecs, miette::Error> {
         let output_specs = reserve_asset_specs(
             &self.asset_storage_registry,
             &self.subprocess_storage_name,
             outputs.len(),
-        )?;
+        )
+        .await?;
         let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
         let output_paths = outputs
             .iter()
@@ -407,9 +407,11 @@ impl Executor for SubprocessExecutor {
             for task_plan in task_plans {
                 let inputs = self
                     .build_inputs(&task_plan.inputs)
+                    .await
                     .wrap_err("Failed to build task inputs")?;
                 let (outputs, output_paths) = self
                     .build_outputs(task_plan.outputs)
+                    .await
                     .wrap_err("Failed to build task outputs")?;
 
                 let worker_args = NamedTempFile::new()
@@ -507,8 +509,8 @@ mod tests {
     // Test that we can list the available workers in $PATH
     #[tokio::test]
     async fn subprocess_workers() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
         let workers = executor.workers().await?;
 
@@ -540,7 +542,8 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
-        );
+        )
+        .await;
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
@@ -552,7 +555,7 @@ mod tests {
             outputs,
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -578,7 +581,8 @@ mod tests {
             output_storage_name,
             &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -596,7 +600,8 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![],
             vec![json!({"greeting": "hello ", "subject": "dave"})],
-        );
+        )
+        .await;
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
@@ -609,7 +614,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -635,7 +640,8 @@ mod tests {
             output_storage_name,
             &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -653,7 +659,8 @@ mod tests {
                 json!({"greeting": "hi ", "subject": "steve"}),
             ],
             vec![],
-        );
+        )
+        .await;
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
@@ -681,7 +688,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -715,7 +722,8 @@ mod tests {
             output_storage_name,
             &complete0.clone().outputs()[0],
             json!({"value": "hello dave"}),
-        );
+        )
+        .await;
         let complete1 = events
             .iter()
             .find(|event| {
@@ -733,7 +741,8 @@ mod tests {
             output_storage_name,
             &complete1.clone().outputs()[0],
             json!({"value": "hi steve"}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -746,7 +755,8 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
-        );
+        )
+        .await;
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
@@ -759,7 +769,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -785,7 +795,8 @@ mod tests {
             "file",
             &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -794,7 +805,7 @@ mod tests {
     // errors when they occur
     #[tokio::test]
     async fn execute_subprocess_error() -> miette::Result<()> {
-        let (registry, _, _dir) = test_storage_registry(vec![], vec![]);
+        let (registry, _, _dir) = test_storage_registry(vec![], vec![]).await;
         let task_plans = vec![TaskPlan {
             worker_name: "hello-world-worker".to_string(),
             // hello-world-worker has no task called "hail"
@@ -804,7 +815,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -839,7 +850,8 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
-        );
+        )
+        .await;
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
@@ -854,7 +866,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -886,8 +898,8 @@ mod tests {
     // it will not error.
     #[tokio::test]
     async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
-        let (registry, _, _) = test_storage_registry(vec![], vec![]);
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(vec![loc]).await?;
@@ -902,7 +914,8 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
-        );
+        )
+        .await;
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
 
@@ -917,7 +930,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -943,7 +956,8 @@ mod tests {
             "file",
             &events[1].clone().outputs()[0],
             json!({"value": "hello dave"}),
-        );
+        )
+        .await;
 
         executor.cancel(vec![loc]).await?;
 

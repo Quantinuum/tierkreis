@@ -155,7 +155,7 @@ impl Orchestrator {
     /// This function will return Err if the specified `default_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`] or if the specified `default_executor_name` does
     /// not exist inside the [`ExecutorRegistry`].
-    pub fn try_new(
+    pub async fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         executor_registry: &ExecutorRegistry,
         default_storage_name: &str,
@@ -163,9 +163,7 @@ impl Orchestrator {
     ) -> miette::Result<Self> {
         let (sender, receiver) = mpsc::channel(128);
 
-        let asset_storage_registry_lock = asset_storage_registry
-            .read()
-            .map_err(|err| miette!("Failed to lock AssetStorageRegistry for reading: {err}"))?;
+        let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(default_storage_name) {
             return Err(miette!("default_storage_name not in registry"));
         }
@@ -232,9 +230,10 @@ impl Orchestrator {
                     NodeDefinition::Input { name } => stream_action_result(
                         Self::build_input_action(graph_inputs.clone(), loc, name),
                     ),
-                    NodeDefinition::Const { value } => {
-                        stream_action_result(self.build_const_action(loc, value.clone()))
-                    }
+                    NodeDefinition::Const { value } => self
+                        .build_const_action(loc, value.clone())
+                        .into_stream()
+                        .boxed_local(),
                     NodeDefinition::Output {} => self
                         .build_output_actions(workflow_graph.clone(), node_states.clone(), n, loc)
                         .try_flatten_stream()
@@ -284,21 +283,25 @@ impl Orchestrator {
                         .try_flatten_stream()
                         .boxed_local(),
                     // Eager and Lazy If else are controlled by the ready node checks
-                    NodeDefinition::IfElse {} => stream_action_result(self.build_if_else_action(
-                        workflow_graph.clone(),
-                        node_states.clone(),
-                        n,
-                        loc,
-                        state.cond,
-                    )),
-                    NodeDefinition::EagerIfElse {} => {
-                        stream_action_result(self.build_eager_if_else_action(
+                    NodeDefinition::IfElse {} => self
+                        .build_if_else_action(
                             workflow_graph.clone(),
                             node_states.clone(),
                             n,
                             loc,
-                        ))
-                    }
+                            state.cond,
+                        )
+                        .into_stream()
+                        .boxed_local(),
+                    NodeDefinition::EagerIfElse {} => self
+                        .build_eager_if_else_action(
+                            workflow_graph.clone(),
+                            node_states.clone(),
+                            n,
+                            loc,
+                        )
+                        .into_stream()
+                        .boxed_local(),
                 }
             })
             .boxed_local())
@@ -435,7 +438,7 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
-    fn build_if_else_action(
+    async fn build_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
         node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
@@ -459,7 +462,8 @@ impl Orchestrator {
                         .as_ref()
                         .ok_or_else(|| miette!("`pred` node has no outputs"))?,
                     connected_port_name,
-                )?;
+                )
+                .await?;
 
                 Ok(Action {
                     loc,
@@ -507,7 +511,7 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
-    fn build_eager_if_else_action(
+    async fn build_eager_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
         node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
@@ -516,7 +520,7 @@ impl Orchestrator {
     ) -> miette::Result<Action> {
         let mut inputs = collect_inputs(&workflow_graph, &node_states, n)?;
 
-        let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred")?;
+        let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred").await?;
         let mut outputs = HashMap::new();
 
         if pred_bytes == b"true" {
@@ -552,7 +556,7 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self), fields(loc = %loc), err)]
-    fn build_const_action(
+    async fn build_const_action(
         &self,
         loc: Location,
         value: serde_json::Value,
@@ -562,7 +566,8 @@ impl Orchestrator {
             &self.asset_storage_registry,
             &self.default_storage_name,
             value_bytes,
-        )?;
+        )
+        .await?;
 
         let mut outputs = HashMap::new();
         outputs.insert("value".to_string(), asset_key);
@@ -612,7 +617,7 @@ impl Orchestrator {
         let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
 
         let subgraph = if inputs.contains_key("graph") {
-            self.load_subgraph(&inputs)?
+            self.load_subgraph(&inputs).await?
         } else {
             workflow_graph
         };
@@ -667,7 +672,7 @@ impl Orchestrator {
                 // TODO: We probably don't need the inputs if we have already
                 // visited this loop iteration.
                 let mut inputs = collect_inputs(&workflow_graph, &node_states, n)?;
-                let subgraph = self.load_subgraph(&inputs)?;
+                let subgraph = self.load_subgraph(&inputs).await?;
 
                 let loop_loc = loc.with_loop_index(index);
                 let loop_subgraph_output_loc = loop_loc.with_node(subgraph.output_idx());
@@ -702,7 +707,8 @@ impl Orchestrator {
                     }
                     Some(outputs) => {
                         let should_continue_bytes =
-                            load_asset(&self.asset_storage_registry, &outputs, "should_continue")?;
+                            load_asset(&self.asset_storage_registry, &outputs, "should_continue")
+                                .await?;
 
                         if should_continue_bytes == b"true" {
                             Ok(stream::once(future::ok(Action {
@@ -736,7 +742,7 @@ impl Orchestrator {
         completed: Option<BitVec<u8>>,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
-        let subgraph = self.load_subgraph(&inputs)?;
+        let subgraph = self.load_subgraph(&inputs).await?;
 
         Ok(match completed {
             None => {
@@ -759,7 +765,7 @@ impl Orchestrator {
                     subgraph.output_idx(),
                 )
                 .into_stream()
-                .boxed(),
+                .boxed_local(),
             Some(completed) => {
                 self.build_subsequent_map_actions(
                     workflow_run_state,
@@ -785,7 +791,7 @@ impl Orchestrator {
         let mut input_sets = Vec::new();
         for mapped_port in mapped_ports {
             let unfolded_assets =
-                unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port)?;
+                unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port).await?;
 
             if input_sets.is_empty() {
                 input_sets.extend(iter::repeat_n(inputs.clone(), unfolded_assets.len()));
@@ -884,7 +890,7 @@ impl Orchestrator {
         map_size: usize,
         output_idx: NodeIndex,
     ) -> miette::Result<Action> {
-        let mut assets: HashMap<String, Vec<_>> = workflow_graph
+        let mut asset_bundles: HashMap<String, Vec<_>> = workflow_graph
             .output_names(n)?
             .map(|name| (name.clone(), Vec::new()))
             .collect();
@@ -899,20 +905,21 @@ impl Orchestrator {
                 .ok_or_else(|| miette!("No outputs!"))?;
 
             for (k, v) in outputs {
-                let entry = assets.entry(k).or_default();
+                let entry = asset_bundles.entry(k).or_default();
                 entry.push(v);
             }
         }
 
-        let outputs = assets
-            .into_iter()
-            .map(|(k, v)| {
-                let asset_spec =
-                    fold_assets(&self.asset_storage_registry, &self.default_storage_name, v)?;
-
-                Ok((k, asset_spec))
-            })
-            .collect::<miette::Result<_>>()?;
+        let mut outputs = HashMap::new();
+        for (name, asset_specs) in asset_bundles {
+            let folded_asset_spec = fold_assets(
+                &self.asset_storage_registry,
+                &self.default_storage_name,
+                asset_specs,
+            )
+            .await?;
+            outputs.insert(name, folded_asset_spec);
+        }
 
         Ok(Action {
             loc,
@@ -921,11 +928,11 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, inputs), err)]
-    fn load_subgraph(
+    async fn load_subgraph(
         &self,
         inputs: &HashMap<String, AssetSpec>,
     ) -> miette::Result<Arc<WorkflowGraph>> {
-        let subgraph_bytes = load_asset(&self.asset_storage_registry, inputs, "graph")?;
+        let subgraph_bytes = load_asset(&self.asset_storage_registry, inputs, "graph").await?;
         let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
             serde_json::from_slice(&subgraph_bytes);
 
@@ -1168,16 +1175,26 @@ mod tests {
 
     use super::*;
 
-    fn test_executor_registry(asset_storage_registry: &AssetStorageRegistry) -> ExecutorRegistry {
+    async fn test_executor_registry(
+        asset_storage_registry: &AssetStorageRegistry,
+    ) -> ExecutorRegistry {
         let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
 
         executor_registry.insert(
             "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(asset_storage_registry, "memory").unwrap()),
+            Box::new(
+                InMemoryExecutor::try_new(asset_storage_registry, "memory")
+                    .await
+                    .unwrap(),
+            ),
         );
         executor_registry.insert(
             "subprocess".to_string(),
-            Box::new(SubprocessExecutor::try_new(asset_storage_registry, "file", "file").unwrap()),
+            Box::new(
+                SubprocessExecutor::try_new(asset_storage_registry, "file", "file")
+                    .await
+                    .unwrap(),
+            ),
         );
 
         Arc::new(executor_registry)
@@ -1386,14 +1403,15 @@ mod tests {
         two_inputs_two_outputs: WorkflowGraph,
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
-            test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]);
-        let executor_registry = test_executor_registry(&registry);
+            test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]).await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
 
         let workflow_graph = Arc::new(two_inputs_two_outputs);
 
@@ -1420,14 +1438,16 @@ mod tests {
         #[case] default_storage_name: &str,
         one_input_one_output: WorkflowGraph,
     ) -> miette::Result<()> {
-        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
-        let executor_registry = test_executor_registry(&registry);
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"a": 1})], vec![]).await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
         let mut stream = orchestrator.listen()?;
         let workflow_graph = Arc::new(one_input_one_output);
 
@@ -1451,7 +1471,8 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &input_complete_outputs[0],
             json!({"a": 1}),
-        );
+        )
+        .await;
 
         workflow_run_state.write(input_complete_event).await?;
         let actions =
@@ -1479,7 +1500,8 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &output_complete_outputs[0],
             json!({"out": 1}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -1498,14 +1520,16 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"a": 1, "subworkflow": one_input_one_output})],
             vec![],
-        );
-        let executor_registry = test_executor_registry(&registry);
+        )
+        .await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
         let mut stream = orchestrator.listen()?;
 
         let workflow_graph = Arc::new(simple_eval);
@@ -1533,13 +1557,15 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &inputs_complete_outputs[0],
             json!({"subworkflow": one_input_one_output}),
-        );
+        )
+        .await;
         assert_registry_contains_values(
             &registry,
             "memory", // Asset is not modified so it remains in memory.
             &inputs_complete_outputs[1],
             json!({"a": 1}),
-        );
+        )
+        .await;
 
         workflow_run_state.write(inputs_complete_event).await?;
 
@@ -1560,7 +1586,8 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &inner_inputs_complete_outputs[0],
             json!({"a": 1}),
-        );
+        )
+        .await;
 
         workflow_run_state
             .write(inner_inputs_complete_event)
@@ -1578,7 +1605,8 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &inner_output_complete_outputs[0],
             json!({"out": 1}),
-        );
+        )
+        .await;
 
         let eval_complete_event = Event::Node(NodeEvent {
             locs: vec![Location::new("N3")?],
@@ -1603,7 +1631,8 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &output_complete_outputs[0],
             json!({"out": 1}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -1620,14 +1649,16 @@ mod tests {
     ) -> miette::Result<()> {
         let workflow_graph = Arc::new(simple_task);
 
-        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"a": 1})], vec![]);
-        let executor_registry = test_executor_registry(&registry);
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"a": 1})], vec![]).await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state = Arc::new(workflow_run_state);
@@ -1690,7 +1721,8 @@ mod tests {
             default_storage_name,
             &outputs,
             json!({"out": 4}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -1711,14 +1743,16 @@ mod tests {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"a": 1, "subworkflow": one_input_one_output})],
             vec![],
-        );
-        let executor_registry = test_executor_registry(&registry);
+        )
+        .await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state = Arc::new(workflow_run_state);
@@ -1785,7 +1819,8 @@ mod tests {
             "memory", // Asset is not modified so it remains in memory.
             &outputs,
             json!({"out": 1}),
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -1813,14 +1848,15 @@ mod tests {
         let default_storage_name = "memory";
         let workflow_graph = Arc::new(workflow_graph);
 
-        let (registry, input_sets, _dir) = test_storage_registry(vec![inputs], vec![]);
-        let executor_registry = test_executor_registry(&registry);
+        let (registry, input_sets, _dir) = test_storage_registry(vec![inputs], vec![]).await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state = Arc::new(workflow_run_state);
@@ -1865,7 +1901,8 @@ mod tests {
             &orchestrator.default_storage_name,
             &outputs,
             expected_outputs,
-        );
+        )
+        .await;
 
         Ok(())
     }
@@ -1881,14 +1918,15 @@ mod tests {
             serde_json::from_str(serialized_graph).into_diagnostic()?;
         let workflow_graph = Arc::new(graph.to_workflow_graph().unwrap());
 
-        let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]);
-        let executor_registry = test_executor_registry(&registry);
+        let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]).await;
+        let executor_registry = test_executor_registry(&registry).await;
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )?;
+        )
+        .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state = Arc::new(workflow_run_state);
@@ -1932,7 +1970,8 @@ mod tests {
             &orchestrator.default_storage_name,
             &outputs,
             json!({"simple_eval_output": 12}),
-        );
+        )
+        .await;
 
         Ok(())
     }
