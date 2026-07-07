@@ -38,6 +38,7 @@ runs:
       uses: pnpm/action-setup@v4
       with:
         run_install: false
+        version: 11.8.0
 
     - name: Set up node
       uses: actions/setup-node@v5
