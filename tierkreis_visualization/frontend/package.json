@@ -1,7 +1,8 @@
 {
   "name": "tierkreis-frontend",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
     "dev": "vite build --watch --mode dev",
     "build": "tsc && vite build",
