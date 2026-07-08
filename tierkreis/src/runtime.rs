@@ -280,3 +280,22 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 
     Ok(outputs)
 }
+
+/// Run a workflow against the persistent SQLite database (resolved via the
+/// `DATABASE_URL` environment variable or the default path).
+///
+/// Returns the raw output bytes keyed by port name.
+///
+/// # Errors
+///
+/// Returns an error if the database cannot be reached, the workflow fails, or
+/// the outputs cannot be loaded.
+pub async fn run_workflow_persistent<S: BuildHasher>(
+    workflow_graph: WorkflowGraph,
+    inputs: HashMap<String, Vec<u8>, S>,
+) -> miette::Result<HashMap<String, Vec<u8>>> {
+    let mut runtime = Runtime::persistent().await?;
+    let (run_id, attempt) = runtime.start(workflow_graph, inputs).await?;
+    runtime.run().await?;
+    runtime.outputs(run_id, attempt).await
+}

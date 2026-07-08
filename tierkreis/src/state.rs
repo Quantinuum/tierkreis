@@ -12,4 +12,4 @@ pub mod sql;
 
 pub use inmemory::{InMemoryRuntimeState, InMemoryWorkflowRunState};
 pub use interface::{RuntimeState, WorkflowRunState};
-pub use sql::{SqliteRuntimeState, SqliteWorkflowRunState};
+pub use sql::{ConnPool, SqliteRuntimeState, SqliteWorkflowRunState, build_conn_pool};
