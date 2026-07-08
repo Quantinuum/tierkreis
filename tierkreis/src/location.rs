@@ -169,6 +169,11 @@ impl Location {
         components.pop();
         Location(components)
     }
+
+    /// Iterate over the [`LocationComponent`]s that make up this [`Location`].
+    pub fn components(&self) -> impl Iterator<Item = &LocationComponent> {
+        self.0.iter()
+    }
 }
 
 impl std::fmt::Display for Location {
