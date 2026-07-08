@@ -1,17 +1,18 @@
 /*! This is a graph builder utility module that is currently just used for
 building test workflow graphs internally.
 */
+#![allow(missing_docs)]
 use miette::IntoDiagnostic;
 use portgraph::NodeIndex;
 use serde::Serialize;
 
 use crate::graph::{NodeDefinition, WorkflowGraph};
 
-pub(crate) fn workflow<'a>(outputs: impl IntoIterator<Item = &'a str>) -> WorkflowGraph {
+pub fn workflow<'a>(outputs: impl IntoIterator<Item = &'a str>) -> WorkflowGraph {
     WorkflowGraph::new(outputs.into_iter().map(ToString::to_string))
 }
 
-pub(crate) fn input<'a>(graph: &mut WorkflowGraph, name: &'a str) -> (NodeIndex, &'a str) {
+pub fn input<'a>(graph: &mut WorkflowGraph, name: &'a str) -> (NodeIndex, &'a str) {
     let node = graph.add_node(
         NodeDefinition::Input {
             name: name.to_string(),
@@ -22,11 +23,11 @@ pub(crate) fn input<'a>(graph: &mut WorkflowGraph, name: &'a str) -> (NodeIndex,
     (node, name)
 }
 
-pub(crate) fn output<'a>(graph: &WorkflowGraph, name: &'a str) -> (NodeIndex, &'a str) {
+pub fn output<'a>(graph: &WorkflowGraph, name: &'a str) -> (NodeIndex, &'a str) {
     (graph.output_idx(), name)
 }
 
-pub(crate) fn constant(
+pub fn constant(
     graph: &mut WorkflowGraph,
     value: impl Serialize,
 ) -> miette::Result<(NodeIndex, &'static str)> {
@@ -40,7 +41,7 @@ pub(crate) fn constant(
     Ok((node, "value"))
 }
 
-pub(crate) fn task<'a>(
+pub fn task<'a>(
     graph: &mut WorkflowGraph,
     worker: &str,
     task: &str,
@@ -57,7 +58,7 @@ pub(crate) fn task<'a>(
     )
 }
 
-pub(crate) fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
+pub fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     graph.add_node(
         NodeDefinition::IfElse {},
         [
@@ -69,7 +70,7 @@ pub(crate) fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     )
 }
 
-pub(crate) fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
+pub fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     graph.add_node(
         NodeDefinition::IfElse {},
         [
@@ -81,7 +82,7 @@ pub(crate) fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     )
 }
 
-pub(crate) fn eval<'a>(
+pub fn eval<'a>(
     graph: &mut WorkflowGraph,
     inputs: impl IntoIterator<Item = &'a str>,
     outputs: impl IntoIterator<Item = &'a str>,
@@ -95,7 +96,7 @@ pub(crate) fn eval<'a>(
     )
 }
 
-pub(crate) fn loop_node<'a>(
+pub fn loop_node<'a>(
     graph: &mut WorkflowGraph,
     inputs: impl IntoIterator<Item = &'a str>,
     outputs: impl IntoIterator<Item = &'a str>,
@@ -109,7 +110,7 @@ pub(crate) fn loop_node<'a>(
     )
 }
 
-pub(crate) fn map_node<'a>(
+pub fn map_node<'a>(
     graph: &mut WorkflowGraph,
     mapped_inputs: impl IntoIterator<Item = &'a str>,
     other_inputs: impl IntoIterator<Item = &'a str>,
@@ -128,7 +129,7 @@ pub(crate) fn map_node<'a>(
     )
 }
 
-pub(crate) fn link<U, V>(
+pub fn link<U, V>(
     graph: &mut WorkflowGraph,
     from: (NodeIndex, U),
     to: (NodeIndex, V),
