@@ -457,9 +457,13 @@ pub async fn read_workflow_run_inputs(
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     use crate::state::schema::workflow_run_inputs::dsl as wri;
 
+    // Inputs are always stored against attempt 0 (the initial run creation) and
+    // reused for any subsequent retry attempts.
+    // TODO: Is this logically correct? Should we be storing inputs for each attempt instead?
     let inputs = wri::workflow_run_inputs
         .select(WorkflowRunInput::as_select())
         .filter(wri::workflow_run_id.eq(workflow_run_id))
+        .filter(wri::workflow_run_attempt.eq(0))
         .get_results(conn)
         .await
         .into_diagnostic()?;

@@ -262,6 +262,7 @@ impl RuntimeState for SqliteRuntimeState {
 
         let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
             workflow_run_id: &run_id_str,
+            workflow_run_attempt: 0,
             name,
             asset_kind: asset.kind.to_string(),
             storage_name: &asset.storage_name,

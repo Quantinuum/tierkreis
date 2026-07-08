@@ -36,6 +36,7 @@ diesel::table! {
     workflow_run_inputs (id) {
         id -> Integer,
         workflow_run_id -> Text,
+        workflow_run_attempt -> Integer,
         name -> Text,
         asset_kind -> Text,
         storage_name -> Text,
