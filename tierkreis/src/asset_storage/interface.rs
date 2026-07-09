@@ -4,6 +4,7 @@ implementations must satisfy.
 */
 use std::{fmt::Display, path::PathBuf, str::FromStr, time::SystemTime};
 
+use futures::future::BoxFuture;
 use miette::{Context, IntoDiagnostic, miette};
 use url::Url;
 use uuid::Uuid;
@@ -152,19 +153,19 @@ pub trait AssetStorage: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn exists(&self, key: &AssetKey) -> miette::Result<bool>;
+    fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>>;
     /// Save an Asset to the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()>;
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>>;
     /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>>;
+    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>>;
 }
 
 #[cfg(test)]

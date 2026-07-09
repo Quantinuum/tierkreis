@@ -1,14 +1,10 @@
 /*!
 The runtime module defines the entrypoint to running Workflows.
 */
-use std::{
-    collections::HashMap,
-    hash::BuildHasher,
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, hash::BuildHasher, path::Path, sync::Arc};
 
 use miette::{IntoDiagnostic, miette};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
@@ -47,18 +43,11 @@ impl Runtime<SqliteRuntimeState> {
         let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
         executor_registry.insert(
             "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(
-                &asset_storage_registry,
-                "memory",
-            )?),
+            Box::new(InMemoryExecutor::try_new(&asset_storage_registry, "memory").await?),
         );
         executor_registry.insert(
             "subprocess".to_string(),
-            Box::new(SubprocessExecutor::try_new(
-                &asset_storage_registry,
-                "file",
-                "file",
-            )?),
+            Box::new(SubprocessExecutor::try_new(&asset_storage_registry, "file", "file").await?),
         );
         let executor_registry = Arc::new(executor_registry);
 
@@ -67,7 +56,8 @@ impl Runtime<SqliteRuntimeState> {
             &executor_registry,
             "file",
             "subprocess",
-        )?;
+        )
+        .await?;
 
         let runtime_state = SqliteRuntimeState::try_new().await?;
 
@@ -93,10 +83,7 @@ impl Runtime<SqliteRuntimeState> {
 
         executor_registry.insert(
             "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(
-                &asset_storage_registry,
-                "memory",
-            )?),
+            Box::new(InMemoryExecutor::try_new(&asset_storage_registry, "memory").await?),
         );
         let executor_registry = Arc::new(executor_registry);
 
@@ -105,7 +92,8 @@ impl Runtime<SqliteRuntimeState> {
             &executor_registry,
             "memory",
             "memory",
-        )?;
+        )
+        .await?;
 
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
@@ -122,7 +110,7 @@ impl Runtime<SqliteRuntimeState> {
 impl Runtime<InMemoryRuntimeState> {
     // TODO: Add a from_config function to build a Runtime from a configuration file.
     #[allow(dead_code)]
-    fn memory() -> miette::Result<Self> {
+    async fn memory() -> miette::Result<Self> {
         let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
         let memory_storage = InMemoryStorage::new();
         asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
@@ -133,10 +121,7 @@ impl Runtime<InMemoryRuntimeState> {
 
         executor_registry.insert(
             "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(
-                &asset_storage_registry,
-                "memory",
-            )?),
+            Box::new(InMemoryExecutor::try_new(&asset_storage_registry, "memory").await?),
         );
         let executor_registry = Arc::new(executor_registry);
 
@@ -145,7 +130,8 @@ impl Runtime<InMemoryRuntimeState> {
             &executor_registry,
             "memory",
             "memory",
-        )?;
+        )
+        .await?;
 
         let runtime_state = InMemoryRuntimeState::new();
 
@@ -201,7 +187,7 @@ impl<RS: RuntimeState> Runtime<RS> {
             }
         });
 
-        let inputs = save_assets(&self.asset_storage_registry, "memory", inputs)?;
+        let inputs = save_assets(&self.asset_storage_registry, "memory", inputs).await?;
         self.inputs.clone_from(&inputs);
         // TODO: Maybe inputs should be part of the workflow run state?
         let context = OrchestrationContext::new(&workflow_run_state, inputs);
@@ -270,7 +256,8 @@ impl<RS: RuntimeState> Runtime<RS> {
             &output_state
                 .outputs
                 .ok_or_else(|| miette!("No output values on Output node."))?,
-        )?;
+        )
+        .await?;
 
         Ok(outputs)
     }

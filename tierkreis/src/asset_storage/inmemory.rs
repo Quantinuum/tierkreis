@@ -3,6 +3,10 @@ This module defines the [`InMemoryStorage`] struct which implements [`AssetStora
 by storing files in concurrent map data structure implemented by [`dashmap::DashMap`].
 */
 use dashmap::DashMap;
+use futures::{
+    FutureExt,
+    future::{self, BoxFuture},
+};
 use miette::miette;
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
@@ -37,20 +41,20 @@ impl AssetStorage for InMemoryStorage {
         AssetKind::Memory
     }
 
-    fn exists(&self, key: &AssetKey) -> miette::Result<bool> {
-        Ok(self.store.contains_key(key))
+    fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>> {
+        future::ok(self.store.contains_key(key)).boxed()
     }
 
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> miette::Result<()> {
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>> {
         self.store.insert(*key, value);
-        Ok(())
+        future::ok(()).boxed()
     }
 
-    fn load(&self, key: &AssetKey) -> miette::Result<Vec<u8>> {
-        let value = self
+    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>> {
+        let res = self
             .store
             .get(key)
-            .ok_or_else(|| miette!("Asset not found in InMemoryStorage"))?;
-        Ok(value.clone())
+            .ok_or_else(|| miette!("Asset not found in InMemoryStorage"));
+        future::ready(res.map(|x| x.clone())).boxed()
     }
 }
