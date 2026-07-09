@@ -45,6 +45,7 @@ utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 uuid = { version = "1.23.0", features = ["serde", "v7"] }
 which = { version = "8.0.2", features = ["regex"] }
+axum-extra = { version = "0.12.6", features = ["query"] }
 
 [dev-dependencies]
 rstest = "0.26.1"
