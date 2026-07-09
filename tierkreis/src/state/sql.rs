@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     env::{self, home_dir},
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 
@@ -142,7 +142,7 @@ pub struct SqliteRuntimeState {
     pool: ConnPool,
     lock: Arc<RwLock<()>>,
     update_sender: watch::Sender<RuntimeWatchState>,
-    update_receiver: Mutex<Option<watch::Receiver<RuntimeWatchState>>>,
+    update_receiver: watch::Receiver<RuntimeWatchState>,
 }
 
 impl SqliteRuntimeState {
@@ -160,7 +160,7 @@ impl SqliteRuntimeState {
             pool,
             lock: Arc::new(RwLock::new(())),
             update_sender: sender,
-            update_receiver: Mutex::new(Some(receiver)),
+            update_receiver: receiver,
         })
     }
 
@@ -185,7 +185,7 @@ impl SqliteRuntimeState {
             pool,
             lock: Arc::new(RwLock::new(())),
             update_sender: sender,
-            update_receiver: Mutex::new(Some(receiver)),
+            update_receiver: receiver,
         })
     }
 
@@ -304,19 +304,8 @@ impl RuntimeState for SqliteRuntimeState {
         })
     }
 
-    fn listen(&self) -> miette::Result<watch::Receiver<RuntimeWatchState>> {
-        let receiver = {
-            let mut receiver = self
-                .update_receiver
-                .try_lock()
-                .map_err(|err| miette!("Failed to listen: {}", err))?;
-
-            receiver.take().ok_or(miette!(
-                "Failed to listen: SqlRuntimeState is already being listened to."
-            ))?
-        };
-
-        Ok(receiver)
+    fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
+        self.update_receiver.clone()
     }
 }
 
@@ -563,7 +552,7 @@ mod tests {
     async fn write_and_listen_for_updates() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let mut recv = runtime_state.listen()?;
+        let mut recv = runtime_state.listen();
 
         let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state

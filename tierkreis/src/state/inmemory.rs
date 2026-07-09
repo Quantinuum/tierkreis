@@ -5,11 +5,7 @@ that can be used by the tierkreis runtime.
 These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
-use std::{
-    collections::HashMap,
-    ops::BitOrAssign,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, ops::BitOrAssign, sync::Arc};
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
@@ -56,7 +52,7 @@ struct InMemoryRuntimeStateInner {
 pub struct InMemoryRuntimeState {
     inner: Arc<InMemoryRuntimeStateInner>,
     update_sender: watch::Sender<RuntimeWatchState>,
-    update_receiver: Mutex<Option<watch::Receiver<RuntimeWatchState>>>,
+    update_receiver: watch::Receiver<RuntimeWatchState>,
 }
 
 impl InMemoryRuntimeState {
@@ -71,7 +67,7 @@ impl InMemoryRuntimeState {
             }),
 
             update_sender: sender,
-            update_receiver: Mutex::new(Some(receiver)),
+            update_receiver: receiver,
         }
     }
 }
@@ -141,19 +137,8 @@ impl RuntimeState for InMemoryRuntimeState {
         })
     }
 
-    fn listen(&self) -> miette::Result<watch::Receiver<RuntimeWatchState>> {
-        let receiver = {
-            let mut receiver = self
-                .update_receiver
-                .try_lock()
-                .map_err(|err| miette!("Failed to listen: {}", err))?;
-
-            receiver.take().ok_or(miette!(
-                "Failed to listen: InMemoryRuntimeState is already being listened to."
-            ))?
-        };
-
-        Ok(receiver)
+    fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
+        self.update_receiver.clone()
     }
 }
 
@@ -179,7 +164,7 @@ impl InMemoryWorkflowRunState {
     #[must_use]
     pub fn test() -> (Self, watch::Receiver<RuntimeWatchState>) {
         let global_state = InMemoryRuntimeState::new();
-        let events = global_state.listen().unwrap();
+        let events = global_state.listen();
         global_state
             .inner
             .runs
@@ -411,7 +396,7 @@ mod tests {
     async fn write_and_listen_for_updates() -> miette::Result<()> {
         let runtime_state = InMemoryRuntimeState::new();
 
-        let mut recv = runtime_state.listen()?;
+        let mut recv = runtime_state.listen();
 
         let run_id = Uuid::now_v7();
         let attempt = 0;

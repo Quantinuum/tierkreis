@@ -25,7 +25,10 @@ struct Runtime<RS: RuntimeState> {
     orchestrator: Orchestrator,
     state: Arc<RS>,
     asset_storage_registry: AssetStorageRegistry,
-    terminate_on_complete: Option<Uuid>,
+
+    // Optional Run ID to execute exclusively. Once this run completes the
+    // runtime should end execution.
+    dedicated_run_id: Option<Uuid>,
 }
 
 impl Runtime<SqliteRuntimeState> {
@@ -62,7 +65,7 @@ impl Runtime<SqliteRuntimeState> {
             orchestrator,
             state: Arc::new(runtime_state),
             asset_storage_registry,
-            terminate_on_complete: None,
+            dedicated_run_id: None,
         })
     }
 
@@ -97,7 +100,7 @@ impl Runtime<SqliteRuntimeState> {
             orchestrator,
             state: Arc::new(runtime_state),
             asset_storage_registry,
-            terminate_on_complete: None,
+            dedicated_run_id: None,
         })
     }
 }
@@ -134,7 +137,7 @@ impl Runtime<InMemoryRuntimeState> {
             orchestrator,
             state: Arc::new(runtime_state),
             asset_storage_registry,
-            terminate_on_complete: None,
+            dedicated_run_id: None,
         })
     }
 }
@@ -144,7 +147,7 @@ impl<RS: RuntimeState + 'static> Runtime<RS> {
         self.state.save_workflow(workflow_graph).await
     }
 
-    async fn start<S: BuildHasher>(
+    async fn start_new_run<S: BuildHasher>(
         &mut self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
@@ -207,7 +210,7 @@ impl<RS: RuntimeState + 'static> Runtime<RS> {
             }
         });
 
-        let mut state_recv = self.state.listen()?;
+        let mut state_recv = self.state.listen();
 
         loop {
             let active_runs: Vec<(Uuid, u32)> = {
@@ -217,12 +220,15 @@ impl<RS: RuntimeState + 'static> Runtime<RS> {
                 //
                 // See: https://github.com/tokio-rs/tokio/issues/4246
                 let updated = state_recv.borrow_and_update();
-                if let Some(terminate_on_complete) = self.terminate_on_complete
-                    && !updated.active_runs.contains(&(terminate_on_complete, 0))
-                {
-                    break;
+                if let Some(terminate_on_complete) = self.dedicated_run_id {
+                    if !updated.active_runs.contains(&(terminate_on_complete, 0)) {
+                        break;
+                    } else {
+                        vec![(terminate_on_complete, 0)]
+                    }
+                } else {
+                    updated.active_runs.iter().copied().collect()
                 }
-                updated.active_runs.iter().copied().collect()
             };
             for (run_id, attempt) in active_runs {
                 let workflow_run_state =
@@ -286,9 +292,9 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     let mut runtime = Runtime::sqlite_memory().await?;
 
     let workflow_id = runtime.save_workflow(workflow_graph).await?;
-    let (run_id, attempt) = runtime.start(workflow_id, inputs).await?;
+    let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
 
-    runtime.terminate_on_complete = Some(run_id);
+    runtime.dedicated_run_id = Some(run_id);
     runtime.run().await?;
 
     let outputs = runtime.outputs(run_id, attempt).await?;

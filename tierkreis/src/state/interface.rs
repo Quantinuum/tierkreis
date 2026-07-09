@@ -103,7 +103,7 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    fn listen(&self) -> miette::Result<watch::Receiver<RuntimeWatchState>>;
+    fn listen(&self) -> watch::Receiver<RuntimeWatchState>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
