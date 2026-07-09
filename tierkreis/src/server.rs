@@ -5,7 +5,8 @@ The server module defines the HTTP visualization interface to the Workflow serve
 pub mod models;
 #[allow(missing_docs)]
 pub mod routes;
-
+#[allow(missing_docs)]
+pub mod nodes;
 
 use std::sync::Arc;
 use axum::{
@@ -44,7 +45,8 @@ pub async fn serve(
 
     let api_router = OpenApiRouter::new()
         .routes(routes!(routes::get_info))
-        .routes(routes!(routes::list_workflows));
+        .routes(routes!(routes::list_workflows))
+        .routes(routes!(routes::list_nodes));
     let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) =
         OpenApiRouter::new().nest("/api", api_router).split_for_parts();
     let mut router = api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
