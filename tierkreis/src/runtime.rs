@@ -294,7 +294,7 @@ pub async fn run_workflow_persistent<S: BuildHasher>(
     workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut runtime = Runtime::persistent().await?;
+    let mut runtime = Runtime::persistent(Path::new("~/.tierkreis/checkpoints")).await?;
     let (run_id, attempt) = runtime.start(workflow_graph, inputs).await?;
     runtime.run().await?;
     runtime.outputs(run_id, attempt).await
