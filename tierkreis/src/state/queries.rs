@@ -10,8 +10,8 @@ use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
 use diesel::sqlite::Sqlite;
 use diesel::upsert::excluded;
 use diesel::{
-    BelongingToDsl, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension,
-    QueryDsl, SelectableHelper, define_sql_function,
+    BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
+    SelectableHelper, define_sql_function,
 };
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
