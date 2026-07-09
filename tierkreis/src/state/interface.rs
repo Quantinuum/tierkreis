@@ -21,7 +21,7 @@ use crate::{
 ///
 /// Not necessarily representative of all workflow runs that are not finished,
 /// but rather an in-memory cache of that is used by the runtime to decide
-/// what to run next. The [`RuntimeState`] is responsible for u
+/// what to run next.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RuntimeWatchState {
     /// The set of runs currently being executed by the runtime.
