@@ -401,6 +401,9 @@ pub async fn send_error(
     loc: Location,
     err: &miette::Error,
 ) -> miette::Result<()> {
+    let err_chain: Vec<_> = err.chain().map(ToString::to_string).collect();
+    let detail = err_chain.join("\n\nWhich was caused by:\n\n");
+
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
@@ -408,17 +411,7 @@ pub async fn send_error(
             locs: vec![loc],
             status: NodeStatus::Error {
                 error: err.to_string(),
-                detail: Some(
-                    // TODO: Does this even look good?
-                    err.chain().map(std::string::ToString::to_string).fold(
-                        String::new(),
-                        |mut l, r| {
-                            l.push('\n');
-                            l.push_str(&r);
-                            l
-                        },
-                    ),
-                ),
+                detail: Some(detail),
             },
         }),
     };
@@ -449,4 +442,47 @@ pub async fn send_workflow_run_complete(
         .await
         .into_diagnostic()
         .wrap_err("Failed to send workflow complete event")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use miette::miette;
+
+    // Test that we populate the detail field of error events
+    // with a reasonable chain.
+    #[tokio::test]
+    async fn error_chain_formatting() -> miette::Result<()> {
+        let mut err = miette!("Root cause");
+        err = err.wrap_err("First Context");
+        err = err.wrap_err("Second Context");
+
+        let (mut send, mut recv) = mpsc::channel(8);
+        send_error(&mut send, Uuid::nil(), 0, Location::root(), &err).await?;
+
+        let event = recv.recv().await.into_diagnostic()?;
+        dbg!(&event);
+        assert!(matches!(
+            event,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error { ref error, ref detail },
+                    ..
+                }),
+                ..
+            } if error == "Second Context"
+                && *detail == Some("Second Context
+
+Which was caused by:
+
+First Context
+
+Which was caused by:
+
+Root cause".to_string())
+        ));
+
+        Ok(())
+    }
 }
