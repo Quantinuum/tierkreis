@@ -101,10 +101,6 @@ pub trait RuntimeState: Debug + Send + Sync {
         attempt: u32,
     ) -> impl Future<Output = miette::Result<Self::WorkflowRunState>> + Send;
     /// Listen for updates about *all* of the running workflows.
-    ///
-    /// # Errors
-    ///
-    /// Will return Err if the method has already been called.
     fn listen(&self) -> watch::Receiver<RuntimeWatchState>;
 }
 
