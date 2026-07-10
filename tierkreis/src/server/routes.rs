@@ -93,7 +93,7 @@ pub async fn list_nodes(
     let loc = Location::root();
     // TODO can we somehow avoid loading the entire graph (e.g. only the nested ones we need)
     let top_level_graph = state.runtime_state.load_workflow(workflow_id).await?;
-    let py_graph = build_py_graph(&top_level_graph, &run_state, &loc).await?;
+    let py_graph = build_py_graph(&top_level_graph, &run_state, &loc, &state.asset_registry).await?;
 
     let mut graphs = HashMap::new();
     graphs.insert(loc.to_string(), py_graph);
