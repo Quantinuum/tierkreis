@@ -221,10 +221,10 @@ impl<RS: RuntimeState + 'static> Runtime<RS> {
                 // See: https://github.com/tokio-rs/tokio/issues/4246
                 let updated = state_recv.borrow_and_update();
                 if let Some(terminate_on_complete) = self.dedicated_run_id {
-                    if !updated.active_runs.contains(&(terminate_on_complete, 0)) {
-                        break;
-                    } else {
+                    if updated.active_runs.contains(&(terminate_on_complete, 0)) {
                         vec![(terminate_on_complete, 0)]
+                    } else {
+                        break;
                     }
                 } else {
                     updated.active_runs.iter().copied().collect()
