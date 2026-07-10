@@ -1,10 +1,39 @@
 
 
 use crate::server::models::{NodeInputs, PyEdge, PyGraph, PyNode, function_name_from_def, node_status_from_state, node_type_from_def};
-use crate::state::WorkflowRunState;
+use crate::state::{WorkflowRunState, interface::NodeState};
 use crate::graph::{WorkflowGraph, NodeDefinition};
 use crate::location::{Location};
 use crate::server::AssetStorageRegistry;
+
+
+/// Attempt to load a JSON-serialized value for a given port name.
+/// Returns `None` on any error (missing asset, not yet complete, etc.).
+async fn try_load_output_value(
+    port_name: &str,
+    node_state: &NodeState,
+    asset_registry: &AssetStorageRegistry,
+) -> Option<String> {
+    let outputs = node_state.outputs.as_ref()?;
+    tracing::info!("Trying to load output value for port {port_name} with outputs: {:?}", outputs);
+    let asset_spec = outputs.get(port_name)?;
+    let bytes = asset_registry
+        .read()
+        .ok()?
+        .get(&asset_spec.storage_name)?
+        .load(&asset_spec.asset_key)
+        .ok()?;
+    // Try to pretty-print as JSON, fall back to raw UTF-8.
+    if let Ok(json_val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Some(serde_json::to_string(&json_val).unwrap_or_default())
+    } else {
+        String::from_utf8(bytes).ok()
+    }
+}
+
+// async fn try_load_value(
+    
+// )
 
 
 /// Build a [`PyGraph`] for the given `workflow_graph`, reading live node states
@@ -16,7 +45,7 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
     workflow_graph: &WorkflowGraph,
     run_state: &RS,
     parent_location: &Location,
-    //asset_registry: &AssetStorageRegistry,
+    asset_registry: &AssetStorageRegistry,
 ) -> miette::Result<PyGraph> {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
@@ -37,7 +66,7 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
 
         tracing::info!("Found node {:?} {:?} {:?}", node_type, function_name, status);
         // Collect output port names.
-        let outputs: Vec<String> = workflow_graph
+        let output_names: Vec<String> = workflow_graph
             .output_names(node_idx)
             .map(|it| it.cloned().collect::<Vec<_>>())
             .unwrap_or_default();
@@ -64,13 +93,15 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
             let conditional =
                 matches!(def, NodeDefinition::IfElse {} | NodeDefinition::EagerIfElse {})
                     && (port_name == "if_true" || port_name == "if_false");
+            tracing::info!("Adding edge from {}.{} to {}.{})", from_location, from_port_name, node_location_str, port_name);
+            let node_state = run_state.read(&from_location).await.unwrap_or_default();
 
             edges.push(PyEdge {
                 from_node: from_location.to_string(),
                 from_port: from_port_name.clone(),
                 to_node: node_location_str.clone(),
                 to_port: port_name.clone(),
-                value: None, // TODO: load output value if available
+                value: try_load_output_value(from_port_name, &node_state, asset_registry).await,
                 conditional,
             });
         }
@@ -91,8 +122,9 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
                     .map(Clone::clone);
                 let from_node_idx = workflow_graph.port_node(*output_sub).ok();
                 if let (Some(port), Some(src_node)) = (from_port_name, from_node_idx) {
-                    // TODO load output value from run_state
-                    None
+                    let src_loc = parent_location.with_node(src_node);
+                    let src_state = run_state.read(&src_loc).await.unwrap_or_default();
+                    try_load_output_value(&port, &src_state, asset_registry).await
                 } else {
                     None
                 }
@@ -106,7 +138,7 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
             function_name,
             node_type,
             node_location: node_location_str,
-            outputs,
+            outputs: output_names,
             inputs,
             value,
             started_time: state.running_time.map_or_else(String::new, |t| t.to_rfc3339()),
