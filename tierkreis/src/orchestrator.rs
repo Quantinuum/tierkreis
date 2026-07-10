@@ -1500,7 +1500,11 @@ mod tests {
         assert!(matches!(actions[1].kind, ActionKind::WorkflowFinished {}));
 
         orchestrator
-            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let output_complete_event = stream.next().await.unwrap();
         let output_complete_outputs = output_complete_event.outputs();
@@ -1590,7 +1594,11 @@ mod tests {
         assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
 
         orchestrator
-            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let inner_inputs_complete_event = stream.next().await.unwrap();
         let inner_inputs_complete_outputs = inner_inputs_complete_event.clone().outputs();
@@ -1613,7 +1621,11 @@ mod tests {
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
 
         orchestrator
-            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let inner_output_complete_event = stream.next().await.unwrap();
         let inner_output_complete_outputs = inner_output_complete_event.clone().outputs();
@@ -1712,8 +1724,13 @@ mod tests {
             let actions = orchestrator
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
+
             orchestrator
-                .perform_actions(Uuid::nil(), 0, actions)
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
                 .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
@@ -1815,7 +1832,11 @@ mod tests {
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
             orchestrator
-                .perform_actions(Uuid::nil(), 0, actions)
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
                 .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
@@ -1927,7 +1948,11 @@ mod tests {
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
             orchestrator
-                .perform_actions(Uuid::nil(), 0, actions)
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
                 .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
@@ -2004,7 +2029,11 @@ mod tests {
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
             orchestrator
-                .perform_actions(Uuid::nil(), 0, actions)
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
                 .await?;
             state_recv.changed().await.into_diagnostic()?;
         }

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{asset_storage::interface::AssetSpec, location::Location};
 
-/// [`Event`] messages correspond to an update in the state of a Workflow run.
+/// [`RuntimeEvent`] messages correspond to an update in the Runtime.
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuntimeEvent {
     /// An event relating to a specific workflow run.
@@ -186,7 +186,7 @@ pub type EventSender = mpsc::Sender<RuntimeEvent>;
 /// wish to forward [`Event`] messages as this type implements [`Stream`].
 pub type EventReceiver = mpsc::Receiver<RuntimeEvent>;
 
-/// Utility function to send a new [`Event`] with [`Status::Running`].
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`].
 ///
 /// # Errors
 ///
@@ -212,7 +212,7 @@ pub async fn send_running(
         .wrap_err("Failed to send node running event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Cancelled`].
+/// Utility function to send a new [`Event`] with [`NodeStatus::Cancelled`].
 ///
 /// # Errors
 ///
@@ -238,7 +238,7 @@ pub async fn send_cancelled(
         .wrap_err("Failed to send node cancelled event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Complete`] and output [`AssetSpec`]s.
+/// Utility function to send a new [`Event`] with [`NodeStatus::Complete`] and output [`AssetSpec`]s.
 ///
 /// # Errors
 ///
@@ -265,7 +265,7 @@ pub async fn send_complete(
         .wrap_err("Failed to send node complete event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and a conditional value
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a conditional value
 /// for how the switch should resolve.
 ///
 /// # Errors
@@ -295,7 +295,7 @@ pub async fn send_running_switching(
         .wrap_err("Failed to send running switch node event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and a loop index value
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a loop index value
 /// for the current iteration index of the loop
 ///
 /// # Errors
@@ -325,7 +325,7 @@ pub async fn send_running_loop(
         .wrap_err("Failed to send running loop node event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and the number of
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and the number of
 /// elements of the data structure the Map node is being applied to.
 ///
 /// # Errors
@@ -358,7 +358,7 @@ pub async fn send_running_map(
         .wrap_err("Failed to send running map node event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and index of
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and index of
 /// the data structure the Map node is being applied to that has finished.
 ///
 /// # Errors
@@ -389,7 +389,7 @@ pub async fn send_map_elem_complete(
         .wrap_err("Failed to send map node element complete event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Error`] and an error message.
+/// Utility function to send a new [`Event`] with [`NodeStatus::Error`] and an error message.
 ///
 /// # Errors
 ///

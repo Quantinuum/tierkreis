@@ -16,7 +16,7 @@ use crate::{
     asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph, location::Location,
 };
 
-/// [`RunAttemptUpdated`] is a struct that is emitted by the [`RuntimeState`] interface
+/// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
 ///
 /// Not necessarily representative of all workflow runs that are not finished,
