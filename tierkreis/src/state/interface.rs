@@ -85,6 +85,8 @@ pub trait RuntimeState: Debug + Send + Sync {
     ) -> impl Future<Output = miette::Result<Uuid>> + Send;
 
     /// Create a new [`WorkflowRunState`] for a Workflow in the [`RuntimeState`] specified by id.
+    ///
+    /// The new workflow run should be included in the active runs of `RuntimeWatchState`.
     fn new_workflow_run_state(
         &self,
         workflow_id: Uuid,
