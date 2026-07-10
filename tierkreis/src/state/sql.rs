@@ -23,6 +23,7 @@ use diesel_async::{
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
+use futures::{FutureExt, future::BoxFuture};
 use miette::{Context, IntoDiagnostic, miette};
 use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
@@ -210,98 +211,112 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
-    type WorkflowRunState = SqliteWorkflowRunState;
-
-    async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
-        let _lock = self.lock.read().await;
-        let mut conn = self.get_conn().await?;
-        let workflow = read_workflow(&mut conn, workflow_id).await?;
-        serde_json::from_slice(&workflow.definition).into_diagnostic()
+    fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            let workflow = read_workflow(&mut conn, workflow_id).await?;
+            serde_json::from_slice(&workflow.definition).into_diagnostic()
+        }
+        .boxed()
     }
 
-    async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
-        let id = Uuid::now_v7();
-        let workflow = NewWorkflow {
-            id: &id.to_string(),
-            name: None,
-            created_time: Some(Utc::now().naive_utc()),
-            definition: &serde_json::to_vec(&workflow_graph).into_diagnostic()?,
-        };
-        let _lock = self.lock.write().await;
-        let mut conn = self.get_conn().await?;
-        insert_workflow(&mut conn, &workflow)
-            .await
-            .into_diagnostic()
-            .wrap_err("Failed to save workflow")?;
-        Ok(id)
+    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>> {
+        async move {
+            let id = Uuid::now_v7();
+            let workflow = NewWorkflow {
+                id: &id.to_string(),
+                name: None,
+                created_time: Some(Utc::now().naive_utc()),
+                definition: &serde_json::to_vec(&workflow_graph).into_diagnostic()?,
+            };
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            insert_workflow(&mut conn, &workflow)
+                .await
+                .into_diagnostic()
+                .wrap_err("Failed to save workflow")?;
+            Ok(id)
+        }
+        .boxed()
     }
 
-    async fn new_workflow_run_state(
+    fn new_workflow_run_state(
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, crate::asset_storage::AssetSpec>,
-    ) -> miette::Result<Self::WorkflowRunState> {
-        let _lock = self.lock.write().await;
-        let mut conn = self.get_conn().await?;
-        let run_id = Uuid::now_v7();
-        let run_id_str = run_id.to_string();
-        conn.transaction(|conn| {
-            async {
-                let run = NewWorkflowRun {
-                    id: &run_id_str,
-                    workflow_id: &workflow_id.to_string(),
-                };
-                insert_workflow_run(conn, &run).await?;
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            let run_id = Uuid::now_v7();
+            let run_id_str = run_id.to_string();
+            conn.transaction(|conn| {
+                async {
+                    let run = NewWorkflowRun {
+                        id: &run_id_str,
+                        workflow_id: &workflow_id.to_string(),
+                    };
+                    insert_workflow_run(conn, &run).await?;
 
-                let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
-                    workflow_run_id: &run_id_str,
-                    name,
-                    asset_kind: asset.kind.to_string(),
-                    storage_name: &asset.storage_name,
-                    asset_key: asset.asset_key.to_string(),
-                });
+                    let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
+                        workflow_run_id: &run_id_str,
+                        name,
+                        asset_kind: asset.kind.to_string(),
+                        storage_name: &asset.storage_name,
+                        asset_key: asset.asset_key.to_string(),
+                    });
 
-                insert_workflow_run_inputs(conn, workflow_inputs).await?;
-                Ok::<_, diesel::result::Error>(())
-            }
-            .scope_boxed()
-        })
-        .await
-        .into_diagnostic()
-        .wrap_err("Failed to insert new workflow run")?;
+                    insert_workflow_run_inputs(conn, workflow_inputs).await?;
+                    Ok::<_, diesel::result::Error>(())
+                }
+                .scope_boxed()
+            })
+            .await
+            .into_diagnostic()
+            .wrap_err("Failed to insert new workflow run")?;
 
-        self.update_sender.send_modify(|active_runs| {
-            active_runs.active_runs.insert((run_id, 0));
-        });
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, 0));
+            });
 
-        Ok(SqliteWorkflowRunState {
-            pool: self.pool.clone(),
-            lock: self.lock.clone(),
-            update_sender: self.update_sender.clone(),
-            workflow_id,
-            run_id,
-            attempt: 0,
-        })
+            let state = SqliteWorkflowRunState {
+                pool: self.pool.clone(),
+                lock: self.lock.clone(),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt: 0,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
+        }
+        .boxed()
     }
 
-    async fn load_workflow_run_state(
+    fn load_workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
-    ) -> miette::Result<SqliteWorkflowRunState> {
-        let mut conn = self.get_conn().await?;
-        let _lock = self.lock.read().await;
-        let run = read_workflow_run(&mut conn, run_id, attempt).await?;
-        let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let _lock = self.lock.read().await;
+            let run = read_workflow_run(&mut conn, run_id, attempt).await?;
+            let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
 
-        Ok(SqliteWorkflowRunState {
-            pool: self.pool.clone(),
-            lock: self.lock.clone(),
-            update_sender: self.update_sender.clone(),
-            workflow_id,
-            run_id,
-            attempt,
-        })
+            let state = SqliteWorkflowRunState {
+                pool: self.pool.clone(),
+                lock: self.lock.clone(),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
+        }
+        .boxed()
     }
 
     fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
@@ -345,56 +360,71 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         self.attempt
     }
 
-    async fn load_inputs(&self) -> miette::Result<HashMap<String, AssetSpec>> {
-        let _lock = self.lock.read().await;
-        let mut conn = self.get_conn().await?;
-        read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
-    }
-
-    async fn write(&self, event: WorkflowRunEvent) -> miette::Result<()> {
-        let _lock = self.lock.write().await;
-        let mut send_workflow_stopped = false;
-
-        match event {
-            WorkflowRunEvent::Started {} => {}
-            WorkflowRunEvent::Cancelled {}
-            | WorkflowRunEvent::Errored {}
-            | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
-            WorkflowRunEvent::NodeEvent(ref node_event) => {
-                self.handle_node_event(node_event).await?;
-            }
+    fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
         }
+        .boxed()
+    }
 
-        self.update_sender.send_modify(|run_attempt_updated| {
-            if send_workflow_stopped {
-                run_attempt_updated
-                    .active_runs
-                    .remove(&(self.run_id, self.attempt));
-            } else {
-                run_attempt_updated
-                    .active_runs
-                    .insert((self.run_id, self.attempt));
+    fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut send_workflow_stopped = false;
+
+            match event {
+                WorkflowRunEvent::Started {} => {}
+                WorkflowRunEvent::Cancelled {}
+                | WorkflowRunEvent::Errored {}
+                | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+                WorkflowRunEvent::NodeEvent(ref node_event) => {
+                    self.handle_node_event(node_event).await?;
+                }
             }
-        });
-        Ok(())
+
+            self.update_sender.send_modify(|run_attempt_updated| {
+                if send_workflow_stopped {
+                    run_attempt_updated
+                        .active_runs
+                        .remove(&(self.run_id, self.attempt));
+                } else {
+                    run_attempt_updated
+                        .active_runs
+                        .insert((self.run_id, self.attempt));
+                }
+            });
+            Ok(())
+        }
+        .boxed()
     }
 
-    async fn read(&self, location: &Location) -> miette::Result<NodeState> {
-        let _lock = self.lock.read().await;
-        let mut conn = self.get_conn().await?;
-        read_node_state(&mut conn, self.run_id, self.attempt, location).await
+    fn read<'a>(&'a self, location: &'a Location) -> BoxFuture<'a, miette::Result<NodeState>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            read_node_state(&mut conn, self.run_id, self.attempt, location).await
+        }
+        .boxed()
     }
 
-    async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
-        let _lock = self.lock.write().await;
-        let mut conn = self.get_conn().await?;
-        add_run_attempt_metadata(&mut conn, self.run_id, self.attempt, metadata).await
+    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            add_run_attempt_metadata(&mut conn, self.run_id, self.attempt, metadata).await
+        }
+        .boxed()
     }
 
-    async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
-        let _lock = self.lock.read().await;
-        let mut conn = self.get_conn().await?;
-        read_run_attempt_metadata(&mut conn, self.run_id, self.attempt).await
+    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            read_run_attempt_metadata(&mut conn, self.run_id, self.attempt).await
+        }
+        .boxed()
     }
 }
 

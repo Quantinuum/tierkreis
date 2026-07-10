@@ -18,12 +18,12 @@ use crate::{
     graph::WorkflowGraph,
     location::Location,
     orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState, WorkflowRunState},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
-struct Runtime<RS: RuntimeState> {
+struct Runtime {
     orchestrator: Orchestrator,
-    state: Arc<RS>,
+    state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
 
     // Optional Run ID to execute exclusively. Once this run completes the
@@ -31,7 +31,7 @@ struct Runtime<RS: RuntimeState> {
     dedicated_run_id: Option<Uuid>,
 }
 
-impl Runtime<SqliteRuntimeState> {
+impl Runtime {
     // TODO: Add a from_config function to build a Runtime from a configuration file.
     #[allow(dead_code)]
     async fn persistent(path: &Path) -> miette::Result<Self> {
@@ -103,9 +103,7 @@ impl Runtime<SqliteRuntimeState> {
             dedicated_run_id: None,
         })
     }
-}
 
-impl Runtime<InMemoryRuntimeState> {
     // TODO: Add a from_config function to build a Runtime from a configuration file.
     #[allow(dead_code)]
     async fn memory() -> miette::Result<Self> {
@@ -140,9 +138,7 @@ impl Runtime<InMemoryRuntimeState> {
             dedicated_run_id: None,
         })
     }
-}
 
-impl<RS: RuntimeState + 'static> Runtime<RS> {
     async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
         self.state.save_workflow(workflow_graph).await
     }
@@ -151,10 +147,7 @@ impl<RS: RuntimeState + 'static> Runtime<RS> {
         &mut self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
-    ) -> miette::Result<(Uuid, u32)>
-    where
-        <RS as RuntimeState>::WorkflowRunState: 'static,
-    {
+    ) -> miette::Result<(Uuid, u32)> {
         let inputs = save_assets(&self.asset_storage_registry, "memory", inputs).await?;
         let workflow_run_state = self
             .state
@@ -165,7 +158,7 @@ impl<RS: RuntimeState + 'static> Runtime<RS> {
     }
 
     async fn process_events(
-        state: Arc<RS>,
+        state: Arc<dyn RuntimeState>,
         mut stream: impl Stream<Item = RuntimeEvent> + Unpin,
     ) -> miette::Result<()> {
         while let Some(event) = stream.next().await {

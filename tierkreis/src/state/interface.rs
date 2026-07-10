@@ -5,10 +5,12 @@ and [`WorkflowRunState`] implementations must satisfy.
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
+    sync::Arc,
 };
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
+use futures::future::BoxFuture;
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -20,7 +22,7 @@ use crate::{
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
 ///
 /// Not necessarily representative of all workflow runs that are not finished,
-/// but rather an in-memory cache of that is used by the runtime to decide
+/// but rather an in-memory cache of what is used by the runtime to decide
 /// what to run next.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RuntimeWatchState {
@@ -69,20 +71,10 @@ pub struct NodeState {
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
-    /// [`WorkflowRunState`] is the implementation of the [`WorkflowRunState`] trait that is associated
-    /// with this [`RuntimeState`] implementation and returned by the `workflow_run_state` method.
-    type WorkflowRunState: WorkflowRunState;
-
     /// Retrieve the [`WorkflowGraph`] specified by id.
-    fn load_workflow(
-        &self,
-        workflow_id: Uuid,
-    ) -> impl Future<Output = miette::Result<WorkflowGraph>> + Send;
+    fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>>;
     /// Save a [`WorkflowGraph`] and return a new id.
-    fn save_workflow(
-        &self,
-        workflow_graph: WorkflowGraph,
-    ) -> impl Future<Output = miette::Result<Uuid>> + Send;
+    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>>;
 
     /// Create a new [`WorkflowRunState`] for a Workflow in the [`RuntimeState`] specified by id.
     ///
@@ -91,7 +83,7 @@ pub trait RuntimeState: Debug + Send + Sync {
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, AssetSpec>,
-    ) -> impl Future<Output = miette::Result<Self::WorkflowRunState>> + Send;
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
     /// Retrieve a handle to a [`WorkflowRunState`] depending on the `run_id` and attempt number.
     ///
     /// If the backing data for the [`WorkflowRunState`] does not exist, create it.
@@ -99,7 +91,7 @@ pub trait RuntimeState: Debug + Send + Sync {
         &self,
         run_id: Uuid,
         attempt: u32,
-    ) -> impl Future<Output = miette::Result<Self::WorkflowRunState>> + Send;
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
     /// Listen for updates about *all* of the running workflows.
     fn listen(&self) -> watch::Receiver<RuntimeWatchState>;
 }
@@ -113,21 +105,15 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     /// Retrieve the `attempt` associated with this `WorkflowRunState`.
     fn attempt(&self) -> u32;
     /// Retrieve the workflow inputs associated with this `WorkflowRunState`.
-    fn load_inputs(
-        &self,
-    ) -> impl Future<Output = miette::Result<HashMap<String, AssetSpec>>> + Send;
+    fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>>;
     /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].
-    fn write(&self, event: WorkflowRunEvent) -> impl Future<Output = miette::Result<()>> + Send;
+    fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the state of a Node at the specified [`Location`].
     ///
     /// If the `location` has no existing state, a default [`NodeState`] will be returned.
-    fn read(&self, location: &Location) -> impl Future<Output = miette::Result<NodeState>> + Send;
+    fn read<'a>(&'a self, location: &'a Location) -> BoxFuture<'a, miette::Result<NodeState>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
-    fn add_metadata(
-        &self,
-        metadata: HashMap<String, String>,
-    ) -> impl Future<Output = miette::Result<()>> + Send;
+    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.
-    fn read_metadata(&self)
-    -> impl Future<Output = miette::Result<HashMap<String, String>>> + Send;
+    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
 }

@@ -10,6 +10,8 @@ use std::{collections::HashMap, ops::BitOrAssign, sync::Arc};
 use bitvec::vec::BitVec;
 use chrono::Utc;
 use dashmap::DashMap;
+use futures::FutureExt;
+use futures::future::{self, BoxFuture};
 use miette::miette;
 use tokio::sync::watch;
 use tracing::instrument;
@@ -79,28 +81,29 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
-    type WorkflowRunState = InMemoryWorkflowRunState;
-
-    async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
-        let workflow = self
-            .inner
-            .workflows
-            .get(&workflow_id)
-            .ok_or_else(|| miette!("Workflow not found with workflow id: {workflow_id}"))?;
-        Ok(workflow.clone())
+    fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>> {
+        async move {
+            let workflow = self
+                .inner
+                .workflows
+                .get(&workflow_id)
+                .ok_or_else(|| miette!("Workflow not found with workflow id: {workflow_id}"))?;
+            Ok(workflow.clone())
+        }
+        .boxed()
     }
 
-    async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
+    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>> {
         let workflow_id = Uuid::now_v7();
         self.inner.workflows.insert(workflow_id, workflow_graph);
-        Ok(workflow_id)
+        future::ok(workflow_id).boxed()
     }
 
-    async fn new_workflow_run_state(
+    fn new_workflow_run_state(
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, AssetSpec>,
-    ) -> miette::Result<Self::WorkflowRunState> {
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         let run_id = Uuid::now_v7();
         let attempt = 0;
 
@@ -112,29 +115,33 @@ impl RuntimeState for InMemoryRuntimeState {
             active_runs.active_runs.insert((run_id, attempt));
         });
 
-        Ok(InMemoryWorkflowRunState {
+        let state = InMemoryWorkflowRunState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
             workflow_id: entry.workflow_id,
             run_id,
             attempt,
-        })
+        };
+        let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+        future::ok(state).boxed()
     }
 
-    async fn load_workflow_run_state(
+    fn load_workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
-    ) -> miette::Result<InMemoryWorkflowRunState> {
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         let entry = self.inner.runs.entry((run_id, attempt)).or_default();
 
-        Ok(InMemoryWorkflowRunState {
+        let state = InMemoryWorkflowRunState {
             global_state: Arc::clone(&self.inner),
             update_sender: self.update_sender.clone(),
             workflow_id: entry.workflow_id,
             run_id,
             attempt,
-        })
+        };
+        let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+        future::ok(state).boxed()
     }
 
     fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
@@ -200,17 +207,20 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         self.attempt
     }
 
-    async fn load_inputs(&self) -> miette::Result<HashMap<String, AssetSpec>> {
-        let run = self
-            .global_state
-            .runs
-            .get(&(self.run_id, self.attempt))
-            .ok_or_else(|| miette!("Workflow run not found"))?;
-        Ok(run.inputs.clone())
+    fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>> {
+        async move {
+            let run = self
+                .global_state
+                .runs
+                .get(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+            Ok(run.inputs.clone())
+        }
+        .boxed()
     }
 
     #[instrument]
-    async fn write(&self, event: WorkflowRunEvent) -> miette::Result<()> {
+    fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>> {
         let global_state = &self.global_state;
         let run_state = global_state
             .runs
@@ -238,42 +248,45 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                     .insert((self.run_id, self.attempt));
             }
         });
-        Ok(())
+        future::ok(()).boxed()
     }
 
     #[instrument]
-    async fn read(&self, location: &Location) -> miette::Result<NodeState> {
-        let run_state = self
-            .global_state
-            .runs
-            .get(&(self.run_id, self.attempt))
-            .ok_or_else(|| {
-                miette!(
-                    "Run Attempt with id {} and attempt {} not found",
-                    self.run_id,
-                    self.attempt
-                )
-            })?;
-        let state = run_state
-            .value()
-            .nodes
-            .get(location)
-            .cloned()
-            .unwrap_or_default();
+    fn read<'a>(&'a self, location: &'a Location) -> BoxFuture<'a, miette::Result<NodeState>> {
+        async move {
+            let run_state = self
+                .global_state
+                .runs
+                .get(&(self.run_id, self.attempt))
+                .ok_or_else(|| {
+                    miette!(
+                        "Run Attempt with id {} and attempt {} not found",
+                        self.run_id,
+                        self.attempt
+                    )
+                })?;
+            let state = run_state
+                .value()
+                .nodes
+                .get(location)
+                .cloned()
+                .unwrap_or_default();
 
-        Ok(state.clone())
+            Ok(state.clone())
+        }
+        .boxed()
     }
 
-    async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
+    fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         entry.or_default().metadata.extend(metadata);
-        Ok(())
+        future::ok(()).boxed()
     }
 
-    async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
+    fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         let metadata = entry.or_default().value().metadata.clone();
-        Ok(metadata)
+        future::ok(metadata).boxed()
     }
 }
 
