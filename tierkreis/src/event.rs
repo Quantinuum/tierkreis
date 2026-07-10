@@ -7,26 +7,31 @@ use std::{collections::HashMap, hash::RandomState};
 
 use bitvec::vec::BitVec;
 use futures::{SinkExt, channel::mpsc};
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic};
+use uuid::Uuid;
 
 use crate::{asset_storage::interface::AssetSpec, location::Location};
 
-/// [`Event`] messages correspond to an update in the state of a Workflow run.
+/// [`RuntimeEvent`] messages correspond to an update in the Runtime.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Event {
-    /// An event relating to the overall workflow.
-    WorkflowRun(WorkflowRunEvent),
-    /// An event relating to a specific node with a [`Location`].
-    Node(NodeEvent),
+pub enum RuntimeEvent {
+    /// An event relating to a specific workflow run.
+    WorkflowRun {
+        /// The id of the workflow run.
+        workflow_run_id: Uuid,
+        /// The current attempt of the workflow run.
+        attempt: u32,
+        /// The event payload.
+        event: WorkflowRunEvent,
+    },
 }
 
-impl Event {
+impl RuntimeEvent {
     /// Returns true if the event indicates that the workflow is finished running.
     #[must_use]
     pub fn is_workflow_finished(&self) -> bool {
         match self {
-            Event::WorkflowRun(run_event) => run_event.is_workflow_finished(),
-            Event::Node(_) => false,
+            RuntimeEvent::WorkflowRun { event, .. } => event.is_workflow_finished(),
         }
     }
 
@@ -34,8 +39,11 @@ impl Event {
     #[must_use]
     pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
         match self {
-            Event::Node(node_event) => node_event.outputs(),
-            Event::WorkflowRun(_) => Vec::new(),
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(node_event),
+                ..
+            } => node_event.outputs(),
+            RuntimeEvent::WorkflowRun { .. } => Vec::new(),
         }
     }
 }
@@ -51,7 +59,12 @@ pub enum WorkflowRunEvent {
     /// The workflow run has errored during running.
     Errored {},
     /// The workflow run has completed successfully.
-    Completed {},
+    Completed {
+        // TODO: Should this contain outputs?
+        // if so also update the outputs function
+    },
+    /// An event relating to a specific set of nodes in the workflow run.
+    NodeEvent(NodeEvent),
 }
 
 impl WorkflowRunEvent {
@@ -165,64 +178,94 @@ pub enum NodeStatus {
 ///
 /// This alias is useful for [Executor][`crate::executor::Executor`] implementors who
 /// wish to produce [Event] messages that can be consumed by an [`EventReceiver`].
-pub type EventSender = mpsc::Sender<Event>;
+pub type EventSender = mpsc::Sender<RuntimeEvent>;
 
 /// [`EventReceiver`] is an multi-producer single-consumer consumer for [Event] messages.
 ///
 /// This alias is useful for [Executor][`crate::executor::Executor`] implementors who
 /// wish to forward [`Event`] messages as this type implements [`Stream`].
-pub type EventReceiver = mpsc::Receiver<Event>;
+pub type EventReceiver = mpsc::Receiver<RuntimeEvent>;
 
-/// Utility function to send a new [`Event`] with [`Status::Running`].
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`].
 ///
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
-pub async fn send_running(event_sender: &mut EventSender, loc: Location) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
+pub async fn send_running(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
             status: NodeStatus::Running { state_update: None },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| miette!("Failed to send running event: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to send node running event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Cancelled`].
+/// Utility function to send a new [`Event`] with [`NodeStatus::Cancelled`].
 ///
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
-pub async fn send_cancelled(event_sender: &mut EventSender, loc: Location) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
+pub async fn send_cancelled(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
-            status: NodeStatus::Cancelled {},
-        }))
+            status: NodeStatus::Cancelled,
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| miette!("Failed to send cancelled event: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to send node cancelled event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Complete`] and output [`AssetSpec`]s.
+/// Utility function to send a new [`Event`] with [`NodeStatus::Complete`] and output [`AssetSpec`]s.
 ///
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_complete(
     event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
     locs: Vec<Location>,
     outputs: Vec<HashMap<String, AssetSpec, RandomState>>,
 ) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs,
             status: NodeStatus::Complete { outputs },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| miette!("Failed to send complete event: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to send node complete event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and a conditional value
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a conditional value
 /// for how the switch should resolve.
 ///
 /// # Errors
@@ -230,24 +273,29 @@ pub async fn send_complete(
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_running_switching(
     event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
     cond: bool,
 ) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
-            locs: vec![loc.clone()],
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| {
-            miette!("Failed to send switching event: {err}")
-                .wrap_err(miette!("At location: {loc:?}"))
-        })
+        .into_diagnostic()
+        .wrap_err("Failed to send running switch node event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and a loop index value
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a loop index value
 /// for the current iteration index of the loop
 ///
 /// # Errors
@@ -255,24 +303,29 @@ pub async fn send_running_switching(
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_running_loop(
     event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
     index: u32,
 ) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
-            locs: vec![loc.clone()],
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| {
-            miette!("Failed to send running loop event: {err}")
-                .wrap_err(miette!("At location: {loc:?}"))
-        })
+        .into_diagnostic()
+        .wrap_err("Failed to send running loop node event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and the number of
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and the number of
 /// elements of the data structure the Map node is being applied to.
 ///
 /// # Errors
@@ -281,26 +334,31 @@ pub async fn send_running_loop(
 /// size of the map is larger than `u32`.
 pub async fn send_running_map(
     event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
     size: usize,
 ) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
-            locs: vec![loc.clone()],
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted {
                     size: u32::try_from(size).into_diagnostic()?,
                 }),
             },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| {
-            miette!("Failed to send running map event: {err}")
-                .wrap_err(miette!("At location: {loc:?}"))
-        })
+        .into_diagnostic()
+        .wrap_err("Failed to send running map node event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Running`] and index of
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and index of
 /// the data structure the Map node is being applied to that has finished.
 ///
 /// # Errors
@@ -309,43 +367,59 @@ pub async fn send_running_map(
 /// index of the map is larger than `u32`.
 pub async fn send_map_elem_complete(
     event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
     bits: BitVec<u8>,
 ) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
             },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| {
-            miette!("Failed to send running map event: {err}")
-                .wrap_err(miette!("At location: {loc:?}"))
-        })
+        .into_diagnostic()
+        .wrap_err("Failed to send map node element complete event")
 }
 
-/// Utility function to send a new [`Event`] with [`Status::Error`] and an error message.
+/// Utility function to send a new [`Event`] with [`NodeStatus::Error`] and an error message.
 ///
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_error(
     event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
     err: &miette::Error,
 ) -> miette::Result<()> {
-    event_sender
-        .send(Event::Node(NodeEvent {
+    let err_chain: Vec<_> = err.chain().map(ToString::to_string).collect();
+    let detail = err_chain.join("\n\nWhich was caused by:\n\n");
+
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
             status: NodeStatus::Error {
                 error: err.to_string(),
-                detail: None,
+                detail: Some(detail),
             },
-        }))
+        }),
+    };
+    event_sender
+        .send(event)
         .await
-        .map_err(|err| miette!("Failed to send error event: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to send node error event")
 }
 
 /// Utility function to send a new [`Event`].
@@ -353,9 +427,62 @@ pub async fn send_error(
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
-pub async fn send_workflow_run_complete(event_sender: &mut EventSender) -> miette::Result<()> {
+pub async fn send_workflow_run_complete(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::Completed {},
+    };
     event_sender
-        .send(Event::WorkflowRun(WorkflowRunEvent::Completed {}))
+        .send(event)
         .await
-        .map_err(|err| miette!("Failed to send workflow run complete event: {err}"))
+        .into_diagnostic()
+        .wrap_err("Failed to send workflow complete event")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use miette::miette;
+
+    // Test that we populate the detail field of error events
+    // with a reasonable chain.
+    #[tokio::test]
+    async fn error_chain_formatting() -> miette::Result<()> {
+        let mut err = miette!("Root cause");
+        err = err.wrap_err("First Context");
+        err = err.wrap_err("Second Context");
+
+        let (mut send, mut recv) = mpsc::channel(8);
+        send_error(&mut send, Uuid::nil(), 0, Location::root(), &err).await?;
+
+        let event = recv.recv().await.into_diagnostic()?;
+        dbg!(&event);
+        assert!(matches!(
+            event,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error { ref error, ref detail },
+                    ..
+                }),
+                ..
+            } if error == "Second Context"
+                && *detail == Some("Second Context
+
+Which was caused by:
+
+First Context
+
+Which was caused by:
+
+Root cause".to_string())
+        ));
+
+        Ok(())
+    }
 }

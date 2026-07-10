@@ -9,7 +9,7 @@ use std::{
     collections::HashMap,
     env::{self, home_dir},
     fmt::Debug,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 
@@ -18,7 +18,8 @@ use chrono::Utc;
 use deadpool::{Runtime, managed::Object};
 use diesel::{SqliteConnection, sql_query};
 use diesel_async::{
-    AsyncMigrationHarness, RunQueryDsl, pooled_connection::AsyncDieselConnectionManager,
+    AsyncConnection, AsyncMigrationHarness, RunQueryDsl,
+    pooled_connection::AsyncDieselConnectionManager, scoped_futures::ScopedFutureExt,
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -28,15 +29,15 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::AssetSpec,
-    event::{Event, NodeEvent, WorkflowRunEvent},
+    event::{NodeEvent, WorkflowRunEvent},
     graph::WorkflowGraph,
     state::{
-        interface::RunAttemptUpdated,
-        models::{NewWorkflowRunInput, Workflow, WorkflowRun},
+        interface::RuntimeWatchState,
+        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
         queries::{
-            add_run_metadata, insert_default_workflowrun, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, read_node_state, read_run_metadata, read_workflow,
-            read_workflow_run_inputs, read_workflowrun, update_node_state,
+            add_run_attempt_metadata, insert_workflow, insert_workflow_run,
+            insert_workflow_run_inputs, read_node_state, read_run_attempt_metadata, read_workflow,
+            read_workflow_run, read_workflow_run_inputs, update_node_state,
         },
     },
 };
@@ -140,8 +141,8 @@ fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
 pub struct SqliteRuntimeState {
     pool: ConnPool,
     lock: Arc<RwLock<()>>,
-    update_sender: watch::Sender<RunAttemptUpdated>,
-    update_receiver: Mutex<Option<watch::Receiver<RunAttemptUpdated>>>,
+    update_sender: watch::Sender<RuntimeWatchState>,
+    update_receiver: watch::Receiver<RuntimeWatchState>,
 }
 
 impl SqliteRuntimeState {
@@ -151,11 +152,7 @@ impl SqliteRuntimeState {
     ///
     /// Will return Err if the `SQLite` database connection pool cannot be established.
     pub async fn try_new() -> miette::Result<Self> {
-        let (sender, receiver) = watch::channel(RunAttemptUpdated {
-            attempt: 0,
-            run_id: Uuid::nil(),
-            stopped: false,
-        });
+        let (sender, receiver) = watch::channel(RuntimeWatchState::default());
         let pool = build_conn_pool()
             .await
             .wrap_err("Failed to establish database connection")?;
@@ -163,7 +160,7 @@ impl SqliteRuntimeState {
             pool,
             lock: Arc::new(RwLock::new(())),
             update_sender: sender,
-            update_receiver: Mutex::new(Some(receiver)),
+            update_receiver: receiver,
         })
     }
 
@@ -180,11 +177,7 @@ impl SqliteRuntimeState {
         // that all connections in the pool share, avoiding the isolation problem
         // that `:memory:` has with pooled connections.
         let url = format!("file:{db_name}?mode=memory&cache=shared");
-        let (sender, receiver) = watch::channel(RunAttemptUpdated {
-            attempt: 0,
-            run_id: Uuid::nil(),
-            stopped: false,
-        });
+        let (sender, receiver) = watch::channel(RuntimeWatchState::default());
         let pool = build_conn_pool_with_url(&url)
             .await
             .wrap_err("Failed to establish in-memory database")?;
@@ -192,7 +185,7 @@ impl SqliteRuntimeState {
             pool,
             lock: Arc::new(RwLock::new(())),
             update_sender: sender,
-            update_receiver: Mutex::new(Some(receiver)),
+            update_receiver: receiver,
         })
     }
 
@@ -228,15 +221,18 @@ impl RuntimeState for SqliteRuntimeState {
 
     async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
         let id = Uuid::now_v7();
-        let workflow = Workflow {
-            id: id.to_string(),
+        let workflow = NewWorkflow {
+            id: &id.to_string(),
             name: None,
             created_time: Some(Utc::now().naive_utc()),
-            definition: serde_json::to_vec(&workflow_graph).into_diagnostic()?,
+            definition: &serde_json::to_vec(&workflow_graph).into_diagnostic()?,
         };
         let _lock = self.lock.write().await;
         let mut conn = self.get_conn().await?;
-        insert_workflow(&mut conn, &workflow).await?;
+        insert_workflow(&mut conn, &workflow)
+            .await
+            .into_diagnostic()
+            .wrap_err("Failed to save workflow")?;
         Ok(id)
     }
 
@@ -249,26 +245,34 @@ impl RuntimeState for SqliteRuntimeState {
         let mut conn = self.get_conn().await?;
         let run_id = Uuid::now_v7();
         let run_id_str = run_id.to_string();
-        let attempt = 0;
-        let run = WorkflowRun {
-            id: run_id_str.clone(),
-            attempt,
-            workflow_id: workflow_id.to_string(),
-            run_metadata: br"{}".to_vec(),
-            status: None,
-            started_time: None,
-        };
-        insert_workflow_run(&mut conn, &run).await?;
+        conn.transaction(|conn| {
+            async {
+                let run = NewWorkflowRun {
+                    id: &run_id_str,
+                    workflow_id: &workflow_id.to_string(),
+                };
+                insert_workflow_run(conn, &run).await?;
 
-        let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
-            workflow_run_id: &run_id_str,
-            name,
-            asset_kind: asset.kind.to_string(),
-            storage_name: &asset.storage_name,
-            asset_key: asset.asset_key.to_string(),
+                let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
+                    workflow_run_id: &run_id_str,
+                    name,
+                    asset_kind: asset.kind.to_string(),
+                    storage_name: &asset.storage_name,
+                    asset_key: asset.asset_key.to_string(),
+                });
+
+                insert_workflow_run_inputs(conn, workflow_inputs).await?;
+                Ok::<_, diesel::result::Error>(())
+            }
+            .scope_boxed()
+        })
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to insert new workflow run")?;
+
+        self.update_sender.send_modify(|active_runs| {
+            active_runs.active_runs.insert((run_id, 0));
         });
-
-        insert_workflow_run_inputs(&mut conn, workflow_inputs).await?;
 
         Ok(SqliteWorkflowRunState {
             pool: self.pool.clone(),
@@ -286,20 +290,9 @@ impl RuntimeState for SqliteRuntimeState {
         attempt: u32,
     ) -> miette::Result<SqliteWorkflowRunState> {
         let mut conn = self.get_conn().await?;
-        // Insert the default if the value does not yet exist.
-        // Cannot return errors from this trait method, so best-effort initialize.
-        let run = {
-            let _lock = self.lock.read().await;
-            read_workflowrun(&mut conn, run_id, attempt).await
-        };
-        let workflow_id = match run {
-            Ok(run) => run.workflow_id.parse().into_diagnostic()?,
-            Err(_err) => {
-                let _lock = self.lock.write().await;
-                let run = insert_default_workflowrun(&mut conn, run_id, attempt).await?;
-                run.workflow_id.parse().into_diagnostic()?
-            }
-        };
+        let _lock = self.lock.read().await;
+        let run = read_workflow_run(&mut conn, run_id, attempt).await?;
+        let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
 
         Ok(SqliteWorkflowRunState {
             pool: self.pool.clone(),
@@ -311,19 +304,8 @@ impl RuntimeState for SqliteRuntimeState {
         })
     }
 
-    fn listen(&self) -> miette::Result<watch::Receiver<RunAttemptUpdated>> {
-        let receiver = {
-            let mut receiver = self
-                .update_receiver
-                .try_lock()
-                .map_err(|err| miette!("Failed to listen: {}", err))?;
-
-            receiver.take().ok_or(miette!(
-                "Failed to listen: SqlRuntimeState is already being listened to."
-            ))?
-        };
-
-        Ok(receiver)
+    fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
+        self.update_receiver.clone()
     }
 }
 
@@ -334,7 +316,7 @@ pub struct SqliteWorkflowRunState {
     // Only one thread can write to an SQLite db at a time, so we use a RWLock to
     // control access to the ConnPool.
     lock: Arc<RwLock<()>>,
-    update_sender: watch::Sender<RunAttemptUpdated>,
+    update_sender: watch::Sender<RuntimeWatchState>,
     workflow_id: Uuid,
     run_id: Uuid,
     attempt: u32,
@@ -369,21 +351,30 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
     }
 
-    async fn write(&self, event: Event) -> miette::Result<()> {
+    async fn write(&self, event: WorkflowRunEvent) -> miette::Result<()> {
         let _lock = self.lock.write().await;
         let mut send_workflow_stopped = false;
 
         match event {
-            Event::WorkflowRun(ref run_event) => {
-                Self::handle_run_event(&mut send_workflow_stopped, run_event);
+            WorkflowRunEvent::Started {} => {}
+            WorkflowRunEvent::Cancelled {}
+            | WorkflowRunEvent::Errored {}
+            | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+            WorkflowRunEvent::NodeEvent(ref node_event) => {
+                self.handle_node_event(node_event).await?;
             }
-            Event::Node(ref node_event) => self.handle_node_event(node_event).await?,
         }
 
         self.update_sender.send_modify(|run_attempt_updated| {
-            run_attempt_updated.run_id = self.run_id;
-            run_attempt_updated.attempt = self.attempt;
-            run_attempt_updated.stopped |= send_workflow_stopped;
+            if send_workflow_stopped {
+                run_attempt_updated
+                    .active_runs
+                    .remove(&(self.run_id, self.attempt));
+            } else {
+                run_attempt_updated
+                    .active_runs
+                    .insert((self.run_id, self.attempt));
+            }
         });
         Ok(())
     }
@@ -397,13 +388,13 @@ impl WorkflowRunState for SqliteWorkflowRunState {
     async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
         let _lock = self.lock.write().await;
         let mut conn = self.get_conn().await?;
-        add_run_metadata(&mut conn, self.run_id, self.attempt, metadata).await
+        add_run_attempt_metadata(&mut conn, self.run_id, self.attempt, metadata).await
     }
 
     async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
         let _lock = self.lock.read().await;
         let mut conn = self.get_conn().await?;
-        read_run_metadata(&mut conn, self.run_id, self.attempt).await
+        read_run_attempt_metadata(&mut conn, self.run_id, self.attempt).await
     }
 }
 
@@ -419,15 +410,6 @@ impl SqliteWorkflowRunState {
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
         Ok(conn)
-    }
-
-    fn handle_run_event(send_workflow_stopped: &mut bool, run_event: &WorkflowRunEvent) {
-        match run_event {
-            WorkflowRunEvent::Started {} => {}
-            WorkflowRunEvent::Cancelled {}
-            | WorkflowRunEvent::Errored {}
-            | WorkflowRunEvent::Completed {} => *send_workflow_stopped = true,
-        }
     }
 
     async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
@@ -538,6 +520,7 @@ impl SqliteWorkflowRunState {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::ops::BitOr;
 
     use crate::{
@@ -552,10 +535,9 @@ mod tests {
     async fn read_location_returns_default() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let run_id = Uuid::now_v7();
-        let attempt = 0;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -570,28 +552,28 @@ mod tests {
     async fn write_and_listen_for_updates() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let mut recv = runtime_state.listen()?;
+        let mut recv = runtime_state.listen();
 
-        let run_id = Uuid::now_v7();
-        let attempt = 1;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
             .await?;
 
         let updated = recv.borrow_and_update();
+        let run_id = workflow_run_state.run_id();
+        let attempt = workflow_run_state.attempt();
+        let expected_runs = HashSet::from_iter([(run_id, attempt)]);
         assert_eq!(
             *updated,
-            RunAttemptUpdated {
-                run_id,
-                attempt,
-                stopped: false,
+            RuntimeWatchState {
+                active_runs: expected_runs,
             }
         );
 
@@ -603,14 +585,13 @@ mod tests {
     async fn write_and_read() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let run_id = Uuid::now_v7();
-        let attempt = 2;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Scheduled,
             }))
@@ -621,7 +602,7 @@ mod tests {
         assert!(node_state.scheduled_time.is_some());
 
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Queued,
             }))
@@ -640,10 +621,9 @@ mod tests {
     async fn write_and_read_outputs() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let run_id = Uuid::now_v7();
-        let attempt = 2;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         let mut outputs = HashMap::new();
@@ -656,7 +636,7 @@ mod tests {
             },
         );
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Complete {
                     outputs: vec![outputs],
@@ -676,14 +656,13 @@ mod tests {
     async fn write_and_read_map_completed() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let run_id = Uuid::now_v7();
-        let attempt = 2;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
@@ -698,7 +677,7 @@ mod tests {
         let mut bits1 = BitVec::repeat(false, 2);
         bits1.set(0, true);
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
@@ -715,7 +694,7 @@ mod tests {
         let mut bits2 = BitVec::repeat(false, 2);
         bits2.set(1, true);
         workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
@@ -737,10 +716,9 @@ mod tests {
     async fn write_and_read_metadata() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let run_id = Uuid::now_v7();
-        let attempt = 3;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
@@ -757,10 +735,9 @@ mod tests {
     async fn merge_metadata() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let run_id = Uuid::now_v7();
-        let attempt = 4;
+        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
         let workflow_run_state = runtime_state
-            .load_workflow_run_state(run_id, attempt)
+            .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);

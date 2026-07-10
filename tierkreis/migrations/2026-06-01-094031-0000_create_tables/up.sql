@@ -4,20 +4,21 @@ CREATE TABLE `node_states`(
 	`run_id` TEXT NOT NULL,
 	`attempt` INTEGER NOT NULL,
 	`node_location` TEXT NOT NULL,
-	`scheduled_time` TIMESTAMP,
-	`queued_time` TIMESTAMP,
-	`running_time` TIMESTAMP,
-	`complete_time` TIMESTAMP,
-	`cancelled_time` TIMESTAMP,
-	`error_time` TIMESTAMP,
-	`cond` BOOLEAN,
-	`loop_index` INTEGER,
-	`map_size` INTEGER,
-	`map_completed` BLOB,
-	`error` TEXT,
-	`error_detail` TEXT,
+	`scheduled_time` TIMESTAMP DEFAULT NULL,
+	`queued_time` TIMESTAMP DEFAULT NULL,
+	`running_time` TIMESTAMP DEFAULT NULL,
+	`complete_time` TIMESTAMP DEFAULT NULL,
+	`cancelled_time` TIMESTAMP DEFAULT NULL,
+	`error_time` TIMESTAMP DEFAULT NULL,
+	`cond` BOOLEAN DEFAULT NULL,
+	`loop_index` INTEGER DEFAULT NULL,
+	`map_size` INTEGER DEFAULT NULL,
+	`map_completed` BLOB DEFAULT NULL,
+	`error` TEXT DEFAULT NULL,
+	`error_detail` TEXT DEFAULT NULL,
 	UNIQUE (`run_id`, `attempt`, `node_location`),
-	FOREIGN KEY (`run_id`, `attempt`) REFERENCES `workflow_runs`(`id`, `attempt`)
+	FOREIGN KEY (`run_id`, `attempt`)
+		REFERENCES `workflow_run_attempts`(`workflow_run_id`, `attempt`)
 );
 
 CREATE TABLE `workflows`(
@@ -34,20 +35,25 @@ CREATE TABLE `node_outputs`(
 	`asset_kind` TEXT NOT NULL,
 	`storage_name` TEXT NOT NULL,
 	`asset_key` TEXT NOT NULL,
+	UNIQUE (`node_state_id`, `name`),
 	FOREIGN KEY (`node_state_id`) REFERENCES `node_states`(`id`)
 );
 
-CREATE UNIQUE INDEX `node_outputs_state_id_name` ON `node_outputs` (`node_state_id`, `name`);
-
 CREATE TABLE `workflow_runs`(
-	`id` TEXT NOT NULL,
-	`attempt` INTEGER NOT NULL,
+	`id` TEXT NOT NULL PRIMARY KEY,
 	`workflow_id` TEXT NOT NULL,
-	`run_metadata` BLOB NOT NULL CHECK (json_valid(run_metadata)),
-	`status` TEXT,
-	`started_time` TIMESTAMP,
-	PRIMARY KEY (`id`, `attempt`),
 	FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`)
+);
+
+CREATE TABLE `workflow_run_attempts`(
+	`id` INTEGER NOT NULL PRIMARY KEY,
+	`workflow_run_id` TEXT NOT NULL,
+	`attempt` INTEGER NOT NULL DEFAULT 0,
+	`run_metadata` BLOB NOT NULL CHECK (json_valid(run_metadata, 8)) DEFAULT (jsonb('{}')),
+	`status` TEXT DEFAULT NULL,
+	`started_time` TIMESTAMP DEFAULT NULL,
+	UNIQUE (`workflow_run_id`, `attempt`),
+	FOREIGN KEY (`workflow_run_id`) REFERENCES `workflow_runs`(`id`)
 );
 
 CREATE TABLE `workflow_run_inputs` (

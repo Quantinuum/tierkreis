@@ -19,6 +19,7 @@ use futures::{
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
 use tracing::{debug, instrument};
+use uuid::Uuid;
 
 use crate::{
     asset_storage::{
@@ -26,8 +27,9 @@ use crate::{
         unfold_asset,
     },
     event::{
-        Event, EventReceiver, EventSender, NodeEvent, send_complete, send_map_elem_complete,
-        send_running_loop, send_running_map, send_running_switching, send_workflow_run_complete,
+        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
+        send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
+        send_workflow_run_complete,
     },
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
@@ -428,7 +430,7 @@ impl Orchestrator {
     ) -> miette::Result<()> {
         context
             .workflow_run_state
-            .write(Event::Node(NodeEvent {
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: nodes.map(|n| context.parent_loc.with_node(*n)).collect(),
                 status: crate::event::NodeStatus::Scheduled {},
             }))
@@ -957,6 +959,8 @@ impl Orchestrator {
     #[instrument(skip(self, actions), err)]
     pub async fn perform_actions(
         &self,
+        workflow_run_id: Uuid,
+        attempt: u32,
         mut actions: impl Stream<Item = miette::Result<Action>> + Unpin,
     ) -> miette::Result<()> {
         // Build a list of tasks to dispatch to Executors and immediately
@@ -972,6 +976,8 @@ impl Orchestrator {
                     inputs,
                     outputs,
                 } => plan.tasks.push(TaskPlan {
+                    workflow_run_id,
+                    attempt,
                     loc,
                     worker_name,
                     task_name,
@@ -1007,20 +1013,20 @@ impl Orchestrator {
 
         if !plan.node_complete.is_empty() {
             let (locs, outputs) = plan.node_complete.into_iter().unzip();
-            send_complete(&mut event_sender, locs, outputs).await?;
+            send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
         }
 
         for (loc, size) in plan.mapping {
-            send_running_map(&mut event_sender, loc, size).await?;
+            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
         }
         for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, loc, bits).await?;
+            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
         }
         for (loc, index) in plan.looping {
-            send_running_loop(&mut event_sender, loc, index).await?;
+            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
         }
         for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, loc, cond).await?;
+            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
         }
 
         let default_executor_name = &self.default_executor_name;
@@ -1034,7 +1040,7 @@ impl Orchestrator {
             .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
 
         if plan.workflow_complete {
-            send_workflow_run_complete(&mut event_sender).await?;
+            send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
         }
 
         Ok(())
@@ -1049,7 +1055,7 @@ impl Orchestrator {
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    pub fn listen(&self) -> miette::Result<impl Stream<Item = Event> + use<>> {
+    pub fn listen(&self) -> miette::Result<impl Stream<Item = RuntimeEvent> + use<>> {
         let orchestrator_events = {
             let mut receiver = self
                 .event_receiver
@@ -1068,7 +1074,7 @@ impl Orchestrator {
                 let stream = executor.listen()?;
                 Ok(stream)
             })
-            .collect::<miette::Result<Vec<BoxStream<Event>>>>()?;
+            .collect::<miette::Result<Vec<BoxStream<RuntimeEvent>>>>()?;
 
         streams.push(orchestrator_events.boxed());
         Ok(select_all(streams))
@@ -1170,7 +1176,6 @@ mod tests {
         },
         graph::LegacyWorkflowGraph,
         state::{inmemory::InMemoryWorkflowRunState, interface::NodeState},
-        updater::Updater,
     };
 
     use super::*;
@@ -1462,7 +1467,7 @@ mod tests {
         assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
 
         orchestrator
-            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
             .await?;
         let input_complete_event = stream.next().await.unwrap();
         let input_complete_outputs = input_complete_event.clone().outputs();
@@ -1473,6 +1478,10 @@ mod tests {
             json!({"a": 1}),
         )
         .await;
+
+        let input_complete_event = match input_complete_event {
+            RuntimeEvent::WorkflowRun { event, .. } => event,
+        };
 
         workflow_run_state.write(input_complete_event).await?;
         let actions =
@@ -1491,7 +1500,11 @@ mod tests {
         assert!(matches!(actions[1].kind, ActionKind::WorkflowFinished {}));
 
         orchestrator
-            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let output_complete_event = stream.next().await.unwrap();
         let output_complete_outputs = output_complete_event.outputs();
@@ -1547,7 +1560,7 @@ mod tests {
         assert!(matches!(actions[1].kind, ActionKind::SetComplete { .. }));
 
         orchestrator
-            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
             .await?;
 
         let inputs_complete_event = stream.next().await.unwrap();
@@ -1567,6 +1580,10 @@ mod tests {
         )
         .await;
 
+        let inputs_complete_event = match inputs_complete_event {
+            RuntimeEvent::WorkflowRun { event, .. } => event,
+        };
+
         workflow_run_state.write(inputs_complete_event).await?;
 
         let actions =
@@ -1577,7 +1594,11 @@ mod tests {
         assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
 
         orchestrator
-            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let inner_inputs_complete_event = stream.next().await.unwrap();
         let inner_inputs_complete_outputs = inner_inputs_complete_event.clone().outputs();
@@ -1589,6 +1610,10 @@ mod tests {
         )
         .await;
 
+        let inner_inputs_complete_event = match inner_inputs_complete_event {
+            RuntimeEvent::WorkflowRun { event, .. } => event,
+        };
+
         workflow_run_state
             .write(inner_inputs_complete_event)
             .await?;
@@ -1596,7 +1621,11 @@ mod tests {
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
 
         orchestrator
-            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let inner_output_complete_event = stream.next().await.unwrap();
         let inner_output_complete_outputs = inner_output_complete_event.clone().outputs();
@@ -1608,7 +1637,11 @@ mod tests {
         )
         .await;
 
-        let eval_complete_event = Event::Node(NodeEvent {
+        let inner_output_complete_event = match inner_output_complete_event {
+            RuntimeEvent::WorkflowRun { event, .. } => event,
+        };
+
+        let eval_complete_event = WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![Location::new("N3")?],
             status: NodeStatus::Complete {
                 outputs: inner_output_complete_outputs,
@@ -1622,7 +1655,7 @@ mod tests {
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
 
         orchestrator
-            .perform_actions(stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
             .await?;
         let output_complete_event = stream.next().await.unwrap();
         let output_complete_outputs = output_complete_event.outputs();
@@ -1668,17 +1701,22 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
-        let updater = Updater::new(Arc::clone(&workflow_run_state));
-        let stream = orchestrator.listen()?;
-        let _task = tokio::spawn(async move {
-            updater.process(stream).await.unwrap();
-            println!("done listening");
-        });
+        let mut stream = orchestrator.listen()?;
+        let state = Arc::clone(&workflow_run_state);
 
+        tokio::spawn(async move {
+            while let Some(event) = stream.next().await {
+                match event {
+                    RuntimeEvent::WorkflowRun { event, .. } => {
+                        state.write(event).await.unwrap();
+                    }
+                }
+            }
+        });
         loop {
             {
                 let updated = state_recv.borrow_and_update();
-                if updated.stopped {
+                if updated.active_runs.is_empty() {
                     break;
                 }
             }
@@ -1686,7 +1724,14 @@ mod tests {
             let actions = orchestrator
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
-            orchestrator.perform_actions(actions).await?;
+
+            orchestrator
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
+                .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
 
@@ -1762,17 +1807,23 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
-        let updater = Updater::new(Arc::clone(&workflow_run_state));
-        let stream = orchestrator.listen()?;
-        let _task = tokio::spawn(async move {
-            updater.process(stream).await.unwrap();
-            println!("done listening");
+        let mut stream = orchestrator.listen()?;
+        let state = Arc::clone(&workflow_run_state);
+
+        tokio::spawn(async move {
+            while let Some(event) = stream.next().await {
+                match event {
+                    RuntimeEvent::WorkflowRun { event, .. } => {
+                        state.write(event).await.unwrap();
+                    }
+                }
+            }
         });
 
         loop {
             {
                 let updated = state_recv.borrow_and_update();
-                if updated.stopped {
+                if updated.active_runs.is_empty() {
                     break;
                 }
             }
@@ -1780,7 +1831,13 @@ mod tests {
             let actions = orchestrator
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
-            orchestrator.perform_actions(actions).await?;
+            orchestrator
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
+                .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
 
@@ -1866,17 +1923,23 @@ mod tests {
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
-        let updater = Updater::new(Arc::clone(&workflow_run_state));
-        let stream = orchestrator.listen()?;
-        let _task = tokio::spawn(async move {
-            updater.process(stream).await.unwrap();
-            println!("done listening");
+        let mut stream = orchestrator.listen()?;
+        let state = Arc::clone(&workflow_run_state);
+
+        tokio::spawn(async move {
+            while let Some(event) = stream.next().await {
+                match event {
+                    RuntimeEvent::WorkflowRun { event, .. } => {
+                        state.write(event).await.unwrap();
+                    }
+                }
+            }
         });
 
         loop {
             {
                 let updated = state_recv.borrow_and_update();
-                if updated.stopped {
+                if updated.active_runs.is_empty() {
                     break;
                 }
             }
@@ -1884,7 +1947,13 @@ mod tests {
             let actions = orchestrator
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
-            orchestrator.perform_actions(actions).await?;
+            orchestrator
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
+                .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
 
@@ -1935,17 +2004,23 @@ mod tests {
             graph_inputs: HashMap::new(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
-        let updater = Updater::new(Arc::clone(&workflow_run_state));
-        let stream = orchestrator.listen()?;
-        let _task = tokio::spawn(async move {
-            updater.process(stream).await.unwrap();
-            println!("done listening");
+        let mut stream = orchestrator.listen()?;
+        let state = Arc::clone(&workflow_run_state);
+
+        tokio::spawn(async move {
+            while let Some(event) = stream.next().await {
+                match event {
+                    RuntimeEvent::WorkflowRun { event, .. } => {
+                        state.write(event).await.unwrap();
+                    }
+                }
+            }
         });
 
         loop {
             {
                 let updated = state_recv.borrow_and_update();
-                if updated.stopped {
+                if updated.active_runs.is_empty() {
                     break;
                 }
             }
@@ -1953,7 +2028,13 @@ mod tests {
             let actions = orchestrator
                 .build_actions(context.clone(), workflow_graph.clone())
                 .await?;
-            orchestrator.perform_actions(actions).await?;
+            orchestrator
+                .perform_actions(
+                    workflow_run_state.run_id(),
+                    workflow_run_state.attempt(),
+                    actions,
+                )
+                .await?;
             state_recv.changed().await.into_diagnostic()?;
         }
 

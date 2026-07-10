@@ -7,14 +7,19 @@ use std::collections::{HashMap, HashSet};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::asset_storage::interface::AssetSpec;
-use crate::event::Event;
+use crate::event::RuntimeEvent;
 use crate::location::Location;
 
 /// [`TaskPlan`] describes how a Task should be executed on an Executor.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct TaskPlan {
+    /// The workflow run id that this Task was created for.
+    pub workflow_run_id: Uuid,
+    /// The attempt number of the workflow run that this task was created for.
+    pub attempt: u32,
     /// The location of the Node which this Task was created for.
     pub loc: Location,
     /// The name of the Worker to invoke.
@@ -66,7 +71,7 @@ pub trait Executor: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the method has already been called.
-    fn listen(&self) -> miette::Result<BoxStream<'static, Event>>;
+    fn listen(&self) -> miette::Result<BoxStream<'static, RuntimeEvent>>;
     /// Signal that the Tasks with the specified ids should be cancelled when possible.
     ///
     /// There is no guarantee that the Tasks will not run, but the [Executor] should
@@ -75,5 +80,10 @@ pub trait Executor: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the [Executor] is unreachable.
-    fn cancel(&self, task_locations: Vec<Location>) -> BoxFuture<'_, miette::Result<()>>;
+    fn cancel(
+        &self,
+        workflow_run_id: Uuid,
+        attempt: u32,
+        task_locations: Vec<Location>,
+    ) -> BoxFuture<'_, miette::Result<()>>;
 }

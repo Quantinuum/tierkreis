@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use crate::location::Location;
 use crate::state::schema::{
-    node_outputs, node_states, workflow_run_inputs, workflow_runs, workflows,
+    node_outputs, node_states, workflow_run_attempts, workflow_run_inputs, workflow_runs, workflows,
 };
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -10,7 +10,16 @@ use diesel::prelude::*;
 // Workflows
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Debug, Clone)]
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = workflows)]
+pub struct NewWorkflow<'a> {
+    pub id: &'a str, // UUID string
+    pub name: Option<&'a str>,
+    pub definition: &'a [u8], // JSON blob
+    pub created_time: Option<NaiveDateTime>,
+}
+
+#[derive(Queryable, Selectable, Identifiable, Debug, Clone)]
 #[diesel(table_name = workflows)]
 pub struct Workflow {
     pub id: String, // UUID string
@@ -23,14 +32,42 @@ pub struct Workflow {
 // Workflow Runs
 // -----------------------------------------------------------------------------
 
-#[derive(Queryable, Selectable, Identifiable, Insertable, Associations, Debug, Clone)]
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = workflow_runs)]
+pub struct NewWorkflowRun<'a> {
+    pub id: &'a str, // UUID string
+    pub workflow_id: &'a str,
+}
+
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
 #[diesel(belongs_to(Workflow, foreign_key = workflow_id))]
-#[diesel(primary_key(id, attempt))]
 #[diesel(table_name = workflow_runs)]
 pub struct WorkflowRun {
     pub id: String, // UUID string
-    pub attempt: i32,
     pub workflow_id: String,
+}
+
+// -----------------------------------------------------------------------------
+// Workflow Runs Attempts
+// -----------------------------------------------------------------------------
+
+#[derive(Insertable, Debug, Clone)]
+#[diesel(table_name = workflow_run_attempts)]
+pub struct NewWorkflowRunAttempt<'a> {
+    pub id: &'a str, // UUID string
+    pub attempt: i32,
+    pub run_metadata: &'a [u8], // JSON blob
+    pub status: Option<&'a str>,
+    pub started_time: Option<NaiveDateTime>,
+}
+
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
+#[diesel(belongs_to(WorkflowRun, foreign_key = workflow_run_id))]
+#[diesel(table_name = workflow_run_attempts)]
+pub struct WorkflowRunAttempt {
+    pub id: i32,
+    pub workflow_run_id: String, // UUID string
+    pub attempt: i32,
     pub run_metadata: Vec<u8>, // JSON blob
     pub status: Option<String>,
     pub started_time: Option<NaiveDateTime>,

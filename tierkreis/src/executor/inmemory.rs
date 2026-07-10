@@ -20,11 +20,13 @@ use num_complex::Complex64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::task::{AbortHandle, JoinHandle};
+use uuid::Uuid;
 
 use crate::{
     asset_storage::{AssetStorageRegistry, load_assets, save_assets},
     event::{
-        Event, EventReceiver, EventSender, send_cancelled, send_complete, send_error, send_running,
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
+        send_running,
     },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
@@ -48,6 +50,8 @@ struct BackgroundTaskPlan {
 
 #[derive(Debug)]
 struct BackgroundTask {
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
     output_storage_name: String,
     task_output: miette::Result<HashMap<String, Vec<u8>>>,
@@ -55,8 +59,8 @@ struct BackgroundTask {
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
-type CancelSender = mpsc::Sender<Location>;
-type CancelReceiver = mpsc::Receiver<Location>;
+type CancelSender = mpsc::Sender<(Uuid, u32, Location)>;
+type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 
 fn extract_value<'a, T>(inputs: &'a HashMap<String, Vec<u8>>, name: &str) -> miette::Result<T>
 where
@@ -213,43 +217,58 @@ fn run_builtin(
 }
 
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
+type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
 
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<Location, AbortHandle>,
+    abort_handles: &mut AbortHandles,
+    workflow_run_id: Uuid,
+    attempt: u32,
     loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles.remove(&loc);
+    let handle = abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
     if let Some(handle) = handle {
         handle.abort();
-        send_cancelled(event_sender, loc).await?;
+        send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
     }
     Ok(())
 }
 
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<Location, AbortHandle>,
+    abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
 ) -> miette::Result<()> {
     let loc = background_task.loc;
     let task_outputs = background_task.task_output;
     let output_storage_name = background_task.output_storage_name;
-    abort_handles.remove(&loc);
+    let workflow_run_id = background_task.workflow_run_id;
+    let attempt = background_task.attempt;
+
+    abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
     let outputs = match task_outputs {
         Ok(outputs) => outputs,
         Err(err) => {
-            send_error(event_sender, loc, &err).await?;
+            send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
             return Ok(());
         }
     };
 
     let outputs = save_assets(asset_storage_registry, &output_storage_name, outputs).await;
     match outputs {
-        Ok(outputs) => send_complete(event_sender, vec![loc], vec![outputs]).await?,
-        Err(err) => send_error(event_sender, loc, &err).await?,
+        Ok(outputs) => {
+            send_complete(
+                event_sender,
+                workflow_run_id,
+                attempt,
+                vec![loc],
+                vec![outputs],
+            )
+            .await?;
+        }
+        Err(err) => send_error(event_sender, workflow_run_id, attempt, loc, &err).await?,
     }
 
     Ok(())
@@ -257,7 +276,7 @@ async fn process_finished_task(
 
 async fn start_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut HashMap<Location, AbortHandle>,
+    abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
@@ -265,14 +284,16 @@ async fn start_task(
     let task_plan = internal_task.task_plan;
     let loc = task_plan.loc;
     let output_storage_name = internal_task.output_storage_name;
-    send_running(event_sender, loc.clone()).await?;
+    let workflow_run_id = task_plan.workflow_run_id;
+    let attempt = task_plan.attempt;
+    send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
 
     let res = load_assets(asset_storage_registry, &task_plan.inputs).await;
 
     let inputs = match res {
         Ok(inputs) => inputs,
         Err(err) => {
-            send_error(event_sender, loc, &err).await?;
+            send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
             return Ok(());
         }
     };
@@ -282,13 +303,15 @@ async fn start_task(
         let inputs = inputs;
         let task_name = task_plan.task_name;
         BackgroundTask {
+            workflow_run_id,
+            attempt,
             loc: task_loc,
             output_storage_name,
             task_output: run_builtin(&task_name, &inputs),
         }
     });
 
-    abort_handles.insert(loc.clone(), task.abort_handle());
+    abort_handles.insert((workflow_run_id, attempt, loc.clone()), task.abort_handle());
     running.push(task);
 
     Ok(())
@@ -300,14 +323,14 @@ async fn process_tasks(
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
 ) {
-    let mut abort_handles: HashMap<Location, AbortHandle> = HashMap::new();
+    let mut abort_handles: AbortHandles = HashMap::new();
     let mut running: RunningFutures = FuturesUnordered::new();
 
     loop {
         tokio::select! {
             // A task has been cancelled
-            Some(loc) = cancel_receiver.next() => {
-                process_cancelled_task(&mut event_sender, &mut abort_handles, loc)
+            Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
+                process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
             }
@@ -426,7 +449,7 @@ impl Executor for InMemoryExecutor {
         fut.boxed()
     }
 
-    fn listen(&self) -> miette::Result<BoxStream<'static, Event>> {
+    fn listen(&self) -> miette::Result<BoxStream<'static, RuntimeEvent>> {
         // Explicit block to allow us to drop the MutexGuard after we
         // take the receiver.
         let channel = {
@@ -442,11 +465,19 @@ impl Executor for InMemoryExecutor {
         Ok(channel.boxed())
     }
 
-    fn cancel(&self, task_locations: Vec<Location>) -> BoxFuture<'_, miette::Result<()>> {
+    fn cancel(
+        &self,
+        workflow_run_id: Uuid,
+        attempt_id: u32,
+        task_locations: Vec<Location>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
         let mut cancel_sender = self.cancel_sender.clone();
         let fut = async move {
             for task_location in task_locations {
-                cancel_sender.send(task_location).await.into_diagnostic()?;
+                cancel_sender
+                    .send((workflow_run_id, attempt_id, task_location))
+                    .await
+                    .into_diagnostic()?;
             }
             Ok(())
         };
@@ -462,7 +493,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
-        event::{NodeEvent, NodeStatus},
+        event::{NodeEvent, NodeStatus, WorkflowRunEvent},
         executor::interface::TaskPlan,
     };
 
@@ -513,17 +544,23 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(
             events[0],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Running { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert!(matches!(
             events[1],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Complete { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Complete { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert_registry_contains_values(
             &registry,
@@ -566,17 +603,23 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(
             events[0],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Running { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert!(matches!(
             events[1],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Complete { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Complete { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert_registry_contains_values(
             &registry,
@@ -631,14 +674,22 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&Event::Node(NodeEvent {
-            locs: vec![loc1.clone()],
-            status: NodeStatus::Running { state_update: None },
-        })));
-        assert!(events.contains(&Event::Node(NodeEvent {
-            locs: vec![loc2.clone()],
-            status: NodeStatus::Running { state_update: None },
-        })));
+        assert!(events.contains(&RuntimeEvent::WorkflowRun {
+            workflow_run_id: Uuid::nil(),
+            attempt: 0,
+            event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![loc1.clone()],
+                status: NodeStatus::Running { state_update: None }
+            })
+        }));
+        assert!(events.contains(&RuntimeEvent::WorkflowRun {
+            workflow_run_id: Uuid::nil(),
+            attempt: 0,
+            event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![loc2.clone()],
+                status: NodeStatus::Running { state_update: None }
+            })
+        }));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
@@ -646,10 +697,12 @@ mod tests {
             .find(|event| {
                 matches!(
                     event,
-                    Event::Node(NodeEvent {
-                        locs,
-                        status: NodeStatus::Complete { .. }
-                    }) if locs == &vec![loc1.clone()]
+                    RuntimeEvent::WorkflowRun {
+                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                            locs,
+                            status: NodeStatus::Complete { .. }
+                        }), ..
+                    } if locs == &vec![loc1.clone()]
                 )
             })
             .unwrap();
@@ -665,10 +718,12 @@ mod tests {
             .find(|event| {
                 matches!(
                     event,
-                    Event::Node(NodeEvent {
-                        locs,
-                        status: NodeStatus::Complete { .. }
-                    }) if locs == &vec![loc2.clone()]
+                    RuntimeEvent::WorkflowRun {
+                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                            locs,
+                            status: NodeStatus::Complete { .. }
+                        }), ..
+                    } if locs == &vec![loc2.clone()]
                 )
             })
             .unwrap();
@@ -708,17 +763,23 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(
             events[0],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Running { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert!(matches!(
             events[1],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Complete { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Complete { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert_registry_contains_values(
             &registry,
@@ -754,21 +815,23 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(
             events[0],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Running { .. },
-                ..
-            })
-        ));
-        dbg!(&events[1]);
-        assert!(matches!(
-            &events[1],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Error {
-                    error,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
                     ..
-                },
+                }),
                 ..
-            }) if error == "Unknown task: `backflip`"
+            }
+        ));
+        assert!(matches!(
+            events[1],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error { ref error, .. },
+                    ..
+                }),
+                ..
+            } if error == "Unknown task: `backflip`"
         ));
 
         Ok(())
@@ -799,21 +862,27 @@ mod tests {
         let event = stream.next().await.unwrap();
         assert!(matches!(
             event,
-            Event::Node(NodeEvent {
-                status: NodeStatus::Running { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
 
-        executor.cancel(vec![loc]).await?;
+        executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
         assert!(matches!(
             event,
-            Event::Node(NodeEvent {
-                status: NodeStatus::Cancelled,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Cancelled,
+                    ..
+                }),
                 ..
-            })
+            }
         ));
 
         Ok(())
@@ -827,7 +896,7 @@ mod tests {
         let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
         let loc = Location::from_usize_iter([0]);
-        executor.cancel(vec![loc]).await?;
+        executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         Ok(())
     }
@@ -858,17 +927,23 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(
             events[0],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Running { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert!(matches!(
             events[1],
-            Event::Node(NodeEvent {
-                status: NodeStatus::Complete { .. },
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Complete { .. },
+                    ..
+                }),
                 ..
-            })
+            }
         ));
         assert_registry_contains_values(
             &registry,
@@ -878,7 +953,7 @@ mod tests {
         )
         .await;
 
-        executor.cancel(vec![loc]).await?;
+        executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         Ok(())
     }
