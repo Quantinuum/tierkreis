@@ -124,6 +124,7 @@ struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
+    default_storage_name: String,
 
     // Optional Run ID to execute exclusively. Once this run completes the
     // runtime should end execution.
@@ -158,6 +159,7 @@ impl Runtime {
             orchestrator,
             state: runtime_state,
             asset_storage_registry,
+            default_storage_name: config.default_storage_name.clone(),
             dedicated_run_id: None,
         })
     }
@@ -171,7 +173,12 @@ impl Runtime {
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
-        let inputs = save_assets(&self.asset_storage_registry, "memory", inputs).await?;
+        let inputs = save_assets(
+            &self.asset_storage_registry,
+            &self.default_storage_name,
+            inputs,
+        )
+        .await?;
         let workflow_run_state = self
             .state
             .new_workflow_run_state(workflow_id, inputs)
