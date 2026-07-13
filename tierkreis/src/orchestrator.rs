@@ -372,10 +372,7 @@ impl Orchestrator {
                         .node_definition(n)
                         .expect("Node definition not found");
                     if matches!(definition, NodeDefinition::IfElse {}) {
-                        let cond = match node_states.get(&n) {
-                            Some(state) => state.cond,
-                            None => None,
-                        };
+                        let cond = node_states.get(&n).and_then(|state| state.cond);
                         should_traverse_if_else_port(workflow_graph, cond, p)
                     } else {
                         true
