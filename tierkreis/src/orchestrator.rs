@@ -105,13 +105,13 @@ struct ActionPlan {
 
 /// The context state for the orchestration
 #[derive(Debug)]
-pub struct OrchestrationContext<WS: WorkflowRunState> {
+pub struct OrchestrationContext {
     parent_loc: Location,
     graph_inputs: HashMap<String, AssetSpec>,
-    workflow_run_state: Arc<WS>,
+    workflow_run_state: Arc<dyn WorkflowRunState>,
 }
 
-impl<WS: WorkflowRunState> Clone for OrchestrationContext<WS> {
+impl Clone for OrchestrationContext {
     fn clone(&self) -> Self {
         Self {
             parent_loc: self.parent_loc.clone(),
@@ -121,9 +121,12 @@ impl<WS: WorkflowRunState> Clone for OrchestrationContext<WS> {
     }
 }
 
-impl<WS: WorkflowRunState> OrchestrationContext<WS> {
+impl OrchestrationContext {
     /// Construct a new [`OrchestrationContext`] at the root Location.
-    pub fn new(workflow_run_state: &Arc<WS>, inputs: HashMap<String, AssetSpec>) -> Self {
+    pub fn new(
+        workflow_run_state: &Arc<dyn WorkflowRunState>,
+        inputs: HashMap<String, AssetSpec>,
+    ) -> Self {
         Self {
             parent_loc: Location::root(),
             graph_inputs: inputs,
@@ -196,9 +199,9 @@ impl Orchestrator {
     /// Will return Err if the function fails to retrieve the state of nodes from the workflow context
     /// or if it fails to record that nodes are being scheduled.
     #[instrument(skip(self, context, workflow_graph), err)]
-    pub async fn build_actions<'a, WS: WorkflowRunState + 'a>(
+    pub async fn build_actions<'a>(
         &'a self,
-        context: OrchestrationContext<WS>,
+        context: OrchestrationContext,
         workflow_graph: Arc<WorkflowGraph>,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
@@ -309,8 +312,8 @@ impl Orchestrator {
             .boxed_local())
     }
 
-    async fn collect_node_states<WS: WorkflowRunState>(
-        context: &OrchestrationContext<WS>,
+    async fn collect_node_states(
+        context: &OrchestrationContext,
         workflow_graph: &Arc<WorkflowGraph>,
     ) -> miette::Result<HashMap<NodeIndex, (NodeDefinition, NodeState)>> {
         let mut node_states = HashMap::new();
@@ -424,8 +427,8 @@ impl Orchestrator {
             .is_some_and(|(_, state)| state.outputs.is_some()))
     }
 
-    async fn mark_nodes_scheduled<WS: WorkflowRunState>(
-        context: &OrchestrationContext<WS>,
+    async fn mark_nodes_scheduled(
+        context: &OrchestrationContext,
         nodes: impl Iterator<Item = &NodeIndex>,
     ) -> miette::Result<()> {
         context
@@ -606,10 +609,10 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %loc), err)]
-    async fn build_eval_actions<'a, WS: WorkflowRunState + 'a>(
+    async fn build_eval_actions<'a>(
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
-        workflow_run_state: Arc<WS>,
+        workflow_run_state: Arc<dyn WorkflowRunState>,
         node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
         n: NodeIndex,
         loc: Location,
@@ -653,10 +656,10 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %loc), err)]
-    async fn build_loop_actions<'a, WS: WorkflowRunState + 'a>(
+    async fn build_loop_actions<'a>(
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
-        workflow_run_state: Arc<WS>,
+        workflow_run_state: Arc<dyn WorkflowRunState>,
         node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
         n: NodeIndex,
         loc: Location,
@@ -733,10 +736,10 @@ impl Orchestrator {
 
     #[allow(clippy::too_many_arguments)]
     #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %loc), err)]
-    async fn build_map_actions<'a, WS: WorkflowRunState + 'a>(
+    async fn build_map_actions<'a>(
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
-        workflow_run_state: Arc<WS>,
+        workflow_run_state: Arc<dyn WorkflowRunState>,
         node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
         mapped_ports: HashSet<String>,
         n: NodeIndex,
@@ -782,9 +785,9 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_run_state, inputs, subgraph), fields(loc = %loc), err)]
-    async fn build_initial_map_actions<'a, WS: WorkflowRunState + 'a>(
+    async fn build_initial_map_actions<'a>(
         &'a self,
-        workflow_run_state: Arc<WS>,
+        workflow_run_state: Arc<dyn WorkflowRunState>,
         mapped_ports: HashSet<String>,
         loc: Location,
         inputs: HashMap<String, AssetSpec>,
@@ -830,9 +833,9 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_run_state, inputs, subgraph), fields(loc = %loc), err)]
-    async fn build_subsequent_map_actions<'a, WS: WorkflowRunState + 'a>(
+    async fn build_subsequent_map_actions<'a>(
         &'a self,
-        workflow_run_state: Arc<WS>,
+        workflow_run_state: Arc<dyn WorkflowRunState>,
         loc: Location,
         completed: BitVec<u8>,
         inputs: HashMap<String, AssetSpec>,
@@ -883,10 +886,10 @@ impl Orchestrator {
     }
 
     #[instrument(skip(self, workflow_graph, workflow_run_state), fields(loc = %loc), err)]
-    async fn build_completed_map_action<'a, WS: WorkflowRunState + 'a>(
-        &'a self,
+    async fn build_completed_map_action(
+        &self,
         workflow_graph: Arc<WorkflowGraph>,
-        workflow_run_state: Arc<WS>,
+        workflow_run_state: Arc<dyn WorkflowRunState>,
         loc: Location,
         n: NodeIndex,
         map_size: usize,
@@ -1375,10 +1378,10 @@ mod tests {
         wf
     }
 
-    async fn next_actions<WS: WorkflowRunState>(
+    async fn next_actions(
         orchestrator: &Orchestrator,
         workflow_graph: &Arc<WorkflowGraph>,
-        workflow_run_state: &Arc<WS>,
+        workflow_run_state: &Arc<dyn WorkflowRunState>,
         inputs: &HashMap<String, AssetSpec>,
     ) -> miette::Result<Vec<Action>> {
         let context = OrchestrationContext {
@@ -1421,7 +1424,7 @@ mod tests {
         let workflow_graph = Arc::new(two_inputs_two_outputs);
 
         let (workflow_run_state, _state_events) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let actions =
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
@@ -1458,7 +1461,7 @@ mod tests {
 
         let inputs = input_sets[0].clone();
         let (workflow_run_state, _state_events) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let actions =
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
 
@@ -1548,7 +1551,7 @@ mod tests {
         let workflow_graph = Arc::new(simple_eval);
 
         let (workflow_run_state, _state_events) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let actions =
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
@@ -1694,7 +1697,7 @@ mod tests {
         .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
             parent_loc: Location::root(),
@@ -1800,7 +1803,7 @@ mod tests {
         .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
             parent_loc: Location::root(),
@@ -1916,7 +1919,7 @@ mod tests {
         .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
             parent_loc: Location::root(),
@@ -1998,7 +2001,7 @@ mod tests {
         .await?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
-        let workflow_run_state = Arc::new(workflow_run_state);
+        let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let context = OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: HashMap::new(),
