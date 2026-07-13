@@ -122,7 +122,7 @@ enum RuntimeStateConfig {
 
 struct Runtime {
     orchestrator: Orchestrator,
-    runtime_state: Arc<dyn RuntimeState>,
+    state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
 
     // Optional Run ID to execute exclusively. Once this run completes the
@@ -156,14 +156,14 @@ impl Runtime {
 
         Ok(Self {
             orchestrator,
-            runtime_state,
+            state: runtime_state,
             asset_storage_registry,
             dedicated_run_id: None,
         })
     }
 
     async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
-        self.runtime_state.save_workflow(workflow_graph).await
+        self.state.save_workflow(workflow_graph).await
     }
 
     async fn start_new_run<S: BuildHasher>(
@@ -173,7 +173,7 @@ impl Runtime {
     ) -> miette::Result<(Uuid, u32)> {
         let inputs = save_assets(&self.asset_storage_registry, "memory", inputs).await?;
         let workflow_run_state = self
-            .runtime_state
+            .state
             .new_workflow_run_state(workflow_id, inputs)
             .await?;
 
@@ -203,7 +203,7 @@ impl Runtime {
 
     async fn run(&mut self) -> miette::Result<()> {
         let stream = self.orchestrator.listen()?;
-        let state = self.runtime_state.clone();
+        let state = self.state.clone();
         let _task = tokio::spawn(async move {
             tokio::select! {
                 sig = tokio::signal::ctrl_c() => {
@@ -226,7 +226,7 @@ impl Runtime {
             }
         });
 
-        let mut state_recv = self.runtime_state.listen();
+        let mut state_recv = self.state.listen();
 
         loop {
             let active_runs: Vec<(Uuid, u32)> = {
@@ -247,12 +247,10 @@ impl Runtime {
                 }
             };
             for (run_id, attempt) in active_runs {
-                let workflow_run_state = self
-                    .runtime_state
-                    .load_workflow_run_state(run_id, attempt)
-                    .await?;
+                let workflow_run_state =
+                    self.state.load_workflow_run_state(run_id, attempt).await?;
                 let workflow_id = workflow_run_state.workflow_id();
-                let workflow_graph = self.runtime_state.load_workflow(workflow_id).await?;
+                let workflow_graph = self.state.load_workflow(workflow_id).await?;
                 let inputs = workflow_run_state.load_inputs().await?;
 
                 let workflow_run_state = Arc::new(workflow_run_state);
@@ -279,13 +277,10 @@ impl Runtime {
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
-        let workflow_run_state = self
-            .runtime_state
-            .load_workflow_run_state(run_id, attempt)
-            .await?;
+        let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
         let workflow_id = workflow_run_state.workflow_id();
         // TODO: Use LRU cache for workflows or similar here?
-        let workflow_graph = self.runtime_state.load_workflow(workflow_id).await?;
+        let workflow_graph = self.state.load_workflow(workflow_id).await?;
 
         let output_state = workflow_run_state
             .read(&Location::from_node_index_iter([
@@ -348,12 +343,11 @@ fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageReg
                 .insert(asset_storage_name.clone(), Box::new(InMemoryStorage::new())),
             AssetStorageConfig::File { asset_dir: parent } => asset_storage_registry.insert(
                 asset_storage_name.clone(),
-                Box::new(FileAssetStorage::new(&parent)),
+                Box::new(FileAssetStorage::new(parent)),
             ),
         };
     }
-    let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
-    asset_storage_registry
+    Arc::new(RwLock::new(asset_storage_registry))
 }
 
 #[tokio::main]
@@ -374,6 +368,16 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     Ok(outputs)
 }
 
+/// Start the runtime until cancelled.
+///
+/// # Errors
+///
+/// Will return Err if the [`Runtime`] cannot be configured or if an unrecoverable
+/// error happens while running.
+///
+/// # Panics
+///
+/// Will panic if there is already a tokio runtime active.
 #[tokio::main]
 pub async fn exec() -> miette::Result<()> {
     let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
