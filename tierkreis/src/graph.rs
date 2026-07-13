@@ -8,7 +8,7 @@ use bitvec::vec::BitVec;
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{
     Direction, LinkMut, LinkView, MultiPortGraph, NodeIndex, PortIndex, PortMut, PortView,
-    algorithms::{TopoSort, toposort_filtered},
+    algorithms::{TopoSort, toposort, toposort_filtered},
     multiportgraph::SubportIndex,
 };
 use serde::{Deserialize, Serialize};
@@ -305,6 +305,11 @@ impl WorkflowGraph {
     /// if all the returned values are true and false otherwise.
     pub fn all_inputs(&self, node: NodeIndex, f: impl Fn(NodeIndex) -> bool) -> bool {
         self.graph.input_neighbours(node).all(f)
+    }
+
+    /// Return an iterator that returns the `NodeIndex` of Nodes in topologically sorted order.
+    pub fn toposort_from_output_node<'a>(&'a self) -> TopoSort<'a, &'a MultiPortGraph> {
+        toposort::<_, BitVec>(&self.graph, [self.output_node], Direction::Incoming)
     }
 
     /// Return an iterator that returns the `NodeIndex` of Nodes where

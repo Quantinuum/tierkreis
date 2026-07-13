@@ -9,6 +9,8 @@ use std::{
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
+use futures::{Stream, future::BoxFuture, stream::BoxStream};
+use portgraph::NodeIndex;
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -122,6 +124,14 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     ///
     /// If the `location` has no existing state, a default [`NodeState`] will be returned.
     fn read(&self, location: &Location) -> impl Future<Output = miette::Result<NodeState>> + Send;
+    /// Read the state of a Node at the specified [`Location`].
+    ///
+    /// If the `location` has no existing state, a default [`NodeState`] will be returned.
+    fn read_children<'a>(
+        &'a self,
+        parent_location: &'a Location,
+        nodes: impl Iterator<Item = NodeIndex> + Send + 'a,
+    ) -> impl Future<Output = miette::Result<HashMap<NodeIndex, NodeState>>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
     fn add_metadata(
         &self,

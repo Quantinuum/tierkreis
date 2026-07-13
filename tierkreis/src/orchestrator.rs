@@ -10,6 +10,7 @@ use std::{
 };
 
 use bitvec::vec::BitVec;
+use dashmap::DashMap;
 use futures::{
     FutureExt, Stream, StreamExt, TryFutureExt,
     channel::mpsc,
@@ -132,6 +133,8 @@ impl<WS: WorkflowRunState> OrchestrationContext<WS> {
     }
 }
 
+type NodeStates = HashMap<NodeIndex, NodeState>;
+
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
 /// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
 /// for the Workflow.
@@ -203,10 +206,9 @@ impl Orchestrator {
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
 
-        let output_state = node_states
-            .get(&workflow_graph.output_idx())
-            .ok_or_else(|| miette!("No output node state found"))?;
-        if output_state.1.scheduled_time.is_some() {
+        if let Some(output_state) = node_states.get(&workflow_graph.output_idx())
+            && output_state.scheduled_time.is_some()
+        {
             // Output is already scheduled, no actions to perform.
             return Ok(stream::empty().boxed());
         }
@@ -218,90 +220,87 @@ impl Orchestrator {
         let parent_location = context.parent_loc.clone();
         let graph_inputs = Arc::new(context.graph_inputs.clone());
         let workflow_run_state = Arc::clone(&context.workflow_run_state);
-        let node_states = Arc::new(node_states);
+        let node_states = node_states.clone();
 
         Ok(stream::iter(ready_nodes)
             .flat_map_unordered(None, move |n| -> LocalBoxStream<miette::Result<Action>> {
-                let node_states = Arc::clone(&node_states);
-                let Some((definition, state)) = node_states.get(&n) else {
-                    return stream_error(miette!("Could not find node definition/state"));
+                let Some(node_definition) = workflow_graph.node_definition(n) else {
+                    return stream_error(miette!("Could not find node definition"));
                 };
+                let node_states = node_states.clone();
 
                 let loc = parent_location.with_node(n);
-                match definition {
+                match node_definition {
                     NodeDefinition::Input { name } => stream_action_result(
-                        Self::build_input_action(graph_inputs.clone(), loc, name),
+                        Self::build_input_action(graph_inputs.clone(), loc, &name),
                     ),
                     NodeDefinition::Const { value } => self
                         .build_const_action(loc, value.clone())
                         .into_stream()
                         .boxed_local(),
                     NodeDefinition::Output {} => self
-                        .build_output_actions(workflow_graph.clone(), node_states.clone(), n, loc)
+                        .build_output_actions(workflow_graph.clone(), node_states, n, loc)
                         .try_flatten_stream()
                         .boxed_local(),
                     NodeDefinition::Task {
                         worker_name,
                         task_name,
                     } => stream_action_result(build_task_action(
-                        workflow_graph.clone(),
-                        node_states.clone(),
+                        &workflow_graph,
+                        node_states,
                         n,
                         loc,
-                        worker_name,
-                        task_name,
+                        &worker_name,
+                        &task_name,
                     )),
                     NodeDefinition::Eval {} => self
                         .build_eval_actions(
                             workflow_graph.clone(),
                             workflow_run_state.clone(),
-                            node_states.clone(),
+                            node_states,
                             n,
                             loc,
                         )
                         .try_flatten_stream()
                         .boxed_local(),
-                    NodeDefinition::Loop {} => self
-                        .build_loop_actions(
+                    NodeDefinition::Loop {} => {
+                        let loop_index = node_states.get(&n).and_then(|state| state.loop_index);
+                        self.build_loop_actions(
                             workflow_graph.clone(),
                             workflow_run_state.clone(),
-                            node_states.clone(),
+                            node_states,
                             n,
                             loc,
-                            state.loop_index,
+                            loop_index,
                         )
                         .try_flatten_stream()
-                        .boxed_local(),
-                    NodeDefinition::Map { mapped_ports } => self
-                        .build_map_actions(
+                        .boxed_local()
+                    }
+                    NodeDefinition::Map { mapped_ports } => {
+                        let map_completed = node_states
+                            .get(&n)
+                            .and_then(|state| state.map_completed.clone());
+                        self.build_map_actions(
                             workflow_graph.clone(),
                             workflow_run_state.clone(),
-                            node_states.clone(),
+                            node_states,
                             mapped_ports.clone(),
                             n,
                             loc,
-                            state.map_completed.clone(),
+                            map_completed,
                         )
                         .try_flatten_stream()
-                        .boxed_local(),
+                        .boxed_local()
+                    }
                     // Eager and Lazy If else are controlled by the ready node checks
-                    NodeDefinition::IfElse {} => self
-                        .build_if_else_action(
-                            workflow_graph.clone(),
-                            node_states.clone(),
-                            n,
-                            loc,
-                            state.cond,
-                        )
-                        .into_stream()
-                        .boxed_local(),
+                    NodeDefinition::IfElse {} => {
+                        let cond = node_states.get(&n).and_then(|state| state.cond);
+                        self.build_if_else_action(workflow_graph.clone(), node_states, n, loc, cond)
+                            .into_stream()
+                            .boxed_local()
+                    }
                     NodeDefinition::EagerIfElse {} => self
-                        .build_eager_if_else_action(
-                            workflow_graph.clone(),
-                            node_states.clone(),
-                            n,
-                            loc,
-                        )
+                        .build_eager_if_else_action(workflow_graph.clone(), node_states, n, loc)
                         .into_stream()
                         .boxed_local(),
                 }
@@ -309,35 +308,24 @@ impl Orchestrator {
             .boxed_local())
     }
 
+    #[instrument(skip(context, workflow_graph))]
     async fn collect_node_states<WS: WorkflowRunState>(
         context: &OrchestrationContext<WS>,
         workflow_graph: &Arc<WorkflowGraph>,
-    ) -> miette::Result<HashMap<NodeIndex, (NodeDefinition, NodeState)>> {
-        let mut node_states = HashMap::new();
-        for node_id in workflow_graph.node_ids() {
-            let location = context.parent_loc.with_node(node_id);
-            let node_definition = workflow_graph
-                .node_definition(node_id)
-                .ok_or_else(|| miette!("Node definition not found"))?;
-            let node_state = context.workflow_run_state.read(&location).await?;
-            if let Some(error_msg) = node_state.error {
-                if let Some(detail) = node_state.error_detail {
-                    return Err(miette!(
-                        "Workflow ended with error: {error_msg}\ndetail: {detail}",
-                    ));
-                }
-                return Err(miette!("Workflow ended with error: {error_msg}",));
-            }
+    ) -> miette::Result<NodeStates> {
+        let node_states = context
+            .workflow_run_state
+            .read_children(&context.parent_loc, workflow_graph.node_ids())
+            .await?;
 
-            node_states.insert(node_id, (node_definition.clone(), node_state));
-        }
         Ok(node_states)
     }
 
     /// Find nodes which are ready for execution, mark them as scheduled then return them.
+    #[instrument(skip(workflow_graph, node_states))]
     fn find_ready_nodes<'a>(
         workflow_graph: &'a WorkflowGraph,
-        node_states: &'a HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+        node_states: &'a NodeStates,
     ) -> impl Iterator<Item = NodeIndex> {
         // Find nodes that are ready for scheduling.
         workflow_graph
@@ -348,29 +336,37 @@ impl Orchestrator {
             .toposort_filtered_from_output_node(
                 // Returns true if a node should be traversed.
                 |n| {
-                    let (definition, state) = node_states
-                        .get(&n)
-                        .expect("Node definition/state not found");
+                    let definition = workflow_graph
+                        .node_definition(n)
+                        .expect("Node definition not found");
 
-                    // TODO: This sometimes means even const/input nodes
-                    // are run multiple times if their state is yet
-                    // to be updated from the last orchestration round.
-                    state.outputs.is_none()
-                        && !(matches!(
-                            definition,
-                            NodeDefinition::Task { .. }
-                                | NodeDefinition::Input { .. }
-                                | NodeDefinition::Const { .. }
-                                | NodeDefinition::Output {}
-                        ) && state.scheduled_time.is_some())
+                    if let Some(state) = node_states.get(&n) {
+                        // TODO: This sometimes means even const/input nodes
+                        // are run multiple times if their state is yet
+                        // to be updated from the last orchestration round.
+                        state.outputs.is_none()
+                            && !(matches!(
+                                definition,
+                                NodeDefinition::Task { .. }
+                                    | NodeDefinition::Input { .. }
+                                    | NodeDefinition::Const { .. }
+                                    | NodeDefinition::Output {}
+                            ) && state.scheduled_time.is_some())
+                    } else {
+                        true
+                    }
                 },
                 // Returns true if a port should be traversed.
                 |n, p| {
-                    let (definition, state) = node_states
-                        .get(&n)
-                        .expect("Node definition/state not found");
+                    let definition = workflow_graph
+                        .node_definition(n)
+                        .expect("Node definition not found");
                     if matches!(definition, NodeDefinition::IfElse {}) {
-                        should_traverse_if_else_port(workflow_graph, state.cond, p)
+                        let cond = match node_states.get(&n) {
+                            Some(state) => state.cond,
+                            None => None,
+                        };
+                        should_traverse_if_else_port(workflow_graph, cond, p)
                     } else {
                         true
                     }
@@ -379,15 +375,16 @@ impl Orchestrator {
             // Of the nodes that have not yet run, find the nodes that can run.
             // (Because their inputs are ready or otherwise.)
             .filter(|n| {
-                let (definition, state) =
-                    node_states.get(n).expect("Node definition/state not found");
+                let definition = workflow_graph
+                    .node_definition(*n)
+                    .expect("Node definition not found");
                 if matches!(definition, NodeDefinition::IfElse {}) {
-                    Self::if_else_ready(workflow_graph, node_states, *n, state)
+                    Self::if_else_ready(workflow_graph, node_states, *n)
                 } else {
                     workflow_graph.all_inputs(*n, |incoming| {
                         node_states
                             .get(&incoming)
-                            .is_some_and(|(_, state)| state.outputs.is_some())
+                            .is_some_and(|state| state.outputs.is_some())
                     })
                 }
             })
@@ -396,11 +393,11 @@ impl Orchestrator {
     // Returns true if an `IfElse` node is runnable.
     fn if_else_ready(
         workflow_graph: &WorkflowGraph,
-        node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+        node_states: &NodeStates,
         n: NodeIndex,
-        state: &NodeState,
     ) -> bool {
-        match state.cond {
+        let cond = node_states.get(&n).map(|state| state.cond).unwrap_or(None);
+        match cond {
             None => Self::port_has_input(workflow_graph, node_states, n, "pred")
                 .expect("No `pred` port on `IfElse` node"),
             Some(true) => Self::port_has_input(workflow_graph, node_states, n, "if_true")
@@ -413,7 +410,7 @@ impl Orchestrator {
     // Returns true if a port on a node's input is available.
     fn port_has_input(
         workflow_graph: &WorkflowGraph,
-        node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+        node_states: &NodeStates,
         n: NodeIndex,
         port_name: &str,
     ) -> miette::Result<bool> {
@@ -421,9 +418,10 @@ impl Orchestrator {
 
         Ok(node_states
             .get(&connected_node)
-            .is_some_and(|(_, state)| state.outputs.is_some()))
+            .is_some_and(|state| state.outputs.is_some()))
     }
 
+    #[instrument(skip(context, nodes))]
     async fn mark_nodes_scheduled<WS: WorkflowRunState>(
         context: &OrchestrationContext<WS>,
         nodes: impl Iterator<Item = &NodeIndex>,
@@ -443,7 +441,7 @@ impl Orchestrator {
     async fn build_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: NodeStates,
         n: NodeIndex,
         loc: Location,
         cond: Option<bool>,
@@ -452,7 +450,7 @@ impl Orchestrator {
             None => {
                 let (pred_node, connected_port) =
                     workflow_graph.connected_input_by_port_name(n, "pred")?;
-                let (_, pred_state) = node_states
+                let pred_state = node_states
                     .get(&pred_node)
                     .ok_or_else(|| miette!("Cannot find state for `pred` node"))?;
                 let connected_port_name = workflow_graph.get_port_name(connected_port)?;
@@ -485,14 +483,14 @@ impl Orchestrator {
 
     fn build_branch_action(
         workflow_graph: &Arc<WorkflowGraph>,
-        node_states: &Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: &NodeStates,
         n: NodeIndex,
         loc: Location,
         port_name: &str,
     ) -> miette::Result<Action> {
         let (connected_node, connected_port) =
             workflow_graph.connected_input_by_port_name(n, port_name)?;
-        let (_, node_state) = node_states
+        let node_state = node_states
             .get(&connected_node)
             .ok_or_else(|| miette!("Cannot find state for `{port_name}` node"))?;
         let connected_port_name = workflow_graph.get_port_name(connected_port)?;
@@ -516,7 +514,7 @@ impl Orchestrator {
     async fn build_eager_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: NodeStates,
         n: NodeIndex,
         loc: Location,
     ) -> miette::Result<Action> {
@@ -583,7 +581,7 @@ impl Orchestrator {
     async fn build_output_actions(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: NodeStates,
         n: NodeIndex,
         loc: Location,
     ) -> miette::Result<BoxStream<'_, miette::Result<Action>>> {
@@ -610,7 +608,7 @@ impl Orchestrator {
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<WS>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: NodeStates,
         n: NodeIndex,
         loc: Location,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
@@ -657,7 +655,7 @@ impl Orchestrator {
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<WS>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: NodeStates,
         n: NodeIndex,
         loc: Location,
         loop_index: Option<u32>,
@@ -737,7 +735,7 @@ impl Orchestrator {
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<WS>,
-        node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+        node_states: NodeStates,
         mapped_ports: HashSet<String>,
         n: NodeIndex,
         loc: Location,
@@ -1091,8 +1089,8 @@ fn stream_error<'a>(err: miette::Error) -> BoxStream<'a, miette::Result<Action>>
 
 #[instrument(skip(workflow_graph, node_states), err)]
 fn build_task_action(
-    workflow_graph: Arc<WorkflowGraph>,
-    node_states: Arc<HashMap<NodeIndex, (NodeDefinition, NodeState)>>,
+    workflow_graph: &WorkflowGraph,
+    node_states: NodeStates,
     n: NodeIndex,
     loc: Location,
     worker_name: &str,
@@ -1131,7 +1129,7 @@ fn should_traverse_if_else_port(
 #[instrument(skip(workflow_graph, node_states))]
 fn collect_inputs(
     workflow_graph: &WorkflowGraph,
-    node_states: &HashMap<NodeIndex, (NodeDefinition, NodeState)>,
+    node_states: &NodeStates,
     n: NodeIndex,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let mut inputs = HashMap::new();
@@ -1139,7 +1137,7 @@ fn collect_inputs(
         let input_name = workflow_graph.get_port_name(i.into())?;
         let output_name = workflow_graph.get_port_name(o.into())?;
         let linked_node = workflow_graph.port_node(o)?;
-        let (_, node_state) = node_states
+        let node_state = node_states
             .get(&linked_node)
             .wrap_err_with(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
         let outputs = node_state

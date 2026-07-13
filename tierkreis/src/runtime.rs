@@ -5,6 +5,7 @@ use std::{collections::HashMap, hash::BuildHasher, path::Path, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
+use tempfile::tempdir;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -55,7 +56,7 @@ impl Runtime<SqliteRuntimeState> {
             &asset_storage_registry,
             &executor_registry,
             "file",
-            "subprocess",
+            "memory",
         )
         .await?;
 
@@ -289,7 +290,9 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut runtime = Runtime::sqlite_memory().await?;
+    // let dir = tempdir().unwrap();
+    // let mut runtime = Runtime::persistent(dir.path()).await?;
+    let mut runtime = Runtime::memory().await?;
 
     let workflow_id = runtime.save_workflow(workflow_graph).await?;
     let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;

@@ -24,7 +24,9 @@ use diesel_async::{
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use miette::{Context, IntoDiagnostic, miette};
-use tokio::sync::{RwLock, watch};
+use portgraph::NodeIndex;
+use tokio::sync::{Mutex, RwLock, watch};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -36,8 +38,9 @@ use crate::{
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
         queries::{
             add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, read_node_state, read_run_attempt_metadata, read_workflow,
-            read_workflow_run, read_workflow_run_inputs, update_node_state,
+            insert_workflow_run_inputs, read_node_state, read_node_states,
+            read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs,
+            update_node_state,
         },
     },
 };
@@ -140,7 +143,9 @@ fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
 /// that will be persisted in a `SQLite` database.
 pub struct SqliteRuntimeState {
     pool: ConnPool,
-    lock: Arc<RwLock<()>>,
+    // Only one thread can write to an SQLite db at a time, so we use a Mutex to
+    // control access to the ConnPool when writing.
+    write_lock: Arc<Mutex<()>>,
     update_sender: watch::Sender<RuntimeWatchState>,
     update_receiver: watch::Receiver<RuntimeWatchState>,
 }
@@ -158,7 +163,7 @@ impl SqliteRuntimeState {
             .wrap_err("Failed to establish database connection")?;
         Ok(Self {
             pool,
-            lock: Arc::new(RwLock::new(())),
+            write_lock: Arc::new(Mutex::new(())),
             update_sender: sender,
             update_receiver: receiver,
         })
@@ -183,12 +188,13 @@ impl SqliteRuntimeState {
             .wrap_err("Failed to establish in-memory database")?;
         Ok(Self {
             pool,
-            lock: Arc::new(RwLock::new(())),
+            write_lock: Arc::new(Mutex::new(())),
             update_sender: sender,
             update_receiver: receiver,
         })
     }
 
+    #[instrument]
     async fn get_conn(
         &self,
     ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
@@ -212,13 +218,14 @@ impl Debug for SqliteRuntimeState {
 impl RuntimeState for SqliteRuntimeState {
     type WorkflowRunState = SqliteWorkflowRunState;
 
+    #[instrument]
     async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
-        let _lock = self.lock.read().await;
         let mut conn = self.get_conn().await?;
         let workflow = read_workflow(&mut conn, workflow_id).await?;
         serde_json::from_slice(&workflow.definition).into_diagnostic()
     }
 
+    #[instrument(skip(workflow_graph))]
     async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
         let id = Uuid::now_v7();
         let workflow = NewWorkflow {
@@ -227,8 +234,8 @@ impl RuntimeState for SqliteRuntimeState {
             created_time: Some(Utc::now().naive_utc()),
             definition: &serde_json::to_vec(&workflow_graph).into_diagnostic()?,
         };
-        let _lock = self.lock.write().await;
         let mut conn = self.get_conn().await?;
+        let _lock = self.write_lock.lock().await;
         insert_workflow(&mut conn, &workflow)
             .await
             .into_diagnostic()
@@ -236,13 +243,14 @@ impl RuntimeState for SqliteRuntimeState {
         Ok(id)
     }
 
+    #[instrument(skip(inputs))]
     async fn new_workflow_run_state(
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, crate::asset_storage::AssetSpec>,
     ) -> miette::Result<Self::WorkflowRunState> {
-        let _lock = self.lock.write().await;
         let mut conn = self.get_conn().await?;
+        let _lock = self.write_lock.lock().await;
         let run_id = Uuid::now_v7();
         let run_id_str = run_id.to_string();
         conn.transaction(|conn| {
@@ -276,7 +284,7 @@ impl RuntimeState for SqliteRuntimeState {
 
         Ok(SqliteWorkflowRunState {
             pool: self.pool.clone(),
-            lock: self.lock.clone(),
+            write_lock: self.write_lock.clone(),
             update_sender: self.update_sender.clone(),
             workflow_id,
             run_id,
@@ -284,19 +292,19 @@ impl RuntimeState for SqliteRuntimeState {
         })
     }
 
+    #[instrument]
     async fn load_workflow_run_state(
         &self,
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<SqliteWorkflowRunState> {
         let mut conn = self.get_conn().await?;
-        let _lock = self.lock.read().await;
         let run = read_workflow_run(&mut conn, run_id, attempt).await?;
         let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
 
         Ok(SqliteWorkflowRunState {
             pool: self.pool.clone(),
-            lock: self.lock.clone(),
+            write_lock: self.write_lock.clone(),
             update_sender: self.update_sender.clone(),
             workflow_id,
             run_id,
@@ -313,9 +321,9 @@ impl RuntimeState for SqliteRuntimeState {
 /// with [`SqlRuntimeState`].
 pub struct SqliteWorkflowRunState {
     pool: ConnPool,
-    // Only one thread can write to an SQLite db at a time, so we use a RWLock to
-    // control access to the ConnPool.
-    lock: Arc<RwLock<()>>,
+    // Only one thread can write to an SQLite db at a time, so we use a Mutex to
+    // control access to the ConnPool when writing.
+    write_lock: Arc<Mutex<()>>,
     update_sender: watch::Sender<RuntimeWatchState>,
     workflow_id: Uuid,
     run_id: Uuid,
@@ -345,14 +353,14 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         self.attempt
     }
 
+    #[instrument]
     async fn load_inputs(&self) -> miette::Result<HashMap<String, AssetSpec>> {
-        let _lock = self.lock.read().await;
         let mut conn = self.get_conn().await?;
         read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
     }
 
+    #[instrument(skip(event))]
     async fn write(&self, event: WorkflowRunEvent) -> miette::Result<()> {
-        let _lock = self.lock.write().await;
         let mut send_workflow_stopped = false;
 
         match event {
@@ -379,26 +387,38 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         Ok(())
     }
 
+    #[instrument]
     async fn read(&self, location: &Location) -> miette::Result<NodeState> {
-        let _lock = self.lock.read().await;
         let mut conn = self.get_conn().await?;
         read_node_state(&mut conn, self.run_id, self.attempt, location).await
     }
 
-    async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
-        let _lock = self.lock.write().await;
+    #[instrument(skip(nodes))]
+    async fn read_children<'a>(
+        &'a self,
+        parent_location: &'a Location,
+        nodes: impl Iterator<Item = NodeIndex> + Send + 'a,
+    ) -> miette::Result<HashMap<NodeIndex, NodeState>> {
         let mut conn = self.get_conn().await?;
+        read_node_states(&mut conn, self.run_id, self.attempt, parent_location, nodes).await
+    }
+
+    #[instrument]
+    async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
+        let mut conn = self.get_conn().await?;
+        let _lock = self.write_lock.lock().await;
         add_run_attempt_metadata(&mut conn, self.run_id, self.attempt, metadata).await
     }
 
+    #[instrument]
     async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
-        let _lock = self.lock.read().await;
         let mut conn = self.get_conn().await?;
         read_run_attempt_metadata(&mut conn, self.run_id, self.attempt).await
     }
 }
 
 impl SqliteWorkflowRunState {
+    #[instrument]
     async fn get_conn(
         &self,
     ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
@@ -412,6 +432,7 @@ impl SqliteWorkflowRunState {
         Ok(conn)
     }
 
+    #[instrument]
     async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
@@ -505,6 +526,7 @@ impl SqliteWorkflowRunState {
             .await
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
+        let _lock = self.write_lock.lock().await;
 
         update_node_state(
             &mut conn,

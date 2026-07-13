@@ -23,9 +23,13 @@ mod tierkreis {
 
     use miette::{Diagnostic, IntoDiagnostic};
     use num_complex::Complex64;
+    use opentelemetry::{global, trace::TracerProvider};
+    use opentelemetry_otlp::{Protocol, WithExportConfig};
+    use opentelemetry_sdk::Resource;
     use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*, types::PyBytes};
     use serde::{Deserialize, Serialize};
     use tracing::info;
+    use tracing_subscriber::{Registry, layer::SubscriberExt};
 
     use crate::{graph::LegacyWorkflowGraph, runtime};
 
@@ -33,7 +37,32 @@ mod tierkreis {
     #[pymodule_init]
     fn init(_m: &Bound<'_, PyModule>) -> PyResult<()> {
         // console_subscriber::init();
-        tracing_subscriber::fmt().compact().init();
+        // tracing_subscriber::fmt().compact().init();
+
+        let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_http()
+            .with_protocol(Protocol::HttpBinary)
+            .build()
+            .unwrap();
+
+        // Create a tracer provider with the exporter
+        let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_batch_exporter(otlp_exporter)
+            .with_resource(Resource::builder().with_service_name("tierkreis").build())
+            .build();
+        let tracer = tracer_provider.tracer("tierkreis");
+
+        // Set it as the global provider
+        global::set_tracer_provider(tracer_provider);
+
+        // Create a tracing layer with the configured tracer
+        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+
+        // Use the tracing subscriber `Registry`, or any other subscriber
+        // that impls `LookupSpan`
+        let subscriber = Registry::default().with(telemetry);
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+
         Ok(())
     }
 

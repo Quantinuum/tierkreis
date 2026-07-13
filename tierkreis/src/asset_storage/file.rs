@@ -11,6 +11,7 @@ use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
 };
+use tracing::instrument;
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 
@@ -42,6 +43,7 @@ impl AssetStorage for FileAssetStorage {
         }
     }
 
+    #[instrument]
     fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>> {
         let location = self.location(key);
         async move {
@@ -55,6 +57,7 @@ impl AssetStorage for FileAssetStorage {
         .boxed()
     }
 
+    #[instrument(skip(value))]
     fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>> {
         let location = self.location(key);
         async move {
@@ -70,6 +73,7 @@ impl AssetStorage for FileAssetStorage {
         .boxed()
     }
 
+    #[instrument]
     fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>> {
         let location = self.location(key);
         async move {

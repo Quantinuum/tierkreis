@@ -10,7 +10,10 @@ use std::{collections::HashMap, ops::BitOrAssign, sync::Arc};
 use bitvec::vec::BitVec;
 use chrono::Utc;
 use dashmap::DashMap;
+use futures::stream::BoxStream;
+use futures::{Stream, StreamExt, future, stream};
 use miette::miette;
+use portgraph::NodeIndex;
 use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
@@ -81,6 +84,7 @@ impl Default for InMemoryRuntimeState {
 impl RuntimeState for InMemoryRuntimeState {
     type WorkflowRunState = InMemoryWorkflowRunState;
 
+    #[instrument]
     async fn load_workflow(&self, workflow_id: Uuid) -> miette::Result<WorkflowGraph> {
         let workflow = self
             .inner
@@ -90,12 +94,14 @@ impl RuntimeState for InMemoryRuntimeState {
         Ok(workflow.clone())
     }
 
+    #[instrument]
     async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
         let workflow_id = Uuid::now_v7();
         self.inner.workflows.insert(workflow_id, workflow_graph);
         Ok(workflow_id)
     }
 
+    #[instrument]
     async fn new_workflow_run_state(
         &self,
         workflow_id: Uuid,
@@ -121,6 +127,7 @@ impl RuntimeState for InMemoryRuntimeState {
         })
     }
 
+    #[instrument]
     async fn load_workflow_run_state(
         &self,
         run_id: Uuid,
@@ -263,13 +270,41 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
 
         Ok(state.clone())
     }
+    #[instrument(skip(nodes))]
+    async fn read_children<'a>(
+        &'a self,
+        parent_location: &'a Location,
+        nodes: impl Iterator<Item = NodeIndex> + Send + 'a,
+    ) -> miette::Result<HashMap<NodeIndex, NodeState>> {
+        let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
+            return Err(miette!(
+                "Run Attempt with id {} and attempt {} not found",
+                self.run_id,
+                self.attempt
+            ));
+        };
+        let states = nodes.into_iter().map(move |n| {
+            let location = parent_location.with_node(n);
+            let node_state = run_state
+                .value()
+                .nodes
+                .get(&location)
+                .cloned()
+                .unwrap_or_default();
+            Ok((n, node_state))
+        });
 
+        states.collect()
+    }
+
+    #[instrument]
     async fn add_metadata(&self, metadata: HashMap<String, String>) -> miette::Result<()> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         entry.or_default().metadata.extend(metadata);
         Ok(())
     }
 
+    #[instrument]
     async fn read_metadata(&self) -> miette::Result<HashMap<String, String>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         let metadata = entry.or_default().value().metadata.clone();

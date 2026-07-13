@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex},
+    time::SystemTime,
 };
 
 use futures::{
@@ -24,6 +25,7 @@ use tokio::{
     process::Command,
     task::{AbortHandle, JoinHandle},
 };
+use tracing::{info_span, instrument};
 use uuid::Uuid;
 use which::which_re;
 
@@ -191,7 +193,11 @@ async fn start_task(
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
     let task = tokio::task::spawn(async move {
+        let start = SystemTime::now();
+
         let exit_status = child.wait().await;
+        let end = SystemTime::now();
+        dbg!("task", end.duration_since(start).unwrap().as_micros());
         BackgroundTask {
             workflow_run_id,
             attempt,
@@ -439,6 +445,7 @@ impl Executor for SubprocessExecutor {
         self.workers().boxed()
     }
 
+    #[instrument(skip(self, task_plans))]
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
         let fut = async {
             let mut task_sender = self.task_sender.clone();
