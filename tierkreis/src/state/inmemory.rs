@@ -13,6 +13,7 @@ use dashmap::DashMap;
 use futures::FutureExt;
 use futures::future::{self, BoxFuture};
 use miette::miette;
+use portgraph::NodeIndex;
 use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
@@ -273,6 +274,35 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 .unwrap_or_default();
 
             Ok(state.clone())
+        }
+        .boxed()
+    }
+
+    fn read_many<'a>(
+        &'a self,
+        parent_location: &'a Location,
+        nodes: Vec<NodeIndex>,
+    ) -> BoxFuture<'a, miette::Result<HashMap<NodeIndex, NodeState>>> {
+        async move {
+            let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
+                return Err(miette!(
+                    "Run Attempt with id {} and attempt {} not found",
+                    self.run_id,
+                    self.attempt
+                ));
+            };
+            let states = nodes.into_iter().map(move |n| {
+                let location = parent_location.with_node(n);
+                let node_state = run_state
+                    .value()
+                    .nodes
+                    .get(&location)
+                    .cloned()
+                    .unwrap_or_default();
+                Ok((n, node_state))
+            });
+
+            states.collect()
         }
         .boxed()
     }

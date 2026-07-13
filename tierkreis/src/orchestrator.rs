@@ -314,22 +314,10 @@ impl Orchestrator {
         context: &OrchestrationContext,
         workflow_graph: &Arc<WorkflowGraph>,
     ) -> miette::Result<NodeStates> {
-        let mut node_states = NodeStates::new();
-        for node_id in workflow_graph.node_ids() {
-            let location = context.parent_loc.with_node(node_id);
-            let node_state = context.workflow_run_state.read(&location).await?;
-            if let Some(error_msg) = node_state.error {
-                if let Some(detail) = node_state.error_detail {
-                    return Err(miette!(
-                        "Workflow ended with error: {error_msg}\ndetail: {detail}",
-                    ));
-                }
-                return Err(miette!("Workflow ended with error: {error_msg}",));
-            }
-
-            node_states.insert(node_id, node_state);
-        }
-        Ok(node_states)
+        context
+            .workflow_run_state
+            .read_many(&context.parent_loc, workflow_graph.node_ids().collect())
+            .await
     }
 
     /// Find nodes which are ready for execution, mark them as scheduled then return them.

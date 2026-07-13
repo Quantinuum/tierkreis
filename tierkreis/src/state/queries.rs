@@ -16,6 +16,7 @@ use diesel::{
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use miette::{IntoDiagnostic, WrapErr, miette};
+use portgraph::NodeIndex;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
@@ -370,6 +371,87 @@ pub async fn read_node_state(
     } else {
         Ok(crate::state::interface::NodeState::default())
     }
+}
+
+/// Read the persisted node state for a workflow run at a given location.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the node state
+/// lookup fails.
+pub async fn read_node_states(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    parent_location: &Location,
+    nodes: impl Iterator<Item = NodeIndex> + Send,
+) -> miette::Result<HashMap<NodeIndex, crate::state::interface::NodeState>> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let mut states = HashMap::new();
+    let attempt_i32 = i32::try_from(attempt)
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let db_nodes = ns::node_states
+        .filter(ns::run_id.eq(run_id.to_string()))
+        .filter(ns::attempt.eq(attempt_i32))
+        .filter(ns::node_location.eq_any(nodes.map(|n| parent_location.with_node(n))))
+        .get_results::<NodeState>(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!("Failed to query node state for run {run_id} attempt {attempt}")
+        })?;
+
+    for db_node in db_nodes {
+        let loop_index = db_node
+            .loop_index
+            .map(|idx| {
+                u32::try_from(idx)
+                    .into_diagnostic()
+                    .wrap_err_with(||miette!(
+                        "Stored loop index {idx} is invalid for run {run_id} attempt {attempt}",
+                    ))
+            })
+            .transpose()?;
+        let map_completed = db_node
+            .map_completed
+            .as_deref()
+            .map(|x| {
+                let mut bits = BitVec::from_slice(x);
+                bits.truncate(
+                    db_node
+                        .map_size
+                        .ok_or_else(|| miette!("Could not get map size from node state"))?
+                        .try_into()
+                        .into_diagnostic()?,
+                );
+                Ok::<_, miette::Report>(bits)
+            })
+            .transpose()?;
+
+        let outputs = read_outputs(conn, &db_node).await?;
+
+        states.insert(
+            db_node.node_location.last(),
+            crate::state::interface::NodeState {
+                scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                queued_time: db_node.queued_time.map(utc_timestamp),
+                running_time: db_node.running_time.map(utc_timestamp),
+                complete_time: db_node.complete_time.map(utc_timestamp),
+                cancelled_time: db_node.cancelled_time.map(utc_timestamp),
+                error_time: db_node.error_time.map(utc_timestamp),
+                cond: db_node.cond,
+                loop_index,
+                map_completed,
+                error: db_node.error.clone(),
+                error_detail: db_node.error_detail.clone(),
+                outputs,
+            },
+        );
+    }
+
+    Ok(states)
 }
 
 /// Insert persisted workflow inputs for a workflow run.
