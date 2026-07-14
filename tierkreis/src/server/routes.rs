@@ -2,15 +2,14 @@ use super::models::{WorkflowDisplay, RuntimeMetadata, AppState};
 
 use std::collections::HashMap;
 use axum::{
-    Json,
-    extract::{Path,State},
+    Json, extract::{Path,State}, http::StatusCode, response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
 
 use miette::IntoDiagnostic;
 use uuid::Uuid;
 use crate::{
-    location::Location, server::{models::{GraphsQuery, GraphsResponse, HandlerResult, PyGraph}, nodes::build_py_graph}, state::{RuntimeState, WorkflowRunState, queries::list_workflow_run_summaries},
+    location::Location, server::{models::{GraphsQuery, GraphsResponse, HandlerResult, PyGraph}, nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs}}, state::{RuntimeState, WorkflowRunState, queries::list_workflow_run_summaries},
 };
 
 
@@ -90,19 +89,86 @@ pub async fn list_nodes(
     tracing::info!("Listing nodes for {}", run_id);
 
 
-    let loc = Location::root();
+    //let loc = Location::root();
     // TODO can we somehow avoid loading the entire graph (e.g. only the nested ones we need)
     let top_level_graph = state.runtime_state.load_workflow(workflow_id).await?;
-    let py_graph = build_py_graph(&top_level_graph, &run_state, &loc, &state.asset_registry).await?;
+    //let py_graph = build_py_graph(&top_level_graph, &run_state, &loc, &state.asset_registry).await?;
 
     let mut graphs = HashMap::new();
-    graphs.insert(loc.to_string(), py_graph);
-    // for loc_str in &query.locs {
-    //     let graph = ...
-    //     let py_graph =
-    //         build_py_graph(&graph, &run_state,loc_str, &state.asset_registry).await?;
-    //     graphs.insert(loc_str, py_graph);
-    // }
+    //graphs.insert(loc.to_string(), py_graph);
+    for loc_str in &query.locs {
+        tracing::info!("Loading graph with prefix {}", loc_str);
+        let (graph, prefix) = load_graph(&top_level_graph, loc_str).await?;
+        tracing::info!("Loaded {:?} with prefix {}", graph, prefix.to_string());
+        let py_graph =
+            build_py_graph(&graph, &run_state, &prefix, &state.asset_registry).await?;
+        graphs.insert(loc_str.clone(), py_graph);
+    }
 
     Ok(Json(GraphsResponse { graphs }))
+}
+
+fn parse_location(s: &str) -> miette::Result<Location> {
+    if s.is_empty() || s == "-" {
+        Ok(Location::root())
+    } else {
+        Location::new(s)
+    }
+}
+
+
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("node_location_str" = String, Path, description = "Location string"),
+    ),
+    responses(
+        (status = OK, description = "JSON object of port name to value"),
+        (status = 500, description = "Error loading outputs"),
+    )
+)]
+pub async fn get_all_outputs(
+    State(state): State<AppState>,
+    Path((run_id, location_str)): Path<(Uuid, String)>,
+) -> HandlerResult<Json<HashMap<String, serde_json::Value>>> {
+    let run_state = state
+        .runtime_state
+        .load_workflow_run_state(run_id, 0)
+        .await?;
+
+    let loc = parse_location(&location_str)?;
+    let node_state = run_state.read(&loc).await?;
+    let result = try_load_outputs(&node_state, &state.asset_registry).await?;
+
+    Ok(Json(result))
+}
+
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("node_location_str" = String, Path, description = "Location string"),
+        ("port_name" = String, Path, description = "Output port name"),
+    ),
+    responses(
+        (status = OK, description = "Raw output value as JSON or text"),
+        (status = 404, description = "Output not found"),
+    )
+)]
+pub async fn get_single_output(
+    State(state): State<AppState>,
+    Path((run_id, node_location_str, port_name)): Path<(Uuid, String, String)>,
+) -> HandlerResult<Json<serde_json::Value>> {
+    let run_state = state
+        .runtime_state
+        .load_workflow_run_state(run_id, 0)
+        .await?;
+
+    let loc = parse_location(&node_location_str)?;
+    let node_state = run_state.read(&loc).await?;
+    let result = try_load_output_value(&port_name, &node_state, &state.asset_registry).await?;
+    Ok(Json(result))
 }

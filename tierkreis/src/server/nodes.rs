@@ -1,40 +1,51 @@
 
 
+use std::collections::HashMap;
+
 use crate::server::models::{NodeInputs, PyEdge, PyGraph, PyNode, function_name_from_def, node_status_from_state, node_type_from_def};
 use crate::state::{WorkflowRunState, interface::NodeState};
-use crate::graph::{WorkflowGraph, NodeDefinition};
+use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
 use crate::location::{Location};
 use crate::server::AssetStorageRegistry;
 
 
 /// Attempt to load a JSON-serialized value for a given port name.
-/// Returns `None` on any error (missing asset, not yet complete, etc.).
-async fn try_load_output_value(
+/// Returns an error on missing/incomplete data or parse failure.
+pub async fn try_load_output_value(
     port_name: &str,
     node_state: &NodeState,
     asset_registry: &AssetStorageRegistry,
-) -> Option<String> {
-    let outputs = node_state.outputs.as_ref()?;
-    tracing::info!("Trying to load output value for port {port_name} with outputs: {:?}", outputs);
-    let asset_spec = outputs.get(port_name)?;
-    let bytes = asset_registry
-        .read()
-        .ok()?
-        .get(&asset_spec.storage_name)?
+) -> miette::Result<serde_json::Value> {
+    let outputs = node_state.outputs.as_ref().ok_or_else(|| miette::miette!("Node has no outputs"))?;
+    let asset_spec = outputs.get(port_name).ok_or_else(|| miette::miette!("Missing output port '{port_name}'"))?;
+    let registry = asset_registry.read().map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
+    let bytes = registry
+        .get(&asset_spec.storage_name)
+        .ok_or_else(|| miette::miette!("Storage '{}' not found", asset_spec.storage_name))?
         .load(&asset_spec.asset_key)
-        .ok()?;
-    // Try to pretty-print as JSON, fall back to raw UTF-8.
-    if let Ok(json_val) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-        Some(serde_json::to_string(&json_val).unwrap_or_default())
-    } else {
-        String::from_utf8(bytes).ok()
-    }
+        .map_err(|e| miette::miette!(e.to_string()))?;
+    serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| miette::miette!(e.to_string()))
 }
 
-// async fn try_load_value(
-    
-// )
-
+/// Attempt to load all outputs for a given node state, returning a map of port name to value.
+pub async fn try_load_outputs(
+    node_state: &NodeState,
+    asset_registry: &AssetStorageRegistry,
+) -> miette::Result<HashMap<String, serde_json::Value>> {
+    let outputs = match &node_state.outputs {
+        Some(o) => o,
+        None => return Ok(HashMap::new()),
+    };
+    let registry = asset_registry.read().map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
+    Ok(outputs
+        .iter()
+        .filter_map(|(name, spec)| {
+            let bytes = registry.get(&spec.storage_name)?.load(&spec.asset_key).ok()?;
+            let val = serde_json::from_slice::<serde_json::Value>(&bytes).ok()?;
+            Some((name.clone(), val))
+        })
+        .collect())
+}
 
 /// Build a [`PyGraph`] for the given `workflow_graph`, reading live node states
 /// from `run_state`.
@@ -54,7 +65,6 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
         let node_location = parent_location.with_node(node_idx);
         let node_location_str = node_location.to_string();
 
-        tracing::info!("Parsing node {:?} at {}", node_idx, node_location_str);
         let def = workflow_graph
             .node_definition(node_idx)
             .ok_or_else(|| miette::miette!("Node definition missing for {node_idx:?}"))?;
@@ -64,7 +74,6 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
         let state = run_state.read(&node_location).await?;
         let status = node_status_from_state(&state);
 
-        tracing::info!("Found node {:?} {:?} {:?}", node_type, function_name, status);
         // Collect output port names.
         let output_names: Vec<String> = workflow_graph
             .output_names(node_idx)
@@ -101,7 +110,10 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
                 from_port: from_port_name.clone(),
                 to_node: node_location_str.clone(),
                 to_port: port_name.clone(),
-                value: try_load_output_value(from_port_name, &node_state, asset_registry).await,
+                value: try_load_output_value(from_port_name, &node_state, asset_registry)
+                    .await
+                    .ok()
+                    .map(|v| v.to_string()),
                 conditional,
             });
         }
@@ -124,7 +136,10 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
                 if let (Some(port), Some(src_node)) = (from_port_name, from_node_idx) {
                     let src_loc = parent_location.with_node(src_node);
                     let src_state = run_state.read(&src_loc).await.unwrap_or_default();
-                    try_load_output_value(&port, &src_state, asset_registry).await
+                    try_load_output_value(&port, &src_state, asset_registry)
+                        .await
+                        .ok()
+                        .map(|v| v.to_string())
                 } else {
                     None
                 }
@@ -147,4 +162,80 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
     }
 
     Ok(PyGraph { nodes, edges })
+}
+
+
+/// Load a subgraph from a Const node that contains a serialized WorkflowGraph.
+fn load_subgraph_from_const_node(
+    workflow_graph: &WorkflowGraph,
+    node_index: portgraph::NodeIndex,
+) -> miette::Result<WorkflowGraph> {
+    tracing::info!("Loading subgraph from Const node {node_index:?}");
+    let Some((source_node, _source_port)) = workflow_graph
+        .connected_input_by_port_name(node_index, "graph")
+        .ok() else {
+        return Err(miette::miette!("No connected input by port name 'graph' for node {node_index:?}"));
+    };
+    let source_def = workflow_graph.node_definition(source_node).ok_or_else(|| miette::miette!("Node definition missing for {source_node:?}"))?;
+    if let NodeDefinition::Const { value } = source_def {
+        if let Ok(val) = serde_json::from_value::<WorkflowGraph>(value.clone()) {
+            tracing::info!("Loaded subgraph from Const node {node_index:?}: {:?}", val);
+            Ok(val)
+        } else {
+            let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone()).map_err(|_| miette::miette!("Fallback Failed"))?;
+            Ok(legacy_val.to_workflow_graph()?)
+        }
+    } else {
+        Err(miette::miette!("Node {node_index:?} is not a Const node"))
+    }
+}
+
+
+/// Resolve which `WorkflowGraph` and `Location` prefix to use for a given `location_str`.
+pub async fn load_graph(
+    top_level_graph: &WorkflowGraph,
+    location_str: &str,
+) -> miette::Result<(WorkflowGraph, Location)> {
+    if location_str.is_empty() || location_str == "-" {
+        return Ok((top_level_graph.clone(), Location::root()));
+    }
+
+    let loc = Location::new(location_str)?;
+
+    // Walk the location path component by component, descending into subgraphs.
+    let mut current_graph = top_level_graph.clone();
+    let mut prefix = Location::root();
+
+    for component in loc.components() {
+        use crate::location::LocationComponent;
+        match component {
+            LocationComponent::Node { node } => {
+                let node_loc = prefix.with_node(*node);
+                let def = current_graph
+                    .node_definition(*node)
+                    .ok_or_else(|| miette::miette!("Node {node:?} not found in graph"))?;
+
+                match def {
+                    NodeDefinition::Eval {}
+                    | NodeDefinition::Loop {}
+                    | NodeDefinition::Map { .. } => {
+                        prefix = node_loc;
+                        current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                    }
+                    _ => {
+                        return Err(miette::miette!(
+                            "Node {node:?} at {node_loc} is not an Eval, Loop, or Map node"
+                        ));
+                    }
+                }
+            }
+            LocationComponent::LoopIndex { index } => {
+                prefix = prefix.with_loop_index(*index);
+            }
+            LocationComponent::MapIndex { index } => {
+                prefix = prefix.with_map_index(*index as usize);
+            }
+        }
+    }
+    Ok((current_graph, prefix))
 }
