@@ -29,6 +29,7 @@ enum Command {
     Init {},
     Viz {},
     Serve {},
+    Exec {},
 }
 
 fn main() -> miette::Result<()> {
@@ -42,6 +43,9 @@ fn main() -> miette::Result<()> {
         } => {}
         Command::Serve {} => {
             tierkreis::server::serve()?;
+        }
+        Command::Exec {} => {
+            tierkreis::runtime::exec()?;
         }
         _ => {}
     }

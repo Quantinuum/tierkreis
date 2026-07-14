@@ -1,10 +1,11 @@
 /*!
 The runtime module defines the entrypoint to running Workflows.
 */
-use std::{collections::HashMap, hash::BuildHasher, path::Path, sync::Arc};
+use std::{collections::HashMap, env::home_dir, hash::BuildHasher, path::PathBuf, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
+use serde::Deserialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -14,17 +15,116 @@ use crate::{
         save_assets,
     },
     event::RuntimeEvent,
-    executor::{Executor, InMemoryExecutor, SubprocessExecutor},
+    executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
     graph::WorkflowGraph,
     location::Location,
     orchestrator::{OrchestrationContext, Orchestrator},
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
+#[derive(Deserialize)]
+struct RuntimeConfig {
+    asset_storage: HashMap<String, AssetStorageConfig>,
+    executors: HashMap<String, ExecutorConfig>,
+    runtime_state: RuntimeStateConfig,
+
+    default_storage_name: String,
+    default_executor_name: String,
+}
+
+impl RuntimeConfig {
+    fn memory() -> Self {
+        RuntimeConfig {
+            asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
+                .into_iter()
+                .collect(),
+            executors: [(
+                "memory".to_string(),
+                ExecutorConfig::Memory {
+                    output_storage_name: "memory".to_string(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            runtime_state: RuntimeStateConfig::Memory {},
+            default_storage_name: "memory".to_string(),
+            default_executor_name: "memory".to_string(),
+        }
+    }
+
+    fn sqlite_memory() -> Self {
+        let mut config = Self::memory();
+        config.runtime_state = RuntimeStateConfig::Sqlite { memory: true };
+        config
+    }
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        let tierkreis_dir = home_dir()
+            .unwrap_or_else(|| "/tmp".into())
+            .join(".tierkreis");
+
+        let asset_dir = tierkreis_dir.join("assets");
+        RuntimeConfig {
+            asset_storage: [
+                ("memory".to_string(), AssetStorageConfig::Memory {}),
+                ("file".to_string(), AssetStorageConfig::File { asset_dir }),
+            ]
+            .into_iter()
+            .collect(),
+            executors: [
+                (
+                    "memory".to_string(),
+                    ExecutorConfig::Memory {
+                        output_storage_name: "memory".to_string(),
+                    },
+                ),
+                (
+                    "subprocess".to_string(),
+                    ExecutorConfig::Subprocess {
+                        subprocess_storage_name: "file".to_string(),
+                        output_storage_name: "file".to_string(),
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            runtime_state: RuntimeStateConfig::Memory {},
+            default_storage_name: "file".to_string(),
+            default_executor_name: "subprocess".to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+enum AssetStorageConfig {
+    Memory {},
+    File { asset_dir: PathBuf },
+}
+
+#[derive(Deserialize)]
+enum ExecutorConfig {
+    Memory {
+        output_storage_name: String,
+    },
+    Subprocess {
+        subprocess_storage_name: String,
+        output_storage_name: String,
+    },
+}
+
+#[derive(Deserialize)]
+enum RuntimeStateConfig {
+    Memory {},
+    Sqlite { memory: bool },
+}
+
 struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
+    default_storage_name: String,
 
     // Optional Run ID to execute exclusively. Once this run completes the
     // runtime should end execution.
@@ -32,109 +132,34 @@ struct Runtime {
 }
 
 impl Runtime {
-    // TODO: Add a from_config function to build a Runtime from a configuration file.
-    #[allow(dead_code)]
-    async fn persistent(path: &Path) -> miette::Result<Self> {
-        let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
-        asset_storage_registry.insert("memory".to_string(), Box::new(InMemoryStorage::new()));
-        asset_storage_registry.insert("file".to_string(), Box::new(FileAssetStorage::new(path)));
-        let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
+    async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
+        let asset_storage_registry = asset_storage_registry_from_config(config);
 
-        let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
-        executor_registry.insert(
-            "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(&asset_storage_registry, "memory").await?),
-        );
-        executor_registry.insert(
-            "subprocess".to_string(),
-            Box::new(SubprocessExecutor::try_new(&asset_storage_registry, "file", "file").await?),
-        );
-        let executor_registry = Arc::new(executor_registry);
+        let executor_registry =
+            executor_registry_from_config(&asset_storage_registry, config).await?;
 
         let orchestrator = Orchestrator::try_new(
             &asset_storage_registry,
             &executor_registry,
-            "file",
-            "subprocess",
+            &config.default_storage_name,
+            &config.default_executor_name,
         )
         .await?;
-
-        let runtime_state = SqliteRuntimeState::try_new().await?;
+        let runtime_state: Arc<dyn RuntimeState> = match config.runtime_state {
+            RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
+            RuntimeStateConfig::Sqlite { memory: true } => {
+                Arc::new(SqliteRuntimeState::try_new_in_memory().await?)
+            }
+            RuntimeStateConfig::Sqlite { memory: false } => {
+                Arc::new(SqliteRuntimeState::try_new().await?)
+            }
+        };
 
         Ok(Self {
             orchestrator,
-            state: Arc::new(runtime_state),
+            state: runtime_state,
             asset_storage_registry,
-            dedicated_run_id: None,
-        })
-    }
-
-    // TODO: Add a from_config function to build a Runtime from a configuration file.
-    #[allow(dead_code)]
-    async fn sqlite_memory() -> miette::Result<Self> {
-        let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
-        let memory_storage = InMemoryStorage::new();
-        asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
-
-        let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
-
-        let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
-
-        executor_registry.insert(
-            "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(&asset_storage_registry, "memory").await?),
-        );
-        let executor_registry = Arc::new(executor_registry);
-
-        let orchestrator = Orchestrator::try_new(
-            &asset_storage_registry,
-            &executor_registry,
-            "memory",
-            "memory",
-        )
-        .await?;
-
-        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
-
-        Ok(Self {
-            orchestrator,
-            state: Arc::new(runtime_state),
-            asset_storage_registry,
-            dedicated_run_id: None,
-        })
-    }
-
-    // TODO: Add a from_config function to build a Runtime from a configuration file.
-    #[allow(dead_code)]
-    async fn memory() -> miette::Result<Self> {
-        let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
-        let memory_storage = InMemoryStorage::new();
-        asset_storage_registry.insert("memory".to_string(), Box::new(memory_storage));
-
-        let asset_storage_registry = Arc::new(RwLock::new(asset_storage_registry));
-
-        let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
-
-        executor_registry.insert(
-            "memory".to_string(),
-            Box::new(InMemoryExecutor::try_new(&asset_storage_registry, "memory").await?),
-        );
-        let executor_registry = Arc::new(executor_registry);
-
-        let orchestrator = Orchestrator::try_new(
-            &asset_storage_registry,
-            &executor_registry,
-            "memory",
-            "memory",
-        )
-        .await?;
-
-        let runtime_state = InMemoryRuntimeState::new();
-
-        Ok(Self {
-            orchestrator,
-            state: Arc::new(runtime_state),
-            asset_storage_registry,
+            default_storage_name: config.default_storage_name.clone(),
             dedicated_run_id: None,
         })
     }
@@ -148,7 +173,12 @@ impl Runtime {
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
-        let inputs = save_assets(&self.asset_storage_registry, "memory", inputs).await?;
+        let inputs = save_assets(
+            &self.asset_storage_registry,
+            &self.default_storage_name,
+            inputs,
+        )
+        .await?;
         let workflow_run_state = self
             .state
             .new_workflow_run_state(workflow_id, inputs)
@@ -277,12 +307,62 @@ impl Runtime {
     }
 }
 
+async fn executor_registry_from_config(
+    asset_storage_registry: &AssetStorageRegistry,
+    config: &RuntimeConfig,
+) -> Result<ExecutorRegistry, miette::Error> {
+    let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
+    for (executor_name, executor_config) in &config.executors {
+        match executor_config {
+            ExecutorConfig::Memory {
+                output_storage_name,
+            } => executor_registry.insert(
+                executor_name.clone(),
+                Box::new(
+                    InMemoryExecutor::try_new(asset_storage_registry, output_storage_name).await?,
+                ),
+            ),
+            ExecutorConfig::Subprocess {
+                subprocess_storage_name,
+                output_storage_name,
+            } => executor_registry.insert(
+                executor_name.clone(),
+                Box::new(
+                    SubprocessExecutor::try_new(
+                        asset_storage_registry,
+                        subprocess_storage_name,
+                        output_storage_name,
+                    )
+                    .await?,
+                ),
+            ),
+        };
+    }
+    let executor_registry = Arc::new(executor_registry);
+    Ok(executor_registry)
+}
+
+fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageRegistry {
+    let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
+    for (asset_storage_name, asset_storage_config) in &config.asset_storage {
+        match asset_storage_config {
+            AssetStorageConfig::Memory {} => asset_storage_registry
+                .insert(asset_storage_name.clone(), Box::new(InMemoryStorage::new())),
+            AssetStorageConfig::File { asset_dir: parent } => asset_storage_registry.insert(
+                asset_storage_name.clone(),
+                Box::new(FileAssetStorage::new(parent)),
+            ),
+        };
+    }
+    Arc::new(RwLock::new(asset_storage_registry))
+}
+
 #[tokio::main]
 pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut runtime = Runtime::sqlite_memory().await?;
+    let mut runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory()).await?;
 
     let workflow_id = runtime.save_workflow(workflow_graph).await?;
     let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
@@ -293,4 +373,21 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     let outputs = runtime.outputs(run_id, attempt).await?;
 
     Ok(outputs)
+}
+
+/// Start the runtime until cancelled.
+///
+/// # Errors
+///
+/// Will return Err if the [`Runtime`] cannot be configured or if an unrecoverable
+/// error happens while running.
+///
+/// # Panics
+///
+/// Will panic if there is already a tokio runtime active.
+#[tokio::main]
+pub async fn exec() -> miette::Result<()> {
+    let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
+    runtime.run().await?;
+    Ok(())
 }
