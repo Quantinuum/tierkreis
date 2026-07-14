@@ -1,17 +1,13 @@
 /*!
 The models module defines the data structures used by the server.
 */
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::watch;
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use crate::{
     asset_storage::AssetStorageRegistry,
     graph::{NodeDefinition, WorkflowGraph},
@@ -19,6 +15,10 @@ use crate::{
         ConnPool, SqliteRuntimeState,
         interface::{NodeState, RunAttemptUpdated},
     },
+};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 
 pub struct AppError(miette::Report);
@@ -47,13 +47,11 @@ pub struct AppState {
     pub pool: ConnPool,
 }
 
-
 /// Runtime metadata returned by `/api/info`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RuntimeMetadata {
     pub version: String,
 }
-
 
 /// Workflow display information returned by `/api/workflows/`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -68,7 +66,6 @@ pub struct WorkflowDisplay {
     pub tkr_version: String,
     // TODO: run id / attempt
 }
-
 
 /// The status of a node in the workflow graph.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -97,7 +94,6 @@ pub enum NodeStatus {
     // #[serde(rename = "Cancelled")]
     // Cancelled,
 }
-
 
 pub fn node_status_from_state(state: &NodeState) -> NodeStatus {
     if state.complete_time.is_some() {

@@ -1,17 +1,24 @@
-use super::models::{WorkflowDisplay, RuntimeMetadata, AppState};
+use super::models::{AppState, RuntimeMetadata, WorkflowDisplay};
 
-use std::collections::HashMap;
 use axum::{
-    Json, extract::{Path,State}, http::StatusCode, response::{IntoResponse, Response},
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
+use std::collections::HashMap;
 
+use crate::{
+    location::Location,
+    server::{
+        models::{GraphsQuery, GraphsResponse, HandlerResult, PyGraph},
+        nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs},
+    },
+    state::{RuntimeState, WorkflowRunState, queries::list_workflow_run_summaries},
+};
 use miette::IntoDiagnostic;
 use uuid::Uuid;
-use crate::{
-    location::Location, server::{models::{GraphsQuery, GraphsResponse, HandlerResult, PyGraph}, nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs}}, state::{RuntimeState, WorkflowRunState, queries::list_workflow_run_summaries},
-};
-
 
 #[utoipa::path(get, path = "/info", responses((status = OK, body = RuntimeMetadata)))]
 pub async fn get_info() -> Json<RuntimeMetadata> {
@@ -47,9 +54,7 @@ pub async fn list_workflows(
                 id: s.run_id, // TODO: THIS IS THE RUN_ID NOT THE WORKFLOW_ID, FIX THIS THIS ALSO AFFECTS `list_nodes()`
                 id_int,
                 name: s.name,
-                start_time: s
-                    .started_time
-                    .map_or_else(String::new, |t| t.to_rfc3339()),
+                start_time: s.started_time.map_or_else(String::new, |t| t.to_rfc3339()),
                 errors,
                 tkr_version: env!("CARGO_PKG_VERSION").to_string(), // TODO: store the metadata in the database
             }
@@ -58,7 +63,6 @@ pub async fn list_workflows(
 
     Ok(Json(displays))
 }
-
 
 #[utoipa::path(
     get,
@@ -77,7 +81,6 @@ pub async fn list_nodes(
     Path(run_id): Path<Uuid>, //TODO currently we only have the RUN_ID from the frontend
     Query(query): Query<GraphsQuery>,
 ) -> HandlerResult<Json<GraphsResponse>> {
-
     // Once we get the actual workflow ID the logic needs to be reversed
     // Or the frontend needs to start submitting run_ids
     let run_state = state
@@ -87,7 +90,6 @@ pub async fn list_nodes(
     let workflow_id = run_state.workflow_id();
 
     tracing::info!("Listing nodes for {}", run_id);
-
 
     //let loc = Location::root();
     // TODO can we somehow avoid loading the entire graph (e.g. only the nested ones we need)
@@ -100,8 +102,7 @@ pub async fn list_nodes(
         tracing::info!("Loading graph with prefix {}", loc_str);
         let (graph, prefix) = load_graph(&top_level_graph, loc_str).await?;
         tracing::info!("Loaded {:?} with prefix {}", graph, prefix.to_string());
-        let py_graph =
-            build_py_graph(&graph, &run_state, &prefix, &state.asset_registry).await?;
+        let py_graph = build_py_graph(&graph, &run_state, &prefix, &state.asset_registry).await?;
         graphs.insert(loc_str.clone(), py_graph);
     }
 
@@ -115,7 +116,6 @@ fn parse_location(s: &str) -> miette::Result<Location> {
         Location::new(s)
     }
 }
-
 
 #[utoipa::path(
     get,

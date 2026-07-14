@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage,
-        load_assets, save_assets,
+        AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
+        save_assets,
     },
     executor::{Executor, InMemoryExecutor, SubprocessExecutor},
     graph::WorkflowGraph,

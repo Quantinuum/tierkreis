@@ -1,13 +1,13 @@
-
-
 use std::collections::HashMap;
 
-use crate::server::models::{NodeInputs, PyEdge, PyGraph, PyNode, function_name_from_def, node_status_from_state, node_type_from_def};
-use crate::state::{WorkflowRunState, interface::NodeState};
 use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
-use crate::location::{Location};
+use crate::location::Location;
 use crate::server::AssetStorageRegistry;
-
+use crate::server::models::{
+    NodeInputs, PyEdge, PyGraph, PyNode, function_name_from_def, node_status_from_state,
+    node_type_from_def,
+};
+use crate::state::{WorkflowRunState, interface::NodeState};
 
 /// Attempt to load a JSON-serialized value for a given port name.
 /// Returns an error on missing/incomplete data or parse failure.
@@ -16,9 +16,16 @@ pub async fn try_load_output_value(
     node_state: &NodeState,
     asset_registry: &AssetStorageRegistry,
 ) -> miette::Result<serde_json::Value> {
-    let outputs = node_state.outputs.as_ref().ok_or_else(|| miette::miette!("Node has no outputs"))?;
-    let asset_spec = outputs.get(port_name).ok_or_else(|| miette::miette!("Missing output port '{port_name}'"))?;
-    let registry = asset_registry.read().map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
+    let outputs = node_state
+        .outputs
+        .as_ref()
+        .ok_or_else(|| miette::miette!("Node has no outputs"))?;
+    let asset_spec = outputs
+        .get(port_name)
+        .ok_or_else(|| miette::miette!("Missing output port '{port_name}'"))?;
+    let registry = asset_registry
+        .read()
+        .map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
     let bytes = registry
         .get(&asset_spec.storage_name)
         .ok_or_else(|| miette::miette!("Storage '{}' not found", asset_spec.storage_name))?
@@ -36,11 +43,16 @@ pub async fn try_load_outputs(
         Some(o) => o,
         None => return Ok(HashMap::new()),
     };
-    let registry = asset_registry.read().map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
+    let registry = asset_registry
+        .read()
+        .map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
     Ok(outputs
         .iter()
         .filter_map(|(name, spec)| {
-            let bytes = registry.get(&spec.storage_name)?.load(&spec.asset_key).ok()?;
+            let bytes = registry
+                .get(&spec.storage_name)?
+                .load(&spec.asset_key)
+                .ok()?;
             let val = serde_json::from_slice::<serde_json::Value>(&bytes).ok()?;
             Some((name.clone(), val))
         })
@@ -99,10 +111,17 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
             });
 
             // Conditional flag for IfElse branches.
-            let conditional =
-                matches!(def, NodeDefinition::IfElse {} | NodeDefinition::EagerIfElse {})
-                    && (port_name == "if_true" || port_name == "if_false");
-            tracing::info!("Adding edge from {}.{} to {}.{})", from_location, from_port_name, node_location_str, port_name);
+            let conditional = matches!(
+                def,
+                NodeDefinition::IfElse {} | NodeDefinition::EagerIfElse {}
+            ) && (port_name == "if_true" || port_name == "if_false");
+            tracing::info!(
+                "Adding edge from {}.{} to {}.{})",
+                from_location,
+                from_port_name,
+                node_location_str,
+                port_name
+            );
             let node_state = run_state.read(&from_location).await.unwrap_or_default();
 
             edges.push(PyEdge {
@@ -156,14 +175,17 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
             outputs: output_names,
             inputs,
             value,
-            started_time: state.running_time.map_or_else(String::new, |t| t.to_rfc3339()),
-            finished_time: state.complete_time.map_or_else(String::new, |t| t.to_rfc3339()),
+            started_time: state
+                .running_time
+                .map_or_else(String::new, |t| t.to_rfc3339()),
+            finished_time: state
+                .complete_time
+                .map_or_else(String::new, |t| t.to_rfc3339()),
         });
     }
 
     Ok(PyGraph { nodes, edges })
 }
-
 
 /// Load a subgraph from a Const node that contains a serialized WorkflowGraph.
 fn load_subgraph_from_const_node(
@@ -173,23 +195,28 @@ fn load_subgraph_from_const_node(
     tracing::info!("Loading subgraph from Const node {node_index:?}");
     let Some((source_node, _source_port)) = workflow_graph
         .connected_input_by_port_name(node_index, "graph")
-        .ok() else {
-        return Err(miette::miette!("No connected input by port name 'graph' for node {node_index:?}"));
+        .ok()
+    else {
+        return Err(miette::miette!(
+            "No connected input by port name 'graph' for node {node_index:?}"
+        ));
     };
-    let source_def = workflow_graph.node_definition(source_node).ok_or_else(|| miette::miette!("Node definition missing for {source_node:?}"))?;
+    let source_def = workflow_graph
+        .node_definition(source_node)
+        .ok_or_else(|| miette::miette!("Node definition missing for {source_node:?}"))?;
     if let NodeDefinition::Const { value } = source_def {
         if let Ok(val) = serde_json::from_value::<WorkflowGraph>(value.clone()) {
             tracing::info!("Loaded subgraph from Const node {node_index:?}: {:?}", val);
             Ok(val)
         } else {
-            let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone()).map_err(|_| miette::miette!("Fallback Failed"))?;
+            let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone())
+                .map_err(|_| miette::miette!("Fallback Failed"))?;
             Ok(legacy_val.to_workflow_graph()?)
         }
     } else {
         Err(miette::miette!("Node {node_index:?} is not a Const node"))
     }
 }
-
 
 /// Resolve which `WorkflowGraph` and `Location` prefix to use for a given `location_str`.
 pub async fn load_graph(

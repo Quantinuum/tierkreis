@@ -4,25 +4,20 @@ The server module defines the HTTP visualization interface to the Workflow serve
 #[allow(missing_docs)]
 pub mod models;
 #[allow(missing_docs)]
-pub mod routes;
-#[allow(missing_docs)]
 pub mod nodes;
+#[allow(missing_docs)]
+pub mod routes;
 
-use std::sync::Arc;
-use axum::{
-    http::StatusCode,
-};
+use axum::http::StatusCode;
 use miette::IntoDiagnostic;
+use std::sync::Arc;
 use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    asset_storage::AssetStorageRegistry, 
-    state::{
-        RuntimeState, SqliteRuntimeState,
-        build_conn_pool,
-    },
+    asset_storage::AssetStorageRegistry,
+    state::{RuntimeState, SqliteRuntimeState, build_conn_pool},
 };
 
 /// Server entry point.
@@ -49,12 +44,15 @@ pub async fn serve(
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
         .routes(routes!(routes::get_single_output));
-    let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) =
-        OpenApiRouter::new().nest("/api", api_router).split_for_parts();
-    let mut router = api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
+    let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
+        .nest("/api", api_router)
+        .split_for_parts();
+    let mut router =
+        api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
 
     // SPA
-    let dist = std::env::current_dir().unwrap_or_default()
+    let dist = std::env::current_dir()
+        .unwrap_or_default()
         .join("tierkreis_visualization/tierkreis_visualization/static/dist");
     if dist.exists() {
         let index = dist.join("index.html");
