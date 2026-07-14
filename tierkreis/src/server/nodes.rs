@@ -149,8 +149,7 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
                 let output_port: portgraph::PortIndex = (*output_sub).into();
                 let from_port_name = workflow_graph
                     .get_port_name(output_port)
-                    .ok()
-                    .map(Clone::clone);
+                    .ok().cloned();
                 let from_node_idx = workflow_graph.port_node(*output_sub).ok();
                 if let (Some(port), Some(src_node)) = (from_port_name, from_node_idx) {
                     let src_loc = parent_location.with_node(src_node);
@@ -187,7 +186,7 @@ pub async fn build_py_graph<RS: WorkflowRunState>(
     Ok(PyGraph { nodes, edges })
 }
 
-/// Load a subgraph from a Const node that contains a serialized WorkflowGraph.
+/// Load a subgraph from a Const node that contains a serialized `WorkflowGraph`.
 fn load_subgraph_from_const_node(
     workflow_graph: &WorkflowGraph,
     node_index: portgraph::NodeIndex,

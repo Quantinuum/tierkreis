@@ -23,6 +23,7 @@ pub fn input<'a>(graph: &mut WorkflowGraph, name: &'a str) -> (NodeIndex, &'a st
     (node, name)
 }
 
+#[must_use] 
 pub fn output<'a>(graph: &WorkflowGraph, name: &'a str) -> (NodeIndex, &'a str) {
     (graph.output_idx(), name)
 }

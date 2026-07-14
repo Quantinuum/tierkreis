@@ -281,7 +281,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     Ok(outputs)
 }
 
-/// Run a workflow against the persistent SQLite database (resolved via the
+/// Run a workflow against the persistent `SQLite` database (resolved via the
 /// `DATABASE_URL` environment variable or the default path).
 ///
 /// Returns the raw output bytes keyed by port name.

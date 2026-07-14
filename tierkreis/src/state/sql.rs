@@ -66,7 +66,7 @@ fn run_migrations(
     Ok(())
 }
 
-/// Connection pool type used by the SQLite state implementations.
+/// Connection pool type used by the `SQLite` state implementations.
 pub type ConnPool =
     diesel_async::pooled_connection::deadpool::Pool<SyncConnectionWrapper<SqliteConnection>>;
 

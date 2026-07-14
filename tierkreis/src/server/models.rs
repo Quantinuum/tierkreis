@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::AssetStorageRegistry,
-    graph::{NodeDefinition, WorkflowGraph},
+    graph::NodeDefinition,
     state::{
         ConnPool, SqliteRuntimeState,
         interface::{NodeState, RunAttemptUpdated},
@@ -95,6 +95,7 @@ pub enum NodeStatus {
     // Cancelled,
 }
 
+#[must_use] 
 pub fn node_status_from_state(state: &NodeState) -> NodeStatus {
     if state.complete_time.is_some() {
         NodeStatus::Finished
@@ -146,6 +147,7 @@ pub enum NodeType {
 }
 
 // TODO can we simply serde NodeDefinition
+#[must_use] 
 pub fn node_type_from_def(def: &NodeDefinition) -> NodeType {
     match def {
         NodeDefinition::Input { .. } => NodeType::Input,
@@ -161,6 +163,7 @@ pub fn node_type_from_def(def: &NodeDefinition) -> NodeType {
 }
 
 // TODO can we serde this directly?
+#[must_use] 
 pub fn function_name_from_def(def: &NodeDefinition) -> String {
     match def {
         NodeDefinition::Input { name } => name.clone(),

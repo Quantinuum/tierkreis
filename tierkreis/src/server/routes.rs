@@ -3,8 +3,6 @@ use super::models::{AppState, RuntimeMetadata, WorkflowDisplay};
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
 use std::collections::HashMap;
@@ -12,7 +10,7 @@ use std::collections::HashMap;
 use crate::{
     location::Location,
     server::{
-        models::{GraphsQuery, GraphsResponse, HandlerResult, PyGraph},
+        models::{GraphsQuery, GraphsResponse, HandlerResult},
         nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs},
     },
     state::{RuntimeState, WorkflowRunState, queries::list_workflow_run_summaries},
@@ -48,7 +46,7 @@ pub async fn list_workflows(
             let errors: Vec<String> = s
                 .errored_locations
                 .iter()
-                .map(|loc| loc.to_string())
+                .map(std::string::ToString::to_string)
                 .collect();
             WorkflowDisplay {
                 id: s.run_id, // TODO: THIS IS THE RUN_ID NOT THE WORKFLOW_ID, FIX THIS THIS ALSO AFFECTS `list_nodes()`
