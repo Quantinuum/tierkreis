@@ -23,7 +23,7 @@ use diesel_async::{
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use futures::{FutureExt, future::BoxFuture};
+use futures::{FutureExt, StreamExt, future::BoxFuture, stream::BoxStream};
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::NodeIndex;
 use tokio::sync::{RwLock, watch};
@@ -413,20 +413,12 @@ impl WorkflowRunState for SqliteWorkflowRunState {
 
     fn read_many<'a>(
         &'a self,
-        parent_location: &'a Location,
-        nodes: Vec<NodeIndex>,
-    ) -> BoxFuture<'a, miette::Result<HashMap<NodeIndex, NodeState>>> {
+        locations: &'a mut (dyn Iterator<Item = Location> + Send),
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
         async move {
             let _lock = self.lock.read().await;
             let mut conn = self.get_conn().await?;
-            read_node_states(
-                &mut conn,
-                self.run_id,
-                self.attempt,
-                parent_location,
-                nodes.into_iter(),
-            )
-            .await
+            read_node_states(&mut conn, self.run_id, self.attempt, locations).await
         }
         .boxed()
     }

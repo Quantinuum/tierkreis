@@ -10,8 +10,7 @@ use std::{
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
-use futures::future::BoxFuture;
-use portgraph::NodeIndex;
+use futures::{future::BoxFuture, stream::BoxStream};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -115,9 +114,8 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn read<'a>(&'a self, location: &'a Location) -> BoxFuture<'a, miette::Result<NodeState>>;
     fn read_many<'a>(
         &'a self,
-        location: &'a Location,
-        nodes: Vec<NodeIndex>,
-    ) -> BoxFuture<'a, miette::Result<HashMap<NodeIndex, NodeState>>>;
+        locations: &'a mut (dyn Iterator<Item = Location> + Send),
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.

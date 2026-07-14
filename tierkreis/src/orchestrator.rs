@@ -135,7 +135,7 @@ impl OrchestrationContext {
     }
 }
 
-type NodeStates = HashMap<NodeIndex, NodeState>;
+type NodeStates = HashMap<Location, NodeState>;
 
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
 /// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
@@ -208,14 +208,16 @@ impl Orchestrator {
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
 
-        if let Some(output_state) = node_states.get(&workflow_graph.output_idx())
+        if let Some(output_state) =
+            node_states.get(&context.parent_loc.with_node(workflow_graph.output_idx()))
             && output_state.scheduled_time.is_some()
         {
             // Output is already scheduled, no actions to perform.
             return Ok(stream::empty().boxed());
         }
 
-        let ready_nodes: Vec<_> = Self::find_ready_nodes(&workflow_graph, &node_states).collect();
+        let ready_nodes: Vec<_> =
+            Self::find_ready_nodes(&context.parent_loc, &workflow_graph, &node_states).collect();
         // Mark all ready nodes as scheduled.
         Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
 
@@ -231,6 +233,7 @@ impl Orchestrator {
                     return stream_error(miette!("Could not find node definition"));
                 };
 
+                let parent_location = parent_location.clone();
                 let loc = parent_location.with_node(n);
                 match definition {
                     NodeDefinition::Input { name } => stream_action_result(
@@ -241,7 +244,12 @@ impl Orchestrator {
                         .into_stream()
                         .boxed_local(),
                     NodeDefinition::Output {} => self
-                        .build_output_actions(workflow_graph.clone(), node_states, n, loc)
+                        .build_output_actions(
+                            workflow_graph.clone(),
+                            node_states,
+                            parent_location,
+                            n,
+                        )
                         .try_flatten_stream()
                         .boxed_local(),
                     NodeDefinition::Task {
@@ -250,8 +258,8 @@ impl Orchestrator {
                     } => stream_action_result(build_task_action(
                         workflow_graph.clone(),
                         &node_states,
+                        &parent_location,
                         n,
-                        loc,
                         worker_name,
                         task_name,
                     )),
@@ -260,19 +268,19 @@ impl Orchestrator {
                             workflow_graph.clone(),
                             workflow_run_state.clone(),
                             node_states,
+                            parent_location,
                             n,
-                            loc,
                         )
                         .try_flatten_stream()
                         .boxed_local(),
                     NodeDefinition::Loop {} => {
-                        let loop_index = node_states.get(&n).and_then(|state| state.loop_index);
+                        let loop_index = node_states.get(&loc).and_then(|state| state.loop_index);
                         self.build_loop_actions(
                             workflow_graph.clone(),
                             workflow_run_state.clone(),
                             node_states,
+                            parent_location,
                             n,
-                            loc,
                             loop_index,
                         )
                         .try_flatten_stream()
@@ -280,15 +288,15 @@ impl Orchestrator {
                     }
                     NodeDefinition::Map { mapped_ports } => {
                         let map_completed = node_states
-                            .get(&n)
+                            .get(&loc)
                             .and_then(|state| state.map_completed.clone());
                         self.build_map_actions(
                             workflow_graph.clone(),
                             workflow_run_state.clone(),
                             node_states,
                             mapped_ports.clone(),
+                            parent_location,
                             n,
-                            loc,
                             map_completed,
                         )
                         .try_flatten_stream()
@@ -296,13 +304,24 @@ impl Orchestrator {
                     }
                     // Eager and Lazy If else are controlled by the ready node checks
                     NodeDefinition::IfElse {} => {
-                        let cond = node_states.get(&n).and_then(|state| state.cond);
-                        self.build_if_else_action(workflow_graph.clone(), node_states, n, loc, cond)
-                            .into_stream()
-                            .boxed_local()
+                        let cond = node_states.get(&loc).and_then(|state| state.cond);
+                        self.build_if_else_action(
+                            workflow_graph.clone(),
+                            node_states,
+                            parent_location,
+                            n,
+                            cond,
+                        )
+                        .into_stream()
+                        .boxed_local()
                     }
                     NodeDefinition::EagerIfElse {} => self
-                        .build_eager_if_else_action(workflow_graph.clone(), node_states, n, loc)
+                        .build_eager_if_else_action(
+                            workflow_graph.clone(),
+                            node_states,
+                            parent_location,
+                            n,
+                        )
                         .into_stream()
                         .boxed_local(),
                 }
@@ -316,12 +335,17 @@ impl Orchestrator {
     ) -> miette::Result<NodeStates> {
         context
             .workflow_run_state
-            .read_many(&context.parent_loc, workflow_graph.node_ids().collect())
+            .read_many(
+                &mut workflow_graph
+                    .node_ids()
+                    .map(|n| context.parent_loc.with_node(n)),
+            )
             .await
     }
 
     /// Find nodes which are ready for execution, mark them as scheduled then return them.
     fn find_ready_nodes<'a>(
+        parent_location: &'a Location,
         workflow_graph: &'a WorkflowGraph,
         node_states: &'a NodeStates,
     ) -> impl Iterator<Item = NodeIndex> {
@@ -338,7 +362,7 @@ impl Orchestrator {
                         .node_definition(n)
                         .expect("Node definition not found");
 
-                    if let Some(state) = node_states.get(&n) {
+                    if let Some(state) = node_states.get(&parent_location.with_node(n)) {
                         // TODO: This sometimes means even const/input nodes
                         // are run multiple times if their state is yet
                         // to be updated from the last orchestration round.
@@ -360,7 +384,9 @@ impl Orchestrator {
                         .node_definition(n)
                         .expect("Node definition not found");
                     if matches!(definition, NodeDefinition::IfElse {}) {
-                        let cond = node_states.get(&n).and_then(|state| state.cond);
+                        let cond = node_states
+                            .get(&parent_location.with_node(n))
+                            .and_then(|state| state.cond);
                         should_traverse_if_else_port(workflow_graph, cond, p)
                     } else {
                         true
@@ -374,11 +400,11 @@ impl Orchestrator {
                     .node_definition(*n)
                     .expect("Node definition not found");
                 if matches!(definition, NodeDefinition::IfElse {}) {
-                    Self::if_else_ready(workflow_graph, node_states, *n)
+                    Self::if_else_ready(workflow_graph, node_states, parent_location, *n)
                 } else {
                     workflow_graph.all_inputs(*n, |incoming| {
                         node_states
-                            .get(&incoming)
+                            .get(&parent_location.with_node(incoming))
                             .is_some_and(|state| state.outputs.is_some())
                     })
                 }
@@ -389,16 +415,23 @@ impl Orchestrator {
     fn if_else_ready(
         workflow_graph: &WorkflowGraph,
         node_states: &NodeStates,
+        parent_location: &Location,
         n: NodeIndex,
     ) -> bool {
-        let cond = node_states.get(&n).and_then(|state| state.cond);
+        let cond = node_states
+            .get(&parent_location.with_node(n))
+            .and_then(|state| state.cond);
         match cond {
-            None => Self::port_has_input(workflow_graph, node_states, n, "pred")
+            None => Self::port_has_input(workflow_graph, node_states, parent_location, n, "pred")
                 .expect("No `pred` port on `IfElse` node"),
-            Some(true) => Self::port_has_input(workflow_graph, node_states, n, "if_true")
-                .expect("No `if_true` port on `IfElse` node"),
-            Some(false) => Self::port_has_input(workflow_graph, node_states, n, "if_false")
-                .expect("No `if_false` port on `IfElse` node"),
+            Some(true) => {
+                Self::port_has_input(workflow_graph, node_states, parent_location, n, "if_true")
+                    .expect("No `if_true` port on `IfElse` node")
+            }
+            Some(false) => {
+                Self::port_has_input(workflow_graph, node_states, parent_location, n, "if_false")
+                    .expect("No `if_false` port on `IfElse` node")
+            }
         }
     }
 
@@ -406,13 +439,14 @@ impl Orchestrator {
     fn port_has_input(
         workflow_graph: &WorkflowGraph,
         node_states: &NodeStates,
+        parent_location: &Location,
         n: NodeIndex,
         port_name: &str,
     ) -> miette::Result<bool> {
         let (connected_node, _) = workflow_graph.connected_input_by_port_name(n, port_name)?;
 
         Ok(node_states
-            .get(&connected_node)
+            .get(&parent_location.with_node(connected_node))
             .is_some_and(|state| state.outputs.is_some()))
     }
 
@@ -431,13 +465,13 @@ impl Orchestrator {
         Ok(())
     }
 
-    #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, node_states), fields(parent_location = %parent_location), err)]
     async fn build_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
         node_states: Arc<NodeStates>,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
         cond: Option<bool>,
     ) -> miette::Result<Action> {
         match cond {
@@ -445,7 +479,7 @@ impl Orchestrator {
                 let (pred_node, connected_port) =
                     workflow_graph.connected_input_by_port_name(n, "pred")?;
                 let pred_state = node_states
-                    .get(&pred_node)
+                    .get(&parent_location.with_node(pred_node))
                     .ok_or_else(|| miette!("Cannot find state for `pred` node"))?;
                 let connected_port_name = workflow_graph.get_port_name(connected_port)?;
 
@@ -460,32 +494,40 @@ impl Orchestrator {
                 .await?;
 
                 Ok(Action {
-                    loc,
+                    loc: parent_location.with_node(n),
                     kind: ActionKind::SetSwitching {
                         cond: pred_bytes == b"true",
                     },
                 })
             }
-            Some(true) => {
-                Self::build_branch_action(&workflow_graph, &node_states, n, loc, "if_true")
-            }
-            Some(false) => {
-                Self::build_branch_action(&workflow_graph, &node_states, n, loc, "if_false")
-            }
+            Some(true) => Self::build_branch_action(
+                &workflow_graph,
+                &node_states,
+                parent_location,
+                n,
+                "if_true",
+            ),
+            Some(false) => Self::build_branch_action(
+                &workflow_graph,
+                &node_states,
+                parent_location,
+                n,
+                "if_false",
+            ),
         }
     }
 
     fn build_branch_action(
         workflow_graph: &Arc<WorkflowGraph>,
         node_states: &NodeStates,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
         port_name: &str,
     ) -> miette::Result<Action> {
         let (connected_node, connected_port) =
             workflow_graph.connected_input_by_port_name(n, port_name)?;
         let node_state = node_states
-            .get(&connected_node)
+            .get(&parent_location.with_node(connected_node))
             .ok_or_else(|| miette!("Cannot find state for `{port_name}` node"))?;
         let connected_port_name = workflow_graph.get_port_name(connected_port)?;
 
@@ -499,20 +541,20 @@ impl Orchestrator {
         outputs.insert("value".to_string(), value.clone());
 
         Ok(Action {
-            loc,
+            loc: parent_location.with_node(n),
             kind: ActionKind::SetComplete { outputs },
         })
     }
 
-    #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, node_states), fields(parent_location = %parent_location), err)]
     async fn build_eager_if_else_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
         node_states: Arc<NodeStates>,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
     ) -> miette::Result<Action> {
-        let mut inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+        let mut inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
 
         let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred").await?;
         let mut outputs = HashMap::new();
@@ -526,7 +568,7 @@ impl Orchestrator {
         }
 
         Ok(Action {
-            loc,
+            loc: parent_location.with_node(n),
             kind: ActionKind::SetComplete { outputs },
         })
     }
@@ -571,15 +613,16 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip(self, workflow_graph, node_states), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, node_states), fields(parent_location = %parent_location), err)]
     async fn build_output_actions(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
         node_states: Arc<NodeStates>,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
     ) -> miette::Result<BoxStream<'_, miette::Result<Action>>> {
-        let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+        let inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
+        let loc = parent_location.with_node(n);
 
         let is_root_workflow = loc == Location::from_node_index_iter([workflow_graph.output_idx()]);
         let mut actions = vec![Ok(Action {
@@ -597,18 +640,19 @@ impl Orchestrator {
         Ok(stream::iter(actions).boxed())
     }
 
-    #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %parent_location.with_node(n)), err)]
     async fn build_eval_actions<'a>(
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
         node_states: Arc<NodeStates>,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         // TODO: we don't need to collect inputs other than the graph
         // itself if the graph has already started.
-        let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+        let inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
+        let loc = parent_location.with_node(n);
 
         let subgraph = if inputs.contains_key("graph") {
             self.load_subgraph(&inputs).await?
@@ -644,16 +688,17 @@ impl Orchestrator {
         Ok(stream.boxed_local())
     }
 
-    #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(parent_location = %parent_location), err)]
     async fn build_loop_actions<'a>(
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
         node_states: Arc<NodeStates>,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
         loop_index: Option<u32>,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
+        let loc = parent_location.with_node(n);
         match loop_index {
             None => {
                 return Ok(stream::once(future::ok(Action {
@@ -665,7 +710,8 @@ impl Orchestrator {
             Some(index) => {
                 // TODO: We probably don't need the inputs if we have already
                 // visited this loop iteration.
-                let mut inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+                let mut inputs =
+                    collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
                 let subgraph = self.load_subgraph(&inputs).await?;
 
                 let loop_loc = loc.with_loop_index(index);
@@ -724,18 +770,18 @@ impl Orchestrator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, workflow_run_state, node_states), fields(parent_location = %parent_location), err)]
     async fn build_map_actions<'a>(
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
         node_states: Arc<NodeStates>,
         mapped_ports: HashSet<String>,
+        parent_location: Location,
         n: NodeIndex,
-        loc: Location,
         completed: Option<BitVec<u8>>,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
-        let inputs = collect_inputs(&workflow_graph, &node_states, n)?;
+        let inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
         let subgraph = self.load_subgraph(&inputs).await?;
 
         Ok(match completed {
@@ -743,7 +789,7 @@ impl Orchestrator {
                 self.build_initial_map_actions(
                     workflow_run_state,
                     mapped_ports,
-                    loc,
+                    parent_location.with_node(n),
                     inputs,
                     subgraph,
                 )
@@ -753,7 +799,7 @@ impl Orchestrator {
                 .build_completed_map_action(
                     workflow_graph,
                     workflow_run_state,
-                    loc,
+                    parent_location,
                     n,
                     completed.len(),
                     subgraph.output_idx(),
@@ -763,7 +809,7 @@ impl Orchestrator {
             Some(completed) => {
                 self.build_subsequent_map_actions(
                     workflow_run_state,
-                    loc,
+                    parent_location.with_node(n),
                     completed,
                     inputs,
                     subgraph,
@@ -874,16 +920,17 @@ impl Orchestrator {
             .boxed_local())
     }
 
-    #[instrument(skip(self, workflow_graph, workflow_run_state), fields(loc = %loc), err)]
+    #[instrument(skip(self, workflow_graph, workflow_run_state), fields(parent_location = %parent_location), err)]
     async fn build_completed_map_action(
         &self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
-        loc: Location,
+        parent_location: Location,
         n: NodeIndex,
         map_size: usize,
         output_idx: NodeIndex,
     ) -> miette::Result<Action> {
+        let loc = parent_location.with_node(n);
         let mut asset_bundles: HashMap<String, Vec<_>> = workflow_graph
             .output_names(n)?
             .map(|name| (name.clone(), Vec::new()))
@@ -1085,16 +1132,16 @@ fn stream_error<'a>(err: miette::Error) -> BoxStream<'a, miette::Result<Action>>
 fn build_task_action(
     workflow_graph: Arc<WorkflowGraph>,
     node_states: &NodeStates,
+    parent_location: &Location,
     n: NodeIndex,
-    loc: Location,
     worker_name: &str,
     task_name: &str,
 ) -> miette::Result<Action> {
-    let inputs = collect_inputs(&workflow_graph, node_states, n)?;
+    let inputs = collect_inputs(&workflow_graph, node_states, parent_location, n)?;
     let outputs = workflow_graph.output_names(n)?.cloned().collect();
 
     Ok(Action {
-        loc,
+        loc: parent_location.with_node(n),
         kind: ActionKind::PerformTask {
             worker_name: worker_name.to_string(),
             task_name: task_name.to_string(),
@@ -1124,6 +1171,7 @@ fn should_traverse_if_else_port(
 fn collect_inputs(
     workflow_graph: &WorkflowGraph,
     node_states: &NodeStates,
+    parent_location: &Location,
     n: NodeIndex,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     let mut inputs = HashMap::new();
@@ -1132,7 +1180,7 @@ fn collect_inputs(
         let output_name = workflow_graph.get_port_name(o.into())?;
         let linked_node = workflow_graph.port_node(o)?;
         let node_state = node_states
-            .get(&linked_node)
+            .get(&parent_location.with_node(linked_node))
             .wrap_err_with(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
         let outputs = node_state
             .outputs

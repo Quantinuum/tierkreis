@@ -383,9 +383,8 @@ pub async fn read_node_states(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: uuid::Uuid,
     attempt: u32,
-    parent_location: &Location,
-    nodes: impl Iterator<Item = NodeIndex> + Send,
-) -> miette::Result<HashMap<NodeIndex, crate::state::interface::NodeState>> {
+    locations: &mut (dyn Iterator<Item = Location> + Send),
+) -> miette::Result<HashMap<Location, crate::state::interface::NodeState>> {
     use crate::state::schema::node_states::dsl as ns;
 
     let mut states = HashMap::new();
@@ -395,7 +394,7 @@ pub async fn read_node_states(
     let db_nodes = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
-        .filter(ns::node_location.eq_any(nodes.map(|n| parent_location.with_node(n))))
+        .filter(ns::node_location.eq_any(locations))
         .get_results::<NodeState>(conn)
         .await
         .into_diagnostic()
@@ -433,7 +432,7 @@ pub async fn read_node_states(
         let outputs = read_outputs(conn, &db_node).await?;
 
         states.insert(
-            db_node.node_location.last(),
+            db_node.node_location,
             crate::state::interface::NodeState {
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),

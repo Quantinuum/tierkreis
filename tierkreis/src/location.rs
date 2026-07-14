@@ -169,14 +169,6 @@ impl Location {
         components.pop();
         Location(components)
     }
-
-    pub fn last(&self) -> NodeIndex {
-        let last = self.0.last().unwrap();
-        match last {
-            LocationComponent::Node { node } => *node,
-            _ => panic!(),
-        }
-    }
 }
 
 impl std::fmt::Display for Location {

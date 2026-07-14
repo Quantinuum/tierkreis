@@ -12,6 +12,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use futures::FutureExt;
 use futures::future::{self, BoxFuture};
+use futures::stream::BoxStream;
 use miette::miette;
 use portgraph::NodeIndex;
 use tokio::sync::watch;
@@ -280,9 +281,8 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
 
     fn read_many<'a>(
         &'a self,
-        parent_location: &'a Location,
-        nodes: Vec<NodeIndex>,
-    ) -> BoxFuture<'a, miette::Result<HashMap<NodeIndex, NodeState>>> {
+        locations: &'a mut (dyn Iterator<Item = Location> + Send),
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
         async move {
             let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
                 return Err(miette!(
@@ -291,15 +291,14 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                     self.attempt
                 ));
             };
-            let states = nodes.into_iter().map(move |n| {
-                let location = parent_location.with_node(n);
+            let states = locations.map(move |location| {
                 let node_state = run_state
                     .value()
                     .nodes
                     .get(&location)
                     .cloned()
                     .unwrap_or_default();
-                Ok((n, node_state))
+                Ok((location, node_state))
             });
 
             states.collect()
