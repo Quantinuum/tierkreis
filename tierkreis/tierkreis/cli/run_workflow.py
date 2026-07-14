@@ -22,7 +22,7 @@ def run_workflow(  # noqa: PLR0913
     run_id: int | None = None,
     log_level: int | str = logging.INFO,
     registry_path: Path | None = None,
-    n_iterations: int = 10000,
+    n_iterations: int = 8640000,
     polling_interval_seconds: float = 0.1,
     *,
     print_output: bool = False,
@@ -50,7 +50,7 @@ def run_workflow(  # noqa: PLR0913
     :param use_uv_executor: Use the UV executor instead of ShellExecutor
         , defaults to False
     :type use_uv_executor: bool, optional
-    :param n_iterations: The maximum number of iterations, defaults to 10000
+    :param n_iterations: The maximum number of iterations, defaults to 8640000
     :type n_iterations: int, optional
     :param polling_interval_seconds: The controller tickrate, defaults to 0.1
     :type polling_interval_seconds: float, optional

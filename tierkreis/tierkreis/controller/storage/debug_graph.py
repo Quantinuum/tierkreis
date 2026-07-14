@@ -14,7 +14,7 @@ from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 def debug_graph[A: TModel, B: TModel](
     g: GraphData | Workflow[A, B],
     graph_inputs: dict[str, PType] | PType,
-    n_iterations: int = 10000,
+    n_iterations: int = 8640000,
     polling_interval_seconds: float = 0.01,
 ) -> ControllerInMemoryStorage:
     """Start a graph execution in debugging mode,.
@@ -29,7 +29,7 @@ def debug_graph[A: TModel, B: TModel](
      If a single PType is provided, it will be provided as the input "value".
     :type graph_inputs: dict[str, PType] | PType
     :param n_iterations: The maximum number of iterations to run the graph,
-        defaults to 10000
+        defaults to 8640000
     :type n_iterations: int, optional
     :param polling_interval_seconds: The polling interval in seconds, defaults to 0.01
     :type polling_interval_seconds: float, optional
