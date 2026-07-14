@@ -277,6 +277,33 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         .boxed()
     }
 
+    fn read_many<'a>(
+        &'a self,
+        locations: &'a mut (dyn Iterator<Item = Location> + Send),
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
+        async move {
+            let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
+                return Err(miette!(
+                    "Run Attempt with id {} and attempt {} not found",
+                    self.run_id,
+                    self.attempt
+                ));
+            };
+            let states = locations.map(move |location| {
+                let node_state = run_state
+                    .value()
+                    .nodes
+                    .get(&location)
+                    .cloned()
+                    .unwrap_or_default();
+                Ok((location, node_state))
+            });
+
+            states.collect()
+        }
+        .boxed()
+    }
+
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         entry.or_default().metadata.extend(metadata);

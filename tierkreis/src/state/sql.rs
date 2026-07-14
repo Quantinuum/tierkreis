@@ -37,8 +37,9 @@ use crate::{
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
         queries::{
             add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, read_node_state, read_run_attempt_metadata, read_workflow,
-            read_workflow_run, read_workflow_run_inputs, update_node_state,
+            insert_workflow_run_inputs, read_node_state, read_node_states,
+            read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs,
+            update_node_state,
         },
     },
 };
@@ -405,6 +406,18 @@ impl WorkflowRunState for SqliteWorkflowRunState {
             let _lock = self.lock.read().await;
             let mut conn = self.get_conn().await?;
             read_node_state(&mut conn, self.run_id, self.attempt, location).await
+        }
+        .boxed()
+    }
+
+    fn read_many<'a>(
+        &'a self,
+        locations: &'a mut (dyn Iterator<Item = Location> + Send),
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            read_node_states(&mut conn, self.run_id, self.attempt, locations).await
         }
         .boxed()
     }
