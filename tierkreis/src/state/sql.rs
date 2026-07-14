@@ -23,9 +23,8 @@ use diesel_async::{
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use futures::{FutureExt, StreamExt, future::BoxFuture, stream::BoxStream};
+use futures::{FutureExt, future::BoxFuture};
 use miette::{Context, IntoDiagnostic, miette};
-use portgraph::NodeIndex;
 use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 

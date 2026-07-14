@@ -16,7 +16,6 @@ use diesel::{
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use miette::{IntoDiagnostic, WrapErr, miette};
-use portgraph::NodeIndex;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
