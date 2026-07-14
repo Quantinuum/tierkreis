@@ -372,7 +372,7 @@ pub async fn read_node_state(
     }
 }
 
-/// Read the persisted node state for a workflow run at a given location.
+/// Read the persisted node state for a workflow run at multiple locations.
 ///
 /// # Errors
 ///
