@@ -1203,7 +1203,10 @@ impl Orchestrator {
         for (executor_name, executor) in self.executor_registry.iter() {
             if let Some(hpc_executor) = executor.as_ref().as_any().downcast_ref::<HPCExecutor>() {
                 let hpc_resources = HPCResourceSpec::new(
-                    resources.get("nodes").and_then(serde_json::Value::as_u64).unwrap_or(1) as u32,
+                    resources
+                        .get("nodes")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(1) as u32,
                     resources
                         .get("cores_per_node")
                         .and_then(serde_json::Value::as_u64)
@@ -2291,7 +2294,7 @@ mod tests {
     async fn do_resource_orchestration() -> miette::Result<()> {
         // Setup Orchestrator and registry
         let file_storage = FileAssetStorage::new(std::path::Path::new(
-            "/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/",
+            "/Users/philipp.seitz/.tierkreis/checkpoints/",
         ));
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
@@ -2315,7 +2318,7 @@ mod tests {
                 resources: HashMap::from([("nodes".to_string(), json!(2))]),
                 environment: HashMap::from([("mpi_available".to_string(), json!(true))]),
                 inputs: input_sets[0].clone(),
-                outputs: HashSet::from(["out".to_string()]),
+                outputs: HashSet::from(["value".to_string()]),
             },
         };
         orchestrator

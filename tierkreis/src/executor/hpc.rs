@@ -52,7 +52,7 @@ pub struct HPCResourceSpec {
 }
 
 impl HPCResourceSpec {
-    #[must_use] 
+    #[must_use]
     pub fn new(
         nodes: u32,
         cores_per_node: u32,
@@ -67,7 +67,7 @@ impl HPCResourceSpec {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn satisfies(&self, other: &HPCResourceSpec) -> bool {
         self.nodes >= other.nodes
             && self.cores_per_node >= other.cores_per_node
@@ -83,12 +83,12 @@ pub struct HPCEnvironmentSpec {
     mpi_available: bool,
 }
 impl HPCEnvironmentSpec {
-    #[must_use] 
+    #[must_use]
     pub fn new(mpi_available: bool) -> Self {
         Self { mpi_available }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn satisfies(&self, other: &HPCEnvironmentSpec) -> bool {
         !other.mpi_available || self.mpi_available
     }
@@ -641,7 +641,7 @@ mod tests {
     async fn execute_hpc() -> miette::Result<()> {
         // TODO: overwrite test_storage_registry in a way that the file system is the checkpoints dir
         let file_storage = FileAssetStorage::new(std::path::Path::new(
-            "/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/",
+            "/Users/philipp.seitz/.tierkreis/checkpoints/",
         ));
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
