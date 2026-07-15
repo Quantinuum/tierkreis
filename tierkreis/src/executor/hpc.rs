@@ -6,7 +6,8 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     process::ExitStatus,
-    sync::{Arc, Mutex}, time::Duration,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use futures::{
@@ -27,8 +28,17 @@ use which::which_re;
 
 use crate::{
     asset_storage::{
-        AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets
-    }, event::{EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent, send_cancelled, send_complete, send_error, send_running}, executor::{interface::{Executor, TaskPlan, WorkerSpec}, slurm::{parse_and_extract_job_id, poll_slurm_status, submit_job, write_jobscript}}, location::Location,
+        AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
+    },
+    event::{
+        EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
+        send_cancelled, send_complete, send_error, send_running,
+    },
+    executor::{
+        interface::{Executor, TaskPlan, WorkerSpec},
+        slurm::{parse_and_extract_job_id, poll_slurm_status, submit_job, write_jobscript},
+    },
+    location::Location,
 };
 
 /// [`HPCResourceSpec`] determines what Resources should be available to the
@@ -42,7 +52,12 @@ pub struct HPCResourceSpec {
 }
 
 impl HPCResourceSpec {
-    pub fn new(nodes: u32, cores_per_node: u32, memory_per_node_gb: u32, gpus_per_node: u32) -> Self {
+    pub fn new(
+        nodes: u32,
+        cores_per_node: u32,
+        memory_per_node_gb: u32,
+        gpus_per_node: u32,
+    ) -> Self {
         Self {
             nodes,
             cores_per_node,
@@ -58,7 +73,6 @@ impl HPCResourceSpec {
             && self.gpus_per_node >= other.gpus_per_node
     }
 }
-
 
 /// [`HPCEnvironmentSpec`] determines the default execution environment of
 /// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
@@ -87,7 +101,7 @@ pub struct BackgroundTaskPlan {
     pub script_path: PathBuf,
     done_file: PathBuf,
     outputs: HashMap<String, AssetSpec>,
-    resources: HPCResourceSpec, // Unused for now -> used to generate job script    
+    resources: HPCResourceSpec, // Unused for now -> used to generate job script
     environment: HPCEnvironmentSpec,
 }
 
@@ -199,7 +213,6 @@ async fn process_finished_task(
     Ok(())
 }
 
-
 /// Similar to subrocess executor
 /// Writes a jpobscript and then uses it to submit slurm
 /// Instead of waiting for the subprocess, polls slurm for job status
@@ -214,7 +227,6 @@ async fn start_task(
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
     send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
-
 
     write_jobscript(&task, &internal_task.script_path)?;
     // TODO: this is different than before, does it matter?
@@ -236,7 +248,8 @@ async fn start_task(
     let background_loc = loc.clone();
     dbg!(&job_id);
     let task = tokio::task::spawn(async move {
-        let exit_status = poll_slurm_status(&job_id, Duration::new(1, 0), Duration::new(60, 0)).await;
+        let exit_status =
+            poll_slurm_status(&job_id, Duration::new(1, 0), Duration::new(60, 0)).await;
         BackgroundTask {
             workflow_run_id,
             attempt,
@@ -256,7 +269,6 @@ async fn start_task(
 
     Ok(())
 }
-
 
 /// Identical to subprocess executor
 async fn process_tasks(
@@ -352,9 +364,7 @@ impl HPCExecutor {
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if let Some(subprocess_storage) = asset_storage_registry_lock.get(hpc_storage_name) {
             if !matches!(subprocess_storage.kind(), AssetKind::File { .. }) {
-                return Err(miette!(
-                    "hpc_storage_name must be of AssetKind::File"
-                ));
+                return Err(miette!("hpc_storage_name must be of AssetKind::File"));
             }
         } else {
             return Err(miette!("hpc_storage_name not in registry"));
@@ -413,26 +423,31 @@ impl HPCExecutor {
         inputs: &HashMap<String, AssetSpec>,
         base: &std::path::Path,
     ) -> Result<HashMap<String, PathBuf>, miette::Error> {
-        let inputs = transfer_assets(
-            &self.asset_storage_registry,
-            &self.hpc_storage_name,
-            inputs,
-        ).await?;
         let inputs =
-            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?.iter().map(|(k, v)| {
+            transfer_assets(&self.asset_storage_registry, &self.hpc_storage_name, inputs).await?;
+        let inputs = write_input_paths(&inputs)
+            .wrap_err("Failed to collect Worker input filepaths")?
+            .iter()
+            .map(|(k, v)| {
                 let rel_path = v.strip_prefix(base).into_diagnostic()?;
                 Ok((k.clone(), rel_path.to_path_buf()))
-            }).collect::<Result<HashMap<_, _>, miette::Error>>()?;
+            })
+            .collect::<Result<HashMap<_, _>, miette::Error>>()?;
         Ok(inputs)
     }
 
     /// Identical except for relative path. TODO: Might not be necessary if we have storage config
-    async fn build_outputs(&self, outputs: HashSet<String>, base: &std::path::Path) -> Result<OutputSpecs, miette::Error> {
+    async fn build_outputs(
+        &self,
+        outputs: HashSet<String>,
+        base: &std::path::Path,
+    ) -> Result<OutputSpecs, miette::Error> {
         let output_specs = reserve_asset_specs(
             &self.asset_storage_registry,
             &self.hpc_storage_name,
             outputs.len(),
-        ).await?;
+        )
+        .await?;
         let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
         let output_paths = outputs
             .iter()
@@ -497,29 +512,37 @@ impl Executor for HPCExecutor {
             //let mut ids = Vec::new();
             let mut task_sender = self.task_sender.clone();
 
-            let base_path = self.asset_storage_registry
+            let base_path = self
+                .asset_storage_registry
                 .read()
                 .await
                 .get(&self.hpc_storage_name)
                 .ok_or_else(|| miette!("subprocess_storage_name not in registry"))
                 .and_then(|file_storage| match file_storage.kind() {
                     AssetKind::File { root } => Ok(root),
-                    _ => Err(miette!("subprocess_storage_name must be of AssetKind::File")),
+                    _ => Err(miette!(
+                        "subprocess_storage_name must be of AssetKind::File"
+                    )),
                 })?;
 
             for task_plan in task_plans {
-                let inputs = self.build_inputs(&task_plan.inputs, &base_path.as_path()).await?;
-                let (outputs, output_paths) = self.build_outputs(task_plan.outputs, &base_path.as_path()).await?;
+                let inputs = self
+                    .build_inputs(&task_plan.inputs, &base_path.as_path())
+                    .await?;
+                let (outputs, output_paths) = self
+                    .build_outputs(task_plan.outputs, &base_path.as_path())
+                    .await?;
 
-                
-                let tmp_assets = &reserve_asset_specs(&self.asset_storage_registry, &self.hpc_storage_name, 2).await?;
+                let tmp_assets =
+                    &reserve_asset_specs(&self.asset_storage_registry, &self.hpc_storage_name, 2)
+                        .await?;
                 let worker_args = tmp_assets[0].path()?;
                 let file = std::fs::File::create(&worker_args).into_diagnostic()?;
                 let script_path = tmp_assets[1].path()?;
                 // Redirect the done_file to a temporary file as we
                 // do not need it to figure out if a process has
                 // completed currently.
-                let done_file = std::path::Path::new( "_done").to_path_buf();
+                let done_file = std::path::Path::new("_done").to_path_buf();
 
                 serde_json::to_writer(
                     file,
@@ -600,19 +623,28 @@ impl Executor for HPCExecutor {
 #[cfg(test)]
 mod tests {
 
-use futures::StreamExt;
+    use futures::StreamExt;
     use serde_json::json;
 
-    use crate::{asset_storage::{assert_registry_contains_values,  FileAssetStorage, test_storage_registry}, executor::HPCExecutor};
     use super::*;
+    use crate::{
+        asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
+        executor::HPCExecutor,
+    };
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
     async fn execute_hpc() -> miette::Result<()> {
         // TODO: overwrite test_storage_registry in a way that the file system is the checkpoints dir
-        let file_storage = FileAssetStorage::new(std::path::Path::new("/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/"));
-        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
-        registry.write().await.insert("checkpoints".to_string(), Box::new(file_storage));
+        let file_storage = FileAssetStorage::new(std::path::Path::new(
+            "/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/",
+        ));
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
+        registry
+            .write()
+            .await
+            .insert("checkpoints".to_string(), Box::new(file_storage));
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
         let task_plans = vec![TaskPlan {
@@ -633,7 +665,14 @@ use futures::StreamExt;
         let environment = HPCEnvironmentSpec {
             mpi_available: true,
         };
-        let executor = HPCExecutor::try_new(&registry, "checkpoints", "checkpoints", resources, environment).await?;
+        let executor = HPCExecutor::try_new(
+            &registry,
+            "checkpoints",
+            "checkpoints",
+            resources,
+            environment,
+        )
+        .await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -659,5 +698,4 @@ use futures::StreamExt;
 
         Ok(())
     }
-    
 }

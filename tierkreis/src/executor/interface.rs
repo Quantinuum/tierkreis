@@ -2,8 +2,8 @@
 This module defines the interface contracts that the various [Executor]
 implementations must satisfy.
 */
-use std::collections::{HashMap, HashSet};
 use std::any::Any;
+use std::collections::{HashMap, HashSet};
 
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;

@@ -31,7 +31,11 @@ use crate::{
         EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
     },
-    executor::{ExecutorRegistry, HPCExecutor, hpc::{HPCResourceSpec, HPCEnvironmentSpec}, interface::TaskPlan},
+    executor::{
+        ExecutorRegistry, HPCExecutor,
+        hpc::{HPCEnvironmentSpec, HPCResourceSpec},
+        interface::TaskPlan,
+    },
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
@@ -1047,7 +1051,6 @@ impl Orchestrator {
             exec_plans.insert(exec.clone(), ActionPlan::default());
         }
         let default_executor_name = &self.default_executor_name;
-        
 
         //let mut plan = ActionPlan::default();
         let mut event_sender = self.event_sender.clone();
@@ -1061,7 +1064,7 @@ impl Orchestrator {
                     outputs,
                     resources,
                     environment,
-            } => {
+                } => {
                     let executor = self.orchestrate(&resources, &environment);
                     exec_plans.get_mut(&executor).unwrap().tasks.push(TaskPlan {
                         worker_name,
@@ -1073,15 +1076,27 @@ impl Orchestrator {
                         outputs,
                         ..Default::default()
                     })
-            }
+                }
                 ActionKind::SetSwitching { cond } => {
-                    exec_plans.get_mut(default_executor_name).unwrap().switching.push((loc, cond));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .switching
+                        .push((loc, cond));
                 }
                 ActionKind::SetRunningLoop { index } => {
-                    exec_plans.get_mut(default_executor_name).unwrap().looping.push((loc, index));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .looping
+                        .push((loc, index));
                 }
                 ActionKind::SetRunningMap { size } => {
-                    exec_plans.get_mut(default_executor_name).unwrap().mapping.push((loc, size));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .mapping
+                        .push((loc, size));
                 }
                 ActionKind::SetMapElemComplete { index, size } => {
                     let entry = exec_plans
@@ -1093,29 +1108,67 @@ impl Orchestrator {
                     entry.set(index, true);
                 }
                 ActionKind::SetComplete { outputs } => {
-                    exec_plans.get_mut(default_executor_name).unwrap().node_complete.push((loc, outputs));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .node_complete
+                        .push((loc, outputs));
                 }
                 ActionKind::WorkflowFinished {} => {
-                    exec_plans.get_mut(default_executor_name).unwrap().workflow_complete = true;
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .workflow_complete = true;
                 }
             }
         }
 
-        if !exec_plans.get(default_executor_name).unwrap().node_complete.is_empty() {
-            let (locs, outputs) = exec_plans.get(default_executor_name).unwrap().node_complete.clone().into_iter().unzip();
+        if !exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .node_complete
+            .is_empty()
+        {
+            let (locs, outputs) = exec_plans
+                .get(default_executor_name)
+                .unwrap()
+                .node_complete
+                .clone()
+                .into_iter()
+                .unzip();
             send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
         }
 
-        for (loc, size) in exec_plans.get(default_executor_name).unwrap().mapping.clone() {
+        for (loc, size) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .mapping
+            .clone()
+        {
             send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
         }
-        for (loc, bits) in exec_plans.get(default_executor_name).unwrap().map_elem_complete.clone() {
+        for (loc, bits) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .map_elem_complete
+            .clone()
+        {
             send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
         }
-        for (loc, index) in exec_plans.get(default_executor_name).unwrap().looping.clone() {
+        for (loc, index) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .looping
+            .clone()
+        {
             send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
         }
-        for (loc, cond) in exec_plans.get(default_executor_name).unwrap().switching.clone() {
+        for (loc, cond) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .switching
+            .clone()
+        {
             send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
         }
 
@@ -1126,9 +1179,13 @@ impl Orchestrator {
             let executor = self
                 .executor_registry
                 .get(&executor_name)
-                .ok_or_else(|| miette!("Could not find an executor with name '{executor_name}' in ExecutorRegistry"))
+                .ok_or_else(|| {
+                    miette!(
+                        "Could not find an executor with name '{executor_name}' in ExecutorRegistry"
+                    )
+                })
                 .wrap_err("Could not run Task Nodes")?;
-        
+
             executor
                 .execute(task_plans.tasks)
                 .await
@@ -1138,19 +1195,37 @@ impl Orchestrator {
         Ok(())
     }
 
-    fn orchestrate(&self, resources: &HashMap<String, Value>, environment: &HashMap<String, Value>,) -> String {
+    fn orchestrate(
+        &self,
+        resources: &HashMap<String, Value>,
+        environment: &HashMap<String, Value>,
+    ) -> String {
         for (executor_name, executor) in self.executor_registry.iter() {
             if let Some(hpc_executor) = executor.as_ref().as_any().downcast_ref::<HPCExecutor>() {
                 let hpc_resources = HPCResourceSpec::new(
                     resources.get("nodes").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                    resources.get("cores_per_node").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                    resources.get("memory_per_node_gb").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                    resources.get("gpus_per_node").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+                    resources
+                        .get("cores_per_node")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("memory_per_node_gb")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("gpus_per_node")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u32,
                 );
                 let hpc_environment = HPCEnvironmentSpec::new(
-                    environment.get("mpi_available").and_then(|v| v.as_bool()).unwrap_or(false),
+                    environment
+                        .get("mpi_available")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 );
-                if hpc_executor.max_resources.satisfies(&hpc_resources) && hpc_executor.environment.satisfies(&hpc_environment) {
+                if hpc_executor.max_resources.satisfies(&hpc_resources)
+                    && hpc_executor.environment.satisfies(&hpc_environment)
+                {
                     return executor_name.clone();
                 }
             }
@@ -1291,12 +1366,12 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        asset_storage::{assert_registry_contains_values, test_storage_registry, FileAssetStorage},
+        asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
         builder::*,
         event::{NodeEvent, NodeStatus},
         executor::{
+            hpc::HPCEnvironmentSpec, hpc::HPCExecutor, hpc::HPCResourceSpec,
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
-            hpc::HPCExecutor, hpc::HPCResourceSpec, hpc::HPCEnvironmentSpec,
         },
         graph::LegacyWorkflowGraph,
         state::{inmemory::InMemoryWorkflowRunState, interface::NodeState},
@@ -1329,11 +1404,31 @@ mod tests {
         let environment = HPCEnvironmentSpec::new(true);
         executor_registry.insert(
             "large".to_string(),
-            Box::new(HPCExecutor::try_new(asset_storage_registry, "checkpoints", "checkpoints", HPCResourceSpec::new(2, 1, 4, 1), environment.clone()).await.unwrap()),
+            Box::new(
+                HPCExecutor::try_new(
+                    asset_storage_registry,
+                    "checkpoints",
+                    "checkpoints",
+                    HPCResourceSpec::new(2, 1, 4, 1),
+                    environment.clone(),
+                )
+                .await
+                .unwrap(),
+            ),
         );
         executor_registry.insert(
             "small".to_string(),
-            Box::new(HPCExecutor::try_new(asset_storage_registry, "checkpoints", "checkpoints", HPCResourceSpec::new(1, 1, 2, 1), environment).await.unwrap()),
+            Box::new(
+                HPCExecutor::try_new(
+                    asset_storage_registry,
+                    "checkpoints",
+                    "checkpoints",
+                    HPCResourceSpec::new(1, 1, 2, 1),
+                    environment,
+                )
+                .await
+                .unwrap(),
+            ),
         );
 
         Arc::new(executor_registry)
@@ -2190,21 +2285,23 @@ mod tests {
 
         Ok(())
     }
-   
+
     #[rstest]
     #[tokio::test]
     async fn do_resource_orchestration() -> miette::Result<()> {
         // Setup Orchestrator and registry
-        let file_storage = FileAssetStorage::new(std::path::Path::new("/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/"));
-        let (registry, input_sets, _dir) = test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
-        registry.write().await.insert("checkpoints".to_string(), Box::new(file_storage));
+        let file_storage = FileAssetStorage::new(std::path::Path::new(
+            "/Users/philipp.seitz/.tierkreis/checkpoints/00000000-0000-0000-0000-000000000016/",
+        ));
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
+        registry
+            .write()
+            .await
+            .insert("checkpoints".to_string(), Box::new(file_storage));
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
-            &registry,
-            &executor_registry,
-            "memory",
-            "memory",
-        ).await?;
+        let orchestrator =
+            Orchestrator::try_new(&registry, &executor_registry, "memory", "memory").await?;
         let stream = orchestrator.listen()?;
 
         // new setup
@@ -2213,12 +2310,12 @@ mod tests {
         let action = Action {
             loc: Location::new("N1")?,
             kind: ActionKind::PerformTask {
-            worker_name: "mpi_worker".to_string(),
-            task_name: "mpi_rank_info_with_input".to_string(),
-            resources: HashMap::from([("nodes".to_string(), json!(2))]),
-            environment: HashMap::from([("mpi_available".to_string(), json!(true))]),
-            inputs: input_sets[0].clone(),
-            outputs: HashSet::from(["out".to_string()]),
+                worker_name: "mpi_worker".to_string(),
+                task_name: "mpi_rank_info_with_input".to_string(),
+                resources: HashMap::from([("nodes".to_string(), json!(2))]),
+                environment: HashMap::from([("mpi_available".to_string(), json!(true))]),
+                inputs: input_sets[0].clone(),
+                outputs: HashSet::from(["out".to_string()]),
             },
         };
         orchestrator
@@ -2249,8 +2346,6 @@ mod tests {
         )
         .await;
 
-
         Ok(())
     }
 }
- 
