@@ -3,6 +3,7 @@ This module defines the interface contracts that the various [Executor]
 implementations must satisfy.
 */
 use std::collections::{HashMap, HashSet};
+use std::any::Any;
 
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
@@ -54,7 +55,7 @@ pub struct WorkerSpec {
 }
 
 /// The [Executor] defines the minimum methods required for Task execution.
-pub trait Executor: Send + Sync {
+pub trait Executor: Send + Sync + Any {
     /// Return a list of the Workers available to the Executor with their metadata.
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>>;
     /// Dispatch a list of [`TaskPlan`]s to be run on an [Executor], returning a list of Task
@@ -86,4 +87,7 @@ pub trait Executor: Send + Sync {
         attempt: u32,
         task_locations: Vec<Location>,
     ) -> BoxFuture<'_, miette::Result<()>>;
+
+    /// Return this executor as [`Any`] for runtime type checks when needed.
+    fn as_any(&self) -> &dyn Any;
 }

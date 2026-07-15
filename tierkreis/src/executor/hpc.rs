@@ -34,12 +34,47 @@ use crate::{
 /// [`HPCResourceSpec`] determines what Resources should be available to the
 /// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct HPCResourceSpec {}
+pub struct HPCResourceSpec {
+    nodes: u32,
+    cores_per_node: u32,
+    memory_per_node_gb: u32,
+    gpus_per_node: u32,
+}
+
+impl HPCResourceSpec {
+    pub fn new(nodes: u32, cores_per_node: u32, memory_per_node_gb: u32, gpus_per_node: u32) -> Self {
+        Self {
+            nodes,
+            cores_per_node,
+            memory_per_node_gb,
+            gpus_per_node,
+        }
+    }
+
+    pub fn satisfies(&self, other: &HPCResourceSpec) -> bool {
+        self.nodes >= other.nodes
+            && self.cores_per_node >= other.cores_per_node
+            && self.memory_per_node_gb >= other.memory_per_node_gb
+            && self.gpus_per_node >= other.gpus_per_node
+    }
+}
+
 
 /// [`HPCEnvironmentSpec`] determines the default execution environment of
 /// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct HPCEnvironmentSpec {}
+pub struct HPCEnvironmentSpec {
+    mpi_available: bool,
+}
+impl HPCEnvironmentSpec {
+    pub fn new(mpi_available: bool) -> Self {
+        Self { mpi_available }
+    }
+
+    pub fn satisfies(&self, other: &HPCEnvironmentSpec) -> bool {
+        !other.mpi_available || self.mpi_available
+    }
+}
 
 #[derive(Clone)]
 pub struct BackgroundTaskPlan {
@@ -288,6 +323,8 @@ pub struct HPCExecutor {
     // no copying will occur.
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+    pub max_resources: HPCResourceSpec,
+    pub environment: HPCEnvironmentSpec,
 }
 
 type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
@@ -309,6 +346,8 @@ impl HPCExecutor {
         asset_storage_registry: &AssetStorageRegistry,
         hpc_storage_name: &str,
         output_storage_name: &str,
+        max_resources: HPCResourceSpec,
+        environment: HPCEnvironmentSpec,
     ) -> miette::Result<Self> {
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if let Some(subprocess_storage) = asset_storage_registry_lock.get(hpc_storage_name) {
@@ -344,6 +383,9 @@ impl HPCExecutor {
             hpc_storage_name: hpc_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
+
+            max_resources,
+            environment,
         })
     }
 
@@ -441,6 +483,10 @@ fn write_input_paths(
 }
 
 impl Executor for HPCExecutor {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
     }
@@ -578,7 +624,16 @@ use futures::StreamExt;
 
             ..Default::default()
         }];
-        let executor = HPCExecutor::try_new(&registry, "checkpoints", "checkpoints").await?;
+        let resources = HPCResourceSpec {
+            nodes: 2,
+            cores_per_node: 1,
+            memory_per_node_gb: 1,
+            gpus_per_node: 0,
+        };
+        let environment = HPCEnvironmentSpec {
+            mpi_available: true,
+        };
+        let executor = HPCExecutor::try_new(&registry, "checkpoints", "checkpoints", resources, environment).await?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;

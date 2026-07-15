@@ -435,6 +435,10 @@ fn write_input_paths(
 }
 
 impl Executor for SubprocessExecutor {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
     }
