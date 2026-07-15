@@ -5,10 +5,13 @@ as well as some utility functions and an [`ExecutorRegistry`] type.
 pub mod inmemory;
 pub mod interface;
 pub mod subprocess;
+pub mod hpc;
+pub mod slurm;
 
 pub use crate::executor::inmemory::InMemoryExecutor;
 pub use crate::executor::interface::Executor;
 pub use crate::executor::subprocess::SubprocessExecutor;
+pub use crate::executor::hpc::HPCExecutor;
 
 use std::{collections::HashMap, sync::Arc};
 
