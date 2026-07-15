@@ -30,6 +30,7 @@ use crate::{
     event::{
         EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
+        send_workflow_run_complete,
     },
     executor::{
         ExecutorRegistry, HPCExecutor,
@@ -1067,6 +1068,9 @@ impl Orchestrator {
                 } => {
                     let executor = self.orchestrate(&resources, &environment);
                     exec_plans.get_mut(&executor).unwrap().tasks.push(TaskPlan {
+                        workflow_run_id,
+                        attempt,
+                        loc,
                         worker_name,
                         task_name,
                         inputs: inputs.clone(),
@@ -1172,6 +1176,10 @@ impl Orchestrator {
             send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
         }
 
+        let workflow_complete = exec_plans
+            .get(default_executor_name)
+            .is_some_and(|plan| plan.workflow_complete);
+
         for (executor_name, task_plans) in exec_plans {
             if task_plans.tasks.is_empty() {
                 continue;
@@ -1190,6 +1198,10 @@ impl Orchestrator {
                 .execute(task_plans.tasks)
                 .await
                 .wrap_err("Could not run Task Nodes")?;
+        }
+
+        if workflow_complete {
+            send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
         }
 
         Ok(())
@@ -1403,6 +1415,9 @@ mod tests {
                     .unwrap(),
             ),
         );
+        if !asset_storage_registry.read().await.contains_key("checkpoints") {
+            return Arc::new(executor_registry);
+        }
 
         let environment = HPCEnvironmentSpec::new(true);
         executor_registry.insert(
