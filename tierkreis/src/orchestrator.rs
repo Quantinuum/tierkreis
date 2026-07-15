@@ -1415,7 +1415,11 @@ mod tests {
                     .unwrap(),
             ),
         );
-        if !asset_storage_registry.read().await.contains_key("checkpoints") {
+        if !asset_storage_registry
+            .read()
+            .await
+            .contains_key("checkpoints")
+        {
             return Arc::new(executor_registry);
         }
 
