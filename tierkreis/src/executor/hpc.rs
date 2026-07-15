@@ -52,6 +52,7 @@ pub struct HPCResourceSpec {
 }
 
 impl HPCResourceSpec {
+    #[must_use] 
     pub fn new(
         nodes: u32,
         cores_per_node: u32,
@@ -66,6 +67,7 @@ impl HPCResourceSpec {
         }
     }
 
+    #[must_use] 
     pub fn satisfies(&self, other: &HPCResourceSpec) -> bool {
         self.nodes >= other.nodes
             && self.cores_per_node >= other.cores_per_node
@@ -81,10 +83,12 @@ pub struct HPCEnvironmentSpec {
     mpi_available: bool,
 }
 impl HPCEnvironmentSpec {
+    #[must_use] 
     pub fn new(mpi_available: bool) -> Self {
         Self { mpi_available }
     }
 
+    #[must_use] 
     pub fn satisfies(&self, other: &HPCEnvironmentSpec) -> bool {
         !other.mpi_available || self.mpi_available
     }
@@ -527,10 +531,10 @@ impl Executor for HPCExecutor {
 
             for task_plan in task_plans {
                 let inputs = self
-                    .build_inputs(&task_plan.inputs, &base_path.as_path())
+                    .build_inputs(&task_plan.inputs, base_path.as_path())
                     .await?;
                 let (outputs, output_paths) = self
-                    .build_outputs(task_plan.outputs, &base_path.as_path())
+                    .build_outputs(task_plan.outputs, base_path.as_path())
                     .await?;
 
                 let tmp_assets =

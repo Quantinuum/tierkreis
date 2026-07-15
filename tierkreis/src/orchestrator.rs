@@ -1075,7 +1075,7 @@ impl Orchestrator {
                         environment,
                         outputs,
                         ..Default::default()
-                    })
+                    });
                 }
                 ActionKind::SetSwitching { cond } => {
                     exec_plans
@@ -1203,24 +1203,24 @@ impl Orchestrator {
         for (executor_name, executor) in self.executor_registry.iter() {
             if let Some(hpc_executor) = executor.as_ref().as_any().downcast_ref::<HPCExecutor>() {
                 let hpc_resources = HPCResourceSpec::new(
-                    resources.get("nodes").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
+                    resources.get("nodes").and_then(serde_json::Value::as_u64).unwrap_or(1) as u32,
                     resources
                         .get("cores_per_node")
-                        .and_then(|v| v.as_u64())
+                        .and_then(serde_json::Value::as_u64)
                         .unwrap_or(1) as u32,
                     resources
                         .get("memory_per_node_gb")
-                        .and_then(|v| v.as_u64())
+                        .and_then(serde_json::Value::as_u64)
                         .unwrap_or(1) as u32,
                     resources
                         .get("gpus_per_node")
-                        .and_then(|v| v.as_u64())
+                        .and_then(serde_json::Value::as_u64)
                         .unwrap_or(0) as u32,
                 );
                 let hpc_environment = HPCEnvironmentSpec::new(
                     environment
                         .get("mpi_available")
-                        .and_then(|v| v.as_bool())
+                        .and_then(serde_json::Value::as_bool)
                         .unwrap_or(false),
                 );
                 if hpc_executor.max_resources.satisfies(&hpc_resources)
