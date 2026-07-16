@@ -46,7 +46,8 @@ pub async fn serve(
         .routes(routes!(routes::list_workflows))
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
-        .routes(routes!(routes::get_single_output));
+        .routes(routes!(routes::get_single_output))
+        .routes(routes!(routes::get_input));
     let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
         .nest("/api", api_router)
         .split_for_parts();

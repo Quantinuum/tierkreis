@@ -3,6 +3,8 @@ use super::models::{AppState, RuntimeMetadata, WorkflowDisplay};
 use axum::{
     Json,
     extract::{Path, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
 use std::collections::HashMap;
@@ -185,4 +187,68 @@ pub async fn get_single_output(
     let node_state = run_state.read(&loc).await?;
     let result = try_load_output_value(&port_name, &node_state, &state.asset_registry).await?;
     Ok(Json(result))
+}
+
+/// Get the input for a specific port of a node in a workflow run, returning the raw value as JSON or text.
+///
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the input value cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("node_location_str" = String, Path, description = "Location string"),
+        ("port_name" = String, Path, description = "Output port name"),
+    ),
+    responses(
+        (status = OK, description = "Input value as JSON or text"),
+        (status = 404, description = "Input not found"),
+    )
+)]
+pub async fn get_input(
+    State(state): State<AppState>,
+    Path((run_id, node_location_str, port_name)): Path<(Uuid, String, String)>,
+) -> HandlerResult<Response> {
+    let run_state = state
+        .runtime_state
+        .load_workflow_run_state(run_id, 0)
+        .await?;
+
+    let workflow_id = run_state.workflow_id();
+    let top_level_graph = state.runtime_state.load_workflow(workflow_id).await?;
+
+    let loc = parse_location(&node_location_str)?;
+    let node_location = loc.to_string();
+    let parent_location = loc.parent();
+    let (graph, prefix) = load_graph(&top_level_graph, &parent_location.to_string()).await?;
+    // TODO can we avoid constructing this?
+    let py_graph =
+        build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?;
+
+    let Some(edge) = py_graph
+        .edges
+        .into_iter()
+        .find(|edge| edge.to_node == node_location && edge.to_port == port_name)
+    else {
+        return Ok((
+            StatusCode::NOT_FOUND,
+            format!("Input port '{port_name}' not found for node '{node_location_str}'"),
+        )
+            .into_response());
+    };
+
+    let Some(raw_value) = edge.value else {
+        return Ok((
+            StatusCode::NOT_FOUND,
+            format!("Input for port '{port_name}' is not available yet"),
+        )
+            .into_response());
+    };
+
+    match serde_json::from_str::<serde_json::Value>(&raw_value) {
+        Ok(value) => Ok(Json(value).into_response()),
+        Err(_) => Ok(raw_value.into_response()),
+    }
 }
