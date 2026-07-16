@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
-use tierkreis::runtime::{RuntimeConfig, asset_storage_registry_from_config};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tierkreis::runtime::{RuntimeConfig, asset_storage_registry_from_config};
 use tierkreis::state::SqliteRuntimeState;
 
 /// Tierkreis: a workflow engine for quantum HPC.
@@ -51,7 +51,8 @@ fn main() -> miette::Result<()> {
                 .block_on(async {
                     // TODO: potentially use from config here?
                     let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
-                    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default());
+                    let asset_registry =
+                        asset_storage_registry_from_config(&RuntimeConfig::default());
                     tierkreis::server::serve(runtime_state, asset_registry).await
                 })?;
         }

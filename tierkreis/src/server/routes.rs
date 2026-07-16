@@ -1,17 +1,22 @@
-use super::models::{WorkflowDisplay, RuntimeMetadata, AppState};
+use super::models::{AppState, RuntimeMetadata, WorkflowDisplay};
 
-use std::collections::HashMap;
 use axum::{
-    Json, extract::{Path,State}
+    Json,
+    extract::{Path, State},
 };
 use axum_extra::extract::Query;
+use std::collections::HashMap;
 
+use crate::{
+    location::Location,
+    server::{
+        models::{GraphsQuery, GraphsResponse, HandlerResult},
+        nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs},
+    },
+    state::{RuntimeState, queries::list_workflow_run_summaries},
+};
 use miette::IntoDiagnostic;
 use uuid::Uuid;
-use crate::{
-    location::Location, server::{models::{GraphsQuery, GraphsResponse, HandlerResult}, nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs}}, state::{RuntimeState, queries::list_workflow_run_summaries},
-};
-
 
 #[utoipa::path(get, path = "/info", responses((status = OK, body = RuntimeMetadata)))]
 pub async fn get_info() -> Json<RuntimeMetadata> {
@@ -20,6 +25,9 @@ pub async fn get_info() -> Json<RuntimeMetadata> {
     })
 }
 
+/// List all workflows in the database, returning a summary of each.
+///
+/// Errors: Returns an internal server error if the database query fails.
 #[utoipa::path(
     get,
     path = "/workflows/",
@@ -41,15 +49,13 @@ pub async fn list_workflows(
             let errors: Vec<String> = s
                 .errored_locations
                 .iter()
-                .map(|loc| loc.to_string())
+                .map(std::string::ToString::to_string)
                 .collect();
             WorkflowDisplay {
                 id: s.run_id, // TODO: THIS IS THE RUN_ID NOT THE WORKFLOW_ID, FIX THIS THIS ALSO AFFECTS `list_nodes()`
                 id_int,
                 name: s.name,
-                start_time: s
-                    .started_time
-                    .map_or_else(String::new, |t| t.to_rfc3339()),
+                start_time: s.started_time.map_or_else(String::new, |t| t.to_rfc3339()),
                 errors,
                 tkr_version: env!("CARGO_PKG_VERSION").to_string(), // TODO: store the metadata in the database
             }
@@ -59,7 +65,9 @@ pub async fn list_workflows(
     Ok(Json(displays))
 }
 
-
+/// Get the graphs for a specific workflow.
+///
+/// Errors: Returns an internal server error if the workflow is not found or if the graph cannot be built.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/graphs",
@@ -77,7 +85,6 @@ pub async fn list_nodes(
     Path(run_id): Path<Uuid>, //TODO currently we only have the RUN_ID from the frontend
     Query(query): Query<GraphsQuery>,
 ) -> HandlerResult<Json<GraphsResponse>> {
-
     // Once we get the actual workflow ID the logic needs to be reversed
     // Or the frontend needs to start submitting run_ids
     let run_state = state
@@ -93,9 +100,7 @@ pub async fn list_nodes(
 
     let mut graphs = HashMap::new();
     for loc_str in &query.locs {
-        tracing::info!("Loading graph with prefix {}", loc_str);
         let (graph, prefix) = load_graph(&top_level_graph, loc_str).await?;
-        tracing::info!("Loaded {:?} with prefix {}", graph, prefix.to_string());
         let py_graph =
             build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?;
         graphs.insert(loc_str.clone(), py_graph);
@@ -112,7 +117,9 @@ fn parse_location(s: &str) -> miette::Result<Location> {
     }
 }
 
-
+/// List all outputs for a specific node in a workflow run, returning a map of port name to value.
+///
+/// Errors: Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs",
@@ -141,6 +148,9 @@ pub async fn get_all_outputs(
     Ok(Json(result))
 }
 
+/// List the output for a specific port of a node in a workflow run, returning the raw value as JSON or text.
+///
+/// Errors: Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}",

@@ -1,24 +1,24 @@
 /*!
 The models module defines the data structures used by the server.
 */
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::watch;
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use crate::{
     asset_storage::AssetStorageRegistry,
-    graph::{NodeDefinition},
+    graph::NodeDefinition,
     state::{
         ConnPool, SqliteRuntimeState,
         interface::{NodeState, RuntimeWatchState},
     },
+};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 
 pub struct AppError(miette::Report);
@@ -47,13 +47,11 @@ pub struct AppState {
     pub pool: ConnPool,
 }
 
-
 /// Runtime metadata returned by `/api/info`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RuntimeMetadata {
     pub version: String,
 }
-
 
 /// Workflow display information returned by `/api/workflows/`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -68,7 +66,6 @@ pub struct WorkflowDisplay {
     pub tkr_version: String,
     // TODO: wf id / attempt
 }
-
 
 /// The status of a node in the workflow graph.
 /// TODO: Enable remaining states
@@ -99,19 +96,16 @@ pub enum NodeStatus {
     // Cancelled,
 }
 
-
+#[must_use]
 pub fn node_status_from_state(state: &NodeState) -> NodeStatus {
     if state.complete_time.is_some() {
         NodeStatus::Finished
-    } else if state.error_time.is_some() {
+    } else if state.error_time.is_some() || state.cancelled_time.is_some() {
         NodeStatus::Error
-    } else if state.cancelled_time.is_some() {
-        NodeStatus::Error
-    } else if state.running_time.is_some() {
-        NodeStatus::Running
-    } else if state.queued_time.is_some() {
-        NodeStatus::Running
-    } else if state.scheduled_time.is_some() {
+    } else if state.running_time.is_some()
+        || state.queued_time.is_some()
+        || state.scheduled_time.is_some()
+    {
         NodeStatus::Running
     } else {
         NodeStatus::NotStarted
@@ -151,6 +145,7 @@ pub enum NodeType {
 }
 
 // TODO can we simply serde NodeDefinition
+#[must_use]
 pub fn node_type_from_def(def: &NodeDefinition) -> NodeType {
     match def {
         NodeDefinition::Input { .. } => NodeType::Input,
@@ -166,6 +161,7 @@ pub fn node_type_from_def(def: &NodeDefinition) -> NodeType {
 }
 
 // TODO can we serde this directly?
+#[must_use]
 pub fn function_name_from_def(def: &NodeDefinition) -> String {
     match def {
         NodeDefinition::Input { name } => name.clone(),
@@ -258,4 +254,3 @@ pub struct GraphsQuery {
     #[serde(default)]
     pub locs: Vec<String>,
 }
-

@@ -4,28 +4,26 @@ The server module defines the HTTP visualization interface to the Workflow serve
 #[allow(missing_docs)]
 pub mod models;
 #[allow(missing_docs)]
-pub mod routes;
-#[allow(missing_docs)]
 pub mod nodes;
+#[allow(missing_docs)]
+pub mod routes;
 
+use axum::{http::StatusCode, response::IntoResponse};
+use miette::{IntoDiagnostic, WrapErr};
 use std::sync::Arc;
-use axum::{
-    http::StatusCode,
-};
-use miette::IntoDiagnostic;
 use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    asset_storage::AssetStorageRegistry, 
-    state::{
-        RuntimeState, SqliteRuntimeState,
-        build_conn_pool,
-    },
+    asset_storage::AssetStorageRegistry,
+    state::{RuntimeState, SqliteRuntimeState, build_conn_pool},
 };
 
 /// Server entry point.
+///
+/// # Errors: Returns an error if the current directory cannot be read, static frontend files
+/// cannot be found, or the HTTP server fails to bind or run.
 pub async fn serve(
     runtime_state: Arc<SqliteRuntimeState>,
     asset_registry: AssetStorageRegistry,
@@ -47,12 +45,16 @@ pub async fn serve(
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
         .routes(routes!(routes::get_single_output));
-    let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) =
-        OpenApiRouter::new().nest("/api", api_router).split_for_parts();
-    let mut router = api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
+    let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
+        .nest("/api", api_router)
+        .split_for_parts();
+    let mut router =
+        api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
 
     // SPA
-    let dist = std::env::current_dir().unwrap_or_default()
+    let dist = std::env::current_dir()
+        .into_diagnostic()
+        .wrap_err("Failed to resolve current working directory")?
         .join("tierkreis_visualization/tierkreis_visualization/static/dist");
     if dist.exists() {
         let index = dist.join("index.html");
@@ -68,14 +70,13 @@ pub async fn serve(
                 let index = index.clone();
                 async move {
                     match tokio::fs::read(index).await {
-                        Ok(bytes) => axum::response::Response::builder()
-                            .header("Content-Type", "text/html; charset=utf-8")
-                            .body(axum::body::Body::from(bytes))
-                            .unwrap(),
-                        Err(_) => axum::response::Response::builder()
-                            .status(StatusCode::NOT_FOUND)
-                            .body(axum::body::Body::from("index.html not found"))
-                            .unwrap(),
+                        Ok(bytes) => (
+                            StatusCode::OK,
+                            [("Content-Type", "text/html; charset=utf-8")],
+                            bytes,
+                        )
+                            .into_response(),
+                        Err(_) => (StatusCode::NOT_FOUND, "index.html not found").into_response(),
                     }
                 }
             });

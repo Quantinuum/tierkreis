@@ -789,7 +789,9 @@ pub async fn read_node_output_assets(
         .optional()
         .into_diagnostic()
         .wrap_err_with(|| {
-            miette!("Failed to query node state for run {run_id} attempt {attempt} location {loc:?}")
+            miette!(
+                "Failed to query node state for run {run_id} attempt {attempt} location {loc:?}"
+            )
         })?;
 
     let Some(db_node) = db_node else {
