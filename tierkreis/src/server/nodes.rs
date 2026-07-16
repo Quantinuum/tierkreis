@@ -12,7 +12,9 @@ use crate::state::{WorkflowRunState, interface::NodeState};
 /// Attempt to load a JSON-serialized value for a given port name.
 /// Returns an error on missing/incomplete data or parse failure.
 ///
-/// Errors: If the node has no outputs, if the output port is missing, if the storage is not found, or if the value cannot be deserialized.
+/// # Errors
+///
+///  If the node has no outputs, if the output port is missing, if the storage is not found, or if the value cannot be deserialized.
 pub async fn try_load_output_value(
     port_name: &str,
     node_state: &NodeState,
@@ -36,7 +38,9 @@ pub async fn try_load_output_value(
 
 /// Attempt to load all outputs for a given node state, returning a map of port name to value.
 ///
-/// Errors: If the node has no outputs, if any output port is missing, if the storage is not found, or if any value cannot be deserialized.
+/// # Errors
+///
+/// If the node has no outputs, if any output port is missing, if the storage is not found, or if any value cannot be deserialized.
 pub async fn try_load_outputs(
     node_state: &NodeState,
     asset_registry: &AssetStorageRegistry,
@@ -59,7 +63,9 @@ pub async fn try_load_outputs(
 /// `parent_location` is the prefix prepended to all node [`Location`]s in the
 /// output.  Pass [`Location::root()`] for the top-level graph.
 ///
-/// Errors: If the node state cannot be read or if the graph cannot be built.
+/// # Errors
+///
+/// If the node state cannot be read or if the graph cannot be built.
 pub async fn build_py_graph(
     workflow_graph: &WorkflowGraph,
     run_state: &dyn WorkflowRunState,
@@ -213,7 +219,9 @@ fn load_subgraph_from_const_node(
 
 /// Resolve which `WorkflowGraph` and `Location` prefix to use for a given `location_str`.
 ///
-/// Errors: If the location string is invalid, if a node in the path is not found, or if a node in the path is not an Eval, Loop, or Map node.
+/// # Errors
+///
+/// If the location string is invalid, if a node in the path is not found, or if a node in the path is not an Eval, Loop, or Map node.
 pub async fn load_graph(
     top_level_graph: &WorkflowGraph,
     location_str: &str,

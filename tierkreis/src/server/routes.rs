@@ -27,7 +27,9 @@ pub async fn get_info() -> Json<RuntimeMetadata> {
 
 /// List all workflows in the database, returning a summary of each.
 ///
-/// Errors: Returns an internal server error if the database query fails.
+/// # Errors
+///
+/// Returns an internal server error if the database query fails.
 #[utoipa::path(
     get,
     path = "/workflows/",
@@ -67,7 +69,9 @@ pub async fn list_workflows(
 
 /// Get the graphs for a specific workflow.
 ///
-/// Errors: Returns an internal server error if the workflow is not found or if the graph cannot be built.
+/// # Errors
+///
+/// Returns an internal server error if the workflow is not found or if the graph cannot be built.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/graphs",
@@ -119,7 +123,9 @@ fn parse_location(s: &str) -> miette::Result<Location> {
 
 /// List all outputs for a specific node in a workflow run, returning a map of port name to value.
 ///
-/// Errors: Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs",
@@ -150,7 +156,9 @@ pub async fn get_all_outputs(
 
 /// List the output for a specific port of a node in a workflow run, returning the raw value as JSON or text.
 ///
-/// Errors: Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}",

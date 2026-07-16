@@ -22,7 +22,9 @@ use crate::{
 
 /// Server entry point.
 ///
-/// # Errors: Returns an error if the current directory cannot be read, static frontend files
+/// # Errors
+///
+/// Returns an error if the current directory cannot be read, static frontend files
 /// cannot be found, or the HTTP server fails to bind or run.
 pub async fn serve(
     runtime_state: Arc<SqliteRuntimeState>,
