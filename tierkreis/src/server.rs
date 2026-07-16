@@ -29,9 +29,7 @@ pub async fn serve(
     runtime_state: Arc<SqliteRuntimeState>,
     asset_registry: AssetStorageRegistry,
 ) -> miette::Result<()> {
-    let update_receiver = runtime_state
-        .listen()
-        .map_err(|e| miette::miette!("Failed to register listener: {e:#}"))?;
+    let update_receiver = runtime_state.listen();
 
     let pool = build_conn_pool().await?;
 

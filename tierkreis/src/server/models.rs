@@ -15,7 +15,7 @@ use crate::{
     asset_storage::AssetStorageRegistry,
     state::{
         ConnPool, SqliteRuntimeState,
-        interface::RunAttemptUpdated,
+        interface::RuntimeWatchState,
     },
 };
 
@@ -41,7 +41,7 @@ pub type HandlerResult<T> = Result<T, AppError>;
 pub struct AppState {
     pub runtime_state: Arc<SqliteRuntimeState>,
     pub asset_registry: AssetStorageRegistry,
-    pub update_receiver: watch::Receiver<RunAttemptUpdated>,
+    pub update_receiver: watch::Receiver<RuntimeWatchState>,
     pub pool: ConnPool,
 }
 

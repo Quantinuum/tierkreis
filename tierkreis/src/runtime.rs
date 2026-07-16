@@ -22,8 +22,9 @@ use crate::{
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
+/// RuntimeConfig defines the configuration for the runtime
 #[derive(Deserialize)]
-struct RuntimeConfig {
+pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
     runtime_state: RuntimeStateConfig,
@@ -342,7 +343,8 @@ async fn executor_registry_from_config(
     Ok(executor_registry)
 }
 
-fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageRegistry {
+/// Create an [`AssetStorageRegistry`] from the given [`RuntimeConfig`].
+pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageRegistry {
     let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
     for (asset_storage_name, asset_storage_config) in &config.asset_storage {
         match asset_storage_config {
