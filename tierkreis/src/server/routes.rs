@@ -2,14 +2,14 @@ use super::models::{WorkflowDisplay, RuntimeMetadata, AppState};
 
 use std::collections::HashMap;
 use axum::{
-    Json, extract::{Path,State}, http::StatusCode, response::{IntoResponse, Response},
+    Json, extract::{Path,State}
 };
 use axum_extra::extract::Query;
 
 use miette::IntoDiagnostic;
 use uuid::Uuid;
 use crate::{
-    location::Location, server::{models::{GraphsQuery, GraphsResponse, HandlerResult, PyGraph}, nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs}}, state::{RuntimeState, WorkflowRunState, queries::list_workflow_run_summaries},
+    location::Location, server::{models::{GraphsQuery, GraphsResponse, HandlerResult}, nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs}}, state::{RuntimeState, queries::list_workflow_run_summaries},
 };
 
 
@@ -88,20 +88,16 @@ pub async fn list_nodes(
 
     tracing::info!("Listing nodes for {}", run_id);
 
-
-    //let loc = Location::root();
     // TODO can we somehow avoid loading the entire graph (e.g. only the nested ones we need)
     let top_level_graph = state.runtime_state.load_workflow(workflow_id).await?;
-    //let py_graph = build_py_graph(&top_level_graph, &run_state, &loc, &state.asset_registry).await?;
 
     let mut graphs = HashMap::new();
-    //graphs.insert(loc.to_string(), py_graph);
     for loc_str in &query.locs {
         tracing::info!("Loading graph with prefix {}", loc_str);
         let (graph, prefix) = load_graph(&top_level_graph, loc_str).await?;
         tracing::info!("Loaded {:?} with prefix {}", graph, prefix.to_string());
         let py_graph =
-            build_py_graph(&graph, &run_state, &prefix, &state.asset_registry).await?;
+            build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?;
         graphs.insert(loc_str.clone(), py_graph);
     }
 

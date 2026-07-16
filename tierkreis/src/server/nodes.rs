@@ -18,12 +18,11 @@ pub async fn try_load_output_value(
 ) -> miette::Result<serde_json::Value> {
     let outputs = node_state.outputs.as_ref().ok_or_else(|| miette::miette!("Node has no outputs"))?;
     let asset_spec = outputs.get(port_name).ok_or_else(|| miette::miette!("Missing output port '{port_name}'"))?;
-    let registry = asset_registry.read().map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
+    let registry = asset_registry.read().await;
     let bytes = registry
         .get(&asset_spec.storage_name)
         .ok_or_else(|| miette::miette!("Storage '{}' not found", asset_spec.storage_name))?
-        .load(&asset_spec.asset_key)
-        .map_err(|e| miette::miette!(e.to_string()))?;
+        .load(&asset_spec.asset_key).await?;
     serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| miette::miette!(e.to_string()))
 }
 
@@ -36,15 +35,13 @@ pub async fn try_load_outputs(
         Some(o) => o,
         None => return Ok(HashMap::new()),
     };
-    let registry = asset_registry.read().map_err(|_| miette::miette!("Asset registry lock poisoned"))?;
-    Ok(outputs
-        .iter()
-        .filter_map(|(name, spec)| {
-            let bytes = registry.get(&spec.storage_name)?.load(&spec.asset_key).ok()?;
-            let val = serde_json::from_slice::<serde_json::Value>(&bytes).ok()?;
-            Some((name.clone(), val))
-        })
-        .collect())
+    let mut loaded = HashMap::new();
+    for (name, _spec) in outputs.iter() {
+        if let Ok(val) = try_load_output_value(name, node_state, asset_registry).await {
+            loaded.insert(name.clone(), val);
+        }
+    }
+    Ok(loaded)
 }
 
 /// Build a [`PyGraph`] for the given `workflow_graph`, reading live node states
@@ -52,9 +49,9 @@ pub async fn try_load_outputs(
 ///
 /// `parent_location` is the prefix prepended to all node [`Location`]s in the
 /// output.  Pass [`Location::root()`] for the top-level graph.
-pub async fn build_py_graph<RS: WorkflowRunState>(
+pub async fn build_py_graph(
     workflow_graph: &WorkflowGraph,
-    run_state: &RS,
+    run_state: &dyn WorkflowRunState,
     parent_location: &Location,
     asset_registry: &AssetStorageRegistry,
 ) -> miette::Result<PyGraph> {
