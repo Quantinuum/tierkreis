@@ -13,7 +13,10 @@ use crate::{
     location::Location,
     server::{
         models::{GraphsQuery, GraphsResponse, HandlerResult},
-        nodes::{build_py_graph, load_graph, try_load_output_value, try_load_outputs},
+        nodes::{
+            GraphLoadResult, build_loop_py_graph, build_map_py_graph, build_py_graph, load_graph,
+            try_load_output_value, try_load_outputs,
+        },
     },
     state::{RuntimeState, queries::list_workflow_run_summaries},
 };
@@ -106,9 +109,36 @@ pub async fn list_nodes(
 
     let mut graphs = HashMap::new();
     for loc_str in &query.locs {
-        let (graph, prefix) = load_graph(&top_level_graph, loc_str).await?;
-        let py_graph =
-            build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?;
+        let result = load_graph(&top_level_graph, loc_str).await?;
+        let py_graph = match result {
+            GraphLoadResult::Eval { graph, prefix } => {
+                build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?
+            }
+            GraphLoadResult::LoopIterations {
+                loop_node_location,
+                subgraph,
+            } => {
+                build_loop_py_graph(
+                    &loop_node_location,
+                    &subgraph,
+                    run_state.as_ref(),
+                    &state.asset_registry,
+                )
+                .await?
+            }
+            GraphLoadResult::MapIterations {
+                map_node_location,
+                subgraph,
+            } => {
+                build_map_py_graph(
+                    &map_node_location,
+                    &subgraph,
+                    run_state.as_ref(),
+                    &state.asset_registry,
+                )
+                .await?
+            }
+        };
         graphs.insert(loc_str.clone(), py_graph);
     }
 
@@ -222,10 +252,36 @@ pub async fn get_input(
     let loc = parse_location(&node_location_str)?;
     let node_location = loc.to_string();
     let parent_location = loc.parent();
-    let (graph, prefix) = load_graph(&top_level_graph, &parent_location.to_string()).await?;
-    // TODO can we avoid constructing this?
-    let py_graph =
-        build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?;
+    let result = load_graph(&top_level_graph, &parent_location.to_string()).await?;
+    let py_graph = match result {
+        GraphLoadResult::Eval { graph, prefix } => {
+            build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?
+        }
+        GraphLoadResult::LoopIterations {
+            loop_node_location,
+            subgraph,
+        } => {
+            build_loop_py_graph(
+                &loop_node_location,
+                &subgraph,
+                run_state.as_ref(),
+                &state.asset_registry,
+            )
+            .await?
+        }
+        GraphLoadResult::MapIterations {
+            map_node_location,
+            subgraph,
+        } => {
+            build_map_py_graph(
+                &map_node_location,
+                &subgraph,
+                run_state.as_ref(),
+                &state.asset_registry,
+            )
+            .await?
+        }
+    };
 
     let Some(edge) = py_graph
         .edges

@@ -7,6 +7,9 @@ function nodeType(function_name: string) {
   if (function_name.match(/^L?\d+$/)) {
     return "eval-node";
   }
+  if (function_name.match(/^M\d+$/)) {
+    return "eval-node";
+  }
   switch (function_name) {
     case "input":
     case "output":
@@ -28,7 +31,7 @@ function getTitle(function_name: string) {
   if (function_name.match(/^L\d+$/)) {
     return "Loop Iteration";
   }
-  if (function_name.match(/^\d+$/)) {
+  if (function_name.match(/^M\d+$/)) {
     return "Map Value";
   }
   switch (function_name) {
