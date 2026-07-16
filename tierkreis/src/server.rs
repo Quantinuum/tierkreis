@@ -1,5 +1,5 @@
 /*!
-The server module defines the HTTP visualization interface to the Workflow server.
+The server module defines the REST interface to the Workflow server.
 */
 #[allow(missing_docs)]
 pub mod models;
@@ -16,17 +16,11 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    asset_storage::AssetStorageRegistry,
-    state::{RuntimeState, SqliteRuntimeState, build_conn_pool},
+    asset_storage::AssetStorageRegistry, runtime::{RuntimeConfig, asset_storage_registry_from_config}, state::{RuntimeState, SqliteRuntimeState, build_conn_pool},
 };
 
-/// Server entry point.
-///
-/// # Errors
-///
-/// Returns an error if the current directory cannot be read, static frontend files
-/// cannot be found, or the HTTP server fails to bind or run.
-pub async fn serve(
+
+async fn server(
     runtime_state: Arc<SqliteRuntimeState>,
     asset_registry: AssetStorageRegistry,
 ) -> miette::Result<()> {
@@ -101,4 +95,18 @@ pub async fn serve(
     axum::serve(listener, router).await.into_diagnostic()?;
 
     Ok(())
+}
+
+/// Server entry point.
+///
+/// # Errors
+///
+/// Returns an error if the current directory cannot be read, static frontend files
+/// cannot be found, or the HTTP server fails to bind or run.
+#[tokio::main]
+pub async fn serve() -> miette::Result<()> {
+    let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
+    let asset_registry =
+        asset_storage_registry_from_config(&RuntimeConfig::default());
+    server(runtime_state, asset_registry).await
 }
