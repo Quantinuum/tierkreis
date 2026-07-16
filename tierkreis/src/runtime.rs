@@ -7,6 +7,7 @@ use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
 use serde::Deserialize;
 use tokio::sync::RwLock;
+use url::Host;
 use uuid::Uuid;
 
 use crate::{
@@ -15,7 +16,9 @@ use crate::{
         save_assets,
     },
     event::RuntimeEvent,
-    executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
+    executor::{
+        Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor, nexus::NexusExecutor,
+    },
     graph::WorkflowGraph,
     location::Location,
     orchestrator::{OrchestrationContext, Orchestrator},
@@ -111,6 +114,10 @@ enum ExecutorConfig {
     },
     Subprocess {
         subprocess_storage_name: String,
+        output_storage_name: String,
+    },
+    Nexus {
+        host: String,
         output_storage_name: String,
     },
 }
@@ -332,6 +339,20 @@ async fn executor_registry_from_config(
                     SubprocessExecutor::try_new(
                         asset_storage_registry,
                         subprocess_storage_name,
+                        output_storage_name,
+                    )
+                    .await?,
+                ),
+            ),
+            ExecutorConfig::Nexus {
+                host,
+                output_storage_name,
+            } => executor_registry.insert(
+                executor_name.clone(),
+                Box::new(
+                    NexusExecutor::try_new(
+                        Host::parse(host).into_diagnostic()?,
+                        asset_storage_registry,
                         output_storage_name,
                     )
                     .await?,
