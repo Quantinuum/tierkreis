@@ -17,6 +17,7 @@ use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::state::queries::WorkflowRunSummary;
 use crate::{
     asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
     state::interface::RuntimeWatchState,
@@ -146,6 +147,12 @@ impl RuntimeState for InMemoryRuntimeState {
 
     fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
         self.update_receiver.clone()
+    }
+
+    fn list_workflow_run_summaries(
+        &self,
+    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
+        unimplemented!()
     }
 }
 

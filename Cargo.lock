@@ -162,6 +162,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "axum-extra"
+version = "0.12.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be44683b41ccb9ab2d23a5230015c9c3c55be97a25e4428366de8873103f7970"
+dependencies = [
+ "axum",
+ "axum-core",
+ "bytes",
+ "form_urlencoded",
+ "futures-core",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "mime",
+ "pin-project-lite",
+ "serde_core",
+ "serde_html_form",
+ "serde_path_to_error",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -879,6 +904,12 @@ dependencies = [
  "http-body",
  "pin-project-lite",
 ]
+
+[[package]]
+name = "http-range-header"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "httparse"
@@ -1824,6 +1855,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_html_form"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2f2d7ff8a2140333718bb329f5c40fc5f0865b84c426183ce14c97d2ab8154f"
+dependencies = [
+ "form_urlencoded",
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde_core",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1845,6 +1889,15 @@ dependencies = [
  "itoa",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "serde_plain"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce1fc6db65a611022b23a0dec6975d63fb80a302cb3388835ff02c097258d50"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -2148,6 +2201,7 @@ name = "tierkreis"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "axum-extra",
  "bitvec",
  "chrono",
  "clap",
@@ -2166,10 +2220,12 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "serde_plain",
  "tempfile",
  "test-log",
  "thiserror",
  "tokio",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -2338,6 +2394,31 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "tower-http"
+version = "0.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
+dependencies = [
+ "bitflags",
+ "bytes",
+ "futures-core",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "http-range-header",
+ "httpdate",
+ "mime",
+ "mime_guess",
+ "percent-encoding",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
+ "tower-layer",
+ "tower-service",
 ]
 
 [[package]]
