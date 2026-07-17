@@ -119,8 +119,7 @@ impl NodeDefinition {
             NodeDefinition::Const { .. } => "const".to_string(),
             NodeDefinition::Task { .. } => "function".to_string(),
             NodeDefinition::Map { .. } => "map".to_string(),
-            _ => serde_plain::to_string(self)
-                .unwrap_or_else(|_| "unknown".to_string()),
+            _ => serde_plain::to_string(self).unwrap_or_else(|_| "unknown".to_string()),
         }
     }
 

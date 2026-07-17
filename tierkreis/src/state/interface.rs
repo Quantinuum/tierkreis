@@ -15,7 +15,8 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph, location::Location, state::queries::WorkflowRunSummary,
+    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph, location::Location,
+    state::queries::WorkflowRunSummary,
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
@@ -96,7 +97,8 @@ pub trait RuntimeState: Debug + Send + Sync {
     fn listen(&self) -> watch::Receiver<RuntimeWatchState>;
 
     /// List summaries of all workflow runs in the runtime state.
-    fn list_workflow_run_summaries(&self) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>>;
+    fn list_workflow_run_summaries(&self)
+    -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.

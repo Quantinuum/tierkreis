@@ -47,7 +47,7 @@ pub async fn list_workflows(
     let displays: Vec<WorkflowDisplay> = summaries
         .into_iter()
         .map(|s| {
-            let (id_int, _ ) = s.run_id.as_u64_pair();
+            let (id_int, _) = s.run_id.as_u64_pair();
             let errors: Vec<String> = s
                 .errored_locations
                 .iter()
@@ -304,7 +304,6 @@ pub async fn get_input(
     }
 }
 
-
 /// Get the error logs for a specific node in a workflow run, returning the error detail as a string.
 ///
 /// # Errors
@@ -333,7 +332,10 @@ pub async fn get_node_errors(
 
     let loc = parse_location(&location_str)?;
     let node_state = run_state.read(&loc).await?;
-    Ok(node_state.error_detail.unwrap_or_else(|| "No logs available".to_string()).into_response())
+    Ok(node_state
+        .error_detail
+        .unwrap_or_else(|| "No logs available".to_string())
+        .into_response())
 }
 
 #[allow(unused)]
@@ -360,7 +362,6 @@ pub async fn get_node_logs(
 ) -> HandlerResult<Response> {
     Ok("Not implemented".to_string().into_response())
 }
-
 
 #[allow(unused)]
 /// Get the logs for a specific workflow run, returning the log detail as a string.

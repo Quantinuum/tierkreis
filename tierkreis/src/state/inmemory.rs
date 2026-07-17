@@ -149,7 +149,9 @@ impl RuntimeState for InMemoryRuntimeState {
         self.update_receiver.clone()
     }
 
-    fn list_workflow_run_summaries(&self) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
+    fn list_workflow_run_summaries(
+        &self,
+    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
         unimplemented!()
     }
 }

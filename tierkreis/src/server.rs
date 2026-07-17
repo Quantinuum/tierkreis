@@ -10,17 +10,18 @@ pub mod routes;
 
 use axum::http::StatusCode;
 use miette::{IntoDiagnostic, WrapErr};
-use tower_http::services::{ServeFile};
-use tower_http::set_status::SetStatus;
 use std::sync::Arc;
+use tower_http::services::ServeFile;
+use tower_http::set_status::SetStatus;
 use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    asset_storage::AssetStorageRegistry, runtime::{RuntimeConfig, asset_storage_registry_from_config}, state::{RuntimeState, SqliteRuntimeState},
+    asset_storage::AssetStorageRegistry,
+    runtime::{RuntimeConfig, asset_storage_registry_from_config},
+    state::{RuntimeState, SqliteRuntimeState},
 };
-
 
 async fn server(
     runtime_state: Arc<SqliteRuntimeState>,
@@ -68,7 +69,9 @@ async fn server(
         if assets_dir.exists() {
             use tower_http::services::ServeDir;
             let index_html = SetStatus::new(ServeFile::new(&index), StatusCode::NOT_FOUND);
-            router = router.nest_service("/assets", ServeDir::new(&assets_dir)).fallback_service(index_html);
+            router = router
+                .nest_service("/assets", ServeDir::new(&assets_dir))
+                .fallback_service(index_html);
             tracing::info!("Serving frontend assets from {}", assets_dir.display());
         }
         tracing::info!("Serving frontend SPA from {}", dist.display());
@@ -96,10 +99,13 @@ async fn server(
 ///
 /// Returns an error if the current directory cannot be read, static frontend files
 /// cannot be found, or the HTTP server fails to bind or run.
+/// 
+/// # Panics
+/// 
+/// Panics if the static frontend files are not found in the expected location.
 #[tokio::main]
 pub async fn serve() -> miette::Result<()> {
     let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
-    let asset_registry =
-        asset_storage_registry_from_config(&RuntimeConfig::default());
+    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default());
     server(runtime_state, asset_registry).await
 }
