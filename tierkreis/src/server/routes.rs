@@ -303,3 +303,85 @@ pub async fn get_input(
         Err(_) => Ok(raw_value.into_response()),
     }
 }
+
+
+/// Get the error logs for a specific node in a workflow run, returning the error detail as a string.
+///
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded or if the error logs cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/nodes/{node_location_str}/errors",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("node_location_str" = String, Path, description = "Location string"),
+    ),
+    responses(
+        (status = OK, description = "Error detail for the node"),
+        (status = 500, description = "Error loading error detail"),
+    )
+)]
+pub async fn get_node_errors(
+    State(state): State<AppState>,
+    Path((run_id, location_str)): Path<(Uuid, String)>,
+) -> HandlerResult<Response> {
+    let run_state = state
+        .runtime_state
+        .load_workflow_run_state(run_id, 0)
+        .await?;
+
+    let loc = parse_location(&location_str)?;
+    let node_state = run_state.read(&loc).await?;
+    Ok(node_state.error_detail.unwrap_or_else(|| "No logs available".to_string()).into_response())
+}
+
+#[allow(unused)]
+/// Get the logs for a specific node in a workflow run, returning the log detail as a string.
+///
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/nodes/{node_location_str}/logs",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("node_location_str" = String, Path, description = "Location string"),
+    ),
+    responses(
+        (status = OK, description = "Log detail for the node"),
+        (status = 500, description = "Error loading log detail"),
+    )
+)]
+pub async fn get_node_logs(
+    State(state): State<AppState>,
+    Path((run_id, location_str)): Path<(Uuid, String)>,
+) -> HandlerResult<Response> {
+    Ok("Not implemented".to_string().into_response())
+}
+
+
+#[allow(unused)]
+/// Get the logs for a specific workflow run, returning the log detail as a string.
+///
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/logs",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+    ),
+    responses(
+        (status = OK, description = "Log detail for the workflow"),
+        (status = 500, description = "Error loading log detail"),
+    )
+)]
+pub async fn get_workflow_logs(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> HandlerResult<Response> {
+    Ok("Not implemented".to_string().into_response())
+}

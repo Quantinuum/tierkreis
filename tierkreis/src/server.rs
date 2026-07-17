@@ -40,7 +40,10 @@ async fn server(
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
         .routes(routes!(routes::get_single_output))
-        .routes(routes!(routes::get_input));
+        .routes(routes!(routes::get_input))
+        .routes(routes!(routes::get_node_errors))
+        .routes(routes!(routes::get_node_logs))
+        .routes(routes!(routes::get_workflow_logs));
     let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
         .nest("/api", api_router)
         .split_for_parts();
