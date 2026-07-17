@@ -99,9 +99,9 @@ async fn server(
 ///
 /// Returns an error if the current directory cannot be read, static frontend files
 /// cannot be found, or the HTTP server fails to bind or run.
-/// 
+///
 /// # Panics
-/// 
+///
 /// Panics if the static frontend files are not found in the expected location.
 #[tokio::main]
 pub async fn serve() -> miette::Result<()> {
