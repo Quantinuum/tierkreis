@@ -8,8 +8,10 @@ pub mod nodes;
 #[allow(missing_docs)]
 pub mod routes;
 
-use axum::{http::StatusCode, response::IntoResponse};
+use axum::http::StatusCode;
 use miette::{IntoDiagnostic, WrapErr};
+use tower_http::services::{ServeFile};
+use tower_http::set_status::SetStatus;
 use std::sync::Arc;
 use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -52,33 +54,24 @@ async fn server(
     let dist = std::env::current_dir()
         .into_diagnostic()
         .wrap_err("Failed to resolve current working directory")?
-        .join("tierkreis_visualization/tierkreis_visualization/static/dist");
+        .join("tierkreis_visualization/tierkreis_visualization/static/dist"); // TODO: Make this configurable
     if dist.exists() {
         let index = dist.join("index.html");
         let assets_dir = dist.join("assets");
+        if !index.exists() {
+            return Err(miette::miette!(
+                "Static frontend index.html not found: {}",
+                index.display()
+            ));
+        }
 
         if assets_dir.exists() {
             use tower_http::services::ServeDir;
-            router = router.nest_service("/assets", ServeDir::new(&assets_dir));
+            let index_html = SetStatus::new(ServeFile::new(&index), StatusCode::NOT_FOUND);
+            router = router.nest_service("/assets", ServeDir::new(&assets_dir)).fallback_service(index_html);
             tracing::info!("Serving frontend assets from {}", assets_dir.display());
         }
-        if index.exists() {
-            router = router.fallback(move || {
-                let index = index.clone();
-                async move {
-                    match tokio::fs::read(index).await {
-                        Ok(bytes) => (
-                            StatusCode::OK,
-                            [("Content-Type", "text/html; charset=utf-8")],
-                            bytes,
-                        )
-                            .into_response(),
-                        Err(_) => (StatusCode::NOT_FOUND, "index.html not found").into_response(),
-                    }
-                }
-            });
-            tracing::info!("Serving frontend SPA from {}", dist.display());
-        }
+        tracing::info!("Serving frontend SPA from {}", dist.display());
     } else {
         return Err(miette::miette!(
             "Static frontend directory not found: {}",
