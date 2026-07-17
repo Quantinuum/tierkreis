@@ -43,8 +43,7 @@ pub async fn get_info() -> Json<RuntimeMetadata> {
 pub async fn list_workflows(
     State(state): State<AppState>,
 ) -> HandlerResult<Json<Vec<WorkflowDisplay>>> {
-    let mut conn = state.pool.get().await.into_diagnostic()?;
-    let summaries = list_workflow_run_summaries(&mut conn).await?;
+    let summaries = state.runtime_state.list_workflow_run_summaries().await?;
 
     let displays: Vec<WorkflowDisplay> = summaries
         .into_iter()

@@ -18,7 +18,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
-    asset_storage::AssetStorageRegistry, runtime::{RuntimeConfig, asset_storage_registry_from_config}, state::{RuntimeState, SqliteRuntimeState, build_conn_pool},
+    asset_storage::AssetStorageRegistry, runtime::{RuntimeConfig, asset_storage_registry_from_config}, state::{RuntimeState, SqliteRuntimeState},
 };
 
 
@@ -28,13 +28,10 @@ async fn server(
 ) -> miette::Result<()> {
     let update_receiver = runtime_state.listen();
 
-    let pool = build_conn_pool().await?;
-
     let app_state = models::AppState {
         runtime_state,
         asset_registry,
         update_receiver,
-        pool,
     };
 
     let api_router = OpenApiRouter::new()

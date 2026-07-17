@@ -44,7 +44,6 @@ pub struct AppState {
     pub runtime_state: Arc<SqliteRuntimeState>,
     pub asset_registry: AssetStorageRegistry,
     pub update_receiver: watch::Receiver<RuntimeWatchState>,
-    pub pool: ConnPool,
 }
 
 /// Runtime metadata returned by `/api/info`.

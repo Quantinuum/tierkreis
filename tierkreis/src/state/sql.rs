@@ -29,17 +29,9 @@ use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec,
-    event::{NodeEvent, WorkflowRunEvent},
-    graph::WorkflowGraph,
-    state::{
-        interface::RuntimeWatchState,
-        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
-        queries::{
-            add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, read_node_state, read_node_states,
-            read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs,
-            update_node_state,
+    asset_storage::AssetSpec, event::{NodeEvent, WorkflowRunEvent}, graph::WorkflowGraph, state::{
+        interface::RuntimeWatchState, models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput}, queries::{
+            WorkflowRunSummary, add_run_attempt_metadata, insert_workflow, insert_workflow_run, insert_workflow_run_inputs, list_workflow_run_summaries, read_node_state, read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs, update_node_state,
         },
     },
 };
@@ -323,6 +315,15 @@ impl RuntimeState for SqliteRuntimeState {
 
     fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
         self.update_receiver.clone()
+    }
+
+    fn list_workflow_run_summaries(&self) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            list_workflow_run_summaries(&mut conn).await
+        }
+        .boxed()
     }
 }
 
