@@ -18,9 +18,8 @@ use crate::{
             try_load_output_value, try_load_outputs,
         },
     },
-    state::{RuntimeState, queries::list_workflow_run_summaries},
+    state::RuntimeState,
 };
-use miette::IntoDiagnostic;
 use uuid::Uuid;
 
 #[utoipa::path(get, path = "/info", responses((status = OK, body = RuntimeMetadata)))]
@@ -48,10 +47,7 @@ pub async fn list_workflows(
     let displays: Vec<WorkflowDisplay> = summaries
         .into_iter()
         .map(|s| {
-            let id_int = {
-                let bytes = s.run_id.as_bytes();
-                u64::from_be_bytes(bytes[0..8].try_into().unwrap_or([0u8; 8]))
-            };
+            let (id_int, _ ) = s.run_id.as_u64_pair();
             let errors: Vec<String> = s
                 .errored_locations
                 .iter()

@@ -12,7 +12,7 @@ use crate::{
     asset_storage::AssetStorageRegistry,
     graph::NodeDefinition,
     state::{
-        ConnPool, SqliteRuntimeState,
+        SqliteRuntimeState,
         interface::{NodeState, RuntimeWatchState},
     },
 };
@@ -111,70 +111,35 @@ pub fn node_status_from_state(state: &NodeState) -> NodeStatus {
     }
 }
 
-/// The type of a node in the workflow graph.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub enum NodeType {
-    /// A task node invoking a worker function.
-    #[serde(rename = "function")]
-    Function,
-    /// An if-else conditional node.
-    #[serde(rename = "ifelse")]
-    Ifelse,
-    /// A map higher-order node.
-    #[serde(rename = "map")]
-    Map,
-    /// An eval higher-order node.
-    #[serde(rename = "eval")]
-    Eval,
-    /// A loop higher-order node.
-    #[serde(rename = "loop")]
-    Loop,
-    /// An eager if-else conditional node.
-    #[serde(rename = "eifelse")]
-    Eifelse,
-    /// A constant value node.
-    #[serde(rename = "const")]
-    Const,
-    /// The graph output node.
-    #[serde(rename = "output")]
-    Output,
-    /// A graph input node.
-    #[serde(rename = "input")]
-    Input,
-}
-
-// TODO can we simply serde NodeDefinition
-#[must_use]
-pub fn node_type_from_def(def: &NodeDefinition) -> NodeType {
-    match def {
-        NodeDefinition::Input { .. } => NodeType::Input,
-        NodeDefinition::Output {} => NodeType::Output,
-        NodeDefinition::Const { .. } => NodeType::Const,
-        NodeDefinition::IfElse {} => NodeType::Ifelse,
-        NodeDefinition::EagerIfElse {} => NodeType::Eifelse,
-        NodeDefinition::Task { .. } => NodeType::Function,
-        NodeDefinition::Eval {} => NodeType::Eval,
-        NodeDefinition::Loop {} => NodeType::Loop,
-        NodeDefinition::Map { .. } => NodeType::Map,
+impl NodeDefinition {
+    #[must_use]
+    pub fn node_type(&self) -> String {
+        match self {
+            NodeDefinition::Input { .. } => "input".to_string(),
+            NodeDefinition::Const { .. } => "const".to_string(),
+            NodeDefinition::Task { .. } => "function".to_string(),
+            NodeDefinition::Map { .. } => "map".to_string(),
+            _ => serde_plain::to_string(self)
+                .unwrap_or_else(|_| "unknown".to_string()),
+        }
     }
-}
 
-// TODO can we serde this directly?
-#[must_use]
-pub fn function_name_from_def(def: &NodeDefinition) -> String {
-    match def {
-        NodeDefinition::Input { name } => name.clone(),
-        NodeDefinition::Output {} => "output".to_string(),
-        NodeDefinition::Const { .. } => "const".to_string(),
-        NodeDefinition::IfElse {} => "ifelse".to_string(),
-        NodeDefinition::EagerIfElse {} => "eifelse".to_string(),
-        NodeDefinition::Task {
-            worker_name,
-            task_name,
-        } => format!("{worker_name}.{task_name}"),
-        NodeDefinition::Eval {} => "eval".to_string(),
-        NodeDefinition::Loop {} => "loop".to_string(),
-        NodeDefinition::Map { .. } => "map".to_string(),
+    #[must_use]
+    pub fn function_name(&self) -> String {
+        match self {
+            NodeDefinition::Input { name } => name.clone(),
+            NodeDefinition::Output {} => "output".to_string(),
+            NodeDefinition::Const { .. } => "const".to_string(),
+            NodeDefinition::IfElse {} => "ifelse".to_string(),
+            NodeDefinition::EagerIfElse {} => "eifelse".to_string(),
+            NodeDefinition::Task {
+                worker_name,
+                task_name,
+            } => format!("{worker_name}.{task_name}"),
+            NodeDefinition::Eval {} => "eval".to_string(),
+            NodeDefinition::Loop {} => "loop".to_string(),
+            NodeDefinition::Map { .. } => "map".to_string(),
+        }
     }
 }
 /// Describes a connection into an input port of a node.
@@ -198,7 +163,7 @@ pub struct PyNode {
     /// Human-readable display name derived from the node definition.
     pub function_name: String,
     /// The structural type of the node.
-    pub node_type: NodeType,
+    pub node_type: String,
     /// Same as `id`; kept for Python API compatibility.
     pub node_location: String,
     /// Names of the output ports.

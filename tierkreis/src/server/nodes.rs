@@ -7,8 +7,7 @@ use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
 use crate::location::{Location, LocationComponent};
 use crate::server::AssetStorageRegistry;
 use crate::server::models::{
-    NodeInputs, NodeStatus, NodeType, PyEdge, PyGraph, PyNode, function_name_from_def,
-    node_status_from_state, node_type_from_def,
+    NodeInputs, NodeStatus, PyEdge, PyGraph, PyNode, node_status_from_state,
 };
 use crate::state::{WorkflowRunState, interface::NodeState};
 /// The result of resolving a location to a graph view.
@@ -135,7 +134,7 @@ pub async fn build_loop_py_graph(
             id: iter_loc.to_string(),
             status,
             function_name: format!("L{i}"),
-            node_type: NodeType::Eval,
+            node_type: NodeDefinition::Eval {}.node_type(),
             node_location: iter_loc.to_string(),
             outputs: output_names.clone(),
             inputs: Vec::new(),
@@ -239,7 +238,7 @@ pub async fn build_map_py_graph(
             id: elem_loc.to_string(),
             status,
             function_name: format!("M{i}"),
-            node_type: NodeType::Eval,
+            node_type: NodeDefinition::Eval {}.node_type(),
             node_location: elem_loc.to_string(),
             outputs: output_names.clone(),
             inputs: Vec::new(),
@@ -289,8 +288,8 @@ pub async fn build_py_graph(
             .node_definition(node_idx)
             .ok_or_else(|| miette::miette!("Node definition missing for {node_idx:?}"))?;
 
-        let node_type = node_type_from_def(def);
-        let function_name = function_name_from_def(def);
+        let node_type = def.node_type();
+        let function_name = def.function_name();
         let state = run_state.read(&node_location).await?;
         let status = node_status_from_state(&state);
 

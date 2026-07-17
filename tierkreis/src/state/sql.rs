@@ -62,7 +62,7 @@ fn run_migrations(
 }
 
 /// Type alias for a connection pool to a `SQLite` database.
-pub type ConnPool =
+type ConnPool =
     diesel_async::pooled_connection::deadpool::Pool<SyncConnectionWrapper<SqliteConnection>>;
 
 /// Build a connection pool for the given `database_url`.
