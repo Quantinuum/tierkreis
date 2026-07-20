@@ -27,6 +27,7 @@ in
 
   # https://devenv.sh/languages/
   languages.python = {
+    package = pkgs.python313;
     enable = true;
      uv = {
         enable = true;
