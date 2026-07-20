@@ -99,6 +99,8 @@ async fn process_finished_task(
 
     abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
+    // Tokens may have expired at this point.
+    client.refresh_tokens().await?;
     let job = client.get_job(background_task.job_id).await?;
 
     match job.status_enum() {
@@ -266,7 +268,7 @@ impl NexusExecutor {
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let client = NexusClient::try_new(host).await?;
+        let client = NexusClient::try_new(client::Scheme::Https, host, None).await?;
 
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(output_storage_name) {
