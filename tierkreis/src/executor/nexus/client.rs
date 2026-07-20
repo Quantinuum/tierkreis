@@ -2,23 +2,26 @@ pub(crate) mod models;
 
 use std::{
     env::home_dir,
+    fmt::Display,
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::Duration,
 };
 
-use diesel::AggregateExpressionMethods;
-use futures::{Stream, StreamExt};
+use futures::{
+    SinkExt, Stream, StreamExt,
+    channel::mpsc,
+    stream::{SplitSink, SplitStream},
+};
 use hugr::package::Package;
 use miette::{IntoDiagnostic, miette};
-use reqwest::{
-    Client, ClientBuilder,
-    cookie::{CookieStore, Jar},
-};
-use reqwest_websocket::Upgrade;
+use reqwest::{Client, ClientBuilder, cookie::Jar};
+use reqwest_websocket::{Bytes, Message, Upgrade};
 use serde::Deserialize;
-use tokio::{fs::File, io::AsyncReadExt};
+use tokio::{fs::File, io::AsyncReadExt, task::JoinHandle};
+use tracing::warn;
 use url::{Host, Url};
 use uuid::Uuid;
 
@@ -52,29 +55,87 @@ struct RefreshTokenData {
 }
 
 pub struct JobStatusStream {
-    websocket: reqwest_websocket::WebSocket,
+    stream: SplitStream<reqwest_websocket::WebSocket>,
+    join_handle: JoinHandle<miette::Result<SplitSink<reqwest_websocket::WebSocket, Message>>>,
+    close_sender: mpsc::Sender<()>,
+}
+
+impl JobStatusStream {
+    fn new(websocket: reqwest_websocket::WebSocket) -> Self {
+        let (mut sink, stream) = websocket.split();
+        let (close_sender, mut close_receiver) = mpsc::channel(1);
+        let join_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(55));
+            loop {
+                tokio::select! {
+                    _ = close_receiver.recv() => {
+                        return Ok(sink)
+                    }
+                    _ = interval.tick() => {
+                        sink.send(reqwest_websocket::Message::Ping(Bytes::new()))
+                            .await.into_diagnostic()?;
+                    }
+                }
+            }
+        });
+        Self {
+            stream,
+            join_handle,
+            close_sender,
+        }
+    }
 }
 
 impl Stream for JobStatusStream {
     type Item = miette::Result<Status>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.get_mut().websocket.poll_next_unpin(cx).map(|next| {
-            next.map(|res| {
-                let message = res.into_diagnostic()?;
-                message.json().into_diagnostic()
-            })
-        })
+        let next = self.get_mut().stream.poll_next_unpin(cx);
+        match next {
+            Poll::Ready(Some(Ok(Message::Text(text)))) => {
+                Poll::Ready(Some(serde_json::from_str(&text).into_diagnostic()))
+            }
+            Poll::Ready(Some(Ok(Message::Binary(bin)))) => {
+                Poll::Ready(Some(serde_json::from_slice(&bin).into_diagnostic()))
+            }
+            // Ignoring ping messages may be sub-optimal, we may want to have a way to send
+            // pong responses but this would require another channel and a bit more
+            // engineering effort.
+            Poll::Ready(Some(Ok(Message::Ping(_)))) => {
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            // We are ignoring pong messages we receive, which seems reasonable to
+            // abstract over as there are no further actions to take.
+            Poll::Ready(Some(Ok(Message::Pong(_)))) => {
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            // We may want to reconnect in this case, but that is a decision for the consumer
+            // of this stream to make.
+            Poll::Ready(Some(Ok(Message::Close { code, reason }))) => {
+                warn!("Websocket closed by peer with code: {code}, reason: {reason}");
+                Poll::Ready(None)
+            }
+            Poll::Ready(Some(Err(err))) => {
+                Poll::Ready(Some(Err(miette!("Websocket error: {err}"))))
+            }
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.websocket.size_hint()
+        self.stream.size_hint()
     }
 }
 
 impl JobStatusStream {
-    pub async fn close(self) -> miette::Result<()> {
-        self.websocket
+    pub async fn close(mut self) -> miette::Result<()> {
+        self.close_sender.send(()).await.into_diagnostic()?;
+        let sink = self.join_handle.await.into_diagnostic()??;
+        let websocket = self.stream.reunite(sink).into_diagnostic()?;
+        websocket
             .close(reqwest_websocket::CloseCode::Normal, None)
             .await
             .into_diagnostic()?;
@@ -82,14 +143,35 @@ impl JobStatusStream {
     }
 }
 
+pub enum Scheme {
+    Http,
+    Https,
+}
+
+impl Display for Scheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Http => write!(f, "http"),
+            Self::Https => write!(f, "https"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct NexusClient {
+    // See https://github.com/jgraef/reqwest-websocket/issues/2
+    // for why we need a separate Client instance for websockets.
+    http1_client: Client,
     client: Client,
     base_url: Url,
 }
 
 impl NexusClient {
-    pub async fn try_new(host: Host, token_dir: Option<&Path>) -> miette::Result<Self> {
+    pub async fn try_new(
+        scheme: Scheme,
+        host: Host,
+        token_dir: Option<&Path>,
+    ) -> miette::Result<Self> {
         // Assumes that a user has credentials saved from qnexus in their home directory.
         //
         // While we could replicate the device code login flow here, this is much easier
@@ -124,7 +206,7 @@ impl NexusClient {
         let refresh_token: RefreshToken =
             serde_json::from_str(&refresh_token_contents).into_diagnostic()?;
 
-        let base_url: Url = format!("http://{host}").parse().into_diagnostic()?;
+        let base_url: Url = format!("{scheme}://{host}").parse().into_diagnostic()?;
         let jar = Jar::default();
         jar.add_cookie_str(
             &format!("myqos_oat={}", refresh_token.data.refresh_token),
@@ -135,13 +217,24 @@ impl NexusClient {
             &base_url,
         );
 
-        let client = ClientBuilder::new()
-            .cookie_provider(Arc::new(jar))
+        let jar = Arc::new(jar);
+
+        let http1_client = ClientBuilder::new()
+            .cookie_provider(Arc::clone(&jar))
             .http1_only() // See https://github.com/jgraef/reqwest-websocket/issues/2
             .build()
             .into_diagnostic()?;
 
-        Ok(Self { client, base_url })
+        let client = ClientBuilder::new()
+            .cookie_provider(jar)
+            .build()
+            .into_diagnostic()?;
+
+        Ok(Self {
+            http1_client,
+            client,
+            base_url,
+        })
     }
 
     pub async fn refresh_tokens(&self) -> miette::Result<()> {
@@ -284,7 +377,7 @@ impl NexusClient {
 
     pub async fn listen_for_job_status(&self, job_id: Uuid) -> miette::Result<JobStatusStream> {
         let response = self
-            .client
+            .http1_client
             .get(format!(
                 "wss://nexus.quantinuum.com/api/jobs/v1beta3/{job_id}/attributes/status/ws"
             ))
@@ -294,7 +387,7 @@ impl NexusClient {
             .into_diagnostic()?;
 
         let websocket = response.into_websocket().await.into_diagnostic()?;
-        Ok(JobStatusStream { websocket })
+        Ok(JobStatusStream::new(websocket))
     }
 
     pub async fn get_qsys_result_chunk(
@@ -324,7 +417,7 @@ impl NexusClient {
 #[cfg(test)]
 mod tests {
     use mockito::Matcher::{AnyOf, PartialJsonString};
-    use tempfile::{TempDir, env::temp_dir, tempdir};
+    use tempfile::{TempDir, tempdir};
     use tokio::io::AsyncWriteExt;
 
     use super::*;
@@ -372,7 +465,7 @@ mod tests {
             )
             .create();
 
-        let client = NexusClient::try_new(host, Some(token_path)).await?;
+        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
         client.refresh_tokens().await?;
 
         mock.assert_async().await;
@@ -393,7 +486,7 @@ mod tests {
             .with_status(401)
             .create();
 
-        let client = NexusClient::try_new(host, Some(token_path)).await?;
+        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
         let err = client.refresh_tokens().await.unwrap_err();
         assert!(
             err.to_string()
@@ -419,7 +512,7 @@ mod tests {
             .with_body("{\"data\": [{\"id\": \"ebdc7a71-45d7-4a8f-b175-1361903a760b\"}]}")
             .create();
 
-        let client = NexusClient::try_new(host, Some(token_path)).await?;
+        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
         let project_data = client
             .find_or_create_project_data("foo", Some("description"))
             .await?;
@@ -468,7 +561,7 @@ mod tests {
             ))
             .create();
 
-        let client = NexusClient::try_new(host, Some(token_path)).await?;
+        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
         let project_data = client
             .find_or_create_project_data("foo", Some("description"))
             .await?;
