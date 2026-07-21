@@ -91,6 +91,6 @@ For documentation, we use the [MyST](https://myst-parser.readthedocs.io/en/lates
 This project is licensed under Apache License, Version 2.0 ([LICENSE][] or http://www.apache.org/licenses/LICENSE-2.0).
 
 [docs-home]: https://quantinuum.github.io/tierkreis/
-[docs-getting-started]: https://quantinuum.github.io/tierkreis/getting_started.html
+[docs-getting-started]: https://quantinuum.github.io/tierkreis/tutorial/index.html
 [uv]: https://docs.astral.sh/uv/
 [LICENSE]: https://github.com/Quantinuum/tierkreis/blob/main/LICENCE
