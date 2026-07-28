@@ -3,6 +3,38 @@
 Quantum-classical hybrid workflow orchestration tool.
 This is the top level repository containing the python packages.
 
+## Introduction
+
+Tierkreis allows users to define hybrid workflows as computational graphs
+```python
+
+class InParams(NamedTuple):
+    a: TKR[float]
+    b: TKR[float]
+    c: TKR[float]
+
+g = Graph(InParams, TKR[float])
+x = g.task(add(g.inputs.a, g.inputs.b))
+y = g.task(add(x, g.inputs.c))
+workflow = g.finish_with_outputs(y)
+
+```
+and run them on different execution platforms
+
+```python
+storage = FileStorage(workflow_id=UUID(int=12345), name="Hello World Graph")
+executor = ShellExecutor(registry_path=None, workflow_dir=storage.workflow_dir)
+inputs = InParams(0, 0.25, 0.5)._asdict()
+run_graph(storage, executor, workflow, inputs)
+result = read_outputs(workflow, storage)
+```
+
+
+
+For a more in depth tutorial see our [full getting started guide][docs-getting-started].
+A small demo tutorial presented at QCUF 2026 can be found in [this][tutorial] repository.
+
+
 ## Quick-start
 
 Tierkreis works best with the [uv package manager][uv]. We strongly recommend using it as your package manager for Tierkreis projects.
@@ -25,8 +57,6 @@ You can then run the generated example graph at `tkr/graphs.main.py`.
 ```bash
 uv run tkr/graphs/main.py
 ```
-
-For a more in depth tutorial see our [full getting started guide][docs-getting-started].
 
 ## Packages
 
@@ -94,3 +124,4 @@ This project is licensed under Apache License, Version 2.0 ([LICENSE][] or http:
 [docs-getting-started]: https://quantinuum.github.io/tierkreis/tutorial/index.html
 [uv]: https://docs.astral.sh/uv/
 [LICENSE]: https://github.com/Quantinuum/tierkreis/blob/main/LICENCE
+[tutorial]: https://github.com/Quantinuum/tierkreis-tutorial

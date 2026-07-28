@@ -7,6 +7,32 @@ Tierkreis combines task-based workers with context dependent execution on variou
 | --------- | :------------: | :------------: | :---------: | :-----------: | :----------------------: | :-----------------: |
 | tierkreis |       ✔        |       ✔        |      ✔      |       ✔       |            ✔             |          ✔          |
 
+## Introduction
+
+Tierkreis allows users to define hybrid workflows as computational graphs
+```python
+
+class InParams(NamedTuple):
+    a: TKR[float]
+    b: TKR[float]
+    c: TKR[float]
+
+g = Graph(InParams, TKR[float])
+x = g.task(add(g.inputs.a, g.inputs.b))
+y = g.task(add(x, g.inputs.c))
+workflow = g.finish_with_outputs(y)
+
+```
+and run them on different execution platforms
+
+```python
+storage = FileStorage(workflow_id=UUID(int=12345), name="Hello World Graph")
+executor = ShellExecutor(registry_path=None, workflow_dir=storage.workflow_dir)
+inputs = InParams(0, 0.25, 0.5)._asdict()
+run_graph(storage, executor, workflow, inputs)
+result = read_outputs(workflow, storage)
+```
+
 ## Quick Start
 
 To get up to speed with tierkreis we recommend the [Beginners Tutorial](./tutorial/index.md).
@@ -39,3 +65,7 @@ tutorial/tutorials.md
 :caption: API Reference
 apidocs/index
 ```
+
+## Additional Material
+
+A small demo tutorial presented at QCUF 2026 can be found in [this][https://github.com/Quantinuum/tierkreis-tutorial] repository.
