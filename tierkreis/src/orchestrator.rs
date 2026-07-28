@@ -18,6 +18,7 @@ use futures::{
 };
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
+use serde_json::Value;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -31,7 +32,11 @@ use crate::{
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
         send_workflow_run_complete,
     },
-    executor::{ExecutorRegistry, interface::TaskPlan},
+    executor::{
+        ExecutorRegistry, HPCExecutor,
+        hpc::{HPCEnvironmentSpec, HPCResourceSpec},
+        interface::TaskPlan,
+    },
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
@@ -56,6 +61,10 @@ pub enum ActionKind {
         worker_name: String,
         /// The name of the Task to call.
         task_name: String,
+        /// Arbitrary resource requirements used for executor selection.
+        resources: HashMap<String, Value>,
+        /// Arbitrary environment requirements used for executor selection.
+        environment: HashMap<String, Value>,
         /// The input assets for the Task.
         inputs: HashMap<String, AssetSpec>,
         /// The names of the outputs of the Task.
@@ -1037,7 +1046,14 @@ impl Orchestrator {
     ) -> miette::Result<()> {
         // Build a list of tasks to dispatch to Executors and immediately
         // process everything else.
-        let mut plan = ActionPlan::default();
+
+        let mut exec_plans: HashMap<String, ActionPlan> = HashMap::new();
+        for exec in self.executor_registry.keys() {
+            exec_plans.insert(exec.clone(), ActionPlan::default());
+        }
+        let default_executor_name = &self.default_executor_name;
+
+        //let mut plan = ActionPlan::default();
         let mut event_sender = self.event_sender.clone();
         while let Some(Action { loc, kind }) = actions.next().await.transpose()? {
             debug!("Running action at {loc}, kind: {kind:?}");
@@ -1047,75 +1063,189 @@ impl Orchestrator {
                     task_name,
                     inputs,
                     outputs,
-                } => plan.tasks.push(TaskPlan {
-                    workflow_run_id,
-                    attempt,
-                    loc,
-                    worker_name,
-                    task_name,
-                    inputs,
-                    outputs,
-                    output_storage_name: Some(self.default_storage_name.clone()),
-                    ..Default::default()
-                }),
+                    resources,
+                    environment,
+                } => {
+                    let executor = self.orchestrate(&resources, &environment);
+                    exec_plans.get_mut(&executor).unwrap().tasks.push(TaskPlan {
+                        workflow_run_id,
+                        attempt,
+                        loc,
+                        worker_name,
+                        task_name,
+                        inputs: inputs.clone(),
+                        output_storage_name: Some(self.default_storage_name.clone()),
+                        resources,
+                        environment,
+                        outputs,
+                        ..Default::default()
+                    });
+                }
                 ActionKind::SetSwitching { cond } => {
-                    plan.switching.push((loc, cond));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .switching
+                        .push((loc, cond));
                 }
                 ActionKind::SetRunningLoop { index } => {
-                    plan.looping.push((loc, index));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .looping
+                        .push((loc, index));
                 }
                 ActionKind::SetRunningMap { size } => {
-                    plan.mapping.push((loc, size));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .mapping
+                        .push((loc, size));
                 }
                 ActionKind::SetMapElemComplete { index, size } => {
-                    let entry = plan
+                    let entry = exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
                         .map_elem_complete
                         .entry(loc)
                         .or_insert_with(|| BitVec::repeat(false, size));
                     entry.set(index, true);
                 }
                 ActionKind::SetComplete { outputs } => {
-                    plan.node_complete.push((loc, outputs));
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .node_complete
+                        .push((loc, outputs));
                 }
                 ActionKind::WorkflowFinished {} => {
-                    plan.workflow_complete = true;
+                    exec_plans
+                        .get_mut(default_executor_name)
+                        .unwrap()
+                        .workflow_complete = true;
                 }
             }
         }
 
-        if !plan.node_complete.is_empty() {
-            let (locs, outputs) = plan.node_complete.into_iter().unzip();
+        if !exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .node_complete
+            .is_empty()
+        {
+            let (locs, outputs) = exec_plans
+                .get(default_executor_name)
+                .unwrap()
+                .node_complete
+                .clone()
+                .into_iter()
+                .unzip();
             send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
         }
 
-        for (loc, size) in plan.mapping {
+        for (loc, size) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .mapping
+            .clone()
+        {
             send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
         }
-        for (loc, bits) in plan.map_elem_complete {
+        for (loc, bits) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .map_elem_complete
+            .clone()
+        {
             send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
         }
-        for (loc, index) in plan.looping {
+        for (loc, index) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .looping
+            .clone()
+        {
             send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
         }
-        for (loc, cond) in plan.switching {
+        for (loc, cond) in exec_plans
+            .get(default_executor_name)
+            .unwrap()
+            .switching
+            .clone()
+        {
             send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
         }
 
-        let default_executor_name = &self.default_executor_name;
-        let executor = self
-            .executor_registry
+        let workflow_complete = exec_plans
             .get(default_executor_name)
-            .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Nodes")?;
-        executor
-            .execute(plan.tasks)
-            .await
-            .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
+            .is_some_and(|plan| plan.workflow_complete);
 
-        if plan.workflow_complete {
+        for (executor_name, task_plans) in exec_plans {
+            if task_plans.tasks.is_empty() {
+                continue;
+            }
+            let executor = self
+                .executor_registry
+                .get(&executor_name)
+                .ok_or_else(|| {
+                    miette!(
+                        "Could not find an executor with name '{executor_name}' in ExecutorRegistry"
+                    )
+                })
+                .wrap_err("Could not run Task Nodes")?;
+
+            executor
+                .execute(task_plans.tasks)
+                .await
+                .wrap_err("Could not run Task Nodes")?;
+        }
+
+        if workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
         }
 
         Ok(())
+    }
+
+    fn orchestrate(
+        &self,
+        resources: &HashMap<String, Value>,
+        environment: &HashMap<String, Value>,
+    ) -> String {
+        for (executor_name, executor) in self.executor_registry.iter() {
+            if let Some(hpc_executor) = executor.as_ref().as_any().downcast_ref::<HPCExecutor>() {
+                let hpc_resources = HPCResourceSpec::new(
+                    resources
+                        .get("nodes")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("cores_per_node")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("memory_per_node_gb")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(1) as u32,
+                    resources
+                        .get("gpus_per_node")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0) as u32,
+                );
+                let hpc_environment = HPCEnvironmentSpec::new(
+                    environment
+                        .get("mpi_available")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false),
+                );
+                if hpc_executor.max_resources.satisfies(&hpc_resources)
+                    && hpc_executor.environment.satisfies(&hpc_environment)
+                {
+                    return executor_name.clone();
+                }
+            }
+        }
+        self.default_executor_name.clone()
     }
 
     /// Listen to a combined stream events from the Orchestrator and the
@@ -1184,6 +1314,8 @@ fn build_task_action(
             task_name: task_name.to_string(),
             inputs,
             outputs,
+            resources: HashMap::new(),
+            environment: HashMap::new(),
         },
     })
 }
@@ -1249,10 +1381,11 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        asset_storage::{assert_registry_contains_values, test_storage_registry},
+        asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
         builder::*,
         event::{NodeEvent, NodeStatus},
         executor::{
+            hpc::HPCEnvironmentSpec, hpc::HPCExecutor, hpc::HPCResourceSpec,
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
         },
         graph::LegacyWorkflowGraph,
@@ -1280,6 +1413,43 @@ mod tests {
                 SubprocessExecutor::try_new(asset_storage_registry, "file", "file")
                     .await
                     .unwrap(),
+            ),
+        );
+        if !asset_storage_registry
+            .read()
+            .await
+            .contains_key("checkpoints")
+        {
+            return Arc::new(executor_registry);
+        }
+
+        let environment = HPCEnvironmentSpec::new(true);
+        executor_registry.insert(
+            "large".to_string(),
+            Box::new(
+                HPCExecutor::try_new(
+                    asset_storage_registry,
+                    "checkpoints",
+                    "checkpoints",
+                    HPCResourceSpec::new(2, 1, 4, 1),
+                    environment.clone(),
+                )
+                .await
+                .unwrap(),
+            ),
+        );
+        executor_registry.insert(
+            "small".to_string(),
+            Box::new(
+                HPCExecutor::try_new(
+                    asset_storage_registry,
+                    "checkpoints",
+                    "checkpoints",
+                    HPCResourceSpec::new(1, 1, 2, 1),
+                    environment,
+                )
+                .await
+                .unwrap(),
             ),
         );
 
@@ -2132,6 +2302,69 @@ mod tests {
             &orchestrator.default_storage_name,
             &outputs,
             json!({"simple_eval_output": 12}),
+        )
+        .await;
+
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn do_resource_orchestration() -> miette::Result<()> {
+        // Setup Orchestrator and registry
+        let file_storage = FileAssetStorage::new(std::path::Path::new(
+            "/Users/philipp.seitz/.tierkreis/checkpoints/",
+        ));
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
+        registry
+            .write()
+            .await
+            .insert("checkpoints".to_string(), Box::new(file_storage));
+        let executor_registry = test_executor_registry(&registry).await;
+        let orchestrator =
+            Orchestrator::try_new(&registry, &executor_registry, "memory", "memory").await?;
+        let stream = orchestrator.listen()?;
+
+        // new setup
+        let (workflow_run_state, _state_recv) = InMemoryWorkflowRunState::test();
+        let workflow_run_state = Arc::new(workflow_run_state);
+        let action = Action {
+            loc: Location::new("N1")?,
+            kind: ActionKind::PerformTask {
+                worker_name: "mpi_worker".to_string(),
+                task_name: "mpi_rank_info_with_input".to_string(),
+                resources: HashMap::from([("nodes".to_string(), json!(2))]),
+                environment: HashMap::from([("mpi_available".to_string(), json!(true))]),
+                inputs: input_sets[0].clone(),
+                outputs: HashSet::from(["value".to_string()]),
+            },
+        };
+        orchestrator
+            .perform_actions(
+                workflow_run_state.run_id(),
+                workflow_run_state.attempt(),
+                stream::iter(vec![Ok(action)]),
+            )
+            .await?;
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events[0],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
+        dbg!(events.clone());
+        assert_registry_contains_values(
+            &registry,
+            "memory",
+            &events[1].clone().outputs()[0],
+            json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
         )
         .await;
 

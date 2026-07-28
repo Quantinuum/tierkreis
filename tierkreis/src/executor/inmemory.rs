@@ -418,6 +418,10 @@ impl InMemoryExecutor {
 }
 
 impl Executor for InMemoryExecutor {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         futures::future::ok(vec![WorkerSpec {
             worker_name: "builtin".to_string(),

@@ -2,10 +2,13 @@
 This module defines the interface and some standard implementations of [Executor]
 as well as some utility functions and an [`ExecutorRegistry`] type.
 */
+pub mod hpc;
 pub mod inmemory;
 pub mod interface;
+pub mod slurm;
 pub mod subprocess;
 
+pub use crate::executor::hpc::HPCExecutor;
 pub use crate::executor::inmemory::InMemoryExecutor;
 pub use crate::executor::interface::Executor;
 pub use crate::executor::subprocess::SubprocessExecutor;
