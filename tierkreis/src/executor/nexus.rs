@@ -268,7 +268,7 @@ impl NexusExecutor {
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let client = NexusClient::try_new(client::Scheme::Https, host, None).await?;
+        let client = NexusClient::try_new(client::TLSMode::Default, host, None).await?;
 
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(output_storage_name) {
