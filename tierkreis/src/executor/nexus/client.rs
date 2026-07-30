@@ -32,6 +32,12 @@ use crate::executor::nexus::client::models::{
     results::{QSysResult, QSysResultData},
 };
 
+const REFRESH_ENDPOINT: &str = "/auth/tokens/refresh";
+const PROJECTS_ENDPOINT: &str = "/api/projects/v1beta2";
+const HUGR_ENDPOINT: &str = "/api/hugr/v1beta";
+const JOBS_ENDPOINT: &str = "/api/jobs/v1beta3";
+const QSYS_RESULTS_PARTIAL_ENDPOINT: &str = "/api/qsys_results/v1beta2/partial";
+
 #[derive(Deserialize)]
 struct AccessToken {
     data: AccessTokenData,
@@ -164,6 +170,7 @@ pub struct NexusClient {
     http1_client: Client,
     client: Client,
     base_url: Url,
+    base_ws_url: Url,
 }
 
 impl NexusClient {
@@ -207,6 +214,9 @@ impl NexusClient {
             serde_json::from_str(&refresh_token_contents).into_diagnostic()?;
 
         let base_url: Url = format!("{scheme}://{host}").parse().into_diagnostic()?;
+        let mut base_ws_url: Url = base_url.clone();
+        base_ws_url.set_scheme("wss");
+
         let jar = Jar::default();
         jar.add_cookie_str(
             &format!("myqos_oat={}", refresh_token.data.refresh_token),
@@ -234,14 +244,12 @@ impl NexusClient {
             http1_client,
             client,
             base_url,
+            base_ws_url,
         })
     }
 
     pub async fn refresh_tokens(&self) -> miette::Result<()> {
-        let url = self
-            .base_url
-            .join("/auth/tokens/refresh")
-            .into_diagnostic()?;
+        let url = self.base_url.join(REFRESH_ENDPOINT).into_diagnostic()?;
         let response = self
             .client
             .post(url)
@@ -256,10 +264,7 @@ impl NexusClient {
     }
 
     pub async fn find_project_data(&self, name: &str) -> miette::Result<Option<Data>> {
-        let url = self
-            .base_url
-            .join("/api/projects/v1beta2")
-            .into_diagnostic()?;
+        let url = self.base_url.join(PROJECTS_ENDPOINT).into_diagnostic()?;
         let response = self
             .client
             .get(url)
@@ -280,10 +285,7 @@ impl NexusClient {
         name: &str,
         description: Option<&str>,
     ) -> miette::Result<Data> {
-        let url = self
-            .base_url
-            .join("/api/projects/v1beta2")
-            .into_diagnostic()?;
+        let url = self.base_url.join(PROJECTS_ENDPOINT).into_diagnostic()?;
         let response = self
             .client
             .post(url)
@@ -317,7 +319,7 @@ impl NexusClient {
         project_id: Uuid,
         package: Package,
     ) -> miette::Result<Data> {
-        let url = self.base_url.join("/api/hugr/v1beta").into_diagnostic()?;
+        let url = self.base_url.join(HUGR_ENDPOINT).into_diagnostic()?;
         let response = self
             .client
             .post(url)
@@ -338,7 +340,7 @@ impl NexusClient {
         project_id: Uuid,
         hugr_ids: impl IntoIterator<Item = (Uuid, u64)>,
     ) -> miette::Result<Data> {
-        let url = self.base_url.join("/api/jobs/v1beta3").into_diagnostic()?;
+        let url = self.base_url.join(JOBS_ENDPOINT).into_diagnostic()?;
         let items: Vec<_> = hugr_ids
             .into_iter()
             .map(|(hugr_id, n_shots)| NewExecuteJobItem::new(hugr_id, n_shots))
@@ -365,8 +367,8 @@ impl NexusClient {
     pub async fn get_job(&self, job_id: Uuid) -> miette::Result<JobData> {
         let url = self
             .base_url
-            .join("/api/jobs/v1beta3/")
-            .and_then(|url| url.join(&job_id.to_string()))
+            .join(JOBS_ENDPOINT)
+            .and_then(|url| url.join(&format!("/{job_id}")))
             .into_diagnostic()?;
         let response = self.client.get(url).send().await.into_diagnostic()?;
 
@@ -376,11 +378,16 @@ impl NexusClient {
     }
 
     pub async fn listen_for_job_status(&self, job_id: Uuid) -> miette::Result<JobStatusStream> {
+        let url = self
+            .base_ws_url
+            .join(JOBS_ENDPOINT)
+            .and_then(|url| url.join(&format!("/{job_id}/")))
+            .and_then(|url| url.join("/attributes/status/ws"))
+            .into_diagnostic()?;
+
         let response = self
             .http1_client
-            .get(format!(
-                "wss://nexus.quantinuum.com/api/jobs/v1beta3/{job_id}/attributes/status/ws"
-            ))
+            .get(url)
             .upgrade()
             .send()
             .await
@@ -397,8 +404,8 @@ impl NexusClient {
     ) -> miette::Result<QSysResultData> {
         let url = self
             .base_url
-            .join("/api/qsys_results/v1beta2/partial/")
-            .and_then(|url| url.join(&result_id.to_string()))
+            .join(QSYS_RESULTS_PARTIAL_ENDPOINT)
+            .and_then(|url| url.join(&format!("/{result_id}")))
             .into_diagnostic()?;
         let response = self
             .client
