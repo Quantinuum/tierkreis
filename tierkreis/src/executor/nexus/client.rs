@@ -2,7 +2,6 @@ pub(crate) mod models;
 
 use std::{
     env::home_dir,
-    fmt::Display,
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
@@ -104,16 +103,13 @@ impl Stream for JobStatusStream {
             Poll::Ready(Some(Ok(Message::Binary(bin)))) => {
                 Poll::Ready(Some(serde_json::from_slice(&bin).into_diagnostic()))
             }
-            // Ignoring ping messages may be sub-optimal, we may want to have a way to send
-            // pong responses but this would require another channel and a bit more
-            // engineering effort.
-            Poll::Ready(Some(Ok(Message::Ping(_)))) => {
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
             // We are ignoring pong messages we receive, which seems reasonable to
             // abstract over as there are no further actions to take.
-            Poll::Ready(Some(Ok(Message::Pong(_)))) => {
+            //
+            // Ignoring ping messages may be sub-optimal, we may want to have a way to send
+            // pong responses but this would require another channel and a bit more
+            // engineering effort for the current design.
+            Poll::Ready(Some(Ok(Message::Pong(_) | Message::Ping(_)))) => {
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
@@ -149,16 +145,26 @@ impl JobStatusStream {
     }
 }
 
-pub enum Scheme {
-    Http,
-    Https,
+pub enum TLSMode {
+    #[cfg(test)]
+    None,
+    Default,
 }
 
-impl Display for Scheme {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl TLSMode {
+    fn http_scheme(&self) -> &'static str {
         match self {
-            Self::Http => write!(f, "http"),
-            Self::Https => write!(f, "https"),
+            #[cfg(test)]
+            Self::None => "http",
+            Self::Default => "https",
+        }
+    }
+
+    fn ws_scheme(&self) -> &'static str {
+        match self {
+            #[cfg(test)]
+            Self::None => "ws",
+            Self::Default => "wss",
         }
     }
 }
@@ -175,7 +181,7 @@ pub struct NexusClient {
 
 impl NexusClient {
     pub async fn try_new(
-        scheme: Scheme,
+        tls_mode: TLSMode,
         host: Host,
         token_dir: Option<&Path>,
     ) -> miette::Result<Self> {
@@ -213,9 +219,13 @@ impl NexusClient {
         let refresh_token: RefreshToken =
             serde_json::from_str(&refresh_token_contents).into_diagnostic()?;
 
-        let base_url: Url = format!("{scheme}://{host}").parse().into_diagnostic()?;
+        let base_url: Url = format!("{}://{host}", tls_mode.http_scheme())
+            .parse()
+            .into_diagnostic()?;
         let mut base_ws_url: Url = base_url.clone();
-        base_ws_url.set_scheme("wss");
+        base_ws_url
+            .set_scheme(tls_mode.ws_scheme())
+            .map_err(|()| miette!("Failed to set websocket scheme"))?;
 
         let jar = Jar::default();
         jar.add_cookie_str(
@@ -367,9 +377,9 @@ impl NexusClient {
     pub async fn get_job(&self, job_id: Uuid) -> miette::Result<JobData> {
         let url = self
             .base_url
-            .join(JOBS_ENDPOINT)
-            .and_then(|url| url.join(&format!("/{job_id}")))
+            .join(&format!("{JOBS_ENDPOINT}/{job_id}"))
             .into_diagnostic()?;
+
         let response = self.client.get(url).send().await.into_diagnostic()?;
 
         response.error_for_status_ref().into_diagnostic()?;
@@ -380,9 +390,7 @@ impl NexusClient {
     pub async fn listen_for_job_status(&self, job_id: Uuid) -> miette::Result<JobStatusStream> {
         let url = self
             .base_ws_url
-            .join(JOBS_ENDPOINT)
-            .and_then(|url| url.join(&format!("/{job_id}/")))
-            .and_then(|url| url.join("/attributes/status/ws"))
+            .join(&format!("{JOBS_ENDPOINT}/{job_id}/attributes/status/ws"))
             .into_diagnostic()?;
 
         let response = self
@@ -393,6 +401,7 @@ impl NexusClient {
             .await
             .into_diagnostic()?;
 
+        response.error_for_status_ref().into_diagnostic()?;
         let websocket = response.into_websocket().await.into_diagnostic()?;
         Ok(JobStatusStream::new(websocket))
     }
@@ -404,8 +413,7 @@ impl NexusClient {
     ) -> miette::Result<QSysResultData> {
         let url = self
             .base_url
-            .join(QSYS_RESULTS_PARTIAL_ENDPOINT)
-            .and_then(|url| url.join(&format!("/{result_id}")))
+            .join(&format!("{QSYS_RESULTS_PARTIAL_ENDPOINT}/{result_id}"))
             .into_diagnostic()?;
         let response = self
             .client
@@ -472,7 +480,7 @@ mod tests {
             )
             .create();
 
-        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
+        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
         client.refresh_tokens().await?;
 
         mock.assert_async().await;
@@ -493,7 +501,7 @@ mod tests {
             .with_status(401)
             .create();
 
-        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
+        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
         let err = client.refresh_tokens().await.unwrap_err();
         assert!(
             err.to_string()
@@ -519,7 +527,7 @@ mod tests {
             .with_body("{\"data\": [{\"id\": \"ebdc7a71-45d7-4a8f-b175-1361903a760b\"}]}")
             .create();
 
-        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
+        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
         let project_data = client
             .find_or_create_project_data("foo", Some("description"))
             .await?;
@@ -568,7 +576,7 @@ mod tests {
             ))
             .create();
 
-        let client = NexusClient::try_new(Scheme::Http, host, Some(token_path)).await?;
+        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
         let project_data = client
             .find_or_create_project_data("foo", Some("description"))
             .await?;
