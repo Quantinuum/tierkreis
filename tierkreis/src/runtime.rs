@@ -7,7 +7,6 @@ use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
 use serde::Deserialize;
 use tokio::sync::RwLock;
-use url::Host;
 use uuid::Uuid;
 
 use crate::{
@@ -17,7 +16,8 @@ use crate::{
     },
     event::RuntimeEvent,
     executor::{
-        Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor, nexus::NexusExecutor,
+        Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor,
+        nexus::{NexusClientConfig, NexusExecutor},
     },
     graph::WorkflowGraph,
     location::Location,
@@ -117,7 +117,7 @@ enum ExecutorConfig {
         output_storage_name: String,
     },
     Nexus {
-        host: String,
+        client_config: NexusClientConfig,
         output_storage_name: String,
     },
 }
@@ -345,13 +345,13 @@ async fn executor_registry_from_config(
                 ),
             ),
             ExecutorConfig::Nexus {
-                host,
+                client_config,
                 output_storage_name,
             } => executor_registry.insert(
                 executor_name.clone(),
                 Box::new(
                     NexusExecutor::try_new(
-                        Host::parse(host).into_diagnostic()?,
+                        client_config,
                         asset_storage_registry,
                         output_storage_name,
                     )

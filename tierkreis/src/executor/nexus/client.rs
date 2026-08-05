@@ -2,7 +2,7 @@ pub(crate) mod models;
 
 use std::{
     env::home_dir,
-    path::{Path, PathBuf},
+    path::PathBuf,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -21,7 +21,7 @@ use reqwest_websocket::{Bytes, Message, Upgrade};
 use serde::Deserialize;
 use tokio::{fs::File, io::AsyncReadExt, task::JoinHandle};
 use tracing::warn;
-use url::{Host, Url};
+use url::Url;
 use uuid::Uuid;
 
 use crate::executor::nexus::client::models::{
@@ -145,9 +145,11 @@ impl JobStatusStream {
     }
 }
 
+#[derive(Default, Deserialize)]
 pub enum TLSMode {
     #[cfg(test)]
     None,
+    #[default]
     Default,
 }
 
@@ -169,6 +171,27 @@ impl TLSMode {
     }
 }
 
+/// Configuration for the `NexusClient`.
+#[derive(Deserialize)]
+pub struct NexusClientConfig {
+    /// Whether to use TLS.
+    pub tls_mode: TLSMode,
+    /// The host name to connect to.
+    pub host: String,
+    /// The directory to load tokens from.
+    pub token_dir: Option<PathBuf>,
+}
+
+impl Default for NexusClientConfig {
+    fn default() -> Self {
+        Self {
+            tls_mode: TLSMode::Default,
+            host: "nexus.quantinuum.com".to_string(),
+            token_dir: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct NexusClient {
     // See https://github.com/jgraef/reqwest-websocket/issues/2
@@ -180,22 +203,18 @@ pub struct NexusClient {
 }
 
 impl NexusClient {
-    pub async fn try_new(
-        tls_mode: TLSMode,
-        host: Host,
-        token_dir: Option<&Path>,
-    ) -> miette::Result<Self> {
+    pub async fn try_new(config: &NexusClientConfig) -> miette::Result<Self> {
         // Assumes that a user has credentials saved from qnexus in their home directory.
         //
         // While we could replicate the device code login flow here, this is much easier
         // for getting something running in the short term.
-        let token_dir_path = token_dir.map_or_else(
+        let token_dir_path = config.token_dir.as_ref().map_or_else(
             || -> miette::Result<PathBuf> {
                 let home_dir_path = home_dir().ok_or_else(|| miette!("no home directory"))?;
                 let token_dir_path = home_dir_path.join(".qnx/auth");
                 Ok(token_dir_path)
             },
-            |path| Ok(path.to_path_buf()),
+            |path| Ok(path.clone()),
         )?;
         let access_token_path = token_dir_path.join("id.json");
         let refresh_token_path = token_dir_path.join("token.json");
@@ -219,12 +238,13 @@ impl NexusClient {
         let refresh_token: RefreshToken =
             serde_json::from_str(&refresh_token_contents).into_diagnostic()?;
 
-        let base_url: Url = format!("{}://{host}", tls_mode.http_scheme())
+        let base_url: Url = format!("{}://{}", config.tls_mode.http_scheme(), config.host)
             .parse()
             .into_diagnostic()?;
+
         let mut base_ws_url: Url = base_url.clone();
         base_ws_url
-            .set_scheme(tls_mode.ws_scheme())
+            .set_scheme(config.tls_mode.ws_scheme())
             .map_err(|()| miette!("Failed to set websocket scheme"))?;
 
         let jar = Jar::default();
@@ -430,14 +450,14 @@ impl NexusClient {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use mockito::Matcher::{AnyOf, PartialJsonString};
     use tempfile::{TempDir, tempdir};
     use tokio::io::AsyncWriteExt;
 
     use super::*;
 
-    async fn setup_temp_tokens() -> miette::Result<TempDir> {
+    pub async fn setup_temp_tokens() -> miette::Result<TempDir> {
         let token_dir = tempdir().into_diagnostic()?;
         let token_dir_path = token_dir.path();
 
@@ -465,7 +485,6 @@ mod tests {
         let token_path = token_dir.path();
 
         let mut server = mockito::Server::new_async().await;
-        let host = Host::Domain(server.host_with_port());
 
         let mock = server
             .mock("POST", "/auth/tokens/refresh")
@@ -480,7 +499,12 @@ mod tests {
             )
             .create();
 
-        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
+        let config = NexusClientConfig {
+            tls_mode: TLSMode::None,
+            host: server.host_with_port(),
+            token_dir: Some(token_path.to_path_buf()),
+        };
+        let client = NexusClient::try_new(&config).await?;
         client.refresh_tokens().await?;
 
         mock.assert_async().await;
@@ -494,14 +518,18 @@ mod tests {
         let token_path = token_dir.path();
 
         let mut server = mockito::Server::new_async().await;
-        let host = Host::Domain(server.host_with_port());
 
         let mock = server
             .mock("POST", "/auth/tokens/refresh")
             .with_status(401)
             .create();
 
-        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
+        let config = NexusClientConfig {
+            tls_mode: TLSMode::None,
+            host: server.host_with_port(),
+            token_dir: Some(token_path.to_path_buf()),
+        };
+        let client = NexusClient::try_new(&config).await?;
         let err = client.refresh_tokens().await.unwrap_err();
         assert!(
             err.to_string()
@@ -519,7 +547,6 @@ mod tests {
         let token_path = token_dir.path();
 
         let mut server = mockito::Server::new_async().await;
-        let host = Host::Domain(server.host_with_port());
 
         let mock = server
             .mock("GET", "/api/projects/v1beta2?filter%5Bname_exact%5D=foo")
@@ -527,7 +554,12 @@ mod tests {
             .with_body("{\"data\": [{\"id\": \"ebdc7a71-45d7-4a8f-b175-1361903a760b\"}]}")
             .create();
 
-        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
+        let config = NexusClientConfig {
+            tls_mode: TLSMode::None,
+            host: server.host_with_port(),
+            token_dir: Some(token_path.to_path_buf()),
+        };
+        let client = NexusClient::try_new(&config).await?;
         let project_data = client
             .find_or_create_project_data("foo", Some("description"))
             .await?;
@@ -548,7 +580,6 @@ mod tests {
         let token_path = token_dir.path();
 
         let mut server = mockito::Server::new_async().await;
-        let host = Host::Domain(server.host_with_port());
 
         let mock1 = server
             .mock("GET", "/api/projects/v1beta2?filter%5Bname_exact%5D=foo")
@@ -576,7 +607,12 @@ mod tests {
             ))
             .create();
 
-        let client = NexusClient::try_new(TLSMode::None, host, Some(token_path)).await?;
+        let config = NexusClientConfig {
+            tls_mode: TLSMode::None,
+            host: server.host_with_port(),
+            token_dir: Some(token_path.to_path_buf()),
+        };
+        let client = NexusClient::try_new(&config).await?;
         let project_data = client
             .find_or_create_project_data("foo", Some("description"))
             .await?;

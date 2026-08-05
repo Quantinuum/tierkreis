@@ -13,18 +13,17 @@ use std::{
 use futures::{
     FutureExt, SinkExt, StreamExt, TryStreamExt,
     channel::mpsc,
-    future::BoxFuture,
+    future::{self, BoxFuture},
     stream::{BoxStream, FuturesUnordered},
 };
 use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
 use miette::{IntoDiagnostic, miette};
 use tokio::task::{AbortHandle, JoinHandle};
-use url::Host;
 use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        AssetSpec, AssetStorageRegistry, load_asset, reserve_asset_specs, save_asset_with_spec,
+        AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs, save_asset_with_spec,
     },
     event::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_running,
@@ -39,6 +38,7 @@ use crate::{
     },
     location::Location,
 };
+pub use client::NexusClientConfig;
 
 struct BackgroundTaskPlan {
     workflow_run_id: Uuid,
@@ -264,11 +264,11 @@ impl NexusExecutor {
     /// exist inside the [`AssetStorageRegistry`] or if the [`NexusClient`] cannot
     /// be initialized.
     pub async fn try_new(
-        host: Host,
+        client_config: &NexusClientConfig,
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let client = NexusClient::try_new(client::TLSMode::Default, host, None).await?;
+        let client = NexusClient::try_new(client_config).await?;
 
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(output_storage_name) {
@@ -297,6 +297,7 @@ impl NexusExecutor {
             asset_storage_registry,
         })
     }
+
     async fn build_outputs(
         &self,
         output_storage_name: &str,
@@ -311,11 +312,62 @@ impl NexusExecutor {
         let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
         Ok(outputs)
     }
+
+    async fn upload_hugr(&self, project_id: Uuid, hugr_package: &[u8]) -> miette::Result<Uuid> {
+        let (_, package) = read_envelope(Cursor::new(hugr_package), &ExtensionRegistry::new([]))
+            .into_diagnostic()?;
+
+        let hugr_data = self
+            .client
+            .new_hugr_data(
+                "tkr-example-hugr",
+                Some("A HUGR package uploaded with Tierkreis"),
+                project_id,
+                package,
+            )
+            .await?;
+
+        Ok(hugr_data.id())
+    }
+
+    async fn start_single_job(
+        &self,
+        project_id: Uuid,
+        job_name: &str,
+        program_id: Uuid,
+        n_shots: u64,
+    ) -> miette::Result<Uuid> {
+        let job_data = self
+            .client
+            .new_job_data(
+                job_name,
+                Some("trying new executor"),
+                project_id,
+                [(program_id, n_shots)],
+            )
+            .await?;
+
+        Ok(job_data.id())
+    }
+}
+
+fn extract_json_input<T: for<'b> serde::Deserialize<'b>>(
+    inputs: &mut HashMap<String, Vec<u8>>,
+    name: &str,
+) -> miette::Result<T> {
+    let input_bytes = inputs
+        .remove(name)
+        .ok_or_else(|| miette!("Missing input: {name}"))?;
+    let input: T = serde_json::from_slice(&input_bytes).into_diagnostic()?;
+    Ok(input)
 }
 
 impl Executor for NexusExecutor {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
-        unimplemented!()
+        future::ok(vec![WorkerSpec {
+            worker_name: "nexus_worker".to_string(),
+        }])
+        .boxed()
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
@@ -323,41 +375,14 @@ impl Executor for NexusExecutor {
             let mut task_sender = self.task_sender.clone();
             self.client.refresh_tokens().await?;
 
-            let project_data = self
-                .client
-                .find_or_create_project_data("tkr-executor-demo", Some("trying new executor"))
-                .await?;
-
             for task_plan in task_plans {
-                let envelope =
-                    load_asset(&self.asset_storage_registry, &task_plan.inputs, "hugr").await?;
-                let (_, package) =
-                    read_envelope(Cursor::new(envelope), &ExtensionRegistry::new([]))
-                        .into_diagnostic()?;
+                if task_plan.worker_name != "nexus_worker" {
+                    return Err(miette!("Unknown worker: `{}`", task_plan.worker_name));
+                }
 
-                let n_shots_bytes =
-                    load_asset(&self.asset_storage_registry, &task_plan.inputs, "n_shots").await?;
-                let n_shots: Vec<u64> = serde_json::from_slice(&n_shots_bytes).into_diagnostic()?;
-
-                let hugr_data = self
-                    .client
-                    .new_hugr_data(
-                        "tkr-example-hugr",
-                        Some("trying new executor"),
-                        project_data.id(),
-                        package,
-                    )
-                    .await?;
-
-                let job_data = self
-                    .client
-                    .new_job_data(
-                        "tkr-example-job",
-                        Some("trying new executor"),
-                        project_data.id(),
-                        [(hugr_data.id(), n_shots[0])],
-                    )
-                    .await?;
+                if task_plan.task_name != "submit_and_run" {
+                    return Err(miette!("Unknown task: `{}`", task_plan.task_name));
+                }
 
                 let output_storage_name = task_plan
                     .output_storage_name
@@ -368,12 +393,33 @@ impl Executor for NexusExecutor {
                     .build_outputs(&output_storage_name, task_plan.outputs)
                     .await?;
 
+                let mut inputs =
+                    load_assets(&self.asset_storage_registry, &task_plan.inputs).await?;
+
+                let project_name: String = extract_json_input(&mut inputs, "project_name")?;
+                let job_name: String = extract_json_input(&mut inputs, "job_name")?;
+                let n_shots: u64 = extract_json_input(&mut inputs, "n_shots")?;
+
+                let project_data = self
+                    .client
+                    .find_or_create_project_data(&project_name, Some("trying new executor"))
+                    .await?;
+
+                let hugr_package = inputs
+                    .get("hugr_package")
+                    .ok_or_else(|| miette!("Missing input: hugr_package"))?;
+                let hugr_id = self.upload_hugr(project_data.id(), hugr_package).await?;
+
+                let job_id = self
+                    .start_single_job(project_data.id(), &job_name, hugr_id, n_shots)
+                    .await?;
+
                 task_sender
                     .send(BackgroundTaskPlan {
                         workflow_run_id: task_plan.workflow_run_id,
                         attempt: task_plan.attempt,
                         loc: task_plan.loc,
-                        job_id: job_data.id(),
+                        job_id,
                         outputs,
                     })
                     .await
@@ -423,6 +469,13 @@ impl Executor for NexusExecutor {
 
 #[cfg(test)]
 mod tests {
+    use axum::{
+        Json, Router,
+        extract::{
+            WebSocketUpgrade,
+            ws::{Message, WebSocket},
+        },
+    };
     use hugr::{
         builder::{FunctionBuilder, HugrBuilder},
         envelope::{EnvelopeConfig, write_envelope},
@@ -434,41 +487,122 @@ mod tests {
     use crate::{
         asset_storage::{assert_registry_contains_values, save_asset, test_storage_registry},
         event::{NodeEvent, NodeStatus, WorkflowRunEvent},
+        executor::nexus::client::TLSMode,
     };
 
     use super::*;
 
-    #[tokio::test]
-    async fn nexus_auth() -> miette::Result<()> {
-        let (registry, _input_sets, _temp_dir) = test_storage_registry(vec![], vec![]).await;
-        let _executor = NexusExecutor::try_new(
-            Host::parse("nexus.quantinuum.com").into_diagnostic()?,
-            &registry,
-            "memory",
-        )
-        .await?;
+    fn test_app() -> Router {
+        async fn send_message(socket: &mut WebSocket, message: &serde_json::Value) {
+            let msg = Message::text(serde_json::to_string(message).expect("failed to serialize"));
+            socket.send(msg).await.expect("failed to send");
+        }
 
-        Ok(())
-    }
+        async fn handle_test_socket(mut socket: WebSocket) {
+            send_message(
+                &mut socket,
+                &json!({"status": "SUBMITTED", "message": "job is submitted"}),
+            )
+            .await;
+            send_message(
+                &mut socket,
+                &json!({"status": "QUEUED", "message": "job is queued"}),
+            )
+            .await;
+            send_message(
+                &mut socket,
+                &json!({"status": "RUNNING", "message": "job is runing"}),
+            )
+            .await;
+            send_message(
+                &mut socket,
+                &json!({"status": "COMPLETED", "message": "job is completed"}),
+            )
+            .await;
+        }
 
-    #[tokio::test]
-    async fn empty_execute() -> miette::Result<()> {
-        let (registry, _input_sets, _temp_dir) = test_storage_registry(vec![], vec![]).await;
-        let executor = NexusExecutor::try_new(
-            Host::parse("nexus.quantinuum.com").into_diagnostic()?,
-            &registry,
-            "memory",
-        )
-        .await?;
-        executor.execute(vec![]).await?;
-
-        Ok(())
+        Router::new()
+            .route("/auth/tokens/refresh", axum::routing::post(|| async {}))
+            .route(
+                "/api/projects/v1beta2",
+                axum::routing::get(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": [{"id": id}]}))
+                }),
+            )
+            .route(
+                "/api/hugr/v1beta",
+                axum::routing::post(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": {"id": id}}))
+                }),
+            )
+            .route(
+                "/api/jobs/v1beta3",
+                axum::routing::post(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": {"id": id}}))
+                }),
+            )
+            .route(
+                "/api/jobs/v1beta3/{job_id}/attributes/status/ws",
+                axum::routing::get(|ws: WebSocketUpgrade| async {
+                    ws.on_upgrade(handle_test_socket)
+                }),
+            )
+            .route(
+                "/api/jobs/v1beta3/{job_id}",
+                axum::routing::get(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({
+                        "data": {
+                            "attributes": {
+                                "status": {
+                                    "status": "COMPLETED",
+                                    "message": "job has completed",
+                                },
+                                "definition": {
+                                    "job_definition_type": "execute_job_definition",
+                                    "items": [{"result_id": id}],
+                                },
+                            },
+                        },
+                    }))
+                }),
+            )
+            .route(
+                "/api/qsys_results/v1beta2/partial/{result_id}",
+                axum::routing::get(|| async {
+                    Json(json!({
+                        "data": {
+                            "attributes": {
+                                "results": [[], [], [], [], []],
+                            },
+                        },
+                    }))
+                }),
+            )
     }
 
     #[tokio::test]
     async fn execute_hugr() -> miette::Result<()> {
-        let (registry, input_sets, _temp_dir) =
-            test_storage_registry(vec![json!({"n_shots": [5]})], vec![]).await;
+        let app = test_app();
+
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:8000")
+            .await
+            .into_diagnostic()?;
+
+        tokio::spawn(async { axum::serve(listener, app).await.unwrap() });
+
+        let (registry, input_sets, _temp_dir) = test_storage_registry(
+            vec![json!({
+                "n_shots": 5,
+                "project_name": "tkr-demo",
+                "job_name": "tkr-example-job",
+            })],
+            vec![],
+        )
+        .await;
 
         let hugr = FunctionBuilder::new("main", Signature::new(vec![], vec![]))
             .into_diagnostic()?
@@ -481,21 +615,25 @@ mod tests {
         let hugr_asset_spec = save_asset(&registry, "memory", buf).await?;
 
         let mut inputs = input_sets[0].clone();
-        inputs.insert("hugr".to_string(), hugr_asset_spec);
+        inputs.insert("hugr_package".to_string(), hugr_asset_spec);
 
         let mut outputs = HashSet::new();
         outputs.insert("results".to_string());
 
+        let token_dir = client::tests::setup_temp_tokens().await?;
+        let token_path = token_dir.path();
         let output_storage_name = "memory";
-        let executor = NexusExecutor::try_new(
-            Host::parse("nexus.quantinuum.com").into_diagnostic()?,
-            &registry,
-            "memory",
-        )
-        .await?;
+        let config = NexusClientConfig {
+            tls_mode: TLSMode::None,
+            host: "localhost:8000".to_string(),
+            token_dir: Some(token_path.to_path_buf()),
+        };
+        let executor = NexusExecutor::try_new(&config, &registry, output_storage_name).await?;
         let stream = executor.listen()?;
         executor
             .execute(vec![TaskPlan {
+                worker_name: "nexus_worker".to_string(),
+                task_name: "submit_and_run".to_string(),
                 inputs,
                 outputs,
                 ..Default::default()
