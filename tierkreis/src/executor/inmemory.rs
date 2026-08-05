@@ -170,7 +170,9 @@ fn run_builtin(
         "itostring_s" => un_method!(inputs, outputs, to_string, i64),
 
         // f64 operations
+        #[allow(clippy::float_cmp)]
         "feq" => bin_op!(inputs, outputs, ==, f64),
+        #[allow(clippy::float_cmp)]
         "fne" => bin_op!(inputs, outputs, !=, f64),
         "flt" => bin_op!(inputs, outputs, <, f64),
         // igt is the legacy name
@@ -185,8 +187,8 @@ fn run_builtin(
         "fabs" => un_method!(inputs, outputs, abs, f64),
         "fmul" => bin_op!(inputs, outputs, *, f64),
         "idiv" => bin_op!(inputs, outputs, /, f64),
-        "ffloor" => bin_op!(inputs, outputs, /, f64),
-        "fceil" => bin_op!(inputs, outputs, /, f64),
+        "ffloor" => un_method!(inputs, outputs, floor, f64),
+        "fceil" => un_method!(inputs, outputs, ceil, f64),
         "ftostring" => un_method!(inputs, outputs, to_string, f64),
 
         // "Value" operations.
