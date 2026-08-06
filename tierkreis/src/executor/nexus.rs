@@ -511,7 +511,7 @@ mod tests {
             .await;
             send_message(
                 &mut socket,
-                &json!({"status": "RUNNING", "message": "job is runing"}),
+                &json!({"status": "RUNNING", "message": "job is running"}),
             )
             .await;
             send_message(
