@@ -4,6 +4,7 @@ as well as some utility functions and an [`ExecutorRegistry`] type.
 */
 pub mod inmemory;
 pub mod interface;
+pub mod nexus;
 pub mod subprocess;
 
 pub use crate::executor::inmemory::InMemoryExecutor;
