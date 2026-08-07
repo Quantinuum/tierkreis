@@ -96,7 +96,7 @@ where
 
 fn log_filter(log_level: Option<&str>) -> EnvFilter {
     // EnvFilter::try_from_default_env()
-    EnvFilter::new(&format!("tierkreis={}", log_level.unwrap_or("info")))
+    EnvFilter::new(format!("tierkreis={}", log_level.unwrap_or("info")))
 }
 
 fn service_resource(config: &LoggingConfig) -> Resource {
@@ -138,8 +138,8 @@ fn init(config: LoggingConfig, with_telemetry: bool) {
     let filter = log_filter(config.log_level.as_deref());
     let writer = make_writer(config.log_file.as_deref());
 
-    if with_telemetry {
-        if let Some(otlp) = config.otel_endpoint.as_deref() {
+    if with_telemetry
+        && let Some(otlp) = config.otel_endpoint.as_deref() {
             let resource = service_resource(&config);
             with_format_layer!(&config.log_format, writer, |fmt_layer| {
                 let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
@@ -154,7 +154,6 @@ fn init(config: LoggingConfig, with_telemetry: bool) {
             });
             return;
         }
-    }
 
     with_format_layer!(&config.log_format, writer, |fmt_layer| {
         tracing_subscriber::registry()

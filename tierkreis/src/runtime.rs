@@ -246,16 +246,16 @@ impl Runtime {
                     let workflow_id = workflow_state.workflow_id().to_string();
                     match event.clone() {
                         WorkflowRunEvent::Started {} => {
-                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started")
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started");
                         }
                         WorkflowRunEvent::Completed {} => {
-                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed")
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed");
                         }
                         WorkflowRunEvent::Errored {} => {
-                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored")
+                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored");
                         }
                         WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => {
-                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event")
+                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event");
                         }
                         _ => {}
                     }
