@@ -15,7 +15,6 @@ use futures::{
     future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
 };
-use tracing::Instrument as _;
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -25,6 +24,7 @@ use tokio::{
     process::Command,
     task::{AbortHandle, JoinHandle},
 };
+use tracing::Instrument as _;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 use which::which_re;
@@ -200,19 +200,22 @@ async fn start_task(
     let stderr = read_stderr(&mut child, workflow_run_id, loc.clone());
 
     let background_loc = loc.clone();
-    let task = tokio::task::spawn(async move {
-        let exit_status = child.wait().await;
-        BackgroundTask {
-            workflow_run_id,
-            attempt,
-            loc: background_loc,
-            output_storage_name,
-            exit_status,
-            outputs,
-            stderr,
-            _worker_args: worker_args,
+    let task = tokio::task::spawn(
+        async move {
+            let exit_status = child.wait().await;
+            BackgroundTask {
+                workflow_run_id,
+                attempt,
+                loc: background_loc,
+                output_storage_name,
+                exit_status,
+                outputs,
+                stderr,
+                _worker_args: worker_args,
+            }
         }
-    }.instrument(parent_span));
+        .instrument(parent_span),
+    );
 
     abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
     running.push(task);
@@ -419,7 +422,11 @@ fn spawn_worker(
     Ok(child)
 }
 
-fn read_stderr(child: &mut tokio::process::Child, run_id: Uuid, loc: Location) -> tokio::task::JoinHandle<String> {
+fn read_stderr(
+    child: &mut tokio::process::Child,
+    run_id: Uuid,
+    loc: Location,
+) -> tokio::task::JoinHandle<String> {
     let mut stderr = child.stderr.take().unwrap();
     tokio::spawn(async move {
         let mut reader = BufReader::new(&mut stderr).lines();

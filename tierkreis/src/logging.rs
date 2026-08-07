@@ -2,22 +2,22 @@
 This module defines the central logging capabilities of the runtime.
 */
 
-use std::{path::Path, sync::OnceLock};
-use opentelemetry_sdk::metrics::SdkMeterProvider;
-use opentelemetry_sdk::Resource;
 use opentelemetry::propagation::TextMapCompositePropagator;
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_otlp::{ExporterBuildError, WithExportConfig, WithTonicConfig};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
+use std::{path::Path, sync::OnceLock};
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt as _;
-use tracing_subscriber::fmt;
 
 use crate::runtime::{LogFormat, LoggingConfig};
 
@@ -42,7 +42,6 @@ macro_rules! with_format_layer {
         }
     };
 }
-
 
 fn init_tracing_layer<S>(
     otlp: &str,
@@ -95,7 +94,6 @@ where
     Ok(MetricsLayer::new(provider))
 }
 
-
 fn log_filter(log_level: Option<&str>) -> EnvFilter {
     // EnvFilter::try_from_default_env()
     EnvFilter::new(&format!("tierkreis={}", log_level.unwrap_or("info")))
@@ -127,7 +125,8 @@ fn make_writer(path: Option<&Path>) -> BoxMakeWriter {
         let dir = path.parent().unwrap_or_else(|| Path::new("."));
         let file = path.file_name().unwrap_or_else(|| "tierkreis.log".as_ref());
         let appender = tracing_appender::rolling::never(dir, file);
-        let (non_blocking, guard): (NonBlocking, WorkerGuard) = tracing_appender::non_blocking(appender);
+        let (non_blocking, guard): (NonBlocking, WorkerGuard) =
+            tracing_appender::non_blocking(appender);
         LOG_GUARD.set(guard).expect("log guard already set");
         BoxMakeWriter::new(non_blocking)
     } else {
@@ -182,4 +181,3 @@ pub fn flush_tracing() {
         let _ = provider.force_flush();
     }
 }
-

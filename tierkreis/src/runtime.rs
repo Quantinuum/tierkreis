@@ -13,9 +13,15 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    }, event::{NodeEvent, RuntimeEvent, WorkflowRunEvent}, executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor}, graph::WorkflowGraph, location::Location, logging::{flush_tracing, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    },
+    event::{NodeEvent, RuntimeEvent, WorkflowRunEvent},
+    executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
+    graph::WorkflowGraph,
+    location::Location,
+    logging::{flush_tracing, init_logging_and_tracing},
+    orchestrator::{OrchestrationContext, Orchestrator},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
-
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,7 +30,6 @@ pub enum LogFormat {
     Pretty,
     Compact,
 }
-
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoggingConfig {
@@ -56,7 +61,7 @@ pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
     runtime_state: RuntimeStateConfig,
-    
+
     default_storage_name: String,
     default_executor_name: String,
     logging_config: Option<LoggingConfig>,
@@ -208,7 +213,6 @@ impl Runtime {
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
-        
         let inputs = save_assets(
             &self.asset_storage_registry,
             &self.default_storage_name,
@@ -241,14 +245,18 @@ impl Runtime {
                         .await?;
                     let workflow_id = workflow_state.workflow_id().to_string();
                     match event.clone() {
-                        WorkflowRunEvent::Started {} =>
-                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started"),
-                        WorkflowRunEvent::Completed {} =>
-                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed"),
-                        WorkflowRunEvent::Errored {} =>
-                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored"),
-                        WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) =>
-                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event"),
+                        WorkflowRunEvent::Started {} => {
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started")
+                        }
+                        WorkflowRunEvent::Completed {} => {
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed")
+                        }
+                        WorkflowRunEvent::Errored {} => {
+                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored")
+                        }
+                        WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => {
+                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event")
+                        }
                         _ => {}
                     }
 

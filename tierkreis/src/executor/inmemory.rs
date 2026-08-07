@@ -348,7 +348,7 @@ async fn process_tasks(
             }
             // A task has completed
             Some(res) = running.next() => {
-                
+
                 let background_task = match res {
                     Ok(ok) => ok,
                     Err(err) => panic!("Failed to join to future: {err}"),
