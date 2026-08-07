@@ -18,42 +18,10 @@ use crate::{
     executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
     graph::WorkflowGraph,
     location::Location,
-    logging::{flush_tracing, init_logging_and_tracing},
+    logging::{LoggingConfig, flush_tracing, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LogFormat {
-    Json,
-    Pretty,
-    Compact,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LoggingConfig {
-    pub log_file: Option<PathBuf>,
-    pub log_format: LogFormat,
-    pub log_level: Option<String>,
-
-    pub otel_endpoint: Option<String>,
-    pub service_name: Option<String>,
-    pub service_namespace: Option<String>,
-}
-
-impl Default for LoggingConfig {
-    fn default() -> Self {
-        LoggingConfig {
-            log_file: Some(PathBuf::from("./tierkreis.log")),
-            log_format: LogFormat::Json,
-            log_level: Some("info".to_string()),
-            otel_endpoint: Some("http://localhost:4317".to_string()),
-            service_name: Some("tierkreis".to_string()),
-            service_namespace: None,
-        }
-    }
-}
 
 /// `RuntimeConfig` defines the configuration for the runtime
 #[derive(Deserialize)]

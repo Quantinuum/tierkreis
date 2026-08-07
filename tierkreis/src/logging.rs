@@ -1,7 +1,6 @@
 /*!
 This module defines the central logging capabilities of the runtime.
 */
-
 use opentelemetry::propagation::TextMapCompositePropagator;
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_otlp::{ExporterBuildError, WithExportConfig, WithTonicConfig};
@@ -9,7 +8,12 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
-use std::{path::Path, sync::OnceLock};
+use serde::Deserialize;
+use std::{
+    env::home_dir,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
 use tracing_subscriber::EnvFilter;
@@ -19,7 +23,44 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-use crate::runtime::{LogFormat, LoggingConfig};
+/// The log format to use for the runtime.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(missing_docs)]
+pub enum LogFormat {
+    Json,
+    Pretty,
+    Compact,
+}
+
+/// The logging configuration for the runtime.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoggingConfig {
+    log_file: Option<PathBuf>,
+    log_format: LogFormat,
+    log_level: Option<String>,
+
+    otel_endpoint: Option<String>,
+    service_name: Option<String>,
+    service_namespace: Option<String>,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        let tierkreis_log = home_dir()
+            .unwrap_or_else(|| "/tmp".into())
+            .join(".tierkreis/tierkreis.log");
+
+        LoggingConfig {
+            log_file: Some(tierkreis_log),
+            log_format: LogFormat::Compact,
+            log_level: Some("info".to_string()),
+            otel_endpoint: Some("http://localhost:4317".to_string()),
+            service_name: Some("tierkreis".to_string()),
+            service_namespace: None,
+        }
+    }
+}
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
@@ -138,22 +179,21 @@ fn init(config: LoggingConfig, with_telemetry: bool) {
     let filter = log_filter(config.log_level.as_deref());
     let writer = make_writer(config.log_file.as_deref());
 
-    if with_telemetry
-        && let Some(otlp) = config.otel_endpoint.as_deref() {
-            let resource = service_resource(&config);
-            with_format_layer!(&config.log_format, writer, |fmt_layer| {
-                let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
-                let metrics = init_metrics_layer(otlp, &resource).expect("Failed to init metrics.");
-                tracing_subscriber::registry()
-                    .with(filter)
-                    .with(fmt_layer)
-                    .with(tracing)
-                    .with(metrics)
-                    .try_init()
-                    .expect("Failed initializing logger and tracing subscriber.");
-            });
-            return;
-        }
+    if with_telemetry && let Some(otlp) = config.otel_endpoint.as_deref() {
+        let resource = service_resource(&config);
+        with_format_layer!(&config.log_format, writer, |fmt_layer| {
+            let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
+            let metrics = init_metrics_layer(otlp, &resource).expect("Failed to init metrics.");
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt_layer)
+                .with(tracing)
+                .with(metrics)
+                .try_init()
+                .expect("Failed initializing logger and tracing subscriber.");
+        });
+        return;
+    }
 
     with_format_layer!(&config.log_format, writer, |fmt_layer| {
         tracing_subscriber::registry()
