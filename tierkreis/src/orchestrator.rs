@@ -109,6 +109,10 @@ pub struct OrchestrationContext {
     parent_loc: Location,
     graph_inputs: HashMap<String, AssetSpec>,
     workflow_run_state: Arc<dyn WorkflowRunState>,
+    /// Run id carried for span fields.
+    pub run_id: Uuid,
+    /// Attempt number carried for span fields.
+    pub attempt: u32,
 }
 
 impl Clone for OrchestrationContext {
@@ -117,6 +121,8 @@ impl Clone for OrchestrationContext {
             parent_loc: self.parent_loc.clone(),
             graph_inputs: self.graph_inputs.clone(),
             workflow_run_state: Arc::clone(&self.workflow_run_state),
+            run_id: self.run_id,
+            attempt: self.attempt,
         }
     }
 }
@@ -131,6 +137,8 @@ impl OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: inputs,
             workflow_run_state: Arc::clone(workflow_run_state),
+            run_id: workflow_run_state.run_id(),
+            attempt: workflow_run_state.attempt(),
         }
     }
 }
@@ -200,7 +208,7 @@ impl Orchestrator {
     ///
     /// Will return Err if the function fails to retrieve the state of nodes from the workflow context
     /// or if it fails to record that nodes are being scheduled.
-    #[instrument(skip_all, err)]
+    #[instrument(skip_all, fields(run_id = %context.run_id, attempt = context.attempt), err)]
     pub async fn build_actions<'a>(
         &'a self,
         context: OrchestrationContext,
@@ -692,6 +700,8 @@ impl Orchestrator {
                     parent_loc: loc,
                     graph_inputs: inputs,
                     workflow_run_state: workflow_run_state.clone(),
+                    run_id: workflow_run_state.run_id(),
+                    attempt: workflow_run_state.attempt(),
                 },
                 subgraph,
             )
@@ -756,6 +766,8 @@ impl Orchestrator {
                                     parent_loc: loop_loc,
                                     graph_inputs: inputs,
                                     workflow_run_state: Arc::clone(&workflow_run_state),
+                                    run_id: workflow_run_state.run_id(),
+                                    attempt: workflow_run_state.attempt(),
                                 },
                                 subgraph,
                             )
@@ -879,6 +891,8 @@ impl Orchestrator {
                         parent_loc: map_loc,
                         graph_inputs: inputs,
                         workflow_run_state: Arc::clone(&workflow_run_state),
+                        run_id: workflow_run_state.run_id(),
+                        attempt: workflow_run_state.attempt(),
                     },
                     subgraph.clone(),
                 )
@@ -919,6 +933,8 @@ impl Orchestrator {
                         parent_loc: map_loc,
                         graph_inputs: inputs.clone(),
                         workflow_run_state: Arc::clone(&workflow_run_state),
+                        run_id: workflow_run_state.run_id(),
+                        attempt: workflow_run_state.attempt(),
                     },
                     subgraph.clone(),
                 )
@@ -1028,7 +1044,7 @@ impl Orchestrator {
     /// # Errors
     ///
     /// Will return Err if a Node cannot be run or dispatched.
-    #[instrument(skip(self, actions), err)]
+    #[instrument(skip(self, actions), fields(run_id = %workflow_run_id, attempt), err)]
     pub async fn perform_actions(
         &self,
         workflow_run_id: Uuid,
@@ -1466,6 +1482,8 @@ mod tests {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(workflow_run_state),
+            run_id: workflow_run_state.run_id(),
+            attempt: workflow_run_state.attempt(),
         };
         let actions = orchestrator
             .build_actions(context, Arc::clone(workflow_graph))
@@ -1780,6 +1798,8 @@ mod tests {
         let context = OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
+            run_id: workflow_run_state.run_id(),
+            attempt: workflow_run_state.attempt(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
         let mut stream = orchestrator.listen()?;
@@ -1886,6 +1906,8 @@ mod tests {
         let context = OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
+            run_id: workflow_run_state.run_id(),
+            attempt: workflow_run_state.attempt(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
         let mut stream = orchestrator.listen()?;
@@ -2002,6 +2024,8 @@ mod tests {
         let context = OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
+            run_id: workflow_run_state.run_id(),
+            attempt: workflow_run_state.attempt(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
         let mut stream = orchestrator.listen()?;
@@ -2083,6 +2107,8 @@ mod tests {
         let context = OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: HashMap::new(),
+            run_id: workflow_run_state.run_id(),
+            attempt: workflow_run_state.attempt(),
             workflow_run_state: Arc::clone(&workflow_run_state),
         };
         let mut stream = orchestrator.listen()?;

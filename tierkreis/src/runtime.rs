@@ -13,14 +13,42 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    },
-    event::RuntimeEvent,
-    executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
-    graph::WorkflowGraph,
-    location::Location,
-    orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    }, event::{NodeEvent, RuntimeEvent, WorkflowRunEvent}, executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor}, graph::WorkflowGraph, location::Location, logging::{flush_tracing, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
+
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogFormat {
+    Json,
+    Pretty,
+    Compact,
+}
+
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoggingConfig {
+    pub log_file: Option<PathBuf>,
+    pub log_format: LogFormat,
+    pub log_level: Option<String>,
+
+    pub otel_endpoint: Option<String>,
+    pub service_name: Option<String>,
+    pub service_namespace: Option<String>,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        LoggingConfig {
+            log_file: Some(PathBuf::from("./tierkreis.log")),
+            log_format: LogFormat::Json,
+            log_level: Some("info".to_string()),
+            otel_endpoint: Some("http://localhost:4317".to_string()),
+            service_name: Some("tierkreis".to_string()),
+            service_namespace: None,
+        }
+    }
+}
 
 /// `RuntimeConfig` defines the configuration for the runtime
 #[derive(Deserialize)]
@@ -28,9 +56,10 @@ pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
     runtime_state: RuntimeStateConfig,
-
+    
     default_storage_name: String,
     default_executor_name: String,
+    logging_config: Option<LoggingConfig>,
 }
 
 impl RuntimeConfig {
@@ -50,9 +79,9 @@ impl RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
+            logging_config: Some(LoggingConfig::default()),
         }
     }
-
     fn sqlite_memory() -> Self {
         let mut config = Self::memory();
         config.runtime_state = RuntimeStateConfig::Sqlite { memory: true };
@@ -94,6 +123,7 @@ impl Default for RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
+            logging_config: Some(LoggingConfig::default()),
         }
     }
 }
@@ -108,10 +138,12 @@ enum AssetStorageConfig {
 enum ExecutorConfig {
     Memory {
         output_storage_name: String,
+        // log_file: Option<PathBuf>,
     },
     Subprocess {
         subprocess_storage_name: String,
         output_storage_name: String,
+        // log_file: Option<PathBuf>,
     },
 }
 
@@ -139,6 +171,7 @@ impl Runtime {
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
 
+        init_logging_and_tracing(config.logging_config.clone());
         let orchestrator = Orchestrator::try_new(
             &asset_storage_registry,
             &executor_registry,
@@ -156,6 +189,7 @@ impl Runtime {
             }
         };
 
+        tracing::info!("Starting Tierkreis runtime");
         Ok(Self {
             orchestrator,
             state: runtime_state,
@@ -174,6 +208,7 @@ impl Runtime {
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
+        
         let inputs = save_assets(
             &self.asset_storage_registry,
             &self.default_storage_name,
@@ -184,8 +219,10 @@ impl Runtime {
             .state
             .new_workflow_run_state(workflow_id, inputs)
             .await?;
-
-        Ok((workflow_run_state.run_id(), workflow_run_state.attempt()))
+        let attempt = workflow_run_state.attempt();
+        let run_id = workflow_run_state.run_id();
+        tracing::info!(workflow_id = %workflow_id.to_string(), run_id = %run_id.to_string(), attempt = attempt, "Starting new run attempt");
+        Ok((run_id, attempt))
     }
 
     async fn process_events(
@@ -202,6 +239,19 @@ impl Runtime {
                     let workflow_state = state
                         .load_workflow_run_state(workflow_run_id, attempt)
                         .await?;
+                    let workflow_id = workflow_state.workflow_id().to_string();
+                    match event.clone() {
+                        WorkflowRunEvent::Started {} =>
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started"),
+                        WorkflowRunEvent::Completed {} =>
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed"),
+                        WorkflowRunEvent::Errored {} =>
+                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored"),
+                        WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) =>
+                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event"),
+                        _ => {}
+                    }
+
                     workflow_state.write(event).await?;
                 }
             }
@@ -216,9 +266,13 @@ impl Runtime {
             tokio::select! {
                 sig = tokio::signal::ctrl_c() => {
                     match sig {
-                        Ok(()) => std::process::exit(130),
+                        Ok(()) => {
+                            flush_tracing();
+                            std::process::exit(130)
+                        }
                         Err(err) => {
                             eprintln!("{err}");
+                            flush_tracing();
                             std::process::exit(1);
                         }
                     }
@@ -276,7 +330,8 @@ impl Runtime {
             }
             state_recv.changed().await.into_diagnostic()?;
         }
-
+        tracing::info!("Runtime exiting, shutting down logging");
+        flush_tracing();
         Ok(())
     }
 
@@ -374,7 +429,6 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     runtime.run().await?;
 
     let outputs = runtime.outputs(run_id, attempt).await?;
-
     Ok(outputs)
 }
 
