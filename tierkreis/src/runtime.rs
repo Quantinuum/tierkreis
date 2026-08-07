@@ -222,10 +222,12 @@ impl Runtime {
                         WorkflowRunEvent::Errored {} => {
                             tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored");
                         }
+                        WorkflowRunEvent::Cancelled {} => {
+                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow cancelled");
+                        }
                         WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => {
                             tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event");
                         }
-                        _ => {}
                     }
 
                     workflow_state.write(event).await?;

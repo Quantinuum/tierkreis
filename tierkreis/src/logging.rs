@@ -175,12 +175,12 @@ fn make_writer(path: Option<&Path>) -> BoxMakeWriter {
     }
 }
 
-fn init(config: LoggingConfig, with_telemetry: bool) {
+fn init(config: &LoggingConfig, with_telemetry: bool) {
     let filter = log_filter(config.log_level.as_deref());
     let writer = make_writer(config.log_file.as_deref());
 
     if with_telemetry && let Some(otlp) = config.otel_endpoint.as_deref() {
-        let resource = service_resource(&config);
+        let resource = service_resource(config);
         with_format_layer!(&config.log_format, writer, |fmt_layer| {
             let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
             let metrics = init_metrics_layer(otlp, &resource).expect("Failed to init metrics.");
@@ -206,12 +206,12 @@ fn init(config: LoggingConfig, with_telemetry: bool) {
 
 /// Initialize logging without OpenTelemetry.
 pub fn init_logging(logging_config: Option<LoggingConfig>) {
-    init(logging_config.unwrap_or_default(), false);
+    init(&logging_config.unwrap_or_default(), false);
 }
 
 /// Initialize the runtime subscriber with logging and OpenTelemetry.
 pub fn init_logging_and_tracing(logging_config: Option<LoggingConfig>) {
-    init(logging_config.unwrap_or_default(), true);
+    init(&logging_config.unwrap_or_default(), true);
 }
 
 /// Flush and shut down the global tracer provider.
