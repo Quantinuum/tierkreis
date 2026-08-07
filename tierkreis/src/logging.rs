@@ -64,6 +64,7 @@ impl Default for LoggingConfig {
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
+static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 
 macro_rules! with_format_layer {
     ($log_format:expr, $writer:expr, |$fmt_layer:ident| $body:block) => {
@@ -176,31 +177,33 @@ fn make_writer(path: Option<&Path>) -> BoxMakeWriter {
 }
 
 fn init(config: &LoggingConfig, with_telemetry: bool) {
-    let filter = log_filter(config.log_level.as_deref());
-    let writer = make_writer(config.log_file.as_deref());
+    LOGGING_INITIALIZED.get_or_init(|| {
+        let filter = log_filter(config.log_level.as_deref());
+        let writer = make_writer(config.log_file.as_deref());
 
-    if with_telemetry && let Some(otlp) = config.otel_endpoint.as_deref() {
-        let resource = service_resource(config);
+        if with_telemetry && let Some(otlp) = config.otel_endpoint.as_deref() {
+            let resource = service_resource(config);
+            with_format_layer!(&config.log_format, writer, |fmt_layer| {
+                let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
+                let metrics = init_metrics_layer(otlp, &resource).expect("Failed to init metrics.");
+                tracing_subscriber::registry()
+                    .with(filter)
+                    .with(fmt_layer)
+                    .with(tracing)
+                    .with(metrics)
+                    .try_init()
+                    .expect("Failed initializing logger and tracing subscriber.");
+            });
+            return;
+        }
+
         with_format_layer!(&config.log_format, writer, |fmt_layer| {
-            let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
-            let metrics = init_metrics_layer(otlp, &resource).expect("Failed to init metrics.");
             tracing_subscriber::registry()
                 .with(filter)
                 .with(fmt_layer)
-                .with(tracing)
-                .with(metrics)
                 .try_init()
-                .expect("Failed initializing logger and tracing subscriber.");
+                .expect("Failed initializing logger subscriber.");
         });
-        return;
-    }
-
-    with_format_layer!(&config.log_format, writer, |fmt_layer| {
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(fmt_layer)
-            .try_init()
-            .expect("Failed initializing logger subscriber.");
     });
 }
 
