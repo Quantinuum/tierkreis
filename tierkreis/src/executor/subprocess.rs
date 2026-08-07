@@ -15,15 +15,17 @@ use futures::{
     future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
 };
+use tracing::Instrument as _;
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncBufReadExt, BufReader},
     process::Command,
     task::{AbortHandle, JoinHandle},
 };
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 use which::which_re;
 
@@ -57,6 +59,8 @@ struct BackgroundTaskPlan {
     output_storage_name: String,
     worker_args: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
+
+    parent_span: tracing::Span,
 }
 
 struct BackgroundTask {
@@ -173,11 +177,19 @@ async fn start_task(
     let loc = internal_task.loc;
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
+    let parent_span = internal_task.parent_span;
+    let worker_name = internal_task.worker_name;
+    let worker_args = internal_task.worker_args;
+    let outputs = internal_task.outputs;
+    let output_storage_name = internal_task.output_storage_name;
+
     send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
 
-    let worker_args = internal_task.worker_args;
     let worker_args_path = worker_args.path();
-    let res = spawn_worker(&internal_task.worker_name, worker_args_path);
+    let res = {
+        let _enter = parent_span.enter();
+        spawn_worker(&worker_name, worker_args_path)
+    };
     let mut child = match res {
         Ok(child) => child,
         Err(err) => {
@@ -185,11 +197,9 @@ async fn start_task(
             return Ok(());
         }
     };
-    let stderr = read_stderr(&mut child);
+    let stderr = read_stderr(&mut child, workflow_run_id, loc.clone());
 
     let background_loc = loc.clone();
-    let outputs = internal_task.outputs;
-    let output_storage_name = internal_task.output_storage_name;
     let task = tokio::task::spawn(async move {
         let exit_status = child.wait().await;
         BackgroundTask {
@@ -202,7 +212,7 @@ async fn start_task(
             stderr,
             _worker_args: worker_args,
         }
-    });
+    }.instrument(parent_span));
 
     abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
     running.push(task);
@@ -384,7 +394,18 @@ fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
 ) -> miette::Result<tokio::process::Child> {
+    let mut headers = HashMap::new();
+    let cx = tracing::Span::current().context();
+    opentelemetry::global::get_text_map_propagator(|p| p.inject_context(&cx, &mut headers));
+
     let mut command = Command::new(format!("tkr-{worker_name}"));
+    if let Some(traceparent) = headers.get("traceparent") {
+        command.env("TRACEPARENT", traceparent);
+    }
+    if let Some(tracestate) = headers.get("tracestate") {
+        command.env("TRACESTATE", tracestate);
+    }
+
     command
         .arg(worker_args_path)
         .stdout(Stdio::piped())
@@ -398,12 +419,17 @@ fn spawn_worker(
     Ok(child)
 }
 
-fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
+fn read_stderr(child: &mut tokio::process::Child, run_id: Uuid, loc: Location) -> tokio::task::JoinHandle<String> {
     let mut stderr = child.stderr.take().unwrap();
     tokio::spawn(async move {
+        let mut reader = BufReader::new(&mut stderr).lines();
         let mut stderr_out = String::new();
-        let _ = stderr.read_to_string(&mut stderr_out).await;
-
+        while let Ok(Some(line)) = reader.next_line().await {
+            // TODO: parse for actual log level, python log will be stderr by default.
+            tracing::info!(target: "tierkreis::worker", run_id = %run_id, loc = %loc, "{line}");
+            stderr_out.push_str(&line);
+            stderr_out.push('\n');
+        }
         stderr_out
     })
 }
@@ -496,6 +522,7 @@ impl Executor for SubprocessExecutor {
                         output_storage_name,
                         worker_args,
                         outputs,
+                        parent_span: tracing::Span::current(),
                     })
                     .await
                     .into_diagnostic()
