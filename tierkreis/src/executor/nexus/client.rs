@@ -1,13 +1,7 @@
 pub(crate) mod models;
 
-use std::{
-    env::home_dir,
-    path::PathBuf,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-    time::Duration,
-};
+use core::task;
+use std::{env::home_dir, path::PathBuf, pin::Pin, sync::Arc, task::Poll, time::Duration};
 
 use futures::{
     SinkExt, Stream, StreamExt,
@@ -15,7 +9,7 @@ use futures::{
     stream::{SplitSink, SplitStream},
 };
 use hugr::package::Package;
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic, miette};
 use reqwest::{Client, ClientBuilder, cookie::Jar};
 use reqwest_websocket::{Bytes, Message, Upgrade};
 use serde::Deserialize;
@@ -27,7 +21,7 @@ use uuid::Uuid;
 use crate::executor::nexus::client::models::{
     CollectionDocument, Data, Document, NewExecuteJobItem, NewHugr, NewJob, NewJobDefinition,
     NewProject,
-    jobs::{Job, JobData, Status},
+    jobs::{CancelOptions, Job, JobData, Status},
     results::{QSysResult, QSysResultData},
 };
 
@@ -94,7 +88,7 @@ impl JobStatusStream {
 impl Stream for JobStatusStream {
     type Item = miette::Result<Status>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
         let next = self.get_mut().stream.poll_next_unpin(cx);
         match next {
             Poll::Ready(Some(Ok(Message::Text(text)))) => {
@@ -120,7 +114,7 @@ impl Stream for JobStatusStream {
                 Poll::Ready(None)
             }
             Poll::Ready(Some(Err(err))) => {
-                Poll::Ready(Some(Err(miette!("Websocket error: {err}"))))
+                Poll::Ready(Some(Err(miette!("Websocket error: {err}",))))
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
@@ -134,13 +128,30 @@ impl Stream for JobStatusStream {
 
 impl JobStatusStream {
     pub async fn close(mut self) -> miette::Result<()> {
-        self.close_sender.send(()).await.into_diagnostic()?;
+        self.close_sender
+            .send(())
+            .await
+            .into_diagnostic()
+            .wrap_err("Failed to send close signal to sink")?;
         let sink = self.join_handle.await.into_diagnostic()??;
-        let websocket = self.stream.reunite(sink).into_diagnostic()?;
-        websocket
+        let websocket = self
+            .stream
+            .reunite(sink)
+            .into_diagnostic()
+            .wrap_err("Failed to reunite websocket stream with sink")?;
+
+        let res = websocket
             .close(reqwest_websocket::CloseCode::Normal, None)
             .await
-            .into_diagnostic()?;
+            .into_diagnostic();
+        // If we encounter an error while closing the websocket it may
+        // just mean it was already reset by the peer.
+        if let Err(err) = res {
+            warn!(
+                "Error while sending close message on websocket connection: {}",
+                err
+            );
+        }
         Ok(())
     }
 }
@@ -426,11 +437,29 @@ impl NexusClient {
         Ok(JobStatusStream::new(websocket))
     }
 
+    pub async fn cancel_job(&self, job_id: Uuid) -> miette::Result<()> {
+        let url = self
+            .base_url
+            .join(&format!("{JOBS_ENDPOINT}/{job_id}/rpc/cancel"))
+            .into_diagnostic()?;
+
+        let response = self
+            .client
+            .post(url)
+            .json(&CancelOptions {})
+            .send()
+            .await
+            .into_diagnostic()?;
+
+        response.error_for_status_ref().into_diagnostic()?;
+        Ok(())
+    }
+
     pub async fn get_qsys_result_chunk(
         &self,
         result_id: Uuid,
         chunk_number: u32,
-    ) -> miette::Result<QSysResultData> {
+    ) -> miette::Result<Option<QSysResultData>> {
         let url = self
             .base_url
             .join(&format!("{QSYS_RESULTS_PARTIAL_ENDPOINT}/{result_id}"))
@@ -443,9 +472,13 @@ impl NexusClient {
             .await
             .into_diagnostic()?;
 
+        if chunk_number != 0 && response.status() == 404 {
+            return Ok(None);
+        }
+
         response.error_for_status_ref().into_diagnostic()?;
         let result: QSysResult = response.json().await.into_diagnostic()?;
-        Ok(result.data())
+        Ok(Some(result.data()))
     }
 }
 

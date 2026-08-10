@@ -45,7 +45,7 @@ url = "2.5.8"
 utoipa = { version = "5.4.0", features = ["axum_extras", "debug", "uuid", "chrono"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
-uuid = { version = "1.23.0", features = ["serde", "v7"] }
+uuid = { version = "1.24.0", features = ["serde", "v7"] }
 which = { version = "8.0.2", features = ["regex"] }
 reqwest = { version = "0.13.4", features = ["cookies", "gzip", "json", "query"] }
 serde_with = { version = "3.21.0", features = ["base64"] }
@@ -53,6 +53,7 @@ hugr = "0.27.2"
 reqwest-websocket = { version = "0.6.0", features = ["json"] }
 
 [dev-dependencies]
+axum-test = { version = "21.0.0", features = ["ws"] }
 mockito = "1.7.2"
 rstest = "0.26.1"
 test-log = { version = "0.2.21", features = ["trace"] }
