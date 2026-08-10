@@ -1,6 +1,19 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    executor_debug (id) {
+        id -> Integer,
+        node_state_id -> Integer,
+        executor_name -> Text,
+        worker_name -> Text,
+        task_name -> Text,
+        resources -> Binary,
+        environment -> Binary,
+        internal_id -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     node_outputs (id) {
         id -> Integer,
         node_state_id -> Integer,
@@ -70,12 +83,14 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(executor_debug -> node_states (node_state_id));
 diesel::joinable!(node_outputs -> node_states (node_state_id));
 diesel::joinable!(workflow_run_attempts -> workflow_runs (workflow_run_id));
 diesel::joinable!(workflow_run_inputs -> workflow_runs (workflow_run_id));
 diesel::joinable!(workflow_runs -> workflows (workflow_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    executor_debug,
     node_outputs,
     node_states,
     workflow_run_attempts,

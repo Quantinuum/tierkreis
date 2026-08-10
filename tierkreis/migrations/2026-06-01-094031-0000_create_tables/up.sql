@@ -64,4 +64,18 @@ CREATE TABLE `workflow_run_inputs` (
 	`storage_name` TEXT NOT NULL,
 	`asset_key` TEXT NOT NULL,
 	FOREIGN KEY (`workflow_run_id`) REFERENCES `workflow_runs` (`id`)
-)
+);
+
+CREATE TABLE `executor_debug` (
+	`id` INTEGER NOT NULL PRIMARY KEY,
+	`node_state_id` INTEGER NOT NULL,
+	`executor_name` TEXT NOT NULL,
+	`worker_name` TEXT NOT NULL,
+	`task_name` TEXT NOT NULL,
+	`resources` BLOB NOT NULL CHECK (json_valid(resources, 8)) DEFAULT (jsonb('{}')),
+	`environment` BLOB NOT NULL CHECK (json_valid(environment, 8)) DEFAULT (jsonb('{}')),
+	`internal_id` TEXT DEFAULT NULL,
+	UNIQUE (`node_state_id`),
+	FOREIGN KEY (`node_state_id`)
+		REFERENCES `node_states`(`id`)
+);
