@@ -14,7 +14,7 @@ use crate::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
     },
-    event::{NodeEvent, RuntimeEvent, WorkflowRunEvent},
+    event::{NodeEvent, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent},
     executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
     graph::WorkflowGraph,
     location::Location,
@@ -212,6 +212,21 @@ impl Runtime {
                         .load_workflow_run_state(workflow_run_id, attempt)
                         .await?;
                     let workflow_id = workflow_state.workflow_id().to_string();
+                    if let WorkflowRunEvent::NodeEvent(NodeEvent {
+                        locs,
+                        status:
+                            crate::event::NodeStatus::Running {
+                                state_update: Some(RunningStateUpdate::Executor { internal_id }),
+                            },
+                    }) = &event
+                    {
+                        for loc in locs {
+                            workflow_state
+                                .set_executor_internal_id(loc.clone(), internal_id.clone())
+                                .await?;
+                        }
+                    }
+
                     match event.clone() {
                         WorkflowRunEvent::Started {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started");
@@ -226,7 +241,7 @@ impl Runtime {
                             tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow cancelled");
                         }
                         WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => {
-                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?status, "node event");
+                            tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node event");
                         }
                     }
 
@@ -303,7 +318,7 @@ impl Runtime {
                     .build_actions(context, workflow_graph)
                     .await?;
                 self.orchestrator
-                    .perform_actions(run_id, attempt, actions)
+                    .perform_actions(&workflow_run_state, run_id, attempt, actions)
                     .await?;
             }
             state_recv.changed().await.into_diagnostic()?;

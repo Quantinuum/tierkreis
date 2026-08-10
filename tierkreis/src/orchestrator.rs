@@ -34,7 +34,7 @@ use crate::{
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
-    state::{WorkflowRunState, interface::NodeState},
+    state::{WorkflowRunState, interface::{ExecutorDebugInformation, NodeState}},
 };
 
 /// `Action` describes an operation the Orchestrator should perform.
@@ -1047,6 +1047,7 @@ impl Orchestrator {
     #[instrument(skip(self, actions), fields(run_id = %workflow_run_id, attempt), err)]
     pub async fn perform_actions(
         &self,
+        workflow_run_state: &Arc<dyn WorkflowRunState>,
         workflow_run_id: Uuid,
         attempt: u32,
         mut actions: impl Stream<Item = miette::Result<Action>> + Unpin,
@@ -1118,6 +1119,22 @@ impl Orchestrator {
         }
 
         let default_executor_name = &self.default_executor_name;
+        tracing::info!("Dispatching {} tasks to executor '{}'", plan.tasks.len(), default_executor_name);
+        for task in &plan.tasks {
+            workflow_run_state
+                .write_executor_debug_data(ExecutorDebugInformation {
+                    run_id: task.workflow_run_id,
+                    attempt: task.attempt,
+                    node_location: task.loc.clone(),
+                    executor_name: self.default_executor_name.clone(),
+                    worker_name: task.worker_name.clone(),
+                    task_name: task.task_name.clone(),
+                    resources: task.resources.clone(),
+                    environment: task.environment.clone(),
+                    internal_id: None
+                })
+                .await?;
+        }
         let executor = self
             .executor_registry
             .get(default_executor_name)
@@ -1566,7 +1583,12 @@ mod tests {
         assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
 
         orchestrator
-            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                &workflow_run_state,
+                Uuid::nil(),
+                0,
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let input_complete_event = stream.next().await.unwrap();
         let input_complete_outputs = input_complete_event.clone().outputs();
@@ -1600,6 +1622,7 @@ mod tests {
 
         orchestrator
             .perform_actions(
+                &workflow_run_state,
                 workflow_run_state.run_id(),
                 workflow_run_state.attempt(),
                 stream::iter(actions.into_iter().map(Ok)),
@@ -1659,7 +1682,12 @@ mod tests {
         assert!(matches!(actions[1].kind, ActionKind::SetComplete { .. }));
 
         orchestrator
-            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                &workflow_run_state,
+                Uuid::nil(),
+                0,
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
 
         let inputs_complete_event = stream.next().await.unwrap();
@@ -1694,6 +1722,7 @@ mod tests {
 
         orchestrator
             .perform_actions(
+                &workflow_run_state,
                 workflow_run_state.run_id(),
                 workflow_run_state.attempt(),
                 stream::iter(actions.into_iter().map(Ok)),
@@ -1721,6 +1750,7 @@ mod tests {
 
         orchestrator
             .perform_actions(
+                &workflow_run_state,
                 workflow_run_state.run_id(),
                 workflow_run_state.attempt(),
                 stream::iter(actions.into_iter().map(Ok)),
@@ -1754,7 +1784,12 @@ mod tests {
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
 
         orchestrator
-            .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
+            .perform_actions(
+                &workflow_run_state,
+                Uuid::nil(),
+                0,
+                stream::iter(actions.into_iter().map(Ok)),
+            )
             .await?;
         let output_complete_event = stream.next().await.unwrap();
         let output_complete_outputs = output_complete_event.outputs();
@@ -1828,6 +1863,7 @@ mod tests {
 
             orchestrator
                 .perform_actions(
+                    &workflow_run_state,
                     workflow_run_state.run_id(),
                     workflow_run_state.attempt(),
                     actions,
@@ -1936,6 +1972,7 @@ mod tests {
                 .await?;
             orchestrator
                 .perform_actions(
+                    &workflow_run_state,
                     workflow_run_state.run_id(),
                     workflow_run_state.attempt(),
                     actions,
@@ -2054,6 +2091,7 @@ mod tests {
                 .await?;
             orchestrator
                 .perform_actions(
+                    &workflow_run_state,
                     workflow_run_state.run_id(),
                     workflow_run_state.attempt(),
                     actions,
@@ -2137,6 +2175,7 @@ mod tests {
                 .await?;
             orchestrator
                 .perform_actions(
+                    &workflow_run_state,
                     workflow_run_state.run_id(),
                     workflow_run_state.attempt(),
                     actions,

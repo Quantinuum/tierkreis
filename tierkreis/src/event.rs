@@ -114,6 +114,11 @@ impl NodeEvent {
 /// a Running node should be updated to track the progress of the workflow run.
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunningStateUpdate {
+    /// The executor has started the task and assigned an internal identifier.
+    Executor {
+        /// Executor-specific task or process identifier.
+        internal_id: String,
+    },
     /// The node is "switching" and will resolve when the corresponding
     /// condition branch resolves.
     ///
@@ -203,6 +208,35 @@ pub async fn send_running(
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
             status: NodeStatus::Running { state_update: None },
+        }),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send node running event")
+}
+
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and extra metadata.
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_running_with_update(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+    state_update: RunningStateUpdate,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
+            status: NodeStatus::Running {
+                state_update: Some(state_update),
+            },
         }),
     };
     event_sender
