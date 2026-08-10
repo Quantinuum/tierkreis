@@ -11,6 +11,7 @@ use std::{
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
 use futures::future::BoxFuture;
+use serde_json::Value;
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -68,6 +69,22 @@ pub struct NodeState {
     /// The detail of the error for the node if any.
     pub error_detail: Option<String>,
 }
+
+/// Full executor debug information.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecutorDebugInformation {
+    pub run_id: uuid::Uuid,
+    pub attempt: u32,
+    pub node_location: Location,
+    pub executor_name: String,
+    pub worker_name: String,
+    pub task_name: String,
+    pub resources: HashMap<String, Value>,
+    pub environment: HashMap<String, Value>,
+    pub internal_id: Option<String>,
+}
+
+
 
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
@@ -128,4 +145,20 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.
     fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
+
+    fn write_executor_debug_data(
+        &self, data: ExecutorDebugInformation
+    ) -> BoxFuture<'_, miette::Result<()>>;
+
+    /// Set the executor-specific internal identifier for a task node.
+    fn set_executor_internal_id(
+        &self,
+        node_location: Location,
+        internal_id: String,
+    ) -> BoxFuture<'_, miette::Result<()>>;
+
+    fn read_executor_debug_data(
+        &self,
+        node_location: Location,
+    ) -> BoxFuture<'_, miette::Result<ExecutorDebugInformation>>; 
 }

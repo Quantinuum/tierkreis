@@ -19,9 +19,9 @@ use miette::{IntoDiagnostic, WrapErr, miette};
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
+use crate::state::interface::ExecutorDebugInformation;
 use crate::state::models::{
-    NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
-    UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
+    NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState, UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
 };
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
@@ -635,6 +635,11 @@ define_sql_function!(
     fn json(x: Binary) -> Text;
 );
 
+define_sql_function!(
+    /// Convert JSON text bytes to SQLite JSONB.
+    fn jsonb(x: Binary) -> Binary;
+);
+
 /// Read the persisted metadata for a workflow run.
 ///
 /// # Errors
@@ -759,4 +764,173 @@ pub async fn list_workflow_run_summaries(
     }
 
     Ok(summaries)
+}
+
+/// Set executor debug information for a node in a specific run attempt.
+///
+/// # Errors
+///
+/// Returns an error when node state cannot be found or the insert fails.
+pub async fn add_executor_debug_information(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    information: ExecutorDebugInformation,
+) -> miette::Result<()> {
+    use crate::state::schema::executor_debug::dsl as ed;
+
+    let node_state_id =
+        resolve_node_state_id(conn, run_id, attempt, &information.node_location).await?;
+    let resources = serde_json::to_vec(&information.resources)
+        .into_diagnostic()
+        .wrap_err("Failed to serialize executor resources")?;
+    let environment = serde_json::to_vec(&information.environment)
+        .into_diagnostic()
+        .wrap_err("Failed to serialize executor environment")?;
+
+    diesel::insert_into(ed::executor_debug)
+        .values((
+            ed::node_state_id.eq(node_state_id),
+            ed::executor_name.eq(information.executor_name),
+            ed::worker_name.eq(information.worker_name),
+            ed::task_name.eq(information.task_name),
+            ed::resources.eq(jsonb(resources)),
+            ed::environment.eq(jsonb(environment)),
+            ed::internal_id.eq(information.internal_id),
+        ))
+        .on_conflict(ed::node_state_id)
+        .do_nothing()
+        .execute(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!(
+                "Failed to insert executor debug information for run {} attempt {} location {:?}",
+                run_id,
+                attempt,
+                information.node_location
+            )
+        })?;
+
+    Ok(())
+}
+
+/// Set executor internal identifier for a node in a specific run attempt.
+///
+/// # Errors
+///
+/// Returns an error when node state cannot be found or the update fails.
+pub async fn set_executor_debug_internal_id(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    node_location: &Location,
+    internal_id: &str,
+) -> miette::Result<()> {
+    use crate::state::schema::executor_debug::dsl as ed;
+
+    let node_state_id = resolve_node_state_id(conn, run_id, attempt, node_location).await?;
+    diesel::update(ed::executor_debug.filter(ed::node_state_id.eq(node_state_id)))
+        .set(ed::internal_id.eq(Some(internal_id.to_string())))
+        .execute(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!(
+                "Failed to set executor internal id for run {} attempt {} location {:?}",
+                run_id,
+                attempt,
+                node_location
+            )
+        })?;
+
+    Ok(())
+}
+
+/// Read executor debug information for a node in a specific run attempt.
+///
+/// # Errors
+///
+/// Returns an error when node state cannot be found, stored JSON cannot be parsed,
+/// or the query fails.
+pub async fn read_executor_debug_information(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    node_location: &Location,
+) -> miette::Result<ExecutorDebugInformation> {
+    use crate::state::schema::executor_debug::dsl as ed;
+
+    let node_state_id = resolve_node_state_id(conn, run_id, attempt, node_location).await?;
+    let (executor_name, worker_name, task_name, resources, environment, internal_id) = ed::executor_debug
+        .filter(ed::node_state_id.eq(node_state_id))
+        .select((
+            ed::executor_name,
+            ed::worker_name,
+            ed::task_name,
+            json(ed::resources),
+            json(ed::environment),
+            ed::internal_id,
+        ))
+        .first::<(String, String, String, String, String, Option<String>)>(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!(
+                "Failed to query executor debug information for run {} attempt {} location {:?}",
+                run_id,
+                attempt,
+                node_location
+            )
+        })?;
+
+    let resources = serde_json::from_str(&resources)
+        .into_diagnostic()
+        .wrap_err("Failed to parse executor debug resources JSON")?;
+    let environment = serde_json::from_str(&environment)
+        .into_diagnostic()
+        .wrap_err("Failed to parse executor debug environment JSON")?;
+
+    Ok(ExecutorDebugInformation {
+        run_id,
+        attempt,
+        node_location: node_location.clone(),
+        executor_name,
+        worker_name,
+        task_name,
+        resources,
+        environment,
+        internal_id,
+    })
+}
+
+async fn resolve_node_state_id(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    node_location: &Location,
+) -> miette::Result<i32> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let attempt_i32 = i32::try_from(attempt)
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+
+    ns::node_states
+        .select(ns::id)
+        .filter(ns::run_id.eq(run_id.to_string()))
+        .filter(ns::attempt.eq(attempt_i32))
+        .filter(ns::node_location.eq(node_location.clone()))
+        .first::<i32>(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!(
+                "Could not find node state for run {} attempt {} location {:?}",
+                run_id,
+                attempt,
+                node_location
+            )
+        })
+
 }

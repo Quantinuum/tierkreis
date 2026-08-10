@@ -35,7 +35,8 @@ use crate::{
     },
     event::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
-        send_cancelled, send_complete, send_error, send_running,
+        RunningStateUpdate, send_cancelled, send_complete, send_error,
+        send_running_with_update,
     },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
@@ -183,8 +184,6 @@ async fn start_task(
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
 
-    send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
-
     let worker_args_path = worker_args.path();
     let res = {
         let _enter = parent_span.enter();
@@ -197,6 +196,19 @@ async fn start_task(
             return Ok(());
         }
     };
+    let pid = child
+        .id()
+        .ok_or_else(|| miette!("Spawned worker process did not expose a process id"))?;
+    send_running_with_update(
+        event_sender,
+        workflow_run_id,
+        attempt,
+        loc.clone(),
+        RunningStateUpdate::Executor {
+            internal_id: pid.to_string(),
+        },
+    )
+    .await?;
     let stderr = read_stderr(&mut child, workflow_run_id, loc.clone());
 
     let background_loc = loc.clone();
@@ -418,7 +430,6 @@ fn spawn_worker(
         .spawn()
         .into_diagnostic()
         .wrap_err_with(|| miette!("Could not spawn worker `tkr-{worker_name}`"))?;
-
     Ok(child)
 }
 
@@ -789,23 +800,42 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(4).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&RuntimeEvent::WorkflowRun {
-            workflow_run_id: Uuid::nil(),
-            attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc1.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    workflow_run_id,
+                    attempt,
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                        locs,
+                        status: NodeStatus::Running {
+                            state_update: Some(RunningStateUpdate::Executor { internal_id }),
+                        },
+                    }),
+                } if *workflow_run_id == Uuid::nil()
+                    && *attempt == 0
+                    && locs == &vec![loc1.clone()]
+                    && !internal_id.is_empty()
+            )
         }));
-        assert!(events.contains(&RuntimeEvent::WorkflowRun {
-            workflow_run_id: Uuid::nil(),
-            attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc2.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    workflow_run_id,
+                    attempt,
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                        locs,
+                        status: NodeStatus::Running {
+                            state_update: Some(RunningStateUpdate::Executor { internal_id }),
+                        },
+                    }),
+                } if *workflow_run_id == Uuid::nil()
+                    && *attempt == 0
+                    && locs == &vec![loc2.clone()]
+                    && !internal_id.is_empty()
+            )
         }));
 
         // These may complete out of order, so find the correct events.

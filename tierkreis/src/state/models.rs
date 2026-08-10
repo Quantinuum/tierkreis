@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 use crate::location::Location;
 use crate::state::schema::{
-    node_outputs, node_states, workflow_run_attempts, workflow_run_inputs, workflow_runs, workflows,
+    node_outputs, node_states, workflow_run_attempts, workflow_run_inputs, workflow_runs, workflows, executor_debug,
 };
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -170,4 +170,23 @@ pub struct NewNodeOutput<'a> {
     pub asset_kind: String,
     pub storage_name: &'a str,
     pub asset_key: String,
+}
+
+
+// -----------------------------------------------------------------------------
+// Executor Debug Data
+// -----------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Identifiable, Insertable, Debug, Clone)]
+#[diesel(table_name = executor_debug)]
+#[diesel(belongs_to(NodeState, foreign_key = node_state_id))]
+pub struct ExecutorDebugData {
+    pub id: i32,
+    pub node_state_id: i32,
+    pub executor_name: String,
+    pub worker_name: String,
+    pub task_name: String,
+    pub resources: Vec<u8>, // JSON blob
+    pub environment: Vec<u8>, // JSON blob
+    pub internal_id: Option<String>,
 }

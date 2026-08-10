@@ -33,13 +33,14 @@ use crate::{
     event::{NodeEvent, WorkflowRunEvent},
     graph::WorkflowGraph,
     state::{
-        interface::RuntimeWatchState,
+        interface::{ExecutorDebugInformation, RuntimeWatchState},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
         queries::{
-            WorkflowRunSummary, add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, list_workflow_run_summaries, read_node_state,
+            WorkflowRunSummary, add_executor_debug_information, add_run_attempt_metadata,
+            insert_workflow, insert_workflow_run, insert_workflow_run_inputs,
+            list_workflow_run_summaries, read_executor_debug_information, read_node_state,
             read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
-            read_workflow_run_inputs, update_node_state,
+            read_workflow_run_inputs, set_executor_debug_internal_id, update_node_state,
         },
     },
 };
@@ -451,6 +452,51 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         }
         .boxed()
     }
+
+    fn write_executor_debug_data(
+        &self,
+        data: ExecutorDebugInformation,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            add_executor_debug_information(&mut conn, self.run_id, self.attempt, data).await
+        }
+        .boxed()
+    }
+
+    fn set_executor_internal_id(
+        &self,
+        node_location: Location,
+        internal_id: String,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            set_executor_debug_internal_id(
+                &mut conn,
+                self.run_id,
+                self.attempt,
+                &node_location,
+                &internal_id,
+            )
+            .await
+        }
+        .boxed()
+    }
+
+    fn read_executor_debug_data(
+        &self,
+        node_location: Location,
+    ) -> BoxFuture<'_, miette::Result<ExecutorDebugInformation>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            read_executor_debug_information(&mut conn, self.run_id, self.attempt, &node_location)
+                .await
+        }
+        .boxed()
+    }
 }
 
 impl SqliteWorkflowRunState {
@@ -491,6 +537,11 @@ impl SqliteWorkflowRunState {
                         row.queued_time = Some(now);
                     }
                     NodeStatus::Running { state_update: None } => {
+                        row.running_time = Some(now);
+                    }
+                    NodeStatus::Running {
+                        state_update: Some(RunningStateUpdate::Executor { .. }),
+                    } => {
                         row.running_time = Some(now);
                     }
                     NodeStatus::Running {

@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::state::queries::WorkflowRunSummary;
 use crate::{
     asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
-    state::interface::RuntimeWatchState,
+    state::interface::{ExecutorDebugInformation, RuntimeWatchState},
 };
 use crate::{
     event::{NodeEvent, RunningStateUpdate},
@@ -38,6 +38,7 @@ struct RunAttemptState {
     inputs: HashMap<String, AssetSpec>,
     nodes: HashMap<Location, NodeState>,
     metadata: HashMap<String, String>,
+    executor_debug_data: HashMap<Location, ExecutorDebugInformation>,
 }
 
 /// [`InMemoryRuntimeStateInner`] is a shared struct that can be accessed
@@ -322,6 +323,57 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         let metadata = entry.or_default().value().metadata.clone();
         future::ok(metadata).boxed()
     }
+
+    fn write_executor_debug_data(
+        &self,
+        data: ExecutorDebugInformation,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        let mut entry = self.global_state.runs.entry((self.run_id, self.attempt)).or_default();
+        entry
+            .executor_debug_data
+            .insert(data.node_location.clone(), data);
+        future::ok(()).boxed()
+    }
+
+    fn set_executor_internal_id(
+        &self,
+        node_location: Location,
+        internal_id: String,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        let mut entry = self.global_state.runs.entry((self.run_id, self.attempt)).or_default();
+        if let Some(existing) = entry.executor_debug_data.get_mut(&node_location) {
+            existing.internal_id = Some(internal_id);
+            future::ok(()).boxed()
+        } else {
+            future::err(miette!(
+                "Executor debug info not found for run {} attempt {} location {}",
+                self.run_id,
+                self.attempt,
+                node_location
+            ))
+            .boxed()
+        }
+    }
+
+    fn read_executor_debug_data(
+        &self,
+        node_location: Location,
+    ) -> BoxFuture<'_, miette::Result<ExecutorDebugInformation>> {
+        let entry = self.global_state.runs.entry((self.run_id, self.attempt)).or_default();
+        let value = entry
+            .executor_debug_data
+            .get(&node_location)
+            .cloned()
+            .ok_or_else(|| {
+                miette!(
+                    "Executor debug info not found for run {} attempt {} location {}",
+                    self.run_id,
+                    self.attempt,
+                    node_location
+                )
+            });
+        future::ready(value).boxed()
+    }
 }
 
 fn handle_node_event(
@@ -343,6 +395,13 @@ fn handle_node_event(
                 }
             }
             crate::event::NodeStatus::Running { state_update: None } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                }
+            }
+            crate::event::NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Executor { .. }),
+            } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
                 }
