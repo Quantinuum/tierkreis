@@ -104,60 +104,97 @@ fn output_value(
     Ok(())
 }
 
+macro_rules! un_op {
+    ($inputs:expr, $outputs:expr, $op:tt, $input_type:ty) => {{
+        let a: $input_type = extract_value($inputs, "a")?;
+
+        output_value(&mut $outputs, $op a)?;
+    }};
+}
+
+macro_rules! bin_op {
+    ($inputs:expr, $outputs:expr, $op:tt, $input_type:ty) => {{
+        let a: $input_type = extract_value($inputs, "a")?;
+        let b: $input_type = extract_value($inputs, "b")?;
+
+        output_value(&mut $outputs, a $op b)?;
+    }};
+}
+
+macro_rules! un_method {
+    ($inputs:expr, $outputs:expr, $op:tt, $input_type:ty) => {{
+        let a: $input_type = extract_value($inputs, "a")?;
+
+        output_value(&mut $outputs, a.$op())?;
+    }};
+}
+
+macro_rules! bin_method {
+    ($inputs:expr, $outputs:expr, $op:tt, $input_type:ty) => {{
+        let a: $input_type = extract_value($inputs, "a")?;
+        let b: $input_type = extract_value($inputs, "b")?;
+
+        output_value(&mut $outputs, a.$op(b))?;
+    }};
+}
+
 fn run_builtin(
     task_name: &str,
     inputs: &HashMap<String, Vec<u8>>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut outputs = HashMap::new();
     match task_name {
-        "iadd" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
+        // i64 operations
+        "ieq" => bin_op!(inputs, outputs, ==, i64),
+        "ine" => bin_op!(inputs, outputs, !=, i64),
+        "ilt_s" => bin_op!(inputs, outputs, <, i64),
+        // igt is the legacy name
+        "igt_s" | "igt" => bin_op!(inputs, outputs, >, i64),
+        "ilte_s" => bin_op!(inputs, outputs, <=, i64),
+        "igte_s" => bin_op!(inputs, outputs, >=, i64),
+        "imax_s" => bin_method!(inputs, outputs, max, i64),
+        "imin_s" => bin_method!(inputs, outputs, min, i64),
+        "iadd" => bin_op!(inputs, outputs, +, i64),
+        "isub" => bin_op!(inputs, outputs, -, i64),
+        "ineg" => un_op!(inputs, outputs, -, i64),
+        // itimes is the legacy name
+        "imul" | "itimes" => bin_op!(inputs, outputs, *, i64),
+        // idivide is the legacy name
+        "idiv_s" | "idivide" => bin_op!(inputs, outputs, /, i64),
+        // mod is the legacy name
+        "imod_s" | "mod" => bin_op!(inputs, outputs, %, i64),
+        "iabs" => un_method!(inputs, outputs, abs, i64),
+        "iand" => bin_op!(inputs, outputs, &, i64),
+        "ior" => bin_op!(inputs, outputs, |, i64),
+        "ixor" => bin_op!(inputs, outputs, ^, i64),
+        "itostring_s" => un_method!(inputs, outputs, to_string, i64),
 
-            output_value(&mut outputs, a + b)?;
-        }
-        "isub" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
+        // f64 operations
+        #[allow(clippy::float_cmp)]
+        "feq" => bin_op!(inputs, outputs, ==, f64),
+        #[allow(clippy::float_cmp)]
+        "fne" => bin_op!(inputs, outputs, !=, f64),
+        "flt" => bin_op!(inputs, outputs, <, f64),
+        // igt is the legacy name
+        "fgt" => bin_op!(inputs, outputs, >, f64),
+        "flte" => bin_op!(inputs, outputs, <=, f64),
+        "fgte" => bin_op!(inputs, outputs, >=, f64),
+        "fmax" => bin_method!(inputs, outputs, max, f64),
+        "fmin" => bin_method!(inputs, outputs, min, f64),
+        "fadd" => bin_op!(inputs, outputs, +, f64),
+        "fsub" => bin_op!(inputs, outputs, -, f64),
+        "fneg" => un_op!(inputs, outputs, -, f64),
+        "fabs" => un_method!(inputs, outputs, abs, f64),
+        "fmul" => bin_op!(inputs, outputs, *, f64),
+        "idiv" => bin_op!(inputs, outputs, /, f64),
+        "ffloor" => un_method!(inputs, outputs, floor, f64),
+        "fceil" => un_method!(inputs, outputs, ceil, f64),
+        "ftostring" => un_method!(inputs, outputs, to_string, f64),
 
-            output_value(&mut outputs, a - b)?;
-        }
-        "itimes" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
+        // "Value" operations.
+        "eq" => bin_op!(inputs, outputs, ==, Value),
+        "ne" | "neq" => bin_op!(inputs, outputs, !=, Value),
 
-            output_value(&mut outputs, a * b)?;
-        }
-        "idivide" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
-
-            output_value(&mut outputs, a / b)?;
-        }
-        "igt" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
-
-            output_value(&mut outputs, a > b)?;
-        }
-        "mod" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
-
-            output_value(&mut outputs, a % b)?;
-        }
-        "eq" => {
-            let a: Value = extract_value(inputs, "a")?;
-            let b: Value = extract_value(inputs, "b")?;
-
-            output_value(&mut outputs, a == b)?;
-        }
-        "neq" => {
-            let a: Value = extract_value(inputs, "a")?;
-            let b: Value = extract_value(inputs, "b")?;
-
-            output_value(&mut outputs, a != b)?;
-        }
         // Legacy built-in name.
         "str" | "tkr_str" => {
             let value: Value = extract_value(inputs, "value")?;

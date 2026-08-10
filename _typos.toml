@@ -29,3 +29,6 @@ passin = "passin"
 Aer = "Aer"
 Braket = "Braket"
 
+# Used as a HUGR operation name.
+"ine" = "ine"
+
