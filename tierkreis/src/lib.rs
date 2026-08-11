@@ -11,7 +11,7 @@ pub mod event;
 pub mod executor;
 pub mod graph;
 pub mod location;
-pub mod logging;
+pub mod monitoring;
 pub mod orchestrator;
 pub mod runtime;
 pub mod server;

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use tierkreis::logging::{init_logging_and_tracing};
+use tierkreis::monitoring::{init_logging_and_tracing};
 
 /// Tierkreis: a workflow engine for quantum HPC.
 ///
