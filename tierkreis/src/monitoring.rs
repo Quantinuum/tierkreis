@@ -50,11 +50,13 @@ impl Default for LoggingConfig {
             .unwrap_or_else(|| "/tmp".into())
             .join(".tierkreis/tierkreis.log");
 
+        let otel_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
+
         LoggingConfig {
             log_file: Some(tierkreis_log),
             log_format: LogFormat::Compact,
             log_level: Some("info".to_string()),
-            otel_endpoint: None,
+            otel_endpoint,
             service_name: Some("tierkreis".to_string()),
             service_namespace: None,
         }
