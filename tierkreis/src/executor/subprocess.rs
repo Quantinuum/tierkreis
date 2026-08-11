@@ -418,7 +418,7 @@ fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
 ) -> miette::Result<tokio::process::Child> {
-    let cmd = format!("tkr-{}", worker_name.replace("_", "-"));
+    let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
     let mut command = Command::new(&cmd);
     let cx = tracing::Span::current().context();
     opentelemetry::global::get_text_map_propagator(|p| {

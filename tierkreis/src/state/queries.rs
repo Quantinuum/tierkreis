@@ -637,7 +637,7 @@ define_sql_function!(
 );
 
 define_sql_function!(
-    /// Convert JSON text bytes to SQLite JSONB.
+    /// Convert JSON text bytes to `SQLite` JSONB.
     fn jsonb(x: Binary) -> Binary;
 );
 

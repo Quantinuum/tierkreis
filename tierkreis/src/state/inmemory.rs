@@ -408,13 +408,8 @@ fn handle_node_event(
                     node_state.queued_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Running { state_update: None } => {
-                if node_state.running_time.is_none() {
-                    node_state.running_time = Some(now);
-                }
-            }
             crate::event::NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::Executor { .. }),
+                state_update: None | Some(RunningStateUpdate::Executor { .. }),
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);

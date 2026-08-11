@@ -73,14 +73,23 @@ pub struct NodeState {
 /// Full executor debug information.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutorDebugInformation {
+    /// The workflow run ID.
     pub run_id: uuid::Uuid,
+    /// The attempt number of the workflow run.
     pub attempt: u32,
+    /// The location of the task node within the workflow graph.
     pub node_location: Location,
+    /// The name of the executor that ran the task.
     pub executor_name: String,
+    /// The name of the worker.
     pub worker_name: String,
+    /// The name of the task..
     pub task_name: String,
+    /// Resource allocations passed to the task.
     pub resources: HashMap<String, Value>,
+    /// Environment variables passed to the task process.
     pub environment: HashMap<String, Value>,
+    /// Executor-specific identifier for the task process (e.g. PID, JOB ID).
     pub internal_id: Option<String>,
 }
 
@@ -144,6 +153,7 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     /// Read the metadata for the Workflow run.
     fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
 
+    /// Persist executor debug information for a task node.
     fn write_executor_debug_data(
         &self,
         data: ExecutorDebugInformation,
@@ -156,6 +166,7 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         internal_id: String,
     ) -> BoxFuture<'_, miette::Result<()>>;
 
+    /// Read the executor debug information for a task node.
     fn read_executor_debug_data(
         &self,
         node_location: Location,

@@ -536,11 +536,8 @@ impl SqliteWorkflowRunState {
                     NodeStatus::Queued => {
                         row.queued_time = Some(now);
                     }
-                    NodeStatus::Running { state_update: None } => {
-                        row.running_time = Some(now);
-                    }
                     NodeStatus::Running {
-                        state_update: Some(RunningStateUpdate::Executor { .. }),
+                        state_update: None | Some(RunningStateUpdate::Executor { .. }),
                     } => {
                         row.running_time = Some(now);
                     }
