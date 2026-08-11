@@ -1044,7 +1044,7 @@ impl Orchestrator {
     /// # Errors
     ///
     /// Will return Err if a Node cannot be run or dispatched.
-    #[instrument(skip(self, actions), fields(run_id = %workflow_run_id, attempt), err)]
+    #[instrument(skip(self, actions, workflow_run_state), fields(run_id = %workflow_run_id, attempt), err)]
     pub async fn perform_actions(
         &self,
         workflow_run_state: &Arc<dyn WorkflowRunState>,
@@ -1119,7 +1119,9 @@ impl Orchestrator {
         }
 
         let default_executor_name = &self.default_executor_name;
-        tracing::info!("Dispatching {} tasks to executor '{}'", plan.tasks.len(), default_executor_name);
+        if !plan.tasks.is_empty() {
+            tracing::info!("Dispatching {} tasks to executor '{}'", plan.tasks.len(), default_executor_name);
+        }
         for task in &plan.tasks {
             workflow_run_state
                 .write_executor_debug_data(ExecutorDebugInformation {
