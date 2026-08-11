@@ -24,7 +24,7 @@ use tokio::{
     process::Command,
     task::{AbortHandle, JoinHandle},
 };
-use tracing::Instrument as _;
+use tracing::{Instrument as _, instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 use which::which_re;
@@ -32,14 +32,9 @@ use which::which_re;
 use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
-    },
-    event::{
-        EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
-        RunningStateUpdate, send_cancelled, send_complete, send_error,
-        send_running_with_update,
-    },
-    executor::interface::{Executor, TaskPlan, WorkerSpec},
-    location::Location,
+    }, event::{
+        EventReceiver, EventSender, NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent, send_cancelled, send_complete, send_error, send_running_with_update,
+    }, executor::interface::{Executor, TaskPlan, WorkerSpec}, location::Location,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -100,7 +95,7 @@ async fn process_cancelled_task(
     }
     Ok(())
 }
-
+#[instrument(skip_all, err)]
 async fn process_finished_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
@@ -169,6 +164,7 @@ async fn process_finished_task(
     Ok(())
 }
 
+#[instrument(skip_all, err)]
 async fn start_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
@@ -192,10 +188,12 @@ async fn start_task(
     let mut child = match res {
         Ok(child) => child,
         Err(err) => {
+            tracing::debug!(workflow_run_id = %workflow_run_id, attempt, loc = %loc, "Failed to spawn worker: {err}");
             send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
             return Ok(());
         }
     };
+    tracing::debug!("Spawned worker sending update.");
     let pid = child
         .id()
         .ok_or_else(|| miette!("Spawned worker process did not expose a process id"))?;
@@ -412,8 +410,8 @@ fn spawn_worker(
     let mut headers = HashMap::new();
     let cx = tracing::Span::current().context();
     opentelemetry::global::get_text_map_propagator(|p| p.inject_context(&cx, &mut headers));
-
-    let mut command = Command::new(format!("tkr-{worker_name}"));
+    let cmd = format!("tkr-{}", worker_name.replace("_", "-"));
+    let mut command = Command::new(&cmd);
     if let Some(traceparent) = headers.get("traceparent") {
         command.env("TRACEPARENT", traceparent);
     }
@@ -429,7 +427,7 @@ fn spawn_worker(
     let child = command
         .spawn()
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Could not spawn worker `tkr-{worker_name}`"))?;
+        .wrap_err_with(|| miette!("Could not spawn worker `{cmd}`"))?;
     Ok(child)
 }
 
