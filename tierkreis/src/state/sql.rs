@@ -513,6 +513,7 @@ impl SqliteWorkflowRunState {
         Ok(conn)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
