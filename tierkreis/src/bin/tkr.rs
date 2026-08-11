@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use tierkreis::logging::{flush_tracing, init_logging_and_tracing};
+use tierkreis::logging::{init_logging_and_tracing};
 
 /// Tierkreis: a workflow engine for quantum HPC.
 ///
@@ -50,6 +50,5 @@ fn main() -> miette::Result<()> {
         }
         _ => {}
     }
-    flush_tracing();
     Ok(())
 }

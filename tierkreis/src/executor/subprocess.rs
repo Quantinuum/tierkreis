@@ -24,7 +24,7 @@ use tokio::{
     process::Command,
     task::{AbortHandle, JoinHandle},
 };
-use tracing::{Instrument as _, instrument};
+use tracing::{Instrument, instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 use which::which_re;
@@ -403,21 +403,24 @@ impl SubprocessExecutor {
     }
 }
 
+struct CommandEnvCarrier<'a>(&'a mut Command);
+impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.env(key.to_uppercase(), value);
+    }
+}
+
 fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
 ) -> miette::Result<tokio::process::Child> {
-    let mut headers = HashMap::new();
-    let cx = tracing::Span::current().context();
-    opentelemetry::global::get_text_map_propagator(|p| p.inject_context(&cx, &mut headers));
+
     let cmd = format!("tkr-{}", worker_name.replace("_", "-"));
     let mut command = Command::new(&cmd);
-    if let Some(traceparent) = headers.get("traceparent") {
-        command.env("TRACEPARENT", traceparent);
-    }
-    if let Some(tracestate) = headers.get("tracestate") {
-        command.env("TRACESTATE", tracestate);
-    }
+    let cx = tracing::Span::current().context();
+    opentelemetry::global::get_text_map_propagator(|p| {
+        p.inject_context(&cx, &mut CommandEnvCarrier(&mut command));
+    });
 
     command
         .arg(worker_args_path)

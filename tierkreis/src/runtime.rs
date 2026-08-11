@@ -13,7 +13,7 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    }, event::{NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent}, executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor}, graph::WorkflowGraph, location::Location, logging::{LoggingConfig, flush_tracing, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    }, event::{NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent}, executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor}, graph::WorkflowGraph, location::Location, logging::{LoggingConfig, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -272,12 +272,10 @@ impl Runtime {
                 sig = tokio::signal::ctrl_c() => {
                     match sig {
                         Ok(()) => {
-                            flush_tracing();
                             std::process::exit(130)
                         }
                         Err(err) => {
                             eprintln!("{err}");
-                            flush_tracing();
                             std::process::exit(1);
                         }
                     }
@@ -336,7 +334,6 @@ impl Runtime {
             state_recv.changed().await.into_diagnostic()?;
         }
         tracing::info!("Runtime exiting, shutting down logging");
-        flush_tracing();
         Ok(())
     }
 

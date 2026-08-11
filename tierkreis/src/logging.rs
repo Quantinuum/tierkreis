@@ -21,7 +21,6 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::fmt::writer::BoxMakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::util::SubscriberInitExt as _;
 
 /// The log format to use for the runtime.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -55,7 +54,7 @@ impl Default for LoggingConfig {
             log_file: Some(tierkreis_log),
             log_format: LogFormat::Compact,
             log_level: Some("info".to_string()),
-            otel_endpoint: Some("http://localhost:4317".to_string()),
+            otel_endpoint: None,
             service_name: Some("tierkreis".to_string()),
             service_namespace: None,
         }
@@ -63,7 +62,6 @@ impl Default for LoggingConfig {
 }
 
 static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
-static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 
 macro_rules! with_format_layer {
@@ -108,7 +106,6 @@ where
         .build();
 
     global::set_tracer_provider(provider.clone());
-    let _ = TRACER_PROVIDER.set(provider.clone());
 
     Ok(tracing_opentelemetry::layer().with_tracer(provider.tracer("tierkreis")))
 }
@@ -186,23 +183,23 @@ fn init(config: &LoggingConfig, with_telemetry: bool) {
             with_format_layer!(&config.log_format, writer, |fmt_layer| {
                 let tracing = init_tracing_layer(otlp, &resource).expect("Failed to init tracer.");
                 let metrics = init_metrics_layer(otlp, &resource).expect("Failed to init metrics.");
-                tracing_subscriber::registry()
+                let subscriber = tracing_subscriber::registry()
                     .with(filter)
                     .with(fmt_layer)
                     .with(tracing)
-                    .with(metrics)
-                    .try_init()
-                    .expect("Failed initializing logger and tracing subscriber.");
+                    .with(metrics);
+                 tracing::subscriber::set_global_default(subscriber)
+                .expect("Setting default subscriber failed");
             });
             return;
         }
 
         with_format_layer!(&config.log_format, writer, |fmt_layer| {
-            tracing_subscriber::registry()
+            let subscriber = tracing_subscriber::registry()
                 .with(filter)
-                .with(fmt_layer)
-                .try_init()
-                .expect("Failed initializing logger subscriber.");
+                .with(fmt_layer);
+             tracing::subscriber::set_global_default(subscriber)
+                .expect("Setting default subscriber failed");
         });
     });
 }
@@ -215,11 +212,4 @@ pub fn init_logging(logging_config: Option<LoggingConfig>) {
 /// Initialize the runtime subscriber with logging and OpenTelemetry.
 pub fn init_logging_and_tracing(logging_config: Option<LoggingConfig>) {
     init(&logging_config.unwrap_or_default(), true);
-}
-
-/// Flush and shut down the global tracer provider.
-pub fn flush_tracing() {
-    if let Some(provider) = TRACER_PROVIDER.get() {
-        let _ = provider.force_flush();
-    }
 }
