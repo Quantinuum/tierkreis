@@ -32,9 +32,13 @@ use which::which_re;
 use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
-    }, event::{
-        EventReceiver, EventSender, NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent, send_cancelled, send_complete, send_error, send_running_with_update,
-    }, executor::interface::{Executor, TaskPlan, WorkerSpec}, location::Location,
+    },
+    event::{
+        EventReceiver, EventSender, NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent,
+        WorkflowRunEvent, send_cancelled, send_complete, send_error, send_running_with_update,
+    },
+    executor::interface::{Executor, TaskPlan, WorkerSpec},
+    location::Location,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -414,7 +418,6 @@ fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
 ) -> miette::Result<tokio::process::Child> {
-
     let cmd = format!("tkr-{}", worker_name.replace("_", "-"));
     let mut command = Command::new(&cmd);
     let cx = tracing::Span::current().context();

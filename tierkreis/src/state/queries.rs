@@ -21,7 +21,8 @@ use crate::asset_storage::AssetSpec;
 use crate::location::Location;
 use crate::state::interface::ExecutorDebugInformation;
 use crate::state::models::{
-    NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState, UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
+    NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
+    UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
 };
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
@@ -932,5 +933,4 @@ async fn resolve_node_state_id(
                 node_location
             )
         })
-
 }

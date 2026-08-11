@@ -84,8 +84,6 @@ pub struct ExecutorDebugInformation {
     pub internal_id: Option<String>,
 }
 
-
-
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
@@ -147,7 +145,8 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
 
     fn write_executor_debug_data(
-        &self, data: ExecutorDebugInformation
+        &self,
+        data: ExecutorDebugInformation,
     ) -> BoxFuture<'_, miette::Result<()>>;
 
     /// Set the executor-specific internal identifier for a task node.
@@ -160,5 +159,5 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn read_executor_debug_data(
         &self,
         node_location: Location,
-    ) -> BoxFuture<'_, miette::Result<ExecutorDebugInformation>>; 
+    ) -> BoxFuture<'_, miette::Result<ExecutorDebugInformation>>;
 }

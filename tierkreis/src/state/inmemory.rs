@@ -19,7 +19,9 @@ use uuid::Uuid;
 
 use crate::state::queries::WorkflowRunSummary;
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
+    asset_storage::AssetSpec,
+    event::WorkflowRunEvent,
+    graph::WorkflowGraph,
     state::interface::{ExecutorDebugInformation, RuntimeWatchState},
 };
 use crate::{
@@ -328,7 +330,11 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         &self,
         data: ExecutorDebugInformation,
     ) -> BoxFuture<'_, miette::Result<()>> {
-        let mut entry = self.global_state.runs.entry((self.run_id, self.attempt)).or_default();
+        let mut entry = self
+            .global_state
+            .runs
+            .entry((self.run_id, self.attempt))
+            .or_default();
         entry
             .executor_debug_data
             .insert(data.node_location.clone(), data);
@@ -340,7 +346,11 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         node_location: Location,
         internal_id: String,
     ) -> BoxFuture<'_, miette::Result<()>> {
-        let mut entry = self.global_state.runs.entry((self.run_id, self.attempt)).or_default();
+        let mut entry = self
+            .global_state
+            .runs
+            .entry((self.run_id, self.attempt))
+            .or_default();
         if let Some(existing) = entry.executor_debug_data.get_mut(&node_location) {
             existing.internal_id = Some(internal_id);
             future::ok(()).boxed()
@@ -359,7 +369,11 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         &self,
         node_location: Location,
     ) -> BoxFuture<'_, miette::Result<ExecutorDebugInformation>> {
-        let entry = self.global_state.runs.entry((self.run_id, self.attempt)).or_default();
+        let entry = self
+            .global_state
+            .runs
+            .entry((self.run_id, self.attempt))
+            .or_default();
         let value = entry
             .executor_debug_data
             .get(&node_location)

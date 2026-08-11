@@ -34,7 +34,10 @@ use crate::{
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
-    state::{WorkflowRunState, interface::{ExecutorDebugInformation, NodeState}},
+    state::{
+        WorkflowRunState,
+        interface::{ExecutorDebugInformation, NodeState},
+    },
 };
 
 /// `Action` describes an operation the Orchestrator should perform.
@@ -1120,7 +1123,11 @@ impl Orchestrator {
 
         let default_executor_name = &self.default_executor_name;
         if !plan.tasks.is_empty() {
-            tracing::info!("Dispatching {} tasks to executor '{}'", plan.tasks.len(), default_executor_name);
+            tracing::info!(
+                "Dispatching {} tasks to executor '{}'",
+                plan.tasks.len(),
+                default_executor_name
+            );
         }
         for task in &plan.tasks {
             workflow_run_state
@@ -1133,7 +1140,7 @@ impl Orchestrator {
                     task_name: task.task_name.clone(),
                     resources: task.resources.clone(),
                     environment: task.environment.clone(),
-                    internal_id: None
+                    internal_id: None,
                 })
                 .await?;
         }

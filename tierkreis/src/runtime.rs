@@ -13,7 +13,14 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    }, event::{NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent}, executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor}, graph::WorkflowGraph, location::Location, monitoring::{LoggingConfig, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    },
+    event::{NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent, WorkflowRunEvent},
+    executor::{Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor},
+    graph::WorkflowGraph,
+    location::Location,
+    monitoring::{LoggingConfig, init_logging_and_tracing},
+    orchestrator::{OrchestrationContext, Orchestrator},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -233,28 +240,26 @@ impl Runtime {
                         WorkflowRunEvent::Cancelled {} => {
                             tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow cancelled");
                         }
-                        WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => {
-                            match &status {
-                                NodeStatus::Scheduled => {
-                                    tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node scheduled");
-                                }
-                                NodeStatus::Queued => {
-                                    tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node queued");
-                                }
-                                NodeStatus::Running { state_update } => {
-                                    tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?state_update, "node running");
-                                }
-                                NodeStatus::Complete { .. } => {
-                                    tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node completed");
-                                }
-                                NodeStatus::Error { error, .. } => {
-                                    tracing::error!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?error, "node errored");
-                                }
-                                NodeStatus::Cancelled => {
-                                    tracing::error!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node cancelled");
-                                }
+                        WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => match &status {
+                            NodeStatus::Scheduled => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node scheduled");
                             }
-                        }
+                            NodeStatus::Queued => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node queued");
+                            }
+                            NodeStatus::Running { state_update } => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?state_update, "node running");
+                            }
+                            NodeStatus::Complete { .. } => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node completed");
+                            }
+                            NodeStatus::Error { error, .. } => {
+                                tracing::error!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?error, "node errored");
+                            }
+                            NodeStatus::Cancelled => {
+                                tracing::error!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node cancelled");
+                            }
+                        },
                     }
 
                     workflow_state.write(event).await?;
