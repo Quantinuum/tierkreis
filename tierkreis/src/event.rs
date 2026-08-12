@@ -172,6 +172,9 @@ pub enum NodeStatus {
         /// A longer detailed context about the error.
         detail: Option<String>,
     },
+
+    /// The state of the node is unknown.
+    Unknown,
 }
 
 /// [`EventSender`] is an multi-producer single-consumer producer for [`Event`] messages.
