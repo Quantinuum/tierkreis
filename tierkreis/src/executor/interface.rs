@@ -10,7 +10,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::asset_storage::interface::AssetSpec;
-use crate::event::RuntimeEvent;
+use crate::event::{NodeStatus, RuntimeEvent};
 use crate::location::Location;
 
 /// [`TaskPlan`] describes how a Task should be executed on an Executor.
@@ -86,4 +86,12 @@ pub trait Executor: Send + Sync {
         attempt: u32,
         task_locations: Vec<Location>,
     ) -> BoxFuture<'_, miette::Result<()>>;
+
+    /// Poll the current status of tasks that are currently known to the executor.
+    ///
+    /// By default you should use NodeStatus::Unknown
+    fn known_nodes(
+        &self,
+        tasks: Vec<(Uuid, u32, Location)>,
+    ) -> BoxFuture<'_, miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>>>;
 }
