@@ -61,7 +61,10 @@ impl RuntimeConfig {
 
     fn sqlite_memory() -> Self {
         let mut config = Self::memory();
-        config.runtime_state = RuntimeStateConfig::Sqlite { memory: true };
+        config.runtime_state = RuntimeStateConfig::Sqlite {
+            memory: true,
+            url: None,
+        };
         config
     }
 }
@@ -129,7 +132,10 @@ enum ExecutorConfig {
 #[derive(Deserialize)]
 enum RuntimeStateConfig {
     Memory {},
-    Sqlite { memory: bool },
+    Sqlite {
+        memory: bool,
+        url: Option<String>,
+    },
 }
 
 struct Runtime {
@@ -158,14 +164,22 @@ impl Runtime {
             &config.default_executor_name,
         )
         .await?;
-        let runtime_state: Arc<dyn RuntimeState> = match config.runtime_state {
+        let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
-            RuntimeStateConfig::Sqlite { memory: true } => {
+            RuntimeStateConfig::Sqlite {
+                memory: true, ..
+            } => {
                 Arc::new(SqliteRuntimeState::try_new_in_memory().await?)
             }
-            RuntimeStateConfig::Sqlite { memory: false } => {
-                Arc::new(SqliteRuntimeState::try_new().await?)
-            }
+            RuntimeStateConfig::Sqlite {
+                memory: false,
+                url,
+            } => match url.as_deref() {
+                Some(url) => {
+                    Arc::new(SqliteRuntimeState::try_new_with_url(url).await?)
+                }
+                None => Arc::new(SqliteRuntimeState::try_new().await?),
+            },
         };
         tracing::info!("Starting Tierkreis runtime");
         Ok(Self {

@@ -167,6 +167,24 @@ impl SqliteRuntimeState {
         })
     }
 
+    /// Create a new [`SqliteRuntimeState`] backed by the specified SQLite URL.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the SQLite database connection pool cannot be established.
+    pub async fn try_new_with_url(database_url: &str) -> miette::Result<Self> {
+        let (sender, receiver) = watch::channel(RuntimeWatchState::default());
+        let pool = build_conn_pool_with_url(database_url)
+            .await
+            .wrap_err("Failed to establish database connection")?;
+        Ok(Self {
+            pool,
+            lock: Arc::new(RwLock::new(())),
+            update_sender: sender,
+            update_receiver: receiver,
+        })
+    }
+
     /// Create a new [`SqliteRuntimeState`] backed by an isolated in-memory
     /// `SQLite` database. Each call produces a separate database, making this
     /// suitable for parallel tests.
