@@ -149,6 +149,14 @@ struct Runtime {
     dedicated_run_id: Option<Uuid>,
 }
 
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 impl Runtime {
     async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config);
@@ -429,7 +437,7 @@ impl Runtime {
     async fn run(&mut self) -> miette::Result<()> {
         let stream = self.orchestrator.listen()?;
         let state = self.state.clone();
-        let _task = tokio::spawn(async move {
+        let _task = AbortOnDrop(tokio::spawn(async move {
             tokio::select! {
                 sig = tokio::signal::ctrl_c() => {
                     match sig {
@@ -455,7 +463,7 @@ impl Runtime {
                     }
                 }
             }
-        });
+        }));
 
         let mut state_recv = self.state.listen();
 
@@ -634,4 +642,93 @@ pub async fn exec() -> miette::Result<()> {
     runtime.recover().await?;
     runtime.run().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::builder::{input, link, output, task, workflow};
+    use futures::future::{AbortHandle, Abortable};
+    use tempfile::NamedTempFile;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn run_can_resume_after_runtime_is_terminated() -> miette::Result<()> {
+        let database_file = NamedTempFile::new().into_diagnostic()?;
+        let database_url = database_file.path().to_string_lossy().into_owned();
+        let mut config = RuntimeConfig::memory();
+        config.runtime_state = RuntimeStateConfig::Sqlite {
+            memory: false,
+            url: Some(database_url),
+        };
+
+        let mut workflow_graph = workflow(["result"]);
+        let delay = input(&mut workflow_graph, "delay_seconds");
+        let task = task(
+            &mut workflow_graph,
+            "builtin",
+            "sleep",
+            ["delay_seconds"],
+            ["value"],
+        );
+        let out = output(&mut workflow_graph, "result");
+        link(&mut workflow_graph, delay, (task, "delay_seconds"))?;
+        link(&mut workflow_graph, (task, "value"), out)?;
+
+        let mut runtime = Runtime::from_config(&config).await?;
+        let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
+        let inputs = HashMap::from([(
+            "delay_seconds".to_string(),
+            serde_json::to_vec(&1).into_diagnostic()?,
+        )]);
+        let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
+        runtime.dedicated_run_id = Some(run_id);
+        let workflow_run_state = runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?;
+        let task_location = Location::root().with_node(task);
+
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let run = Abortable::new(runtime.run(), abort_registration);
+        tokio::pin!(run);
+        let wait_for_completion = async {
+            loop {
+                if workflow_run_state
+                    .read(&task_location)
+                    .await?
+                    .outputs
+                    .is_some()
+                {
+                    return Ok::<(), miette::Report>(());
+                }
+                tokio::task::yield_now().await;
+            }
+        };
+        tokio::pin!(wait_for_completion);
+        tokio::select! {
+            result = &mut run => panic!("runtime terminated before interruption: {result:?}"),
+            result = &mut wait_for_completion => result?,
+        }
+        abort_handle.abort();
+        assert!(run.await.is_err(), "the first runtime was not terminated");
+
+        let mut resumed_runtime = Runtime::from_config(&config).await?;
+        resumed_runtime.recover().await?;
+        resumed_runtime.dedicated_run_id = Some(run_id);
+        resumed_runtime.run().await?;
+
+        let resumed_state = resumed_runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?;
+        assert!(
+            resumed_state
+                .read(&Location::root().with_node(workflow_graph.output_idx()))
+                .await?
+                .outputs
+                .is_some()
+        );
+
+        Ok(())
+    }
 }
