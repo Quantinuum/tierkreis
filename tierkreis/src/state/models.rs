@@ -57,8 +57,11 @@ pub struct NewWorkflowRunAttempt<'a> {
     pub id: &'a str, // UUID string
     pub attempt: i32,
     pub run_metadata: &'a [u8], // JSON blob
-    pub status: Option<&'a str>,
     pub started_time: Option<NaiveDateTime>,
+    pub queued_time: Option<NaiveDateTime>,
+    pub complete_time: Option<NaiveDateTime>,
+    pub cancelled_time: Option<NaiveDateTime>,
+    pub error_time: Option<NaiveDateTime>,
 }
 
 #[derive(Queryable, Selectable, Identifiable, Associations, Debug, Clone)]
@@ -69,8 +72,22 @@ pub struct WorkflowRunAttempt {
     pub workflow_run_id: String, // UUID string
     pub attempt: i32,
     pub run_metadata: Vec<u8>, // JSON blob
-    pub status: Option<String>,
     pub started_time: Option<NaiveDateTime>,
+    pub queued_time: Option<NaiveDateTime>,
+    pub complete_time: Option<NaiveDateTime>,
+    pub cancelled_time: Option<NaiveDateTime>,
+    pub error_time: Option<NaiveDateTime>,
+}
+
+#[derive(AsChangeset, Default, Debug)]
+#[diesel(table_name = workflow_run_attempts)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct UpsertWorkflowRun {
+    pub started_time: Option<NaiveDateTime>,
+    pub queued_time: Option<NaiveDateTime>,
+    pub complete_time: Option<NaiveDateTime>,
+    pub cancelled_time: Option<NaiveDateTime>,
+    pub error_time: Option<NaiveDateTime>,
 }
 
 // -----------------------------------------------------------------------------
@@ -87,7 +104,6 @@ pub struct NodeState {
     pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
-    pub running_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
     pub error_time: Option<NaiveDateTime>,
