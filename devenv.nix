@@ -29,7 +29,7 @@ in
   # https://devenv.sh/languages/
   languages.python = {
     enable = true;
-    package = pkgs.python312;
+    package = pkgs.python313;
      uv = {
         enable = true;
         sync.enable = true;
