@@ -660,7 +660,7 @@ mod tests {
             ["delay_seconds"],
             ["value"],
         );
-        let out = output(&mut workflow_graph, "result");
+        let out = output(&workflow_graph, "result");
         link(&mut workflow_graph, delay, (task, "delay_seconds"))?;
         link(&mut workflow_graph, (task, "value"), out)?;
 
