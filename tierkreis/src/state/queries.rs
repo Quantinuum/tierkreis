@@ -21,7 +21,8 @@ use crate::asset_storage::AssetSpec;
 use crate::location::Location;
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
-    UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
+    UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
+    WorkflowRunInput,
 };
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
@@ -167,6 +168,54 @@ define_sql_function!(
     #[sql_name = "max"]
     fn max_int(x: Nullable<Integer>, y: Nullable<Integer>) -> Nullable<Integer>;
 );
+
+/// Update the persisted timing state for a workflow run attempt.
+///
+/// # Errors
+///
+/// Returns an error when the update fails.
+pub async fn update_workflow_run(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+    workflow_update: UpsertWorkflowRun,
+) -> miette::Result<bool> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    let rows_affected = diesel::update(
+        wra::workflow_run_attempts
+            .filter(wra::workflow_run_id.eq(run_id))
+            .filter(wra::attempt.eq(attempt)),
+    )
+    .set((
+        wra::started_time.eq(coalesce_datetime(
+            wra::started_time,
+            workflow_update.started_time,
+        )),
+        wra::queued_time.eq(coalesce_datetime(
+            wra::queued_time,
+            workflow_update.queued_time,
+        )),
+        wra::complete_time.eq(coalesce_datetime(
+            wra::complete_time,
+            workflow_update.complete_time,
+        )),
+        wra::cancelled_time.eq(coalesce_datetime(
+            wra::cancelled_time,
+            workflow_update.cancelled_time,
+        )),
+        wra::error_time.eq(coalesce_datetime(
+            wra::error_time,
+            workflow_update.error_time,
+        )),
+    ))
+    .execute(conn)
+    .await
+    .into_diagnostic()
+    .wrap_err("Failed to update workflow run timing")?;
+
+    Ok(rows_affected > 0)
+}
 
 /// Ensure a node-state row exists for the given run/location.
 ///
@@ -753,7 +802,15 @@ pub async fn list_workflow_run_summaries(
             workflow_id,
             name: workflow_name,
             started_time: run_attempt.started_time.map(utc_timestamp),
-            status: run_attempt.status,
+            status: [
+                (run_attempt.complete_time.is_some(), "Completed"),
+                (run_attempt.cancelled_time.is_some(), "Cancelled"),
+                (run_attempt.error_time.is_some(), "Errored"),
+                (run_attempt.started_time.is_some(), "Started"),
+                (run_attempt.queued_time.is_some(), "Queued"),
+            ]
+            .into_iter()
+            .find_map(|(present, status)| present.then(|| status.to_owned())),
             errored_locations,
         });
     }

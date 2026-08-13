@@ -34,12 +34,12 @@ use crate::{
     graph::WorkflowGraph,
     state::{
         interface::RuntimeWatchState,
-        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
+        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
             WorkflowRunSummary, add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, list_workflow_run_summaries, read_node_state,
-            read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
-            read_workflow_run_inputs, update_node_state,
+            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries,
+            read_node_state, read_node_states, read_run_attempt_metadata, read_workflow,
+            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
@@ -386,15 +386,41 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         async move {
             let _lock = self.lock.write().await;
             let mut send_workflow_stopped = false;
+            let now = Utc::now().naive_utc();
+            let mut workflow_update = UpsertWorkflowRun::default();
 
             match event {
-                WorkflowRunEvent::Started {} => {}
-                WorkflowRunEvent::Cancelled {}
-                | WorkflowRunEvent::Errored {}
-                | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+                WorkflowRunEvent::Started {} => {
+                    workflow_update.started_time = Some(now);
+                }
+                WorkflowRunEvent::Queued {} => workflow_update.queued_time = Some(now),
+                WorkflowRunEvent::Cancelled {} => {
+                    workflow_update.cancelled_time = Some(now);
+                    send_workflow_stopped = true;
+                }
+                WorkflowRunEvent::Errored {} => {
+                    workflow_update.error_time = Some(now);
+                    send_workflow_stopped = true;
+                }
+                WorkflowRunEvent::Completed {} => {
+                    workflow_update.complete_time = Some(now);
+                    send_workflow_stopped = true;
+                }
                 WorkflowRunEvent::NodeEvent(ref node_event) => {
                     self.handle_node_event(node_event).await?;
                 }
+            }
+
+            if !matches!(event, WorkflowRunEvent::NodeEvent(_)) {
+                let attempt = self.attempt.try_into().into_diagnostic()?;
+                let mut conn = self.get_conn().await?;
+                update_workflow_run(
+                    &mut conn,
+                    &self.run_id.to_string(),
+                    attempt,
+                    workflow_update,
+                )
+                .await?;
             }
 
             self.update_sender.send_modify(|run_attempt_updated| {
