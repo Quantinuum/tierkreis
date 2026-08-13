@@ -11,7 +11,7 @@ use std::{
 
 use bitvec::vec::BitVec;
 use futures::{
-    FutureExt, Stream, StreamExt, TryFutureExt,
+    FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt,
     channel::mpsc,
     future,
     stream::{self, BoxStream, LocalBoxStream, select_all},
@@ -27,9 +27,9 @@ use crate::{
         unfold_asset,
     },
     event::{
-        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
-        send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
-        send_workflow_run_complete,
+        EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
+        send_complete, send_map_elem_complete, send_running_loop, send_running_map,
+        send_running_switching, send_workflow_run_complete,
     },
     executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
@@ -1116,6 +1116,50 @@ impl Orchestrator {
         }
 
         Ok(())
+    }
+
+    /// Poll the current status of detached tasks from executors.
+    ///
+    /// Used to discover tasks that are currently detached from the runtime state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the executors cannot be reached or the retrieval fails.
+    pub async fn retrieve_detached_tasks(
+        &self,
+        tasks: Vec<(Uuid, u32, Location)>,
+    ) -> miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>> {
+        if tasks.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let results = self
+            .executor_registry
+            .values()
+            .map(|executor| executor.known_tasks(tasks.clone()))
+            .collect::<futures::stream::FuturesUnordered<_>>()
+            .try_collect::<Vec<_>>()
+            .await
+            .wrap_err("Failed to poll in-flight tasks from executors")?;
+
+        let mut active_nodes = HashMap::new();
+        for nodes in results {
+            for (workflow_run_id, attempt, loc, status) in nodes {
+                let entry = active_nodes
+                    .entry((workflow_run_id, attempt, loc))
+                    .or_insert(status.clone());
+                if matches!(entry, NodeStatus::Unknown) && !matches!(status, NodeStatus::Unknown) {
+                    *entry = status;
+                }
+            }
+        }
+
+        Ok(active_nodes
+            .into_iter()
+            .map(|((workflow_run_id, attempt, loc), status)| {
+                (workflow_run_id, attempt, loc, status)
+            })
+            .collect())
     }
 
     /// Listen to a combined stream events from the Orchestrator and the
