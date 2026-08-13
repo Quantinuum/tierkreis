@@ -164,7 +164,6 @@ impl RuntimeState for InMemoryRuntimeState {
         // In-memory state does not survive process restarts; nothing to restore.
         future::ok(()).boxed()
     }
-
 }
 
 /// [`InMemoryWorkflowRunState`] is an implementation of [`WorkflowRunState`] that shares storage

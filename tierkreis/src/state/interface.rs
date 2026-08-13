@@ -107,7 +107,6 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// state when the process last exited. Implementations without durable storage
     /// may treat this as a no-op.
     fn restore_active_runs(&self) -> BoxFuture<'_, miette::Result<()>>;
-
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.

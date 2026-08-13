@@ -450,7 +450,7 @@ pub async fn send_workflow_run_complete(
 }
 
 /// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Queued`].
-/// 
+///
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
@@ -459,7 +459,11 @@ pub async fn send_workflow_run_queued(
     workflow_run_id: Uuid,
     attempt: u32,
 ) -> miette::Result<()> {
-    let event = RuntimeEvent::WorkflowRun { workflow_run_id, attempt, event: WorkflowRunEvent::Queued {} };
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::Queued {},
+    };
     event_sender
         .send(event)
         .await

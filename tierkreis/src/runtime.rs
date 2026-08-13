@@ -132,10 +132,7 @@ enum ExecutorConfig {
 #[derive(Deserialize)]
 enum RuntimeStateConfig {
     Memory {},
-    Sqlite {
-        memory: bool,
-        url: Option<String>,
-    },
+    Sqlite { memory: bool, url: Option<String> },
 }
 
 struct Runtime {
@@ -174,18 +171,11 @@ impl Runtime {
         .await?;
         let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
-            RuntimeStateConfig::Sqlite {
-                memory: true, ..
-            } => {
+            RuntimeStateConfig::Sqlite { memory: true, .. } => {
                 Arc::new(SqliteRuntimeState::try_new_in_memory().await?)
             }
-            RuntimeStateConfig::Sqlite {
-                memory: false,
-                url,
-            } => match url.as_deref() {
-                Some(url) => {
-                    Arc::new(SqliteRuntimeState::try_new_with_url(url).await?)
-                }
+            RuntimeStateConfig::Sqlite { memory: false, url } => match url.as_deref() {
+                Some(url) => Arc::new(SqliteRuntimeState::try_new_with_url(url).await?),
                 None => Arc::new(SqliteRuntimeState::try_new().await?),
             },
         };
