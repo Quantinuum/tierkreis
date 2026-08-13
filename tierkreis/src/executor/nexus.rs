@@ -1071,6 +1071,7 @@ mod tests {
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
+        dbg!(&event);
         assert!(matches!(
             event,
             RuntimeEvent::WorkflowRun {

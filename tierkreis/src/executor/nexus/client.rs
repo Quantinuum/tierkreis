@@ -114,7 +114,7 @@ impl Stream for JobStatusStream {
                 Poll::Ready(None)
             }
             Poll::Ready(Some(Err(err))) => {
-                Poll::Ready(Some(Err(miette!("Websocket error: {err}",))))
+                Poll::Ready(Some(Err(miette!("Websocket error: {err}"))))
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
