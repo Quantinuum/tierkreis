@@ -167,11 +167,11 @@ impl SqliteRuntimeState {
         })
     }
 
-    /// Create a new [`SqliteRuntimeState`] backed by the specified SQLite URL.
+    /// Create a new [`SqliteRuntimeState`] backed by the specified `SQLite` URL.
     ///
     /// # Errors
     ///
-    /// Will return Err if the SQLite database connection pool cannot be established.
+    /// Will return Err if the `SQLite` database connection pool cannot be established.
     pub async fn try_new_with_url(database_url: &str) -> miette::Result<Self> {
         let (sender, receiver) = watch::channel(RuntimeWatchState::default());
         let pool = build_conn_pool_with_url(database_url)
@@ -359,7 +359,6 @@ impl RuntimeState for SqliteRuntimeState {
             let _lock = self.lock.read().await;
             let mut conn = self.get_conn().await?;
             let interrupted = list_active_runs(&mut conn).await?;
-            drop(_lock);
             for (run_id, attempt) in interrupted {
                 self.update_sender.send_modify(|watch| {
                     watch.active_runs.insert((run_id, attempt));
@@ -528,6 +527,7 @@ impl SqliteWorkflowRunState {
         Ok(conn)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();

@@ -13,6 +13,9 @@ use crate::asset_storage::interface::AssetSpec;
 use crate::event::{NodeStatus, RuntimeEvent};
 use crate::location::Location;
 
+/// [`UniqueLocState`] is Location in a workflow run attempt, along with the current `NodeStatus` of that Location.
+pub type UniqueLocState = (Uuid, u32, Location, NodeStatus);
+
 /// [`TaskPlan`] describes how a Task should be executed on an Executor.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct TaskPlan {
@@ -89,9 +92,9 @@ pub trait Executor: Send + Sync {
 
     /// Poll the current status of tasks that are currently known to the executor.
     ///
-    /// By default you should use NodeStatus::Unknown
+    /// By default you should use `NodeStatus::Unknown`
     fn known_tasks(
         &self,
         tasks: Vec<(Uuid, u32, Location)>,
-    ) -> BoxFuture<'_, miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>>>;
+    ) -> BoxFuture<'_, miette::Result<Vec<UniqueLocState>>>;
 }

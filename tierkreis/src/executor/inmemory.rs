@@ -28,7 +28,7 @@ use crate::{
         EventReceiver, EventSender, NodeStatus, RuntimeEvent, send_cancelled, send_complete,
         send_error, send_running,
     },
-    executor::interface::{Executor, TaskPlan, WorkerSpec},
+    executor::interface::{Executor, TaskPlan, UniqueLocState, WorkerSpec},
     location::Location,
 };
 
@@ -568,7 +568,7 @@ impl Executor for InMemoryExecutor {
     fn known_tasks(
         &self,
         tasks: Vec<(Uuid, u32, Location)>,
-    ) -> BoxFuture<'_, miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>>> {
+    ) -> BoxFuture<'_, miette::Result<Vec<UniqueLocState>>> {
         let abort_handles = Arc::clone(&self.abort_handles);
         async move {
             let abort_handles = abort_handles.lock().unwrap();
