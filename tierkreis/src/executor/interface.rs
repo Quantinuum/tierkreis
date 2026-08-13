@@ -90,7 +90,7 @@ pub trait Executor: Send + Sync {
     /// Poll the current status of tasks that are currently known to the executor.
     ///
     /// By default you should use NodeStatus::Unknown
-    fn known_nodes(
+    fn known_tasks(
         &self,
         tasks: Vec<(Uuid, u32, Location)>,
     ) -> BoxFuture<'_, miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>>>;

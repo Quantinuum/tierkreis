@@ -583,7 +583,7 @@ impl Executor for SubprocessExecutor {
         fut.boxed()
     }
 
-    fn known_nodes(
+    fn known_tasks(
         &self,
         tasks: Vec<(Uuid, u32, Location)>,
     ) -> BoxFuture<'_, miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>>> {
