@@ -63,6 +63,8 @@ pub enum WorkflowRunEvent {
         // TODO: Should this contain outputs?
         // if so also update the outputs function
     },
+    /// The workflow run is waiting to be executed.
+    Queued {},
     /// An event relating to a specific set of nodes in the workflow run.
     NodeEvent(NodeEvent),
 }
@@ -425,7 +427,7 @@ pub async fn send_error(
         .wrap_err("Failed to send node error event")
 }
 
-/// Utility function to send a new [`Event`].
+/// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Completed`].
 ///
 /// # Errors
 ///
@@ -447,6 +449,23 @@ pub async fn send_workflow_run_complete(
         .wrap_err("Failed to send workflow complete event")
 }
 
+/// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Queued`].
+/// 
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_workflow_run_queued(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun { workflow_run_id, attempt, event: WorkflowRunEvent::Queued {} };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send workflow queued event")
+}
 #[cfg(test)]
 mod tests {
     use super::*;
