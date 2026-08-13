@@ -181,6 +181,112 @@ impl Runtime {
         self.state.save_workflow(workflow_graph).await
     }
 
+    /// Reconnect with executors after a crash and resume any interrupted workflow runs.
+    ///
+    /// This method should be called once after [`Runtime::from_config`] and before
+    /// [`Runtime::run`]. It:
+    /// 1. Restores the set of active runs from durable state.
+    /// 2. For each interrupted run, polls the executors to discover whether any
+    ///    tasks are still running, have completed, or were lost.
+    /// 3. Records any newly discovered completions in state.
+    /// 4. Continues the run attempts
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the state backend, executor, or event writing fails.
+    async fn recover(&mut self) -> miette::Result<()> {
+        tracing::info!("Recovering runtime state");
+        self.state.restore_active_runs().await?;
+
+        let active_runs: Vec<(Uuid, u32)> = {
+            let watch = self.state.listen();
+            watch.borrow().active_runs.iter().copied().collect()
+        };
+
+        if active_runs.is_empty() {
+            tracing::info!("No interrupted workflow runs to recover");
+            return Ok(());
+        }
+
+        tracing::info!(
+            count = active_runs.len(),
+            "Recovering interrupted workflow runs"
+        );
+
+        for (run_id, attempt) in active_runs {
+            let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+            let workflow_id = workflow_run_state.workflow_id();
+            let workflow_graph = self.state.load_workflow(workflow_id).await?;
+
+            // Find nodes that were dispatched but have not finished
+            let all_locs: Vec<Location> = workflow_graph
+                .node_ids()
+                .map(|n| Location::root().with_node(n))
+                .collect();
+            let node_states = workflow_run_state
+                .read_many(&mut all_locs.into_iter())
+                .await?;
+
+            let unfinished_tasks: Vec<(Uuid, u32, Location)> = node_states
+                .iter()
+                .filter(|(_, state)| {
+                    state.scheduled_time.is_some()
+                        && state.outputs.is_none()
+                        && state.cancelled_time.is_none()
+                        && state.error_time.is_none()
+                })
+                .map(|(loc, _)| (run_id, attempt, loc.clone()))
+                .collect();
+
+            if unfinished_tasks.is_empty() {
+                continue;
+            }
+
+            tracing::info!(
+                run_id = %run_id,
+                attempt,
+                running = unfinished_tasks.len(),
+                "Polling executor for task statuses"
+            );
+
+            let task_statuses = self
+                .orchestrator
+                .retrieve_detached_tasks(unfinished_tasks)
+                .await?;
+
+            let mut has_lost_tasks = false;
+            for (_, _, loc, status) in task_statuses {
+                match status {
+                    NodeStatus::Complete { .. } => {
+                        // Task finished while the runtime was down; record the completion.
+                        workflow_run_state
+                            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
+                                locs: vec![loc],
+                                status,
+                            }))
+                            .await?;
+                    }
+                    NodeStatus::Unknown => {
+                        has_lost_tasks = true;
+                    }
+                    _ => {
+                        // TODO: Task is still running or queued; no action needed?.
+                    }
+                }
+            }
+
+            if has_lost_tasks {
+                tracing::warn!(
+                    run_id = %run_id,
+                    attempt,
+                    "Tasks were lost;"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     async fn start_new_run<S: BuildHasher>(
         &mut self,
         workflow_id: Uuid,
@@ -511,6 +617,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 #[tokio::main]
 pub async fn exec() -> miette::Result<()> {
     let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
+    runtime.recover().await?;
     runtime.run().await?;
     Ok(())
 }
