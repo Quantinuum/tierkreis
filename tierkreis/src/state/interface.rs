@@ -99,6 +99,15 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// List summaries of all workflow runs in the runtime state.
     fn list_workflow_run_summaries(&self)
     -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>>;
+
+    /// Restore active runs from storage.
+    ///
+    /// Must be called once on startup after a potential crash to re-populate the
+    /// in-memory [`RuntimeWatchState`] from any runs that were not in a terminal
+    /// state when the process last exited. Implementations without durable storage
+    /// may treat this as a no-op.
+    fn restore_active_runs(&self) -> BoxFuture<'_, miette::Result<()>>;
+
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.

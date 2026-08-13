@@ -335,6 +335,22 @@ impl RuntimeState for SqliteRuntimeState {
         }
         .boxed()
     }
+
+    fn restore_active_runs(&self) -> BoxFuture<'_, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            let interrupted = list_active_runs(&mut conn).await?;
+            drop(_lock);
+            for (run_id, attempt) in interrupted {
+                self.update_sender.send_modify(|watch| {
+                    watch.active_runs.insert((run_id, attempt));
+                });
+            }
+            Ok(())
+        }
+        .boxed()
+    }
 }
 
 /// [`SqlWorkflowRunState`] is an implementation of [`WorkflowRunState`] that shares storage
@@ -407,6 +423,7 @@ impl WorkflowRunState for SqliteWorkflowRunState {
                     send_workflow_stopped = true;
                 }
                 WorkflowRunEvent::NodeEvent(ref node_event) => {
+                    // TODO: can we receive node events before start is set?
                     self.handle_node_event(node_event).await?;
                 }
             }
@@ -574,6 +591,7 @@ impl SqliteWorkflowRunState {
                         row.error = Some(error.clone());
                         row.error_detail.clone_from(detail);
                     }
+                    NodeStatus::Unknown => {}
                 }
 
                 Ok(row)

@@ -817,3 +817,33 @@ pub async fn list_workflow_run_summaries(
 
     Ok(summaries)
 }
+
+/// List all workflow run attempts that have not yet reached a terminal state.
+/// Used during crash recovery to identify interrupted runs.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the query fails.
+pub async fn list_active_runs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+) -> miette::Result<Vec<(uuid::Uuid, u32)>> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    let runs: Vec<(String, i32)> = wra::workflow_run_attempts
+        .select((wra::workflow_run_id, wra::attempt))
+        .filter(wra::complete_time.is_null())
+        .filter(wra::cancelled_time.is_null())
+        .filter(wra::error_time.is_null())
+        .get_results(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to list interrupted workflow runs")?;
+
+    runs.into_iter()
+        .map(|(run_id_str, attempt_i32)| {
+            let run_id = run_id_str.parse().into_diagnostic()?;
+            let attempt = u32::try_from(attempt_i32).into_diagnostic()?;
+            Ok((run_id, attempt))
+        })
+        .collect()
+}
