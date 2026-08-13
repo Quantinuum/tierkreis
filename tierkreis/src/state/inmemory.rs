@@ -38,6 +38,11 @@ struct RunAttemptState {
     inputs: HashMap<String, AssetSpec>,
     nodes: HashMap<Location, NodeState>,
     metadata: HashMap<String, String>,
+    started_time: Option<chrono::DateTime<Utc>>,
+    queued_time: Option<chrono::DateTime<Utc>>,
+    complete_time: Option<chrono::DateTime<Utc>>,
+    cancelled_time: Option<chrono::DateTime<Utc>>,
+    error_time: Option<chrono::DateTime<Utc>>,
 }
 
 /// [`InMemoryRuntimeStateInner`] is a shared struct that can be accessed
@@ -229,18 +234,43 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
     #[instrument]
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>> {
         let global_state = &self.global_state;
-        let run_state = global_state
+        let mut run_state = global_state
             .runs
             .entry((self.run_id, self.attempt))
             .or_default();
 
+        let now = Utc::now();
         let mut send_workflow_stopped = false;
 
         match event {
-            WorkflowRunEvent::Started {} => {}
-            WorkflowRunEvent::Cancelled {}
-            | WorkflowRunEvent::Errored {}
-            | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+            WorkflowRunEvent::Started {} => {
+                if run_state.started_time.is_none() {
+                    run_state.started_time = Some(now);
+                }
+            }
+            WorkflowRunEvent::Queued {} => {
+                if run_state.queued_time.is_none() {
+                    run_state.queued_time = Some(now);
+                }
+            }
+            WorkflowRunEvent::Cancelled {} => {
+                if run_state.cancelled_time.is_none() {
+                    run_state.cancelled_time = Some(now);
+                }
+                send_workflow_stopped = true;
+            }
+            WorkflowRunEvent::Errored {} => {
+                if run_state.error_time.is_none() {
+                    run_state.error_time = Some(now);
+                }
+                send_workflow_stopped = true;
+            }
+            WorkflowRunEvent::Completed {} => {
+                if run_state.complete_time.is_none() {
+                    run_state.complete_time = Some(now);
+                }
+                send_workflow_stopped = true;
+            }
             WorkflowRunEvent::NodeEvent(ref node_event) => handle_node_event(run_state, node_event),
         }
 
@@ -408,6 +438,7 @@ fn handle_node_event(
                     node_state.error_detail.clone_from(detail);
                 }
             }
+            crate::event::NodeStatus::Unknown => {}
         }
     }
 }
