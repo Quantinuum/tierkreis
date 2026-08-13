@@ -15,6 +15,7 @@ in
     pkgs.cargo-nextest
     pkgs.sqlite
     pkgs.diesel-cli
+    pkgs.nixfmt
   ] ++ lib.optionals pkgs.stdenv.isDarwin darwinRuntimeLibraries;
 
   git-hooks.hooks = {
@@ -28,6 +29,7 @@ in
   # https://devenv.sh/languages/
   languages.python = {
     enable = true;
+    package = pkgs.python312;
      uv = {
         enable = true;
         sync.enable = true;

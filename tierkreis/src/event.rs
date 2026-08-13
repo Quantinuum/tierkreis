@@ -448,6 +448,8 @@ pub async fn send_workflow_run_complete(
 mod tests {
     use super::*;
 
+    use std::assert_matches;
+
     use miette::miette;
 
     // Test that we populate the detail field of error events
@@ -462,8 +464,7 @@ mod tests {
         send_error(&mut send, Uuid::nil(), 0, Location::root(), &err).await?;
 
         let event = recv.recv().await.into_diagnostic()?;
-        dbg!(&event);
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -481,7 +482,7 @@ First Context
 Which was caused by:
 
 Root cause".to_string())
-        ));
+        );
 
         Ok(())
     }

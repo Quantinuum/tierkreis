@@ -3555,7 +3555,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-aer-worker-impl"
@@ -3583,7 +3583,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-auth-worker-impl"
@@ -3615,7 +3615,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-error-worker-impl"
@@ -3645,7 +3645,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-guppy-worker-impl"
@@ -3681,7 +3681,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-hello-world-worker-impl"
@@ -3709,7 +3709,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-ibmq-worker-impl"
@@ -3739,7 +3739,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-multiple-outputs-worker-impl"
@@ -3773,7 +3773,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-my-example-worker-impl"
@@ -3813,7 +3813,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-nexus-worker-impl"
@@ -3843,7 +3843,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-pytket-worker-impl"
@@ -3887,7 +3887,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-qsci-worker-impl"
@@ -3925,7 +3925,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-quantinuum-worker-impl"
@@ -3955,7 +3955,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-qulacs-worker-impl"
@@ -3983,7 +3983,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-scipy-worker-impl"
@@ -4013,7 +4013,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "tierkreis", editable = "tierkreis" }]
+requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-substitution-worker-impl"
