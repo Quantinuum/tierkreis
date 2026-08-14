@@ -328,10 +328,7 @@ async fn start_task(
     let output_storage_name = internal_task.output_storage_name;
     let workflow_run_id = task_plan.workflow_run_id;
     let attempt = task_plan.attempt;
-    let handle = TaskHandle{
-        executor_name: "inmemory".to_string(),
-        task_internal_id: None,
-    };
+    let handle = TaskHandle::InMemory;
     send_running(event_sender, workflow_run_id, attempt, loc.clone(), Some(handle)).await?;
 
     let res = load_assets(asset_storage_registry, &task_plan.inputs).await;
@@ -759,10 +756,7 @@ mod tests {
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
-        let handle = TaskHandle{
-            executor_name: "inmemory".to_string(),
-            task_internal_id: None,
-        };
+        let handle = TaskHandle::InMemory;
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert!(events.contains(&RuntimeEvent::WorkflowRun {

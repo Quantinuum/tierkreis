@@ -51,13 +51,36 @@ pub struct TaskPlan {
     pub environment: HashMap<String, Value>,
 }
 
-///
+/// An executor-specific identifier for a task that can be persisted and restored.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TaskHandle {
-    /// The name of the Executor that created this handle.
-    pub executor_name: String,
-    /// The unique identifier of the Task on the Executor.
-    pub task_internal_id: Option<String>,
+#[serde(tag = "executor", content = "task")]
+pub enum TaskHandle {
+    /// A task running as a subprocess.
+    Subprocess {
+        /// The process identifier.
+        pid: u32,
+        /// The process start time in Linux clock ticks.
+        start_time: u64,
+    },
+    /// A task running in-memory.
+    InMemory,
+    /// A task running on nexus.
+    Nexus {
+        /// The job identifier assigned by Nexus.
+        job_id: String,
+    },
+}
+
+impl TaskHandle {
+    /// Return the executor registry name responsible for this task.
+    #[must_use]
+    pub fn executor_name(&self) -> &'static str {
+        match self {
+            Self::Subprocess { .. } => "subprocess",
+            Self::InMemory => "memory",
+            Self::Nexus { .. } => "nexus",
+        }
+    }
 }
 
 /// [`WorkerSpec`] defines the information about a Worker returned by an

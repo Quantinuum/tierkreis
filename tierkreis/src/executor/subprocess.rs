@@ -200,14 +200,13 @@ async fn start_task(
         }
     };
     let stderr = read_stderr(&mut child);
-    let task_internal_id = child
+    let process_identity = child
         .id()
         .map(process_identity)
         .transpose()?;
-    let handle = TaskHandle {
-        executor_name: "subprocess".to_string(),
-        task_internal_id,
-    };
+    let (pid, start_time) = process_identity
+        .ok_or_else(|| miette!("Worker process did not have a PID"))?;
+    let handle = TaskHandle::Subprocess { pid, start_time };
     send_running(
         event_sender,
         workflow_run_id,
@@ -449,7 +448,7 @@ fn spawn_worker(
     Ok(child)
 }
 
-fn process_identity(pid: u32) -> miette::Result<String> {
+fn process_identity(pid: u32) -> miette::Result<(u32, u64)> {
     #[cfg(target_os = "linux")]
     {
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))
@@ -464,12 +463,16 @@ fn process_identity(pid: u32) -> miette::Result<String> {
             .nth(19)
             .ok_or_else(|| miette!("Subprocess status has no start time"))?;
 
-        return Ok(format!("{pid}::{start_time}"));
+        let start_time = start_time
+            .parse()
+            .into_diagnostic()
+            .wrap_err("Invalid subprocess start time")?;
+        return Ok((pid, start_time));
     }
 
     #[cfg(not(target_os = "linux"))]
     {
-        Ok(format!("{pid}::unknown"))
+        Ok((pid, 0))
     }
 }
 
@@ -625,23 +628,16 @@ impl Executor for SubprocessExecutor {
         let statuses = tasks
             .into_iter()
             .map(|(workflow_run_id, attempt, loc, handle)| {
-                let task_internal_id = handle.task_internal_id.clone();
-                let is_running = task_internal_id
-                    .as_deref()
-                    .and_then(|task_id| {
-                        let (pid, _) = task_id.split_once("::")?;
-                        let pid = pid.parse().ok()?;
-                        let current_id = process_identity(pid).ok()?;
-                        (current_id == task_id).then_some(())
-                    })
-                    .is_some();
-                let status = if is_running {
-                    NodeStatus::Running {
-                        state_update: None,
-                        handle: Some(handle),
-                    }
-                } else {
-                    NodeStatus::Unknown
+                let status = match handle {
+                    // Potentially doesn't work if the executor runs on a different machine than the runtime.
+                    TaskHandle::Subprocess { pid, start_time }
+                        if process_identity(pid)
+                            .map(|(_, current_start_time)| current_start_time == start_time)
+                            .unwrap_or(false) => NodeStatus::Running {
+                            state_update: None,
+                            handle: Some(TaskHandle::Subprocess { pid, start_time }),
+                        },
+                    _ => NodeStatus::Unknown,
                 };
                 (workflow_run_id, attempt, loc, status)
             })
