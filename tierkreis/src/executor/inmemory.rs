@@ -453,7 +453,6 @@ pub struct InMemoryExecutor {
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
     output_storage_name: String,
-    abort_handles: AbortHandles,
 }
 
 impl InMemoryExecutor {
@@ -493,7 +492,6 @@ impl InMemoryExecutor {
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
             output_storage_name: output_storage_name.to_string(),
-            abort_handles,
         })
     }
 }
