@@ -32,13 +32,10 @@ use which::which_re;
 use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
-    },
-    event::{
+    }, event::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
         send_cancelled, send_complete, send_error, send_running,
-    },
-    executor::interface::{Executor, TaskPlan, UniqueLocState, WorkerSpec},
-    location::Location,
+    }, executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec}, location::Location,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -203,6 +200,22 @@ async fn start_task(
         }
     };
     let stderr = read_stderr(&mut child);
+    let task_internal_id = child
+        .id()
+        .map(process_identity)
+        .transpose()?;
+    let handle = TaskHandle {
+        executor_name: "subprocess".to_string(),
+        task_internal_id,
+    };
+    send_running(
+        event_sender,
+        workflow_run_id,
+        attempt,
+        loc.clone(),
+        Some(handle.clone()),
+    )
+    .await?;
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
@@ -298,7 +311,6 @@ pub struct SubprocessExecutor {
     // no copying will occur.
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
-    abort_handles: AbortHandles,
 }
 
 type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
@@ -356,7 +368,6 @@ impl SubprocessExecutor {
             subprocess_storage_name: subprocess_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
-            abort_handles,
         })
     }
 
@@ -436,6 +447,30 @@ fn spawn_worker(
         .into_diagnostic()
         .wrap_err_with(|| miette!("Could not spawn worker `{cmd}`"))?;
     Ok(child)
+}
+
+fn process_identity(pid: u32) -> miette::Result<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))
+            .into_diagnostic()
+            .wrap_err("Could not read subprocess status")?;
+        let fields = stat
+            .rsplit_once(')')
+            .map(|(_, fields)| fields)
+            .ok_or_else(|| miette!("Invalid subprocess status"))?;
+        let start_time = fields
+            .split_whitespace()
+            .nth(19)
+            .ok_or_else(|| miette!("Subprocess status has no start time"))?;
+
+        return Ok(format!("{pid}::{start_time}"));
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(format!("{pid}::unknown"))
+    }
 }
 
 fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
@@ -583,27 +618,35 @@ impl Executor for SubprocessExecutor {
         fut.boxed()
     }
 
-    fn known_tasks(
+    fn restore(
         &self,
-        tasks: Vec<(Uuid, u32, Location)>,
-    ) -> BoxFuture<'_, miette::Result<Vec<UniqueLocState>>> {
-        let abort_handles = Arc::clone(&self.abort_handles);
-        async move {
-            let abort_handles = abort_handles.lock().unwrap();
-            Ok(tasks
-                .into_iter()
-                .map(|(workflow_run_id, attempt, loc)| {
-                    let status =
-                        if abort_handles.contains_key(&(workflow_run_id, attempt, loc.clone())) {
-                            NodeStatus::Running { state_update: None }
-                        } else {
-                            NodeStatus::Unknown
-                        };
-                    (workflow_run_id, attempt, loc, status)
-                })
-                .collect())
-        }
-        .boxed()
+        tasks: Vec<super::interface::UniqueNodeHandle>,
+    ) -> BoxFuture<'_, miette::Result<Vec<super::interface::UniqueLocState>>> {
+        let statuses = tasks
+            .into_iter()
+            .map(|(workflow_run_id, attempt, loc, handle)| {
+                let task_internal_id = handle.task_internal_id.clone();
+                let is_running = task_internal_id
+                    .as_deref()
+                    .and_then(|task_id| {
+                        let (pid, _) = task_id.split_once("::")?;
+                        let pid = pid.parse().ok()?;
+                        let current_id = process_identity(pid).ok()?;
+                        (current_id == task_id).then_some(())
+                    })
+                    .is_some();
+                let status = if is_running {
+                    NodeStatus::Running {
+                        state_update: None,
+                        handle: Some(handle),
+                    }
+                } else {
+                    NodeStatus::Unknown
+                };
+                (workflow_run_id, attempt, loc, status)
+            })
+            .collect();
+        futures::future::ok(statuses).boxed()
     }
 }
 
@@ -821,22 +864,22 @@ mod tests {
         let events = stream.take(4).collect::<Vec<_>>().await;
         dbg!(&events);
         assert_eq!(events.len(), 4);
-        assert!(events.contains(&RuntimeEvent::WorkflowRun {
-            workflow_run_id: Uuid::nil(),
-            attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc1.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
-        }));
-        assert!(events.contains(&RuntimeEvent::WorkflowRun {
-            workflow_run_id: Uuid::nil(),
-            attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc2.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
-        }));
+        for loc in [loc1.clone(), loc2.clone()] {
+            assert!(events.iter().any(|event| matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    workflow_run_id,
+                    attempt: 0,
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                        locs,
+                        status: NodeStatus::Running {
+                            state_update: None,
+                            handle: Some(_),
+                        },
+                    }),
+                } if *workflow_run_id == Uuid::nil() && locs == &vec![loc.clone()]
+            )));
+        }
 
         // These may complete out of order, so find the correct events.
         let complete0 = events

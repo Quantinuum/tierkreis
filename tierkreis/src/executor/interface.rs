@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -13,8 +14,10 @@ use crate::asset_storage::interface::AssetSpec;
 use crate::event::{NodeStatus, RuntimeEvent};
 use crate::location::Location;
 
-/// [`UniqueLocState`] is Location in a workflow run attempt, along with the current `NodeStatus` of that Location.
+/// A node location and its recovered status.
 pub type UniqueLocState = (Uuid, u32, Location, NodeStatus);
+/// A node location and the persisted handle used to restore it.
+pub type UniqueNodeHandle = (Uuid, u32, Location, TaskHandle);
 
 /// [`TaskPlan`] describes how a Task should be executed on an Executor.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -46,6 +49,15 @@ pub struct TaskPlan {
     /// An arbitrary Environment specification for the Task. [Executor]s
     /// should validate this and convert it to a usable representation.
     pub environment: HashMap<String, Value>,
+}
+
+///
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TaskHandle {
+    /// The name of the Executor that created this handle.
+    pub executor_name: String,
+    /// The unique identifier of the Task on the Executor.
+    pub task_internal_id: Option<String>,
 }
 
 /// [`WorkerSpec`] defines the information about a Worker returned by an
@@ -90,11 +102,9 @@ pub trait Executor: Send + Sync {
         task_locations: Vec<Location>,
     ) -> BoxFuture<'_, miette::Result<()>>;
 
-    /// Poll the current status of tasks that are currently known to the executor.
-    ///
-    /// By default you should use `NodeStatus::Unknown`
-    fn known_tasks(
+    /// Try to restore running tasks after the runtime has disconnected.
+    fn restore(
         &self,
-        tasks: Vec<(Uuid, u32, Location)>,
+        tasks: Vec<UniqueNodeHandle>,
     ) -> BoxFuture<'_, miette::Result<Vec<UniqueLocState>>>;
 }

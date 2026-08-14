@@ -10,7 +10,7 @@ use futures::{SinkExt, channel::mpsc};
 use miette::{Context, IntoDiagnostic};
 use uuid::Uuid;
 
-use crate::{asset_storage::interface::AssetSpec, location::Location};
+use crate::{asset_storage::interface::AssetSpec, executor::interface::TaskHandle, location::Location};
 
 /// [`RuntimeEvent`] messages correspond to an update in the Runtime.
 #[derive(Clone, Debug, PartialEq)]
@@ -159,6 +159,8 @@ pub enum NodeStatus {
     Running {
         /// An update to the state of the Node to apply.
         state_update: Option<RunningStateUpdate>,
+        /// Unique handle to the task on the executor that is running this node.
+        handle: Option<TaskHandle>,
     },
     /// The node is finished and has outputs.
     Complete {
@@ -201,13 +203,15 @@ pub async fn send_running(
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
+    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
-            status: NodeStatus::Running { state_update: None },
+            status: NodeStatus::Running { state_update: None , handle: task_handle,},
+            
         }),
     };
     event_sender
@@ -282,6 +286,7 @@ pub async fn send_running_switching(
     attempt: u32,
     loc: Location,
     cond: bool,
+    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -290,6 +295,7 @@ pub async fn send_running_switching(
             locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
+                handle: task_handle,
             },
         }),
     };
@@ -312,6 +318,7 @@ pub async fn send_running_loop(
     attempt: u32,
     loc: Location,
     index: u32,
+    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -320,6 +327,7 @@ pub async fn send_running_loop(
             locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
+                handle: task_handle,
             },
         }),
     };
@@ -343,6 +351,7 @@ pub async fn send_running_map(
     attempt: u32,
     loc: Location,
     size: usize,
+    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -353,6 +362,7 @@ pub async fn send_running_map(
                 state_update: Some(RunningStateUpdate::MapStarted {
                     size: u32::try_from(size).into_diagnostic()?,
                 }),
+                handle: task_handle,
             },
         }),
     };
@@ -376,6 +386,7 @@ pub async fn send_map_elem_complete(
     attempt: u32,
     loc: Location,
     bits: BitVec<u8>,
+    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -384,6 +395,7 @@ pub async fn send_map_elem_complete(
             locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
+                handle: task_handle,
             },
         }),
     };
