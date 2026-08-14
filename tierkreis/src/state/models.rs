@@ -112,6 +112,7 @@ pub struct NodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
+    pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
 }
@@ -134,6 +135,7 @@ pub struct UpsertNodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
+    pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
 }

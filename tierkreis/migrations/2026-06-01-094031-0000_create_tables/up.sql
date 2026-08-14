@@ -16,6 +16,7 @@ CREATE TABLE `node_states`(
 	`map_completed` BLOB DEFAULT NULL,
 	`error` TEXT DEFAULT NULL,
 	`error_detail` TEXT DEFAULT NULL,
+	'handle' TEXT DEFAULT NULL,
 	UNIQUE (`run_id`, `attempt`, `node_location`),
 	FOREIGN KEY (`run_id`, `attempt`)
 		REFERENCES `workflow_run_attempts`(`workflow_run_id`, `attempt`)
