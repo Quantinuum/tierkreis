@@ -27,11 +27,14 @@ use crate::{
         unfold_asset,
     },
     event::{
-        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent,
-        send_complete, send_map_elem_complete, send_running_loop, send_running_map,
-        send_running_switching, send_workflow_run_complete,
+        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
+        send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
+        send_workflow_run_complete,
     },
-    executor::{ExecutorRegistry, interface::{TaskPlan, UniqueNodeHandle, UniqueLocState}},
+    executor::{
+        ExecutorRegistry,
+        interface::{TaskPlan, UniqueLocState, UniqueNodeHandle},
+    },
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
@@ -1092,13 +1095,23 @@ impl Orchestrator {
             send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size, None).await?;
         }
         for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits, None).await?;
+            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits, None)
+                .await?;
         }
         for (loc, index) in plan.looping {
-            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index, None).await?;
+            send_running_loop(
+                &mut event_sender,
+                workflow_run_id,
+                attempt,
+                loc,
+                index,
+                None,
+            )
+            .await?;
         }
         for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond, None).await?;
+            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond, None)
+                .await?;
         }
 
         let default_executor_name = &self.default_executor_name;

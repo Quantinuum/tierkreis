@@ -23,10 +23,15 @@ use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::{AssetStorageRegistry, load_assets, save_assets}, event::{
-        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete,
-        send_error, send_running,
-    }, executor::interface::{Executor, TaskHandle, TaskPlan, UniqueLocState, UniqueNodeHandle, WorkerSpec}, location::Location,
+    asset_storage::{AssetStorageRegistry, load_assets, save_assets},
+    event::{
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
+        send_running,
+    },
+    executor::interface::{
+        Executor, TaskHandle, TaskPlan, UniqueLocState, UniqueNodeHandle, WorkerSpec,
+    },
+    location::Location,
 };
 
 /// [`InMemoryResourceSpec`] determines what Resources should be available to the
@@ -329,7 +334,14 @@ async fn start_task(
     let workflow_run_id = task_plan.workflow_run_id;
     let attempt = task_plan.attempt;
     let handle = TaskHandle::InMemory;
-    send_running(event_sender, workflow_run_id, attempt, loc.clone(), Some(handle)).await?;
+    send_running(
+        event_sender,
+        workflow_run_id,
+        attempt,
+        loc.clone(),
+        Some(handle),
+    )
+    .await?;
 
     let res = load_assets(asset_storage_registry, &task_plan.inputs).await;
 
@@ -764,7 +776,10 @@ mod tests {
             attempt: 0,
             event: WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![loc1.clone()],
-                status: NodeStatus::Running { state_update: None, handle: Some(handle.clone()) }
+                status: NodeStatus::Running {
+                    state_update: None,
+                    handle: Some(handle.clone())
+                }
             })
         }));
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
@@ -772,7 +787,10 @@ mod tests {
             attempt: 0,
             event: WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![loc2.clone()],
-                status: NodeStatus::Running { state_update: None, handle: Some(handle.clone()) }
+                status: NodeStatus::Running {
+                    state_update: None,
+                    handle: Some(handle.clone())
+                }
             })
         }));
 

@@ -381,8 +381,7 @@ fn handle_node_event(
                 }
             }
             crate::event::NodeStatus::Running {
-                state_update: None,
-                ..
+                state_update: None, ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);

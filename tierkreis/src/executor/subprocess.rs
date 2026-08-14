@@ -32,10 +32,13 @@ use which::which_re;
 use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
-    }, event::{
+    },
+    event::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
         send_cancelled, send_complete, send_error, send_running,
-    }, executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec}, location::Location,
+    },
+    executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    location::Location,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -183,7 +186,6 @@ async fn start_task(
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
     let parent_span = internal_task.parent_span;
-    send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
 
     let worker_args = internal_task.worker_args;
     let worker_args_path = worker_args.path();
@@ -200,12 +202,9 @@ async fn start_task(
         }
     };
     let stderr = read_stderr(&mut child);
-    let process_identity = child
-        .id()
-        .map(process_identity)
-        .transpose()?;
-    let (pid, start_time) = process_identity
-        .ok_or_else(|| miette!("Worker process did not have a PID"))?;
+    let process_identity = child.id().map(process_identity).transpose()?;
+    let (pid, start_time) =
+        process_identity.ok_or_else(|| miette!("Worker process did not have a PID"))?;
     let handle = TaskHandle::Subprocess { pid, start_time };
     send_running(
         event_sender,
@@ -633,10 +632,13 @@ impl Executor for SubprocessExecutor {
                     TaskHandle::Subprocess { pid, start_time }
                         if process_identity(pid)
                             .map(|(_, current_start_time)| current_start_time == start_time)
-                            .unwrap_or(false) => NodeStatus::Running {
+                            .unwrap_or(false) =>
+                    {
+                        NodeStatus::Running {
                             state_update: None,
                             handle: Some(TaskHandle::Subprocess { pid, start_time }),
-                        },
+                        }
+                    }
                     _ => NodeStatus::Unknown,
                 };
                 (workflow_run_id, attempt, loc, status)

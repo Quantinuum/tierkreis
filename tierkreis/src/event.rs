@@ -10,7 +10,9 @@ use futures::{SinkExt, channel::mpsc};
 use miette::{Context, IntoDiagnostic};
 use uuid::Uuid;
 
-use crate::{asset_storage::interface::AssetSpec, executor::interface::TaskHandle, location::Location};
+use crate::{
+    asset_storage::interface::AssetSpec, executor::interface::TaskHandle, location::Location,
+};
 
 /// [`RuntimeEvent`] messages correspond to an update in the Runtime.
 #[derive(Clone, Debug, PartialEq)]
@@ -210,8 +212,10 @@ pub async fn send_running(
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
-            status: NodeStatus::Running { state_update: None , handle: task_handle,},
-            
+            status: NodeStatus::Running {
+                state_update: None,
+                handle: task_handle,
+            },
         }),
     };
     event_sender

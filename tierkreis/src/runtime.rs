@@ -247,12 +247,12 @@ impl Runtime {
                         && state.cancelled_time.is_none()
                         && state.error_time.is_none()
                 })
-                    .filter_map(|(loc, state)| {
-                        state
+                .filter_map(|(loc, state)| {
+                    state
                         .handle
                         .clone()
                         .map(|handle| (run_id, attempt, loc.clone(), handle))
-                    })
+                })
                 .collect();
 
             if unfinished_tasks.is_empty() {

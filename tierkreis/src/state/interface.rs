@@ -15,7 +15,8 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle, graph::WorkflowGraph, location::Location, state::queries::WorkflowRunSummary,
+    asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle,
+    graph::WorkflowGraph, location::Location, state::queries::WorkflowRunSummary,
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
