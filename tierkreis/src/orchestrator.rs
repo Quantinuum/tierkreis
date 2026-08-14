@@ -11,7 +11,7 @@ use std::{
 
 use bitvec::vec::BitVec;
 use futures::{
-    FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt,
+    FutureExt, Stream, StreamExt, TryFutureExt,
     channel::mpsc,
     future,
     stream::{self, BoxStream, LocalBoxStream, select_all},
@@ -27,11 +27,11 @@ use crate::{
         unfold_asset,
     },
     event::{
-        EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
+        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent,
         send_complete, send_map_elem_complete, send_running_loop, send_running_map,
         send_running_switching, send_workflow_run_complete,
     },
-    executor::{ExecutorRegistry, interface::TaskPlan},
+    executor::{ExecutorRegistry, interface::{TaskPlan, UniqueNodeHandle, UniqueLocState}},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
@@ -1089,16 +1089,16 @@ impl Orchestrator {
         }
 
         for (loc, size) in plan.mapping {
-            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
+            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size, None).await?;
         }
         for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
+            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits, None).await?;
         }
         for (loc, index) in plan.looping {
-            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
+            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index, None).await?;
         }
         for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
+            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond, None).await?;
         }
 
         let default_executor_name = &self.default_executor_name;
@@ -1127,39 +1127,34 @@ impl Orchestrator {
     /// Returns an error if the executors cannot be reached or the retrieval fails.
     pub async fn retrieve_detached_tasks(
         &self,
-        tasks: Vec<(Uuid, u32, Location)>,
-    ) -> miette::Result<Vec<(Uuid, u32, Location, NodeStatus)>> {
+        tasks: Vec<UniqueNodeHandle>,
+    ) -> miette::Result<Vec<UniqueLocState>> {
         if tasks.is_empty() {
             return Ok(Vec::new());
         }
 
-        let results = self
-            .executor_registry
-            .values()
-            .map(|executor| executor.known_tasks(tasks.clone()))
-            .collect::<futures::stream::FuturesUnordered<_>>()
-            .try_collect::<Vec<_>>()
-            .await
-            .wrap_err("Failed to poll in-flight tasks from executors")?;
-
-        let mut active_nodes = HashMap::new();
-        for nodes in results {
-            for (workflow_run_id, attempt, loc, status) in nodes {
-                let entry = active_nodes
-                    .entry((workflow_run_id, attempt, loc))
-                    .or_insert(status.clone());
-                if matches!(entry, NodeStatus::Unknown) && !matches!(status, NodeStatus::Unknown) {
-                    *entry = status;
-                }
-            }
+        let mut tasks_by_executor: HashMap<&'static str, Vec<UniqueNodeHandle>> = HashMap::new();
+        for task in tasks {
+            tasks_by_executor
+                .entry(task.3.executor_name())
+                .or_default()
+                .push(task);
         }
 
-        Ok(active_nodes
-            .into_iter()
-            .map(|((workflow_run_id, attempt, loc), status)| {
-                (workflow_run_id, attempt, loc, status)
-            })
-            .collect())
+        let mut restored = Vec::new();
+        for (executor_name, executor_tasks) in tasks_by_executor {
+            let executor = self
+                .executor_registry
+                .get(executor_name)
+                .ok_or_else(|| miette!("Could not find executor '{executor_name}'"))?;
+            restored.extend(
+                executor
+                    .restore(executor_tasks)
+                    .await
+                    .wrap_err_with(|| miette!("Failed to restore tasks in '{executor_name}'"))?,
+            );
+        }
+        Ok(restored)
     }
 
     /// Listen to a combined stream events from the Orchestrator and the

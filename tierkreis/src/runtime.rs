@@ -239,7 +239,7 @@ impl Runtime {
                 .read_many(&mut all_locs.into_iter())
                 .await?;
 
-            let unfinished_tasks: Vec<(Uuid, u32, Location)> = node_states
+            let unfinished_tasks: Vec<UniqueNodeHandle> = node_states
                 .iter()
                 .filter(|(_, state)| {
                     state.scheduled_time.is_some()
@@ -247,7 +247,12 @@ impl Runtime {
                         && state.cancelled_time.is_none()
                         && state.error_time.is_none()
                 })
-                .map(|(loc, _)| (run_id, attempt, loc.clone()))
+                    .filter_map(|(loc, state)| {
+                        state
+                        .handle
+                        .clone()
+                        .map(|handle| (run_id, attempt, loc.clone(), handle))
+                    })
                 .collect();
 
             if unfinished_tasks.is_empty() {
