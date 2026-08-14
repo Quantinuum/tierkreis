@@ -117,6 +117,9 @@ impl NewJob<'_> {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct CancelOptions {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum StatusEnum {
@@ -147,11 +150,11 @@ impl Status {
 
 #[derive(Debug, Deserialize)]
 pub struct ExecuteJobItem {
-    result_id: Uuid,
+    result_id: Option<Uuid>,
 }
 
 impl ExecuteJobItem {
-    pub fn result_id(&self) -> Uuid {
+    pub fn result_id(&self) -> Option<Uuid> {
         self.result_id
     }
 }
@@ -177,6 +180,10 @@ pub struct JobData {
 impl JobData {
     pub fn status_enum(&self) -> StatusEnum {
         self.attributes.status.status
+    }
+
+    pub fn status_message(&self) -> &String {
+        &self.attributes.status.message
     }
 
     pub fn definition(self) -> JobDefinition {

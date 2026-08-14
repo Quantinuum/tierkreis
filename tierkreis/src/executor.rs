@@ -9,6 +9,7 @@ pub mod subprocess;
 
 pub use crate::executor::inmemory::InMemoryExecutor;
 pub use crate::executor::interface::Executor;
+pub use crate::executor::nexus::NexusExecutor;
 pub use crate::executor::subprocess::SubprocessExecutor;
 
 use std::{collections::HashMap, sync::Arc};

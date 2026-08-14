@@ -185,6 +185,31 @@ pub async fn save_asset(
     })
 }
 
+/// Save an asset into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a
+/// pre-assigned [`AssetSpec`].
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
+pub async fn save_asset_with_spec(
+    registry: &AssetStorageRegistry,
+    asset_spec: &AssetSpec,
+    value: Vec<u8>,
+) -> miette::Result<()> {
+    let registry = registry.read().await;
+    let storage = registry.get(&asset_spec.storage_name).ok_or_else(|| {
+        miette!(
+            "Cannot find AssetStorage in AssetStorageRegistry with name: {}",
+            asset_spec.storage_name
+        )
+    })?;
+
+    storage.save(&asset_spec.asset_key, value).await?;
+
+    Ok(())
+}
+
 /// Load Assets and then combine them into a json encoded list, then save the asset
 /// into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a given name
 /// and return a [`AssetSpec`] where the Asset was saved.

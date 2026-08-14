@@ -25,8 +25,8 @@ pub struct QSysResultData {
 }
 
 impl QSysResultData {
-    pub fn results_ref(&self) -> &Vec<Vec<TaggedResult>> {
-        &self.attributes.results
+    pub fn results(self) -> Vec<Vec<TaggedResult>> {
+        self.attributes.results
     }
 }
 
