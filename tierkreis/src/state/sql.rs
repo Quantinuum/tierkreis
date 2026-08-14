@@ -544,6 +544,14 @@ impl SqliteWorkflowRunState {
                     ..Default::default()
                 };
 
+                if let NodeStatus::Running { handle, .. } = &event.status {
+                    row.handle = handle
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()
+                        .into_diagnostic()?;
+                }
+
                 match event.status {
                     NodeStatus::Scheduled => {
                         row.scheduled_time = Some(now);
@@ -551,23 +559,29 @@ impl SqliteWorkflowRunState {
                     NodeStatus::Queued => {
                         row.queued_time = Some(now);
                     }
-                    NodeStatus::Running { state_update: None } => {
+                    NodeStatus::Running {
+                        state_update: None,
+                        ..
+                    } => {
                         row.running_time = Some(now);
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::Switching { cond }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.cond = Some(cond);
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::Looping { index }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.loop_index = Some(index.try_into().into_diagnostic()?);
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::MapStarted { size }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.map_size = Some(size.try_into().into_diagnostic()?);
@@ -578,6 +592,7 @@ impl SqliteWorkflowRunState {
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.map_completed = Some(bits.clone().into_vec());
@@ -783,6 +798,7 @@ mod tests {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
+                    handle: None,
                 },
             }))
             .await?;
@@ -800,6 +816,7 @@ mod tests {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits1.clone(),
                     }),
+                    handle: None,
                 },
             }))
             .await?;
@@ -817,6 +834,7 @@ mod tests {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits2.clone(),
                     }),
+                    handle: None,
                 },
             }))
             .await?;

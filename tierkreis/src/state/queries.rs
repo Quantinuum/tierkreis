@@ -16,6 +16,7 @@ use diesel::{
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use miette::{IntoDiagnostic, WrapErr, miette};
+use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
@@ -277,6 +278,7 @@ pub async fn update_node_state(
                             excluded(ns::map_completed),
                             ns::map_completed,
                         )),
+                        ns::handle.eq(coalesce_text(excluded(ns::handle), ns::handle)),
                         ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
                         ns::error_detail
                             .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
@@ -401,6 +403,13 @@ pub async fn read_node_state(
             .transpose()?;
 
         let outputs = read_outputs(conn, &db_node).await?;
+        let handle = db_node
+            .handle
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .into_diagnostic()
+            .wrap_err("Failed to deserialize persisted task handle")?;
 
         Ok(crate::state::interface::NodeState {
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
@@ -415,6 +424,7 @@ pub async fn read_node_state(
             error: db_node.error.clone(),
             error_detail: db_node.error_detail.clone(),
             outputs,
+            handle,
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
@@ -478,6 +488,13 @@ pub async fn read_node_states(
             .transpose()?;
 
         let outputs = read_outputs(conn, &db_node).await?;
+        let handle = db_node
+            .handle
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .into_diagnostic()
+            .wrap_err("Failed to deserialize persisted task handle")?;
 
         states.insert(
             db_node.node_location,
@@ -494,6 +511,7 @@ pub async fn read_node_states(
                 error: db_node.error.clone(),
                 error_detail: db_node.error_detail.clone(),
                 outputs,
+                handle,
             },
         );
     }

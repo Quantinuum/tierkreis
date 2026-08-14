@@ -12,7 +12,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use futures::FutureExt;
 use futures::future::{self, BoxFuture};
-use miette::miette;
+use miette::{IntoDiagnostic, miette};
 use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
@@ -366,6 +366,9 @@ fn handle_node_event(
     let now = Utc::now();
     for (idx, loc) in node_event.locs.iter().enumerate() {
         let node_state = run_state.nodes.entry(loc.clone()).or_default();
+        if let crate::event::NodeStatus::Running { handle, .. } = &node_event.status {
+            node_state.handle = handle.clone();
+        }
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
@@ -377,13 +380,17 @@ fn handle_node_event(
                     node_state.queued_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Running { state_update: None } => {
+            crate::event::NodeStatus::Running {
+                state_update: None,
+                ..
+            } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
@@ -394,6 +401,7 @@ fn handle_node_event(
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
@@ -404,6 +412,7 @@ fn handle_node_event(
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted { size }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
@@ -414,6 +423,7 @@ fn handle_node_event(
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
