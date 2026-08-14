@@ -12,7 +12,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use futures::FutureExt;
 use futures::future::{self, BoxFuture};
-use miette::{IntoDiagnostic, miette};
+use miette::miette;
 use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
@@ -367,7 +367,7 @@ fn handle_node_event(
     for (idx, loc) in node_event.locs.iter().enumerate() {
         let node_state = run_state.nodes.entry(loc.clone()).or_default();
         if let crate::event::NodeStatus::Running { handle, .. } = &node_event.status {
-            node_state.handle = handle.clone();
+            node_state.handle.clone_from(handle);
         }
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {

@@ -447,6 +447,7 @@ fn spawn_worker(
     Ok(child)
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn process_identity(pid: u32) -> miette::Result<(u32, u64)> {
     #[cfg(target_os = "linux")]
     {
@@ -630,9 +631,9 @@ impl Executor for SubprocessExecutor {
                 let status = match handle {
                     // Potentially doesn't work if the executor runs on a different machine than the runtime.
                     TaskHandle::Subprocess { pid, start_time }
-                        if process_identity(pid)
-                            .map(|(_, current_start_time)| current_start_time == start_time)
-                            .unwrap_or(false) =>
+                        if process_identity(pid).is_ok_and(|(_, current_start_time)| {
+                            current_start_time == start_time
+                        }) =>
                     {
                         NodeStatus::Running {
                             state_update: None,
