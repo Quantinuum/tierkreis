@@ -11,6 +11,7 @@ pub mod event;
 pub mod executor;
 pub mod graph;
 pub mod location;
+pub mod monitoring;
 pub mod orchestrator;
 pub mod runtime;
 pub mod server;
@@ -32,8 +33,6 @@ mod tierkreis {
     #[allow(clippy::unnecessary_wraps)]
     #[pymodule_init]
     fn init(_m: &Bound<'_, PyModule>) -> PyResult<()> {
-        // console_subscriber::init();
-        tracing_subscriber::fmt().compact().init();
         Ok(())
     }
 

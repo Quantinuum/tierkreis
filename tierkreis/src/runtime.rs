@@ -13,16 +13,10 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    },
-    event::RuntimeEvent,
-    executor::{
+    }, event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent}, executor::{
         Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor,
         nexus::{NexusClientConfig, NexusExecutor},
-    },
-    graph::WorkflowGraph,
-    location::Location,
-    orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    }, graph::WorkflowGraph, location::Location, monitoring::{LoggingConfig, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -34,6 +28,7 @@ pub struct RuntimeConfig {
 
     default_storage_name: String,
     default_executor_name: String,
+    logging_config: Option<LoggingConfig>,
 }
 
 impl RuntimeConfig {
@@ -53,6 +48,7 @@ impl RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
+            logging_config: Some(LoggingConfig::default()),
         }
     }
 
@@ -97,6 +93,7 @@ impl Default for RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
+            logging_config: Some(LoggingConfig::default()),
         }
     }
 }
@@ -146,6 +143,7 @@ impl Runtime {
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
 
+        init_logging_and_tracing(config.logging_config.clone());
         let orchestrator = Orchestrator::try_new(
             &asset_storage_registry,
             &executor_registry,
@@ -162,7 +160,7 @@ impl Runtime {
                 Arc::new(SqliteRuntimeState::try_new().await?)
             }
         };
-
+        tracing::info!("Starting Tierkreis runtime");
         Ok(Self {
             orchestrator,
             state: runtime_state,
@@ -191,8 +189,10 @@ impl Runtime {
             .state
             .new_workflow_run_state(workflow_id, inputs)
             .await?;
-
-        Ok((workflow_run_state.run_id(), workflow_run_state.attempt()))
+        let attempt = workflow_run_state.attempt();
+        let run_id = workflow_run_state.run_id();
+        tracing::info!(workflow_id = %workflow_id.to_string(), run_id = %run_id.to_string(), attempt = attempt, "Starting new run attempt");
+        Ok((run_id, attempt))
     }
 
     async fn process_events(
@@ -209,6 +209,41 @@ impl Runtime {
                     let workflow_state = state
                         .load_workflow_run_state(workflow_run_id, attempt)
                         .await?;
+                    let workflow_id = workflow_state.workflow_id().to_string();
+                    match &event {
+                        WorkflowRunEvent::Started {} => {
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started");
+                        }
+                        WorkflowRunEvent::Completed {} => {
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed");
+                        }
+                        WorkflowRunEvent::Errored {} => {
+                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored");
+                        }
+                        WorkflowRunEvent::Cancelled {} => {
+                            tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow cancelled");
+                        }
+                        WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => match &status {
+                            NodeStatus::Scheduled => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node scheduled");
+                            }
+                            NodeStatus::Queued => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node queued");
+                            }
+                            NodeStatus::Running { state_update } => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?state_update, "node running");
+                            }
+                            NodeStatus::Complete { .. } => {
+                                tracing::info!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node completed");
+                            }
+                            NodeStatus::Error { error, .. } => {
+                                tracing::error!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, ?error, "node errored");
+                            }
+                            NodeStatus::Cancelled => {
+                                tracing::error!(target: "tierkreis::events", workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, ?locs, "node cancelled");
+                            }
+                        },
+                    }
                     workflow_state.write(event).await?;
                 }
             }
@@ -283,7 +318,7 @@ impl Runtime {
             }
             state_recv.changed().await.into_diagnostic()?;
         }
-
+        tracing::info!("Runtime exiting, shutting down logging");
         Ok(())
     }
 

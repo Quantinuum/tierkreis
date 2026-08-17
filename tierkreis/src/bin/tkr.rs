@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-
+use tierkreis::monitoring::init_logging_and_tracing;
 /// Tierkreis: a workflow engine for quantum HPC.
 ///
 /// This is the main tierkreis command-line tool.
@@ -33,7 +33,7 @@ enum Command {
 
 fn main() -> miette::Result<()> {
     miette::set_panic_hook();
-
+    init_logging_and_tracing(None);
     let cli = Cli::parse();
     match cli.command {
         Command::Run {
