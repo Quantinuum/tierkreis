@@ -10,12 +10,12 @@ use std::{
 };
 
 use futures::{
-    FutureExt, SinkExt, StreamExt,
     channel::mpsc,
     future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
+    FutureExt, SinkExt, StreamExt,
 };
-use miette::{IntoDiagnostic, miette};
+use miette::{miette, IntoDiagnostic};
 use num_complex::Complex64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,10 +23,10 @@ use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::{AssetStorageRegistry, load_assets, save_assets},
+    asset_storage::{load_assets, save_assets, AssetStorageRegistry},
     event::{
-        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
-        send_running,
+        send_cancelled, send_complete, send_error, send_running, EventReceiver, EventSender,
+        RuntimeEvent,
     },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
@@ -46,6 +46,8 @@ pub struct InMemoryEnvironmentSpec {}
 struct BackgroundTaskPlan {
     task_plan: TaskPlan,
     output_storage_name: String,
+    /// Captured from the caller so in-memory tasks inherit the parent trace context.
+    parent_span: tracing::Span,
 }
 
 #[derive(Debug)]
@@ -336,16 +338,26 @@ async fn start_task(
     };
 
     let task_loc = loc.clone();
+
+    let task_name = task_plan.task_name;
+    let parent_span = internal_task.parent_span;
     let task = tokio::task::spawn_blocking(move || {
-        let inputs = inputs;
-        let task_name = task_plan.task_name;
-        BackgroundTask {
-            workflow_run_id,
-            attempt,
-            loc: task_loc,
-            output_storage_name,
-            task_output: run_builtin(&task_name, &inputs),
-        }
+        parent_span.in_scope(|| {
+            let span = tracing::info_span!(
+                "run_builtin",
+                run_id = %workflow_run_id,
+                attempt,
+                loc = %task_loc,
+                task_name = %task_name,
+            );
+            span.in_scope(|| BackgroundTask {
+                workflow_run_id,
+                attempt,
+                loc: task_loc,
+                output_storage_name,
+                task_output: run_builtin(&task_name, &inputs),
+            })
+        })
     });
 
     abort_handles.insert((workflow_run_id, attempt, loc.clone()), task.abort_handle());
@@ -367,6 +379,7 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
+                tracing::debug!( workflow_run_id = %workflow_run_id, attempt = %attempt, loc = %loc, "Received cancel request",);
                 process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
@@ -377,7 +390,7 @@ async fn process_tasks(
                     Ok(ok) => ok,
                     Err(err) => panic!("Failed to join to future: {err}"),
                 };
-
+                tracing::debug!( workflow_run_id = %background_task.workflow_run_id, attempt = %background_task.attempt, loc = %background_task.loc, "Task completed");
                 process_finished_task(
                     &mut event_sender,
                     &mut abort_handles,
@@ -389,6 +402,7 @@ async fn process_tasks(
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
+                tracing::debug!( workflow_run_id = %internal_task.task_plan.workflow_run_id, attempt = %internal_task.task_plan.attempt, loc = %internal_task.task_plan.loc, "Received task {}", internal_task.task_plan.task_name);
                 start_task(
                     &mut event_sender,
                     &mut abort_handles,
@@ -476,6 +490,7 @@ impl Executor for InMemoryExecutor {
                     .send(BackgroundTaskPlan {
                         task_plan,
                         output_storage_name,
+                        parent_span: tracing::Span::current(),
                     })
                     .await
                     .into_diagnostic()?;
@@ -544,11 +559,9 @@ mod tests {
         let workers = executor.workers().await?;
 
         // We should expect the builtin worker to be available.
-        assert!(
-            workers
-                .iter()
-                .any(|workers| workers.worker_name == "builtin")
-        );
+        assert!(workers
+            .iter()
+            .any(|workers| workers.worker_name == "builtin"));
 
         Ok(())
     }

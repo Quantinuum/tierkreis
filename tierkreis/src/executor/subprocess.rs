@@ -20,10 +20,10 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::{
-    io::AsyncReadExt,
-    process::Command,
-    task::{AbortHandle, JoinHandle},
+    io::{AsyncBufReadExt, BufReader}, process::Command, task::{AbortHandle, JoinHandle},
 };
+use tracing::{Instrument, instrument};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
 use which::which_re;
 
@@ -57,6 +57,8 @@ struct BackgroundTaskPlan {
     output_storage_name: String,
     worker_args: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
+
+    parent_span: tracing::Span,
 }
 
 struct BackgroundTask {
@@ -81,6 +83,7 @@ type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
 type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
 
+#[instrument(skip_all, err)]
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
@@ -164,6 +167,7 @@ async fn process_finished_task(
     Ok(())
 }
 
+#[instrument(skip_all, err)]
 async fn start_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
@@ -173,20 +177,24 @@ async fn start_task(
     let loc = internal_task.loc;
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
+    let parent_span = internal_task.parent_span;
     send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
 
     let worker_args = internal_task.worker_args;
     let worker_args_path = worker_args.path();
-    let res = spawn_worker(&internal_task.worker_name, worker_args_path);
+        let res = {
+        let _enter = parent_span.enter();
+        spawn_worker(&internal_task.worker_name, worker_args_path)
+    };
     let mut child = match res {
         Ok(child) => child,
         Err(err) => {
+            tracing::debug!(workflow_run_id = %workflow_run_id, attempt, loc = %loc, "Failed to spawn worker: {err}");
             send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
             return Ok(());
         }
     };
-    let stderr = read_stderr(&mut child);
-
+    let stderr = read_stderr(&mut child, workflow_run_id, loc.clone());
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
@@ -202,7 +210,9 @@ async fn start_task(
             stderr,
             _worker_args: worker_args,
         }
-    });
+    }
+    .instrument(parent_span),
+    );
 
     abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
     running.push(task);
@@ -223,6 +233,7 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
+                tracing::debug!( workflow_run_id = %workflow_run_id, attempt = %attempt, loc = %loc, "Received cancel request",);
                 process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
@@ -233,7 +244,7 @@ async fn process_tasks(
                     Ok(ok) => ok,
                     Err(err) => panic!("Failed to join to future: {err}"),
                 };
-
+                tracing::debug!( workflow_run_id = %background_task.workflow_run_id, attempt = %background_task.attempt, loc = %background_task.loc, "Task completed");
                 process_finished_task(
                     &mut event_sender,
                     &mut abort_handles,
@@ -245,6 +256,7 @@ async fn process_tasks(
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
+                tracing::debug!( workflow_run_id = %internal_task.workflow_run_id, attempt = %internal_task.attempt, loc = %internal_task.loc, "Received task {}", internal_task.worker_name);
                 start_task(
                     &mut event_sender,
                     &mut abort_handles,
@@ -380,11 +392,24 @@ impl SubprocessExecutor {
     }
 }
 
+struct CommandEnvCarrier<'a>(&'a mut Command);
+impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.env(key.to_uppercase(), value);
+    }
+}
+
 fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
 ) -> miette::Result<tokio::process::Child> {
-    let mut command = Command::new(format!("tkr-{worker_name}"));
+    let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
+    let mut command = Command::new(&cmd);
+    let cx = tracing::Span::current().context();
+    opentelemetry::global::get_text_map_propagator(|p| {
+        p.inject_context(&cx, &mut CommandEnvCarrier(&mut command));
+    });
+
     command
         .arg(worker_args_path)
         .stdout(Stdio::piped())
@@ -393,17 +418,25 @@ fn spawn_worker(
     let child = command
         .spawn()
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Could not spawn worker `tkr-{worker_name}`"))?;
-
+        .wrap_err_with(|| miette!("Could not spawn worker `{cmd}`"))?;
     Ok(child)
 }
 
-fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
+fn read_stderr(
+    child: &mut tokio::process::Child,
+    run_id: Uuid,
+    loc: Location,
+) -> tokio::task::JoinHandle<String> {
     let mut stderr = child.stderr.take().unwrap();
     tokio::spawn(async move {
+        let mut reader = BufReader::new(&mut stderr).lines();
         let mut stderr_out = String::new();
-        let _ = stderr.read_to_string(&mut stderr_out).await;
-
+        while let Ok(Some(line)) = reader.next_line().await {
+            // TODO: parse for actual log level, python log will be stderr by default.
+            tracing::info!(target: "tierkreis::worker", run_id = %run_id, loc = %loc, "{line}");
+            stderr_out.push_str(&line);
+            stderr_out.push('\n');
+        }
         stderr_out
     })
 }
@@ -496,6 +529,7 @@ impl Executor for SubprocessExecutor {
                         output_storage_name,
                         worker_args,
                         outputs,
+                        parent_span: tracing::Span::current(),
                     })
                     .await
                     .into_diagnostic()

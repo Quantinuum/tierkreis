@@ -4,13 +4,13 @@ use core::task;
 use std::{env::home_dir, path::PathBuf, pin::Pin, sync::Arc, task::Poll, time::Duration};
 
 use futures::{
-    SinkExt, Stream, StreamExt,
     channel::mpsc,
     stream::{SplitSink, SplitStream},
+    SinkExt, Stream, StreamExt,
 };
 use hugr::package::Package;
-use miette::{Context, IntoDiagnostic, miette};
-use reqwest::{Client, ClientBuilder, cookie::Jar};
+use miette::{miette, Context, IntoDiagnostic};
+use reqwest::{cookie::Jar, Client, ClientBuilder};
 use reqwest_websocket::{Bytes, Message, Upgrade};
 use serde::Deserialize;
 use tokio::{fs::File, io::AsyncReadExt, task::JoinHandle};
@@ -19,10 +19,10 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::executor::nexus::client::models::{
-    CollectionDocument, Data, Document, NewExecuteJobItem, NewHugr, NewJob, NewJobDefinition,
-    NewProject,
     jobs::{CancelOptions, Job, JobData, Status},
     results::{QSysResult, QSysResultData},
+    CollectionDocument, Data, Document, NewExecuteJobItem, NewHugr, NewJob, NewJobDefinition,
+    NewProject,
 };
 
 const REFRESH_ENDPOINT: &str = "/auth/tokens/refresh";
@@ -485,7 +485,7 @@ impl NexusClient {
 #[cfg(test)]
 pub(crate) mod tests {
     use mockito::Matcher::{AnyOf, PartialJsonString};
-    use tempfile::{TempDir, tempdir};
+    use tempfile::{tempdir, TempDir};
     use tokio::io::AsyncWriteExt;
 
     use super::*;
@@ -564,10 +564,9 @@ pub(crate) mod tests {
         };
         let client = NexusClient::try_new(&config).await?;
         let err = client.refresh_tokens().await.unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("HTTP status client error (401 Unauthorized)")
-        );
+        assert!(err
+            .to_string()
+            .contains("HTTP status client error (401 Unauthorized)"));
 
         mock.assert_async().await;
 
