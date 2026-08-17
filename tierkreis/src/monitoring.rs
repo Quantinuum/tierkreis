@@ -63,11 +63,19 @@ impl Default for LoggingConfig {
     }
 }
 
-/// The global log guard to ensure that logs are flushed on shutdown.
-///
-/// Take and drop the guard to flush buffered logs; logging to file stops afterwards.
-pub static LOG_GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
+
+static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
+
+/// Flush buffered log lines to the log file.
+///
+/// The non-blocking appender only drains when its guard is dropped, so this
+/// consumes the guard.
+pub fn flush_logs() {
+    if let Ok(mut guard) = LOG_GUARD.lock() {
+        drop(guard.take());
+    }
+}
 
 macro_rules! with_format_layer {
     ($log_format:expr, $writer:expr, |$fmt_layer:ident| $body:block) => {
@@ -171,9 +179,7 @@ fn make_writer(path: Option<&Path>) -> BoxMakeWriter {
         let appender = tracing_appender::rolling::never(dir, file);
         let (non_blocking, guard): (NonBlocking, WorkerGuard) =
             tracing_appender::non_blocking(appender);
-        LOG_GUARD
-            .set(Mutex::new(Some(guard)))
-            .unwrap_or_else(|_| panic!("log guard already set"));
+        LOG_GUARD.lock().expect("log guard poisoned").replace(guard);
         BoxMakeWriter::new(non_blocking)
     } else {
         BoxMakeWriter::new(std::io::stderr)

@@ -21,7 +21,7 @@ use crate::{
     },
     graph::WorkflowGraph,
     location::Location,
-    monitoring::{LOG_GUARD, LoggingConfig, init_logging_and_tracing},
+    monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
@@ -270,15 +270,11 @@ impl Runtime {
                     match sig {
                         Ok(()) => {
                             tracing::info!("Received ctrl-c signal, shutting down runtime");
-                            if let Some(guard) = LOG_GUARD.get().and_then(|lock| lock.lock().ok()?.take()) {
-                                drop(guard);
-                            }
+                            flush_logs();
                             std::process::exit(130)},
                         Err(err) => {
                             tracing::error!("Error while waiting for ctrl-c signal: {err}");
-                            if let Some(guard) = LOG_GUARD.get().and_then(|lock| lock.lock().ok()?.take()) {
-                                drop(guard);
-                            }
+                            flush_logs();
                             eprintln!("{err}");
                             std::process::exit(1);
                         }
@@ -339,6 +335,7 @@ impl Runtime {
             state_recv.changed().await.into_diagnostic()?;
         }
         tracing::info!("Runtime exiting, shutting down logging");
+        flush_logs();
         Ok(())
     }
 

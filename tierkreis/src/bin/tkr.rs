@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tierkreis::monitoring::{LOG_GUARD, init_logging_and_tracing};
+use tierkreis::monitoring::{flush_logs, init_logging_and_tracing};
 /// Tierkreis: a workflow engine for quantum HPC.
 ///
 /// This is the main tierkreis command-line tool.
@@ -48,8 +48,6 @@ fn main() -> miette::Result<()> {
         }
         _ => {}
     }
-    if let Some(guard) = LOG_GUARD.get().and_then(|lock| lock.lock().ok()?.take()) {
-        drop(guard);
-    }
+    flush_logs();
     Ok(())
 }
