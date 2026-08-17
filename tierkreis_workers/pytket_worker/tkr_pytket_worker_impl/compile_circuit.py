@@ -23,7 +23,6 @@ from pytket.passes import (
 )
 from pytket.placement import GraphPlacement
 from pytket.qasm.qasm import circuit_from_qasm_str, circuit_to_qasm_str
-
 from tierkreis.exceptions import TierkreisError
 
 
@@ -164,9 +163,9 @@ def _default_pass(
     elif optimization_level == 1:
         passlist.append(SynthesiseTket())
         passlist.append(AutoSquash(primitive_1q_gates))
-    elif optimization_level == 2:  # noqa: PLR2004
+    elif optimization_level == 2:
         passlist.append(FullPeepholeOptimise())
-    elif optimization_level == 3:  # noqa: PLR2004
+    elif optimization_level == 3:
         passlist.append(RemoveBarriers())
         passlist.append(
             AutoRebase(
@@ -213,7 +212,7 @@ def _default_pass(
         )
     if optimization_level == 1:
         passlist.append(SynthesiseTket())
-    if optimization_level == 2:  # noqa: PLR2004
+    if optimization_level == 2:
         passlist.extend(
             [
                 KAKDecomposition(allow_swaps=False),
@@ -221,7 +220,7 @@ def _default_pass(
                 SynthesiseTket(),
             ],
         )
-    if optimization_level == 3:  # noqa: PLR2004
+    if optimization_level == 3:
         passlist.append(SynthesiseTket())
     passlist.extend(
         [

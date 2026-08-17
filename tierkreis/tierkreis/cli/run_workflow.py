@@ -15,7 +15,7 @@ from tierkreis.storage import read_outputs
 logger = logging.getLogger(__name__)
 
 
-def run_workflow(  # noqa: PLR0913
+def run_workflow(
     workflow: GraphData | Workflow,
     inputs: dict[str, PType],
     name: str | None = None,
@@ -82,7 +82,7 @@ def run_workflow(  # noqa: PLR0913
         all_outputs = read_outputs(workflow, storage)
         if isinstance(all_outputs, dict):
             for output_name, output_value in all_outputs.items():
-                print(f"'{output_name}': {output_value!r}")  # noqa: T201
+                print(f"'{output_name}': {output_value!r}")
         else:
-            print(f"value: {all_outputs!r}")  # noqa: T201
+            print(f"value: {all_outputs!r}")
     return storage

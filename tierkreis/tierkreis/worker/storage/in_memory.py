@@ -1,6 +1,5 @@
 """In-memory storage implementation analog to ControllerInMemoryStorage."""
 
-# ruff: noqa: D102 (class methods inherited from WorkerStorage)
 import fnmatch
 import json
 import logging

@@ -1,10 +1,9 @@
 """In memory implementation."""
 
-# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
-from importlib.machinery import ModuleSpec
 import importlib.util
 import json
 import logging
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs

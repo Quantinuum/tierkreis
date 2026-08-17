@@ -1,6 +1,5 @@
 """Filestorage implementation analog to ControllerFileStorage."""
 
-# ruff: noqa: D102 (class methods inherited from WorkerStorage)
 import json
 import os
 from glob import glob

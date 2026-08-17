@@ -5,7 +5,7 @@ from typing import NamedTuple
 
 from tierkreis.builder import Graph
 from tierkreis.builtins import tkr_sleep
-from tierkreis.models import OpaqueType, TKR, Workflow
+from tierkreis.models import TKR, OpaqueType, Workflow
 from tierkreis.nexus_worker import (
     get_results,
     is_running,
@@ -13,7 +13,7 @@ from tierkreis.nexus_worker import (
     upload_circuit,
 )
 
-type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]  # noqa: SLF001
+type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]
 type ExecuteJobRef = OpaqueType["qnexus.models.references.ExecuteJobRef"]
 

@@ -1,14 +1,15 @@
 """Code generated from slurm_mpi_worker namespace. Please do not edit."""
 
-from typing import NamedTuple, Union
 from types import NoneType
+from typing import NamedTuple, Union
+
 from tierkreis.controller.data.models import TKR
 
 
 class mpi_rank_info(NamedTuple):
     @staticmethod
-    def out() -> type[TKR[Union[str, NoneType]]]:  # noqa: F821 # fmt: skip
-        return TKR[Union[str, NoneType]]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[str | NoneType]]:  # fmt: skip
+        return TKR[Union[str, NoneType]]  # fmt: skip
 
     @property
     def namespace(self) -> str:
@@ -17,8 +18,8 @@ class mpi_rank_info(NamedTuple):
 
 class mpi_fail(NamedTuple):
     @staticmethod
-    def out() -> type[TKR[NoneType]]:  # noqa: F821 # fmt: skip
-        return TKR[NoneType]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[NoneType]]:  # fmt: skip
+        return TKR[NoneType]  # fmt: skip
 
     @property
     def namespace(self) -> str:

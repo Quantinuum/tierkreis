@@ -179,6 +179,7 @@ else:
 
 NDArray = Annotated[np.ndarray, ser, deser]
 
+
 @worker.task()
 def transpose(a: NDArray) -> NDArray:
     return a.transpose()

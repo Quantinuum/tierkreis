@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 _COMMAND_PREFIX = "#SBATCH"
 
 
-def generate_slurm_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity to cover options
+def generate_slurm_script(spec: JobSpec) -> str:
     """Generate a job submission script according to SLURM.
 
     This uses the "sbatch" syntax and represents a mapping from JobSpec

@@ -3,8 +3,7 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import NoneType
-from typing import Annotated, Self, get_args, get_origin, ForwardRef
-
+from typing import Annotated, ForwardRef, Self, get_args, get_origin
 
 from tierkreis.controller.data.core import (
     Deserializer,
@@ -106,7 +105,7 @@ class GenericType:
         """
         if not hasattr(value, "origin"):
             return False
-        return self.origin == getattr(value, "origin")
+        return self.origin == value.origin
 
 
 @dataclass

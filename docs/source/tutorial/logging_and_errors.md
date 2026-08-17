@@ -122,14 +122,13 @@ The data contains the following information:
 All nodes can be declared ar breakpoints by adding `NodeMetaData` as follows:
 ```python
 from tierkreis.controller.data.graph import NodeMetaData
+
 g.task(..., NodeMetaData(has_breakpoint=True))
 ```
 By default the controller will ignore this information unless you set `enable_breakpoints=True` in `run_graph`. 
 When running with breakpoints the graph execution will stop as soon as it hits a breakpoint node e.g. after running:
 ```python
-run_graph(
-    storage, executor, graph, None, enable_breakpoints=enable_breakpoints
-)
+run_graph(storage, executor, graph, None, enable_breakpoints=enable_breakpoints)
 ```
 you can examine the storage and current values of all previous nodes.
 Afterward you can resume the execution with

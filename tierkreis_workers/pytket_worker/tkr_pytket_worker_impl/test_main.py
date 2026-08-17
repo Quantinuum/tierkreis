@@ -3,7 +3,6 @@ from pytket._tket.unit_id import Bit
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.aer import AerBackend
 from pytket.utils.outcomearray import OutcomeArray
-
 from tkr_pytket_worker_impl.impl import (
     backend_result_from_dict,
     backend_result_to_dict,

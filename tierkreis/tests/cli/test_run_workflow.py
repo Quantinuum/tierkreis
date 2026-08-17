@@ -32,7 +32,7 @@ def test_run_workflow(graph: GraphData) -> None:
     assert c == 12
 
 
-def test_run_workflow_with_output(graph: GraphData, capfd) -> None:  # noqa: ANN001
+def test_run_workflow_with_output(graph: GraphData, capfd) -> None:
     inputs = {}
     run_workflow(inputs=inputs, workflow=graph, run_id=31415, print_output=True)
     out, _ = capfd.readouterr()

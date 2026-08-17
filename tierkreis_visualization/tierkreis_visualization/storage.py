@@ -1,8 +1,8 @@
 import os
 import sys
+from collections.abc import Callable
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from typing import Callable
 from uuid import UUID
 
 from tierkreis.controller.data.graph import GraphData

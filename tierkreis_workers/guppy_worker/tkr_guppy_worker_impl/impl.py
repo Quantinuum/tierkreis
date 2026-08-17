@@ -2,7 +2,7 @@ from typing import Annotated, Any
 
 from guppylang.decorator import guppy
 from guppylang.emulator import EmulatorBuilder, EmulatorResult
-from guppylang.std.builtins import array, result, comptime
+from guppylang.std.builtins import array, comptime, result
 from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
 from hugr.qsystem.result import DataValue, QsysShot
@@ -238,7 +238,7 @@ def to_qir(package: Package) -> bytes | str:
     """
     try:
         from hugr_qir.hugr_to_qir import hugr_to_qir
-    except ImportError | ModuleNotFoundError:
+    except (ImportError, ModuleNotFoundError):
         msg = "Could not resolve hugr_qir.hugr_to_qir. Please ensure that the hugr_qir package is installed."
         raise TierkreisError(msg)
     qir_bytes = hugr_to_qir(package.to_bytes())

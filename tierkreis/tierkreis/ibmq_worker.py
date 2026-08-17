@@ -1,7 +1,9 @@
 """Code generated from ibmq_worker namespace. Please do not edit."""
 
 # ruff: noqa: F821
-from typing import NamedTuple, Sequence
+from collections.abc import Sequence
+from typing import NamedTuple
+
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 

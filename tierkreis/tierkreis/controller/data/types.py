@@ -1,6 +1,5 @@
 """Valid Python types for annotating worker functions and their serialisation."""
 
-# ruff: noqa: ANN001 ANN003 ANN401 due to serialization and inheritance from json
 import json
 import logging
 import pickle
@@ -450,10 +449,12 @@ def get_serialization_format[T: PType](
         return sr.serialization_method
 
     unannotated = get_args(hint)[0] if get_origin(hint) is Annotated else hint
-    if isclass(unannotated) and issubclass(unannotated, (bytes, NdarraySurrogate)):
-        return "bytes"
-
-    elif isclass(unannotated) and issubclass(unannotated, Package):
+    if (
+        isclass(unannotated)
+        and issubclass(unannotated, (bytes, NdarraySurrogate))
+        or isclass(unannotated)
+        and issubclass(unannotated, Package)
+    ):
         return "bytes"
 
     return "json"

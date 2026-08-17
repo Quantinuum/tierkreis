@@ -1,8 +1,7 @@
 """A meta executor consisting assigning executors to tasks."""
 
-# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import json
-from fnmatch import filter  # noqa: A004
+from fnmatch import filter
 from pathlib import Path
 
 from tierkreis.controller.data.location import WorkerCallArgs

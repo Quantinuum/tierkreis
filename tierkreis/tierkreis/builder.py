@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from inspect import isclass
 from typing import (
     Any,
-    Mapping,
     NamedTuple,
     Protocol,
     overload,
@@ -100,7 +99,7 @@ def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
     :rtype: Function[TKR[bytes]]
     """
 
-    class exec_script(NamedTuple):  # noqa: N801
+    class exec_script(NamedTuple):
         input: TKR[bytes]
 
         @staticmethod
@@ -311,7 +310,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         name = f"{func.namespace}.{func.__class__.__name__}"
         inputs = dict_from_tmodel(func)
         idx, _ = self.data.func(name, inputs, **kwargs)("dummy")
-        OutModel = func.out()  # noqa: N806
+        OutModel = func.out()
         return init_tmodel(OutModel, lambda p: (idx, p))
 
     def eval[A: TModel, B: TModel](
@@ -391,7 +390,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         return TList(TKR[T](idx, "*"))
 
     def _fold_list[T: PType](self, refs: TList[TKR[T]]) -> TKR[list[T]]:
-        value_ref = (refs._value.node_index, refs._value.port_id)  # noqa: SLF001
+        value_ref = (refs._value.node_index, refs._value.port_id)
         idx, _ = self.data.func(
             "builtins.fold_values", {"values_glob": value_ref}, is_hidden=True
         )(
@@ -405,14 +404,14 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         body: Callable[[TKR[A]], B],
     ) -> TList[B]:
         tlist = self._unfold_list(map_inputs)
-        return TList(body(TKR(tlist._value.node_index, "*")))  # noqa: SLF001
+        return TList(body(TKR(tlist._value.node_index, "*")))
 
     def _map_fn_single_out[A: TModel, B: PType](
         self,
         map_inputs: TList[A],
         body: Callable[[A], TKR[B]],
     ) -> TKR[list[B]]:
-        return self._fold_list(TList(body(map_inputs._value)))  # noqa: SLF001
+        return self._fold_list(TList(body(map_inputs._value)))
 
     def _map_graph_full[A: TModel, B: TModel](
         self,
@@ -420,7 +419,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         body: TypedGraphRef[A, B],
         **kwargs,
     ) -> TList[B]:
-        ins = dict_from_tmodel(map_inputs._value)  # noqa: SLF001
+        ins = dict_from_tmodel(map_inputs._value)
         idx, _ = self.data.map(body.graph_ref.value_ref(), ins, **kwargs)("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))

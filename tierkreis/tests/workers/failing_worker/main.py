@@ -1,4 +1,3 @@
-# noqa: INP001
 import logging
 import sys
 

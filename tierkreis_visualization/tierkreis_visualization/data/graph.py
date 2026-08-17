@@ -1,10 +1,10 @@
 from typing import assert_never
 
 from fastapi import HTTPException
-
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import ControllerStorage
+
 from tierkreis_visualization.data.eval import get_eval_node
 from tierkreis_visualization.data.loop import get_loop_node
 from tierkreis_visualization.data.map import get_map_node

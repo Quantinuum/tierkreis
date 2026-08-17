@@ -1,21 +1,20 @@
 """Executor for HPC schedulers through psij."""
 
-from copy import deepcopy
 import logging
 import os
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Literal
 
 from psij import InvalidJobException, Job, JobExecutor, SubmitException
-from tierkreis.controller.executor.hpc.job_spec import (
-    JobSpec,
-)
-
 from psij import JobSpec as PSIJJobSpec
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.executor.commands import add_std_handlers
+from tierkreis.controller.executor.hpc.job_spec import (
+    JobSpec,
+)
 from tierkreis.controller.executor.hpc.psij_conversion import spec_to_psij
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.exceptions import TierkreisError
@@ -99,7 +98,7 @@ class PSIJExecutor:
             raise TierkreisError(msg) from e
 
         return ExecutorDebugData(
-            executor=f"{str(self.__class__)}:{str(self.psij_executor.__class__)}",
+            executor=f"{self.__class__!s}:{self.psij_executor.__class__!s}",
             launch_command=local_spec.executable
             + " "
             + " ".join(local_spec.arguments or []),

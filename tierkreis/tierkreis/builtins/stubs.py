@@ -1,7 +1,7 @@
 """Code generated from builtins namespace. Please do not edit."""
 
 from collections.abc import Sequence
-from typing import NamedTuple, Union
+from typing import NamedTuple
 
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
@@ -40,8 +40,8 @@ class add(NamedTuple):
     b: TKR[float]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -66,8 +66,8 @@ class subtract(NamedTuple):
     b: TKR[float]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -92,8 +92,8 @@ class times(NamedTuple):
     b: TKR[float]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -221,8 +221,8 @@ class tkr_pow(NamedTuple):
     b: TKR[float]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -233,8 +233,8 @@ class tkr_abs(NamedTuple):
     a: TKR[float]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -571,8 +571,8 @@ class concat_lists[U: PType, V: PType](NamedTuple):
     second: TKR[list[V]]
 
     @staticmethod
-    def out() -> type[TKR[list[Union[U, V]]]]:
-        return TKR[list[Union[U, V]]]
+    def out() -> type[TKR[list[U | V]]]:
+        return TKR[list[U | V]]
 
     @property
     def namespace(self) -> str:
@@ -580,7 +580,7 @@ class concat_lists[U: PType, V: PType](NamedTuple):
 
 
 class tkr_str(NamedTuple):
-    value: TKR[Union[float, bool]]
+    value: TKR[float | bool]
 
     @staticmethod
     def out() -> type[TKR[str]]:
@@ -592,7 +592,7 @@ class tkr_str(NamedTuple):
 
 
 class tkr_int(NamedTuple):
-    value: TKR[Union[float, bool, str]]
+    value: TKR[float | bool | str]
 
     @staticmethod
     def out() -> type[TKR[int]]:
@@ -604,11 +604,11 @@ class tkr_int(NamedTuple):
 
 
 class sum_list(NamedTuple):
-    values: TKR[list[Union[int, float]]]
+    values: TKR[list[int | float]]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -616,11 +616,11 @@ class sum_list(NamedTuple):
 
 
 class prod_list(NamedTuple):
-    values: TKR[list[Union[int, float]]]
+    values: TKR[list[int | float]]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -628,11 +628,11 @@ class prod_list(NamedTuple):
 
 
 class max_item(NamedTuple):
-    values: TKR[list[Union[int, float]]]
+    values: TKR[list[int | float]]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -640,11 +640,11 @@ class max_item(NamedTuple):
 
 
 class min_item(NamedTuple):
-    values: TKR[list[Union[int, float]]]
+    values: TKR[list[int | float]]
 
     @staticmethod
-    def out() -> type[TKR[Union[int, float]]]:
-        return TKR[Union[int, float]]
+    def out() -> type[TKR[int | float]]:
+        return TKR[int | float]
 
     @property
     def namespace(self) -> str:
@@ -652,11 +652,11 @@ class min_item(NamedTuple):
 
 
 class sort_number_list(NamedTuple):
-    values: TKR[list[Union[int, float]]]
+    values: TKR[list[int | float]]
 
     @staticmethod
-    def out() -> type[TKR[list[Union[int, float]]]]:
-        return TKR[list[Union[int, float]]]
+    def out() -> type[TKR[list[int | float]]]:
+        return TKR[list[int | float]]
 
     @property
     def namespace(self) -> str:

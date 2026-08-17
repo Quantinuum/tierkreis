@@ -23,7 +23,7 @@ def main() -> None:
     TierkreisRunCli.add_subcommand(subparser)
     TierkreisInitCli.add_subcommand(subparser)
     try:
-        from tierkreis_visualization.cli import TierkreisVizCli  # noqa: PLC0415
+        from tierkreis_visualization.cli import TierkreisVizCli
 
         TierkreisVizCli.add_subcommand(subparser)
     except ImportError:

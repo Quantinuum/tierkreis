@@ -77,9 +77,14 @@ def format_generic_type(
         format_generic_type(x, include_bound=include_bound, is_tkr=False)
         for x in generictype.args
     ]
-    generics_str = f"[{', '.join(generics)}]" if generictype.args else ""
 
-    out = f"{origin_str}{generics_str}"
+    # Special case for handling union types with dedicated syntax.
+    if origin_str == "Union":
+        out = " | ".join(generics) if generictype.args else ""
+    else:
+        generics_str = f"[{', '.join(generics)}]" if generictype.args else ""
+        out = f"{origin_str}{generics_str}"
+
     return f"TKR[{out}]" if is_tkr else out
 
 

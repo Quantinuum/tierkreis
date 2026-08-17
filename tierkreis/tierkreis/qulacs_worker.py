@@ -1,8 +1,9 @@
 """Code generated from qulacs_worker namespace. Please do not edit."""
 
 # ruff: noqa: F821
-from typing import NamedTuple, Union
 from types import NoneType
+from typing import NamedTuple
+
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
@@ -26,7 +27,7 @@ class run_circuit(NamedTuple):
     n_shots: TKR[int]
     result_type: TKR[str] | None = None
     gpu_sim: TKR[bool] | None = None
-    seed: TKR[Union[int, NoneType]] | None = None
+    seed: TKR[int | NoneType] | None = None
 
     @staticmethod
     def out() -> type[TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]]:
@@ -42,7 +43,7 @@ class run_circuits(NamedTuple):
     n_shots: TKR[list[int]]
     result_type: TKR[str] | None = None
     gpu_sim: TKR[bool] | None = None
-    seed: TKR[Union[int, NoneType]] | None = None
+    seed: TKR[int | NoneType] | None = None
 
     @staticmethod
     def out() -> type[

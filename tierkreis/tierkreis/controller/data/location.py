@@ -64,7 +64,7 @@ class Loc(str):
         """
         return super().__new__(cls, k)
 
-    def N(self, idx: int) -> "Loc":  # noqa: N802
+    def N(self, idx: int) -> "Loc":
         """Append a regular node.
 
         Regular nodes are all but loops and maps.
@@ -76,7 +76,7 @@ class Loc(str):
         """
         return Loc(str(self) + f".N{idx}")
 
-    def L(self, idx: int) -> "Loc":  # noqa: N802
+    def L(self, idx: int) -> "Loc":
         """Append a loop node.
 
         L<number> is one iteration of a loop.
@@ -88,7 +88,7 @@ class Loc(str):
         """
         return Loc(str(self) + f".L{idx}")
 
-    def M(self, idx: int) -> "Loc":  # noqa: N802
+    def M(self, idx: int) -> "Loc":
         """Append a map node.
 
         M<number> is one element of a map.
@@ -177,7 +177,7 @@ class Loc(str):
     @classmethod
     def __get_pydantic_core_schema__(
         cls,
-        source_type: Any,  # noqa: ANN401 inherited from pydantic
+        source_type: Any,
         handler: GetCoreSchemaHandler,
     ) -> CoreSchema:
         """Make Loc work with pydantic."""

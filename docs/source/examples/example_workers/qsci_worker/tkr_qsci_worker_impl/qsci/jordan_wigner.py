@@ -54,7 +54,7 @@ def jordan_wigner_two_body(
     i: int,
     j: int,
     k: int,
-    l: int,  # noqa: E741
+    l: int,
     coeff: float,
 ) -> QubitHamiltonian:
     r"""Map :math:`C a^\dagger_i a^\dagger_j a_k a_l + \text{h.c.}` to qubits.
@@ -227,7 +227,7 @@ def qubit_mapping_jordan_wigner(
         _update_hamiltonian(jordan_wigner_one_body(i, j, h1[i, j]))
 
     # Two-body terms
-    for (i, j), (k, l) in itertools.combinations_with_replacement(  # noqa: E741
+    for (i, j), (k, l) in itertools.combinations_with_replacement(
         itertools.combinations_with_replacement(range(norb), r=2),
         r=2,
     ):

@@ -1,8 +1,9 @@
 """Code generated from guppy_worker namespace. Please do not edit."""
 
 # ruff: noqa: F821
-from typing import NamedTuple, Union
 from types import NoneType
+from typing import NamedTuple
+
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
@@ -10,7 +11,7 @@ class emulate(NamedTuple):
     hugr_package: TKR[OpaqueType["hugr.package.Package"]]
     n_qubits: TKR[int]
     n_shots: TKR[int]
-    seed: TKR[Union[int, NoneType]] | None = None
+    seed: TKR[int | NoneType] | None = None
 
     @staticmethod
     def out() -> type[TKR[OpaqueType["guppylang.emulator.result.EmulatorResult"]]]:
@@ -160,8 +161,8 @@ class to_qir(NamedTuple):
     package: TKR[OpaqueType["hugr.package.Package"]]
 
     @staticmethod
-    def out() -> type[TKR[Union[bytes, str]]]:
-        return TKR[Union[bytes, str]]
+    def out() -> type[TKR[bytes | str]]:
+        return TKR[bytes | str]
 
     @property
     def namespace(self) -> str:

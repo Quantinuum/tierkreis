@@ -8,9 +8,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.hashes import SHA256
+from tierkreis.controller.data.models import portmapping
 
 from tierkreis import Worker
-from tierkreis.controller.data.models import portmapping
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.rsa import (
