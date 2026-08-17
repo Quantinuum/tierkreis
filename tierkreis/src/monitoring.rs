@@ -12,7 +12,7 @@ use serde::Deserialize;
 use std::{
     env::home_dir,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
@@ -63,7 +63,10 @@ impl Default for LoggingConfig {
     }
 }
 
-static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+/// The global log guard to ensure that logs are flushed on shutdown.
+///
+/// Take and drop the guard to flush buffered logs; logging to file stops afterwards.
+pub static LOG_GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 
 macro_rules! with_format_layer {
@@ -168,7 +171,9 @@ fn make_writer(path: Option<&Path>) -> BoxMakeWriter {
         let appender = tracing_appender::rolling::never(dir, file);
         let (non_blocking, guard): (NonBlocking, WorkerGuard) =
             tracing_appender::non_blocking(appender);
-        LOG_GUARD.set(guard).expect("log guard already set");
+        LOG_GUARD
+            .set(Mutex::new(Some(guard)))
+            .unwrap_or_else(|_| panic!("log guard already set"));
         BoxMakeWriter::new(non_blocking)
     } else {
         BoxMakeWriter::new(std::io::stderr)

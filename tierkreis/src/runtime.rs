@@ -21,7 +21,7 @@ use crate::{
     },
     graph::WorkflowGraph,
     location::Location,
-    monitoring::{LoggingConfig, init_logging_and_tracing},
+    monitoring::{LOG_GUARD, LoggingConfig, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
@@ -268,8 +268,17 @@ impl Runtime {
             tokio::select! {
                 sig = tokio::signal::ctrl_c() => {
                     match sig {
-                        Ok(()) => std::process::exit(130),
+                        Ok(()) => {
+                            tracing::info!("Received ctrl-c signal, shutting down runtime");
+                            if let Some(guard) = LOG_GUARD.get().and_then(|lock| lock.lock().ok()?.take()) {
+                                drop(guard);
+                            }
+                            std::process::exit(130)},
                         Err(err) => {
+                            tracing::error!("Error while waiting for ctrl-c signal: {err}");
+                            if let Some(guard) = LOG_GUARD.get().and_then(|lock| lock.lock().ok()?.take()) {
+                                drop(guard);
+                            }
                             eprintln!("{err}");
                             std::process::exit(1);
                         }
@@ -279,6 +288,7 @@ impl Runtime {
                     match res {
                         Ok(()) => {},
                         Err(err) => {
+                            tracing::error!("Error while processing events: {err}");
                             eprintln!("{err}");
                         }
                     }
