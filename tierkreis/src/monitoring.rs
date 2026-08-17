@@ -65,14 +65,22 @@ impl Default for LoggingConfig {
 
 static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
+static TRACER_PROVIDER: Mutex<Option<SdkTracerProvider>> = Mutex::new(None);
 
-/// Flush buffered log lines to the log file.
+/// Flush buffered log lines to the log file and shut down OpenTelemetry.
 ///
 /// The non-blocking appender only drains when its guard is dropped, so this
-/// consumes the guard.
+/// consumes the guard. Also shuts down the tracer provider to flush any
+/// pending spans.
 pub fn flush_logs() {
     if let Ok(mut guard) = LOG_GUARD.lock() {
         drop(guard.take());
+    }
+    // Shutdown the tracer provider to ensure all spans are flushed
+    if let Ok(mut provider) = TRACER_PROVIDER.lock() {
+        if let Some(p) = provider.take() {
+            let _ = p.shutdown();
+        }
     }
 }
 
@@ -118,6 +126,11 @@ where
         .build();
 
     global::set_tracer_provider(provider.clone());
+    
+    // Store the provider so we can shutdown later
+    if let Ok(mut stored_provider) = TRACER_PROVIDER.lock() {
+        *stored_provider = Some(provider.clone());
+    }
 
     Ok(tracing_opentelemetry::layer().with_tracer(provider.tracer("tierkreis")))
 }
