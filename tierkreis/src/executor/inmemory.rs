@@ -10,12 +10,12 @@ use std::{
 };
 
 use futures::{
+    FutureExt, SinkExt, StreamExt,
     channel::mpsc,
     future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
-    FutureExt, SinkExt, StreamExt,
 };
-use miette::{miette, IntoDiagnostic};
+use miette::{IntoDiagnostic, miette};
 use num_complex::Complex64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,10 +23,10 @@ use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::{load_assets, save_assets, AssetStorageRegistry},
+    asset_storage::{AssetStorageRegistry, load_assets, save_assets},
     event::{
-        send_cancelled, send_complete, send_error, send_running, EventReceiver, EventSender,
-        RuntimeEvent,
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
+        send_running,
     },
     executor::interface::{Executor, TaskPlan, WorkerSpec},
     location::Location,
@@ -559,9 +559,11 @@ mod tests {
         let workers = executor.workers().await?;
 
         // We should expect the builtin worker to be available.
-        assert!(workers
-            .iter()
-            .any(|workers| workers.worker_name == "builtin"));
+        assert!(
+            workers
+                .iter()
+                .any(|workers| workers.worker_name == "builtin")
+        );
 
         Ok(())
     }

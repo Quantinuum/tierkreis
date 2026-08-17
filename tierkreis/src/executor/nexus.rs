@@ -11,31 +11,31 @@ use std::{
 };
 
 use futures::{
+    FutureExt, SinkExt, StreamExt, TryStreamExt,
     channel::mpsc,
     future::{self, BoxFuture},
     stream::{BoxStream, FuturesUnordered},
-    FutureExt, SinkExt, StreamExt, TryStreamExt,
 };
 use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
-use miette::{miette, Context, IntoDiagnostic};
-use tracing::{instrument, warn, Instrument};
+use miette::{Context, IntoDiagnostic, miette};
+use tracing::{Instrument, instrument, warn};
 use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        load_assets, reserve_asset_specs, save_asset_with_spec, AssetSpec, AssetStorageRegistry,
+        AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs, save_asset_with_spec,
     },
     event::{
-        send_cancelled, send_complete, send_error, send_running, EventReceiver, EventSender,
-        RuntimeEvent,
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
+        send_running,
     },
     executor::{
+        Executor,
         interface::{TaskPlan, WorkerSpec},
         nexus::client::{
-            models::jobs::{JobDefinition, StatusEnum},
             NexusClient,
+            models::jobs::{JobDefinition, StatusEnum},
         },
-        Executor,
     },
     location::Location,
 };
@@ -617,16 +617,16 @@ impl Executor for NexusExecutor {
 #[cfg(test)]
 mod tests {
     use axum::{
-        extract::{
-            ws::{Message, WebSocket},
-            Query, State, WebSocketUpgrade,
-        },
         Json, Router,
+        extract::{
+            Query, State, WebSocketUpgrade,
+            ws::{Message, WebSocket},
+        },
     };
     use axum_test::TestServer;
     use hugr::{
         builder::{FunctionBuilder, HugrBuilder},
-        envelope::{write_envelope, EnvelopeConfig},
+        envelope::{EnvelopeConfig, write_envelope},
         package::Package,
         types::{Signature, Type},
     };

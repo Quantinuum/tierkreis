@@ -126,7 +126,7 @@ where
         .build();
 
     global::set_tracer_provider(provider.clone());
-    
+
     // Store the provider so we can shutdown later
     if let Ok(mut stored_provider) = TRACER_PROVIDER.lock() {
         *stored_provider = Some(provider.clone());

@@ -20,7 +20,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::{
-    io::{AsyncBufReadExt, BufReader}, process::Command, task::{AbortHandle, JoinHandle},
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    task::{AbortHandle, JoinHandle},
 };
 use tracing::{Instrument, instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -182,7 +184,7 @@ async fn start_task(
 
     let worker_args = internal_task.worker_args;
     let worker_args_path = worker_args.path();
-        let res = {
+    let res = {
         let _enter = parent_span.enter();
         spawn_worker(&internal_task.worker_name, worker_args_path)
     };
@@ -198,20 +200,21 @@ async fn start_task(
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
-    let task = tokio::task::spawn(async move {
-        let exit_status = child.wait().await;
-        BackgroundTask {
-            workflow_run_id,
-            attempt,
-            loc: background_loc,
-            output_storage_name,
-            exit_status,
-            outputs,
-            stderr,
-            _worker_args: worker_args,
+    let task = tokio::task::spawn(
+        async move {
+            let exit_status = child.wait().await;
+            BackgroundTask {
+                workflow_run_id,
+                attempt,
+                loc: background_loc,
+                output_storage_name,
+                exit_status,
+                outputs,
+                stderr,
+                _worker_args: worker_args,
+            }
         }
-    }
-    .instrument(parent_span),
+        .instrument(parent_span),
     );
 
     abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
