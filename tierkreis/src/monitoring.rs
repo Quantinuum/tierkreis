@@ -77,11 +77,10 @@ pub fn flush_logs() {
         drop(guard.take());
     }
     // Shutdown the tracer provider to ensure all spans are flushed
-    if let Ok(mut provider) = TRACER_PROVIDER.lock() {
-        if let Some(p) = provider.take() {
+    if let Ok(mut provider) = TRACER_PROVIDER.lock()
+        && let Some(p) = provider.take() {
             let _ = p.shutdown();
         }
-    }
 }
 
 macro_rules! with_format_layer {
