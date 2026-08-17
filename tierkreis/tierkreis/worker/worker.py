@@ -1,10 +1,20 @@
 """Tierkreis worker implementation."""
 
 import logging
+import os
 from collections.abc import Callable
 from inspect import Signature, signature
 from pathlib import Path
 from typing import NoReturn, TypeVar
+
+from opentelemetry import propagate, trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.propagators._envcarrier import EnvironmentGetter
+from opentelemetry.propagate import set_global_textmap
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
@@ -170,34 +180,48 @@ class Worker:
         """
         node_definition = self.storage.read_call_args(worker_definition_path)
         logger.debug(node_definition.model_dump())
+        getter = EnvironmentGetter()
+        carrier = {
+            "traceparent": getter.get(os.environ, "traceparent"),
+            "tracestate": getter.get(os.environ, "tracestate"),
+        }
+        ctx = propagate.extract(carrier)
+        tracer = trace.get_tracer(self.name)
 
         def _check_function(msg: str) -> NoReturn:
             raise TierkreisError(msg)
 
-        try:
-            function = self.functions.get(node_definition.function_name, None)
-            if function is None:
-                msg = (
-                    f"{self.name}: function name\n"
-                    f"{node_definition.function_name} not found"
+        with tracer.start_as_current_span(
+            node_definition.function_name,
+            context=ctx,
+            attributes={"tierkreis.worker.name": self.name},
+        ):
+            try:
+                function = self.functions.get(node_definition.function_name, None)
+                if function is None:
+                    msg = (
+                        f"{self.name}: function name\n"
+                        f"{node_definition.function_name} not found"
+                    )
+                    _check_function(msg)
+                logger.info(
+                    "running: %s in %s", node_definition.function_name, self.name
                 )
-                _check_function(msg)
-            logger.info("running: %s in %s", node_definition.function_name, self.name)
 
-            function(node_definition)
+                function(node_definition)
 
-            self.storage.mark_done(node_definition.done_path)
+                self.storage.mark_done(node_definition.done_path)
 
-        except Exception as err:
-            logger.exception("encountered error", exc_info=err)
-            self.storage.write_error(node_definition.error_path, str(err))
-            msg = (
-                f"Worker {self.name} encountered error when executing "
-                f"{node_definition.function_name}."
-            )
-            raise TierkreisWorkerError(
-                msg,
-            ) from err
+            except Exception as err:
+                logger.exception("encountered error", exc_info=err)
+                self.storage.write_error(node_definition.error_path, str(err))
+                msg = (
+                    f"Worker {self.name} encountered error when executing "
+                    f"{node_definition.function_name}."
+                )
+                raise TierkreisWorkerError(
+                    msg,
+                ) from err
 
     def app(self, argv: list[str]) -> None:
         """Run the worker as uv app.
@@ -216,8 +240,42 @@ class Worker:
                 "either provide--stubs-path or the path to the node definition"
             )
             return
+
+        otel_provider = self._set_up_otel()
+
         if argv[1] == "--stubs-path":
             self.namespace.write_stubs(Path(argv[2]))
         else:
             self.run(Path(argv[1]))
             logger.removeHandler(handler)
+            if otel_provider is not None:
+                otel_provider.shutdown()
+
+    def _set_up_otel(self) -> TracerProvider | None:
+        """Set up OpenTelemetry tracing for the worker."""
+        otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if otel_endpoint is None:
+            logger.warning("OTEL_EXPORTER_OTLP_ENDPOINT not set, tracing disabled")
+            return None
+
+        try:
+            set_global_textmap(TraceContextTextMapPropagator())
+            otel_provider = TracerProvider(
+                resource=Resource({
+                    "service.name": self.name,
+                    "service.namespace": "tierkreis_workers",
+                })
+            )
+            otel_provider.add_span_processor(
+                BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint))
+            )
+            trace.set_tracer_provider(otel_provider)
+            return otel_provider
+        except Exception as e:
+            logger.error(
+                "Failed to initialize OpenTelemetry with endpoint %s: %s. "
+                "Tracing is disabled, execution will continue.",
+                otel_endpoint,
+                e,
+            )
+            return None
