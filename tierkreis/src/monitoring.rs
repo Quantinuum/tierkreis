@@ -63,7 +63,6 @@ impl Default for LoggingConfig {
     }
 }
 
-
 static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 
