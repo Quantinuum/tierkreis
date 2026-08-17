@@ -1,7 +1,8 @@
 """Code generated from builtins namespace. Please do not edit."""
 
-# ruff: noqa: F821
-from typing import NamedTuple, Sequence, Union
+from collections.abc import Sequence
+from typing import NamedTuple, Union
+
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
 
