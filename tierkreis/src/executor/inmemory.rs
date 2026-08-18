@@ -30,7 +30,7 @@ use crate::{
     },
     executor::{
         Executor,
-        interface::{TaskPlan, UniqueLocState, UniqueNodeHandle, WorkerSpec},
+        interface::{TaskPlan, WorkerSpec},
     },
     location::Location,
 };
@@ -329,6 +329,7 @@ async fn start_task(
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
+    // InMemory doesn't need to check if this is already running
     let task_plan = internal_task.task_plan;
     let loc = task_plan.loc;
     let output_storage_name = internal_task.output_storage_name;
@@ -564,14 +565,6 @@ impl Executor for InMemoryExecutor {
             Ok(())
         };
         fut.boxed()
-    }
-
-    fn restore(
-        &self,
-        _tasks: Vec<UniqueNodeHandle>,
-    ) -> BoxFuture<'_, miette::Result<Vec<UniqueLocState>>> {
-        // No Op for InMemoryExecutor, since it does not persist state across restarts.
-        futures::future::ok(vec![]).boxed()
     }
 }
 

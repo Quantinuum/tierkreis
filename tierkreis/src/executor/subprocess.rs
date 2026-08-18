@@ -59,6 +59,7 @@ struct BackgroundTaskPlan {
     output_storage_name: String,
     worker_args: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
+    handle: Option<TaskHandle>,
 
     parent_span: tracing::Span,
 }
@@ -185,9 +186,33 @@ async fn start_task(
     let loc = internal_task.loc;
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
+    let outputs = internal_task.outputs;
+    let output_storage_name = internal_task.output_storage_name;
+    let background_loc = loc.clone();    
     let parent_span = internal_task.parent_span;
 
     let worker_args = internal_task.worker_args;
+
+    // If the task has a handle, check if the process is still running and terminate it if so.
+    // Other executors should reattach if possible.
+    if let Some(TaskHandle::Subprocess { pid, start_time }) = internal_task.handle {
+        let is_original_process = match process_identity(pid) {
+            Ok(identity) => identity == (pid, start_time),
+            Err(_) => false,
+        };
+        if is_original_process {
+            let status = Command::new("kill")
+                .arg(pid.to_string())
+                .status()
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| miette!("Could not terminate restored worker process {pid}"))?;
+            if !status.success() {
+                return Err(miette!("Could not terminate restored worker process {pid}: {status}"));
+            }
+        }
+    }
+
     let worker_args_path = worker_args.path();
     let res = {
         let _enter = parent_span.enter();
@@ -575,6 +600,7 @@ impl Executor for SubprocessExecutor {
                         output_storage_name,
                         worker_args,
                         outputs,
+                        handle: task_plan.task_handle,
                         parent_span: tracing::Span::current(),
                     })
                     .await
@@ -620,30 +646,6 @@ impl Executor for SubprocessExecutor {
             Ok(())
         };
         fut.boxed()
-    }
-
-    fn restore(
-        &self,
-        tasks: Vec<super::interface::UniqueNodeHandle>,
-    ) -> BoxFuture<'_, miette::Result<Vec<super::interface::UniqueLocState>>> {
-        let statuses = tasks
-            .into_iter()
-            .map(|(workflow_run_id, attempt, loc, handle)| {
-                let status = match handle {
-                    // Potentially doesn't work if the executor runs on a different machine than the runtime.
-                    TaskHandle::Subprocess { pid, start_time }
-                        if process_identity(pid).is_ok_and(|(_, current_start_time)| {
-                            current_start_time == start_time
-                        }) =>
-                    {
-                        NodeStatus::Running { state_update: None }
-                    }
-                    _ => NodeStatus::Unknown,
-                };
-                (workflow_run_id, attempt, loc, status)
-            })
-            .collect();
-        futures::future::ok(statuses).boxed()
     }
 }
 

@@ -49,6 +49,10 @@ pub struct TaskPlan {
     /// An arbitrary Environment specification for the Task. [Executor]s
     /// should validate this and convert it to a usable representation.
     pub environment: HashMap<String, Value>,
+
+    /// An executor-specific identifier for a task that can be persisted and restored.
+    /// Obligation of the [Executor] to check this when a task is received.
+    pub task_handle: Option<TaskHandle>,
 }
 
 /// An executor-specific identifier for a task that can be persisted and restored.
@@ -87,6 +91,7 @@ pub trait Executor: Send + Sync {
     ///
     /// This method does not block and updates about the Tasks will appear in the
     /// stream provided by the [`Executor::listen`] method.
+    /// This needs to handle the case when a Task has already started.
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>>;
     /// Listen to a stream of [Event]s from the [Executor] about changes in Task state.
     ///
@@ -111,10 +116,4 @@ pub trait Executor: Send + Sync {
         attempt: u32,
         task_locations: Vec<Location>,
     ) -> BoxFuture<'_, miette::Result<()>>;
-
-    /// Try to restore running tasks after the runtime has disconnected.
-    fn restore(
-        &self,
-        tasks: Vec<UniqueNodeHandle>,
-    ) -> BoxFuture<'_, miette::Result<Vec<UniqueLocState>>>;
 }
