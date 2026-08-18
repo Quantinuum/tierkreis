@@ -493,6 +493,8 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 
     let outputs = runtime.outputs(run_id, attempt).await?;
 
+    flush_logs();
+
     Ok(outputs)
 }
 

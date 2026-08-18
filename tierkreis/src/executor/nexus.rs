@@ -18,7 +18,7 @@ use futures::{
 };
 use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
 use miette::{Context, IntoDiagnostic, miette};
-use tracing::warn;
+use tracing::{Instrument, instrument, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -48,6 +48,7 @@ struct BackgroundTaskPlan {
     loc: Location,
     job_id: Uuid,
     outputs: HashMap<String, AssetSpec>,
+    parent_span: tracing::Span,
 }
 
 #[derive(Clone)]
@@ -73,6 +74,7 @@ type RunningFutures<'a> = FuturesUnordered<BoxFuture<'a, (BackgroundTask, miette
 // Mapping of Node to the internal monitoring status of the Node..
 type JobHandles = HashMap<(Uuid, u32, Location), InternalJobMonitoringStatus>;
 
+#[instrument(skip_all, err)]
 async fn process_cancelled_task(
     client: &NexusClient,
     job_handles: &mut JobHandles,
@@ -85,6 +87,7 @@ async fn process_cancelled_task(
     match handle {
         // We know the job id, cancel the job.
         Some(InternalJobMonitoringStatus::Watching { job_id }) => {
+            tracing::info!("Cancelling job for node: {key:?}");
             client.cancel_job(job_id).await?;
         }
         // We are already planning to cancel the job if we see this node.
@@ -98,6 +101,7 @@ async fn process_cancelled_task(
     Ok(())
 }
 
+#[instrument(skip_all, err)]
 async fn process_finished_task(
     client: &NexusClient,
     event_sender: &mut EventSender,
@@ -202,6 +206,7 @@ async fn process_finished_task(
     Ok(())
 }
 
+#[instrument(skip_all, err)]
 async fn monitor_task(
     client: &NexusClient,
     event_sender: &EventSender,
@@ -219,54 +224,60 @@ async fn monitor_task(
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let event_sender = event_sender.clone();
+    let parent_span = internal_task.parent_span.clone();
 
     let client = client.clone();
     let mut event_sender = event_sender.clone();
-    let task = tokio::task::spawn(async move {
-        let mut job_status_stream = client
-            .listen_for_job_status(internal_task.job_id)
-            .await
-            .wrap_err("Failed to listen for job status")?;
-
-        'outer: loop {
-            while let Some(job_status) = job_status_stream
-                .try_next()
-                .await
-                .wrap_err("Failed while listening for job status")?
-            {
-                match job_status.status() {
-                    StatusEnum::Submitted | StatusEnum::Cancelling | StatusEnum::Retrying => {}
-                    StatusEnum::Queued | StatusEnum::Running => {
-                        send_running(
-                            &mut event_sender,
-                            workflow_run_id,
-                            attempt,
-                            task_loc.clone(),
-                        )
-                        .await?;
-                    }
-                    // Exit if the job status is a final state.
-                    StatusEnum::Completed
-                    | StatusEnum::Error
-                    | StatusEnum::Terminated
-                    | StatusEnum::Depleted
-                    | StatusEnum::Cancelled => break 'outer,
-                }
-            }
-
-            // Reconnect if the job status was not a final state.
-            job_status_stream = client
+    let task = tokio::task::spawn(
+        async move {
+            let mut job_status_stream = client
                 .listen_for_job_status(internal_task.job_id)
                 .await
                 .wrap_err("Failed to listen for job status")?;
-        }
-        job_status_stream
-            .close()
-            .await
-            .wrap_err("Failed to close job status stream")?;
 
-        Ok(())
-    })
+            'outer: loop {
+                while let Some(job_status) = job_status_stream
+                    .try_next()
+                    .await
+                    .wrap_err("Failed while listening for job status")?
+                {
+                    match job_status.status() {
+                        StatusEnum::Submitted | StatusEnum::Cancelling | StatusEnum::Retrying => {}
+                        StatusEnum::Queued | StatusEnum::Running => {
+                            send_running(
+                                &mut event_sender,
+                                workflow_run_id,
+                                attempt,
+                                task_loc.clone(),
+                            )
+                            .await?;
+                        }
+                        // Exit if the job status is a final state.
+                        StatusEnum::Completed
+                        | StatusEnum::Error
+                        | StatusEnum::Terminated
+                        | StatusEnum::Depleted
+                        | StatusEnum::Cancelled => break 'outer,
+                    }
+                }
+
+                // Reconnect if the job status was not a final state.
+                tracing::debug!("Reconnecting to job status stream");
+                job_status_stream = client
+                    .listen_for_job_status(internal_task.job_id)
+                    .await
+                    .wrap_err("Failed to listen for job status")?;
+            }
+            tracing::debug!("Job status stream ended, processing finished task");
+            job_status_stream
+                .close()
+                .await
+                .wrap_err("Failed to close job status stream")?;
+
+            Ok(())
+        }
+        .instrument(parent_span),
+    )
     .map(move |result| {
         (
             BackgroundTask {
@@ -307,12 +318,24 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
+                tracing::debug!(
+                    workflow_run_id = %workflow_run_id,
+                    attempt = %attempt,
+                    loc = %loc,
+                    "Received cancel request"
+                );
                 process_cancelled_task(&client, &mut job_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
             }
             // A task has completed
             Some((task, result)) = running.next() => {
+                tracing::debug!(
+                    workflow_run_id = %task.workflow_run_id,
+                    attempt = %task.attempt,
+                    loc = %task.loc,
+                    "Task completed"
+                );
                 if let Err(err) = result {
                     send_error(
                         &mut event_sender,
@@ -348,6 +371,12 @@ async fn process_tasks(
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
+                tracing::debug!(
+                    workflow_run_id = %internal_task.workflow_run_id,
+                    attempt = %internal_task.attempt,
+                    loc = %internal_task.loc,
+                    "Received task to monitor"
+                );
                 let res = monitor_task(
                     &client,
                     &event_sender,
@@ -545,6 +574,7 @@ impl Executor for NexusExecutor {
                     .start_single_job(project_data.id(), &job_name, hugr_id, n_shots)
                     .await?;
 
+                let parent_span = tracing::Span::current();
                 task_sender
                     .send(BackgroundTaskPlan {
                         workflow_run_id: task_plan.workflow_run_id,
@@ -552,6 +582,7 @@ impl Executor for NexusExecutor {
                         loc: task_plan.loc,
                         job_id,
                         outputs,
+                        parent_span,
                     })
                     .await
                     .into_diagnostic()?;
