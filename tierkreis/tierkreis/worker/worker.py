@@ -9,7 +9,6 @@ from typing import NoReturn, TypeVar
 
 from opentelemetry import propagate, trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.propagators._envcarrier import EnvironmentGetter
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -180,12 +179,7 @@ class Worker:
         """
         node_definition = self.storage.read_call_args(worker_definition_path)
         logger.debug(node_definition.model_dump())
-        getter = EnvironmentGetter()
-        carrier = {
-            "traceparent": getter.get(os.environ, "traceparent"),
-            "tracestate": getter.get(os.environ, "tracestate"),
-        }
-        ctx = propagate.extract(carrier)
+        ctx = propagate.extract(os.environ)
         tracer = trace.get_tracer(self.name)
 
         def _check_function(msg: str) -> NoReturn:
@@ -263,7 +257,7 @@ class Worker:
             otel_provider = TracerProvider(
                 resource=Resource({
                     "service.name": self.name,
-                    "service.namespace": "tierkreis_workers",
+                    "service.namespace": "tierkreis.workers",
                 })
             )
             otel_provider.add_span_processor(

@@ -20,7 +20,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::AsyncReadExt,
     process::Command,
     task::{AbortHandle, JoinHandle},
 };
@@ -196,7 +196,7 @@ async fn start_task(
             return Ok(());
         }
     };
-    let stderr = read_stderr(&mut child, workflow_run_id, loc.clone());
+    let stderr = read_stderr(&mut child);
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
@@ -398,7 +398,7 @@ impl SubprocessExecutor {
 struct CommandEnvCarrier<'a>(&'a mut Command);
 impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
     fn set(&mut self, key: &str, value: String) {
-        self.0.env(key.to_uppercase(), value);
+        self.0.env(key.to_uppercase().replace('_', "-"), value);
     }
 }
 
@@ -425,21 +425,12 @@ fn spawn_worker(
     Ok(child)
 }
 
-fn read_stderr(
-    child: &mut tokio::process::Child,
-    run_id: Uuid,
-    loc: Location,
-) -> tokio::task::JoinHandle<String> {
+fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
     let mut stderr = child.stderr.take().unwrap();
     tokio::spawn(async move {
-        let mut reader = BufReader::new(&mut stderr).lines();
         let mut stderr_out = String::new();
-        while let Ok(Some(line)) = reader.next_line().await {
-            // TODO: parse for actual log level, python log will be stderr by default.
-            tracing::info!(target: "tierkreis::worker", run_id = %run_id, loc = %loc, "{line}");
-            stderr_out.push_str(&line);
-            stderr_out.push('\n');
-        }
+        // TODO: Redirect child output to file or db
+        let _ = stderr.read_to_string(&mut stderr_out).await;
         stderr_out
     })
 }

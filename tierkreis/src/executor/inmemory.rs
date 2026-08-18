@@ -379,7 +379,12 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
-                tracing::debug!( workflow_run_id = %workflow_run_id, attempt = %attempt, loc = %loc, "Received cancel request",);
+                tracing::debug!(
+                    workflow_run_id = %workflow_run_id,
+                    attempt = %attempt,
+                    loc = %loc,
+                    "Received cancel request"
+                );
                 process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
@@ -390,7 +395,12 @@ async fn process_tasks(
                     Ok(ok) => ok,
                     Err(err) => panic!("Failed to join to future: {err}"),
                 };
-                tracing::debug!( workflow_run_id = %background_task.workflow_run_id, attempt = %background_task.attempt, loc = %background_task.loc, "Task completed");
+                tracing::debug!(
+                    workflow_run_id = %background_task.workflow_run_id,
+                    attempt = %background_task.attempt,
+                    loc = %background_task.loc,
+                    "Task completed"
+                );
                 process_finished_task(
                     &mut event_sender,
                     &mut abort_handles,
@@ -402,7 +412,13 @@ async fn process_tasks(
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
-                tracing::debug!( workflow_run_id = %internal_task.task_plan.workflow_run_id, attempt = %internal_task.task_plan.attempt, loc = %internal_task.task_plan.loc, "Received task {}", internal_task.task_plan.task_name);
+                tracing::debug!(
+                    workflow_run_id = %internal_task.task_plan.workflow_run_id,
+                    attempt = %internal_task.task_plan.attempt,
+                    loc = %internal_task.task_plan.loc,
+                    "Received task {}",
+                    internal_task.task_plan.task_name
+                );
                 start_task(
                     &mut event_sender,
                     &mut abort_handles,

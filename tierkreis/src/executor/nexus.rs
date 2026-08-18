@@ -222,7 +222,7 @@ async fn monitor_task(
 
     let task_loc = loc.clone();
     let background_loc = loc.clone();
-    let outputs = internal_task.outputs.clone();
+    let outputs = internal_task.outputs;
     let event_sender = event_sender.clone();
     let parent_span = internal_task.parent_span.clone();
 
@@ -262,13 +262,13 @@ async fn monitor_task(
                 }
 
                 // Reconnect if the job status was not a final state.
-                tracing::info!("Reconnecting to job status stream");
+                tracing::debug!("Reconnecting to job status stream");
                 job_status_stream = client
                     .listen_for_job_status(internal_task.job_id)
                     .await
                     .wrap_err("Failed to listen for job status")?;
             }
-            tracing::info!("Job status stream ended, processing finished task");
+            tracing::debug!("Job status stream ended, processing finished task");
             job_status_stream
                 .close()
                 .await
@@ -318,14 +318,24 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
-                tracing::debug!(workflow_run_id = %workflow_run_id, attempt = %attempt, loc = %loc, "Received cancel request");
+                tracing::debug!(
+                    workflow_run_id = %workflow_run_id,
+                    attempt = %attempt,
+                    loc = %loc,
+                    "Received cancel request"
+                );
                 process_cancelled_task(&client, &mut job_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
             }
             // A task has completed
             Some((task, result)) = running.next() => {
-                tracing::debug!(workflow_run_id = %task.workflow_run_id, attempt = %task.attempt, loc = %task.loc, "Task completed");
+                tracing::debug!(
+                    workflow_run_id = %task.workflow_run_id,
+                    attempt = %task.attempt,
+                    loc = %task.loc,
+                    "Task completed"
+                );
                 if let Err(err) = result {
                     send_error(
                         &mut event_sender,
@@ -361,7 +371,12 @@ async fn process_tasks(
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
-                tracing::debug!(workflow_run_id = %internal_task.workflow_run_id, attempt = %internal_task.attempt, loc = %internal_task.loc, "Received task to monitor");
+                tracing::debug!(
+                    workflow_run_id = %internal_task.workflow_run_id,
+                    attempt = %internal_task.attempt,
+                    loc = %internal_task.loc,
+                    "Received task to monitor"
+                );
                 let res = monitor_task(
                     &client,
                     &event_sender,
