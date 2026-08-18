@@ -366,16 +366,14 @@ fn handle_node_event(
     let now = Utc::now();
     for (idx, loc) in node_event.locs.iter().enumerate() {
         let node_state = run_state.nodes.entry(loc.clone()).or_default();
-        if let crate::event::NodeStatus::Running { handle, .. } = &node_event.status {
-            node_state.handle.clone_from(handle);
-        }
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
                     node_state.scheduled_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Queued => {
+            crate::event::NodeStatus::Queued{ ref handle}  => {
+                node_state.handle = handle.clone();
                 if node_state.queued_time.is_none() {
                     node_state.queued_time = Some(now);
                 }

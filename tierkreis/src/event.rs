@@ -156,13 +156,14 @@ pub enum NodeStatus {
     /// The node is scheduled to be run by the [Orchestrator].
     Scheduled,
     /// The node is queued to run using an [Executor][crate::executor::Executor].
-    Queued,
+    Queued {
+        /// Unique handle to the task on the executor that is running this node.
+        handle: Option<TaskHandle>,
+    },
     /// The node is running on an [Executor][crate::executor::Executor].
     Running {
         /// An update to the state of the Node to apply.
         state_update: Option<RunningStateUpdate>,
-        /// Unique handle to the task on the executor that is running this node.
-        handle: Option<TaskHandle>,
     },
     /// The node is finished and has outputs.
     Complete {
@@ -205,7 +206,6 @@ pub async fn send_running(
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
-    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -214,7 +214,6 @@ pub async fn send_running(
             locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: None,
-                handle: task_handle,
             },
         }),
     };
@@ -249,6 +248,34 @@ pub async fn send_cancelled(
         .await
         .into_diagnostic()
         .wrap_err("Failed to send node cancelled event")
+}
+
+
+/// Utility function to send a new [`Event`] with [`NodeStatus::Queued`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_queued(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+    handle: Option<TaskHandle>,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
+            status: NodeStatus::Queued { handle },
+        }),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send node queued event")
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Complete`] and output [`AssetSpec`]s.
@@ -290,7 +317,6 @@ pub async fn send_running_switching(
     attempt: u32,
     loc: Location,
     cond: bool,
-    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -299,7 +325,6 @@ pub async fn send_running_switching(
             locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
-                handle: task_handle,
             },
         }),
     };
@@ -322,7 +347,6 @@ pub async fn send_running_loop(
     attempt: u32,
     loc: Location,
     index: u32,
-    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -331,7 +355,6 @@ pub async fn send_running_loop(
             locs: vec![loc],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
-                handle: task_handle,
             },
         }),
     };
@@ -355,7 +378,6 @@ pub async fn send_running_map(
     attempt: u32,
     loc: Location,
     size: usize,
-    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -366,7 +388,6 @@ pub async fn send_running_map(
                 state_update: Some(RunningStateUpdate::MapStarted {
                     size: u32::try_from(size).into_diagnostic()?,
                 }),
-                handle: task_handle,
             },
         }),
     };
@@ -390,7 +411,6 @@ pub async fn send_map_elem_complete(
     attempt: u32,
     loc: Location,
     bits: BitVec<u8>,
-    task_handle: Option<TaskHandle>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -399,7 +419,6 @@ pub async fn send_map_elem_complete(
             locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
-                handle: task_handle,
             },
         }),
     };

@@ -23,15 +23,11 @@ use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::{AssetStorageRegistry, load_assets, save_assets},
-    event::{
-        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
-        send_running,
-    },
-    executor::interface::{
-        Executor, TaskHandle, TaskPlan, UniqueLocState, UniqueNodeHandle, WorkerSpec,
-    },
-    location::Location,
+    asset_storage::{AssetStorageRegistry, load_assets, save_assets}, event::{
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error, send_running,
+    }, executor::{Executor, interface::{
+        TaskPlan, UniqueLocState, UniqueNodeHandle, WorkerSpec,
+    }}, location::Location,
 };
 
 /// [`InMemoryResourceSpec`] determines what Resources should be available to the
@@ -333,13 +329,11 @@ async fn start_task(
     let output_storage_name = internal_task.output_storage_name;
     let workflow_run_id = task_plan.workflow_run_id;
     let attempt = task_plan.attempt;
-    let handle = TaskHandle::InMemory;
     send_running(
         event_sender,
         workflow_run_id,
         attempt,
         loc.clone(),
-        Some(handle),
     )
     .await?;
 
@@ -768,7 +762,6 @@ mod tests {
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
-        let handle = TaskHandle::InMemory;
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
@@ -778,7 +771,6 @@ mod tests {
                 locs: vec![loc1.clone()],
                 status: NodeStatus::Running {
                     state_update: None,
-                    handle: Some(handle.clone())
                 }
             })
         }));
@@ -789,7 +781,6 @@ mod tests {
                 locs: vec![loc2.clone()],
                 status: NodeStatus::Running {
                     state_update: None,
-                    handle: Some(handle.clone())
                 }
             })
         }));

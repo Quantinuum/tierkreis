@@ -543,21 +543,17 @@ impl SqliteWorkflowRunState {
                     node_location: loc.clone(),
                     ..Default::default()
                 };
-
-                if let NodeStatus::Running { handle, .. } = &event.status {
-                    row.handle = handle
-                        .as_ref()
-                        .map(serde_json::to_string)
-                        .transpose()
-                        .into_diagnostic()?;
-                }
-
                 match event.status {
                     NodeStatus::Scheduled => {
                         row.scheduled_time = Some(now);
                     }
-                    NodeStatus::Queued => {
+                    NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
+                        row.handle = handle
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()
+                        .into_diagnostic()?;
                     }
                     NodeStatus::Running {
                         state_update: None, ..
@@ -735,7 +731,7 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus::Queued,
+                status: NodeStatus:: Queued { handle: None },
             }))
             .await?;
 
@@ -797,7 +793,6 @@ mod tests {
                 locs: vec![Location::root()],
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
-                    handle: None,
                 },
             }))
             .await?;
@@ -815,7 +810,6 @@ mod tests {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits1.clone(),
                     }),
-                    handle: None,
                 },
             }))
             .await?;
@@ -833,7 +827,6 @@ mod tests {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits2.clone(),
                     }),
-                    handle: None,
                 },
             }))
             .await?;

@@ -1092,10 +1092,10 @@ impl Orchestrator {
         }
 
         for (loc, size) in plan.mapping {
-            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size, None).await?;
+            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
         }
         for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits, None)
+            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits)
                 .await?;
         }
         for (loc, index) in plan.looping {
@@ -1105,12 +1105,11 @@ impl Orchestrator {
                 attempt,
                 loc,
                 index,
-                None,
             )
             .await?;
         }
         for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond, None)
+            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond)
                 .await?;
         }
 
