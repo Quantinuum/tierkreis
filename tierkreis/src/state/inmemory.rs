@@ -370,7 +370,7 @@ fn handle_node_event(
                 }
             }
             crate::event::NodeStatus::Queued { ref handle } => {
-                node_state.handle = handle.clone();
+                node_state.handle.clone_from(handle);
                 if node_state.queued_time.is_none() {
                     node_state.queued_time = Some(now);
                 }
