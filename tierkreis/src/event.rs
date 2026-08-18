@@ -212,9 +212,7 @@ pub async fn send_running(
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
             locs: vec![loc],
-            status: NodeStatus::Running {
-                state_update: None,
-            },
+            status: NodeStatus::Running { state_update: None },
         }),
     };
     event_sender
@@ -249,7 +247,6 @@ pub async fn send_cancelled(
         .into_diagnostic()
         .wrap_err("Failed to send node cancelled event")
 }
-
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Queued`].
 ///

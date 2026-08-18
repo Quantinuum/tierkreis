@@ -32,9 +32,13 @@ use which::which_re;
 use crate::{
     asset_storage::{
         AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
-    }, event::{
-        EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent, send_cancelled, send_complete, send_error, send_queued, send_running,
-    }, executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec}, location::Location,
+    },
+    event::{
+        EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
+        send_cancelled, send_complete, send_error, send_queued, send_running,
+    },
+    executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    location::Location,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -202,14 +206,15 @@ async fn start_task(
     let (pid, start_time) =
         process_identity.ok_or_else(|| miette!("Worker process did not have a PID"))?;
     let handle = TaskHandle::Subprocess { pid, start_time };
-    send_queued(event_sender, workflow_run_id, attempt, loc.clone(), Some(handle)).await?;
-    send_running(
+    send_queued(
         event_sender,
         workflow_run_id,
         attempt,
         loc.clone(),
+        Some(handle),
     )
     .await?;
+    send_running(event_sender, workflow_run_id, attempt, loc.clone()).await?;
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
@@ -631,9 +636,7 @@ impl Executor for SubprocessExecutor {
                             current_start_time == start_time
                         }) =>
                     {
-                        NodeStatus::Running {
-                            state_update: None,
-                        }
+                        NodeStatus::Running { state_update: None }
                     }
                     _ => NodeStatus::Unknown,
                 };
@@ -892,7 +895,7 @@ mod tests {
                     }),
                 } if *workflow_run_id == Uuid::nil() && locs == &vec![loc.clone()]
             )));
-             assert!(events.iter().any(|event| matches!(
+            assert!(events.iter().any(|event| matches!(
                 event,
                 RuntimeEvent::WorkflowRun {
                     workflow_run_id,
@@ -1041,7 +1044,7 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-             let events = stream.take(3).collect::<Vec<_>>().await;
+        let events = stream.take(3).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 3);
         assert!(matches!(
             events[0],

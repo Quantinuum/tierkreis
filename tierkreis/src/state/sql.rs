@@ -550,10 +550,10 @@ impl SqliteWorkflowRunState {
                     NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
                         row.handle = handle
-                        .as_ref()
-                        .map(serde_json::to_string)
-                        .transpose()
-                        .into_diagnostic()?;
+                            .as_ref()
+                            .map(serde_json::to_string)
+                            .transpose()
+                            .into_diagnostic()?;
                     }
                     NodeStatus::Running {
                         state_update: None, ..
@@ -731,7 +731,7 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus:: Queued { handle: None },
+                status: NodeStatus::Queued { handle: None },
             }))
             .await?;
 

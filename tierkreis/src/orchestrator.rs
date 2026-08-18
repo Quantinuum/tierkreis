@@ -1095,22 +1095,13 @@ impl Orchestrator {
             send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
         }
         for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits)
-                .await?;
+            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
         }
         for (loc, index) in plan.looping {
-            send_running_loop(
-                &mut event_sender,
-                workflow_run_id,
-                attempt,
-                loc,
-                index,
-            )
-            .await?;
+            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
         }
         for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond)
-                .await?;
+            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
         }
 
         let default_executor_name = &self.default_executor_name;
@@ -1144,28 +1135,16 @@ impl Orchestrator {
         if tasks.is_empty() {
             return Ok(Vec::new());
         }
-
-        let mut tasks_by_executor: HashMap<&'static str, Vec<UniqueNodeHandle>> = HashMap::new();
-        for task in tasks {
-            tasks_by_executor
-                .entry(task.3.executor_name())
-                .or_default()
-                .push(task);
-        }
-
         let mut restored = Vec::new();
-        for (executor_name, executor_tasks) in tasks_by_executor {
-            let executor = self
-                .executor_registry
-                .get(executor_name)
-                .ok_or_else(|| miette!("Could not find executor '{executor_name}'"))?;
+        for executor in self.executor_registry.values() {
             restored.extend(
                 executor
-                    .restore(executor_tasks)
+                    .restore(tasks.clone())
                     .await
-                    .wrap_err_with(|| miette!("Failed to restore tasks in '{executor_name}'"))?,
+                    .wrap_err_with(|| miette!("Failed to restore tasks in executor"))?,
             );
         }
+
         Ok(restored)
     }
 

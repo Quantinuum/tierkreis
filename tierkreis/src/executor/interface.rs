@@ -52,6 +52,7 @@ pub struct TaskPlan {
 }
 
 /// An executor-specific identifier for a task that can be persisted and restored.
+/// None indicates Inmemory/needs to be scheduled
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "executor", content = "task")]
 pub enum TaskHandle {
@@ -62,25 +63,11 @@ pub enum TaskHandle {
         /// The process start time in Linux clock ticks.
         start_time: u64,
     },
-    /// A task running in-memory.
-    InMemory,
     /// A task running on nexus.
     Nexus {
         /// The job identifier assigned by Nexus.
         job_id: String,
     },
-}
-
-impl TaskHandle {
-    /// Return the executor registry name responsible for this task.
-    #[must_use]
-    pub fn executor_name(&self) -> &'static str {
-        match self {
-            Self::Subprocess { .. } => "subprocess",
-            Self::InMemory => "memory",
-            Self::Nexus { .. } => "nexus",
-        }
-    }
 }
 
 /// [`WorkerSpec`] defines the information about a Worker returned by an
