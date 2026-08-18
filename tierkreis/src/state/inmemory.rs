@@ -68,6 +68,8 @@ impl InMemoryRuntimeState {
     #[must_use]
     pub fn new() -> Self {
         let (sender, receiver) = watch::channel(RuntimeWatchState::default());
+        // In-memory state does not survive process restarts; nothing to restore.
+
         Self {
             inner: Arc::new(InMemoryRuntimeStateInner {
                 workflows: DashMap::new(),
@@ -158,11 +160,6 @@ impl RuntimeState for InMemoryRuntimeState {
         &self,
     ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
         unimplemented!()
-    }
-
-    fn restore_active_runs(&self) -> BoxFuture<'_, miette::Result<()>> {
-        // In-memory state does not survive process restarts; nothing to restore.
-        future::ok(()).boxed()
     }
 }
 

@@ -74,6 +74,11 @@ pub struct NodeState {
 
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
+///
+/// At creation time  (or after a potential crash) implementations should re-populate the
+/// in-memory [`RuntimeWatchState`] from any runs that were not in a terminal
+/// state when the process last exited. Implementations without durable storage
+/// may treat this as a no-op.
 pub trait RuntimeState: Debug + Send + Sync {
     /// Retrieve the [`WorkflowGraph`] specified by id.
     fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>>;
@@ -102,14 +107,6 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// List summaries of all workflow runs in the runtime state.
     fn list_workflow_run_summaries(&self)
     -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>>;
-
-    /// Restore active runs from storage.
-    ///
-    /// Must be called once on startup after a potential crash to re-populate the
-    /// in-memory [`RuntimeWatchState`] from any runs that were not in a terminal
-    /// state when the process last exited. Implementations without durable storage
-    /// may treat this as a no-op.
-    fn restore_active_runs(&self) -> BoxFuture<'_, miette::Result<()>>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.

@@ -208,7 +208,9 @@ async fn start_task(
                 .into_diagnostic()
                 .wrap_err_with(|| miette!("Could not terminate restored worker process {pid}"))?;
             if !status.success() {
-                return Err(miette!("Could not terminate restored worker process {pid}: {status}"));
+                return Err(miette!(
+                    "Could not terminate restored worker process {pid}: {status}"
+                ));
             }
         }
     }

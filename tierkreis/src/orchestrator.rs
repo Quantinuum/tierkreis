@@ -31,10 +31,7 @@ use crate::{
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
         send_workflow_run_complete,
     },
-    executor::{
-        ExecutorRegistry,
-        interface::{TaskPlan, UniqueLocState, UniqueNodeHandle},
-    },
+    executor::{ExecutorRegistry, interface::TaskPlan},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
@@ -1119,33 +1116,6 @@ impl Orchestrator {
         }
 
         Ok(())
-    }
-
-    /// Poll the current status of detached tasks from executors.
-    ///
-    /// Used to discover tasks that are currently detached from the runtime state.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the executors cannot be reached or the retrieval fails.
-    pub async fn retrieve_detached_tasks(
-        &self,
-        tasks: Vec<UniqueNodeHandle>,
-    ) -> miette::Result<Vec<UniqueLocState>> {
-        if tasks.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut restored = Vec::new();
-        for executor in self.executor_registry.values() {
-            restored.extend(
-                executor
-                    .restore(tasks.clone())
-                    .await
-                    .wrap_err_with(|| miette!("Failed to restore tasks in executor"))?,
-            );
-        }
-
-        Ok(restored)
     }
 
     /// Listen to a combined stream events from the Orchestrator and the

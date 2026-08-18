@@ -159,6 +159,17 @@ impl SqliteRuntimeState {
         let pool = build_conn_pool()
             .await
             .wrap_err("Failed to establish database connection")?;
+        let mut conn = pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let interrupted = list_active_runs(&mut conn).await?;
+        for (run_id, attempt) in interrupted {
+            sender.send_modify(|watch| {
+                watch.active_runs.insert((run_id, attempt));
+            });
+        }
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -177,6 +188,17 @@ impl SqliteRuntimeState {
         let pool = build_conn_pool_with_url(database_url)
             .await
             .wrap_err("Failed to establish database connection")?;
+        let mut conn = pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let interrupted = list_active_runs(&mut conn).await?;
+        for (run_id, attempt) in interrupted {
+            sender.send_modify(|watch| {
+                watch.active_runs.insert((run_id, attempt));
+            });
+        }
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -202,6 +224,17 @@ impl SqliteRuntimeState {
         let pool = build_conn_pool_with_url(&url)
             .await
             .wrap_err("Failed to establish in-memory database")?;
+        let mut conn = pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let interrupted = list_active_runs(&mut conn).await?;
+        for (run_id, attempt) in interrupted {
+            sender.send_modify(|watch| {
+                watch.active_runs.insert((run_id, attempt));
+            });
+        }
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -350,21 +383,6 @@ impl RuntimeState for SqliteRuntimeState {
             let _lock = self.lock.read().await;
             let mut conn = self.get_conn().await?;
             list_workflow_run_summaries(&mut conn).await
-        }
-        .boxed()
-    }
-
-    fn restore_active_runs(&self) -> BoxFuture<'_, miette::Result<()>> {
-        async move {
-            let _lock = self.lock.read().await;
-            let mut conn = self.get_conn().await?;
-            let interrupted = list_active_runs(&mut conn).await?;
-            for (run_id, attempt) in interrupted {
-                self.update_sender.send_modify(|watch| {
-                    watch.active_runs.insert((run_id, attempt));
-                });
-            }
-            Ok(())
         }
         .boxed()
     }
