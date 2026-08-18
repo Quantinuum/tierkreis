@@ -450,7 +450,6 @@ fn handle_node_event(
                     node_state.error_detail.clone_from(detail);
                 }
             }
-            crate::event::NodeStatus::Unknown => {}
         }
     }
 }

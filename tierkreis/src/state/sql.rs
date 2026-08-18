@@ -619,7 +619,6 @@ impl SqliteWorkflowRunState {
                         row.error = Some(error.clone());
                         row.error_detail.clone_from(detail);
                     }
-                    NodeStatus::Unknown => {}
                 }
 
                 Ok(row)
