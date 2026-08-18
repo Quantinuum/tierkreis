@@ -186,9 +186,6 @@ async fn start_task(
     let loc = internal_task.loc;
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
-    let outputs = internal_task.outputs;
-    let output_storage_name = internal_task.output_storage_name;
-    let background_loc = loc.clone();    
     let parent_span = internal_task.parent_span;
 
     let worker_args = internal_task.worker_args;
