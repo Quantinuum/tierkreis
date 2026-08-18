@@ -165,11 +165,7 @@ impl SqliteRuntimeState {
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
         let interrupted = list_active_runs(&mut conn).await?;
-        for (run_id, attempt) in interrupted {
-            sender.send_modify(|watch| {
-                watch.active_runs.insert((run_id, attempt));
-            });
-        }
+        sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -194,11 +190,7 @@ impl SqliteRuntimeState {
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
         let interrupted = list_active_runs(&mut conn).await?;
-        for (run_id, attempt) in interrupted {
-            sender.send_modify(|watch| {
-                watch.active_runs.insert((run_id, attempt));
-            });
-        }
+        sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -230,11 +222,7 @@ impl SqliteRuntimeState {
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
         let interrupted = list_active_runs(&mut conn).await?;
-        for (run_id, attempt) in interrupted {
-            sender.send_modify(|watch| {
-                watch.active_runs.insert((run_id, attempt));
-            });
-        }
+        sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
