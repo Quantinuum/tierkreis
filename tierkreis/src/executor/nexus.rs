@@ -24,20 +24,16 @@ use uuid::Uuid;
 use crate::{
     asset_storage::{
         AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs, save_asset_with_spec,
-    },
-    event::{
-        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
-        send_running,
-    },
-    executor::{
+    }, event::{
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error, send_queued, send_running,
+    }, executor::{
         Executor,
-        interface::{TaskPlan, WorkerSpec},
+        interface::{TaskHandle, TaskPlan, WorkerSpec},
         nexus::client::{
             NexusClient,
             models::jobs::{JobDefinition, StatusEnum},
         },
-    },
-    location::Location,
+    }, location::Location,
 };
 pub use client::NexusClientConfig;
 
@@ -219,11 +215,21 @@ async fn monitor_task(
     let workflow_run_id = internal_task.workflow_run_id;
     let attempt = internal_task.attempt;
     let job_id = internal_task.job_id;
+    let mut queued_event_sender = event_sender.clone();
+    send_queued(
+        &mut queued_event_sender,
+        workflow_run_id,
+        attempt,
+        loc.clone(),
+        Some(TaskHandle::Nexus {
+            job_id: job_id.to_string(),
+        }),
+    )
+    .await?;
 
     let task_loc = loc.clone();
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
-    let event_sender = event_sender.clone();
     let parent_span = internal_task.parent_span.clone();
 
     let client = client.clone();
@@ -507,6 +513,13 @@ impl NexusExecutor {
 
         Ok(job_data.id())
     }
+
+    /// Checks whether a job referenced is already on nexus
+    async fn is_job_active(&self, job_id: Uuid) -> miette::Result<Uuid> {
+        self.client.refresh_tokens().await?;
+        let _job = self.client.get_job(job_id).await?;
+        Ok(job_id)
+    }
 }
 
 fn extract_json_input<T: for<'b> serde::Deserialize<'b>>(
@@ -551,28 +564,43 @@ impl Executor for NexusExecutor {
                     .build_outputs(&output_storage_name, task_plan.outputs)
                     .await?;
 
-                let mut inputs =
-                    load_assets(&self.asset_storage_registry, &task_plan.inputs).await?;
+                // If we were given a handle to a previously submitted Nexus job
+                // and it's still active, reattach to it instead of resubmitting.
+                let restored_job_id = match &task_plan.task_handle {
+                    Some(TaskHandle::Nexus { job_id }) => {
+                        let job_id = Uuid::parse_str(job_id)
+                            .into_diagnostic()
+                            .wrap_err("Invalid job_id in restored task handle")?;
+                        Some(self.is_job_active(job_id).await?)
+                    }
+                    _ => None,
+                };
 
-                let project_name: String = extract_json_input(&mut inputs, "project_name")?;
-                let job_name: String = extract_json_input(&mut inputs, "job_name")?;
-                let n_shots: u64 = extract_json_input(&mut inputs, "n_shots")?;
+                let job_id = if let Some(job_id) = restored_job_id {
+                    job_id
+                } else {
+                    let mut inputs =
+                        load_assets(&self.asset_storage_registry, &task_plan.inputs).await?;
 
-                let project_data = self
-                    .client
-                    .find_or_create_project_data(&project_name, Some("trying new executor"))
-                    .await?;
+                    let project_name: String = extract_json_input(&mut inputs, "project_name")?;
+                    let job_name: String = extract_json_input(&mut inputs, "job_name")?;
+                    let n_shots: u64 = extract_json_input(&mut inputs, "n_shots")?;
 
-                let hugr_package = inputs
-                    .get("hugr_package")
-                    .ok_or_else(|| miette!("Missing input: hugr_package"))?;
-                let hugr_id = self
-                    .upload_hugr(project_data.id(), &job_name, hugr_package)
-                    .await?;
+                    let project_data = self
+                        .client
+                        .find_or_create_project_data(&project_name, Some("trying new executor"))
+                        .await?;
 
-                let job_id = self
-                    .start_single_job(project_data.id(), &job_name, hugr_id, n_shots)
-                    .await?;
+                    let hugr_package = inputs
+                        .get("hugr_package")
+                        .ok_or_else(|| miette!("Missing input: hugr_package"))?;
+                    let hugr_id = self
+                        .upload_hugr(project_data.id(), &job_name, hugr_package)
+                        .await?;
+
+                    self.start_single_job(project_data.id(), &job_name, hugr_id, n_shots)
+                        .await?
+                };
 
                 let parent_span = tracing::Span::current();
                 task_sender
@@ -851,13 +879,13 @@ mod tests {
             }])
             .await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert!(matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
+                    status: NodeStatus::Queued { .. },
                     ..
                 }),
                 ..
@@ -877,6 +905,16 @@ mod tests {
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
+        assert!(matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Complete { .. },
                     ..
                 }),
@@ -887,7 +925,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"results": [
                 [], [], [], [], [],
                 [], [], [], [], [],
@@ -981,10 +1019,20 @@ mod tests {
             }])
             .await?;
 
-        let events = stream.take(1).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 1);
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 2);
         assert!(matches!(
             events[0],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Queued { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
+        assert!(matches!(
+            events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Error { ref error, .. },
@@ -1100,6 +1148,18 @@ mod tests {
             .await?;
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
+
+        let event = stream.next().await.unwrap();
+        assert!(matches!(
+            event,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Queued { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
 
         let event = stream.next().await.unwrap();
         dbg!(&event);
