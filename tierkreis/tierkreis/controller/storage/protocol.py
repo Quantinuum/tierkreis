@@ -177,15 +177,15 @@ class ControllerStorage(ABC):
         """
 
     @property
-    def workflow_dir(self) -> Path:  # noqa: D102 documented in class
+    def workflow_dir(self) -> Path:
         return self.tkr_dir / str(self.workflow_id)
 
     @property
-    def logs_path(self) -> Path:  # noqa: D102 documented in class
+    def logs_path(self) -> Path:
         return self.workflow_dir / "logs"
 
     @property
-    def debug_path(self) -> Path:  # noqa: D102 documented in class
+    def debug_path(self) -> Path:
         return self.workflow_dir / "debug"
 
     def _breakpoint(self, node_location: Loc) -> Path:
@@ -512,7 +512,7 @@ class ControllerStorage(ABC):
             name=self.name,
             user_id=getpass.getuser(),
             tierkreis_version=version("tierkreis"),
-            start_time=datetime.now().isoformat(),
+            start_time=datetime.now(UTC).isoformat(),
             execution_count=1,
         )
         self.write(self._metadata_path(Loc("")), wf_data.model_dump_json().encode())
@@ -527,7 +527,7 @@ class ControllerStorage(ABC):
                 e.msg,
             )
             data = {}
-        data["completion_time"] = datetime.now().isoformat()
+        data["completion_time"] = datetime.now(UTC).isoformat()
         self.write(self._metadata_path(Loc()), json.dumps(data).encode())
 
     def read_started_time(self, node_location: Loc) -> str | None:

@@ -180,7 +180,7 @@ def psij_to_spec(psij_spec: psij.JobSpec) -> JobSpec:
                     user = UserSpec(mail=str(v))
                     continue
                 if len(new_key := k.split(".", 1)) == 1:
-                    logging.warning(
+                    logger.warning(
                         f"Custom attribute '{k}' does not follow expected 'scheduler.key' format. Storing as-is in extra_scheduler_args."
                     )
                     extra_args[f"--{k}"] = str(v) if v is not None else None

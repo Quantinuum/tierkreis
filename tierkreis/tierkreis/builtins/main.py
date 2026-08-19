@@ -595,7 +595,7 @@ def rand_int(a: int, b: int) -> int:
     :return: A random integer between a and b.
     :rtype: int
     """
-    return randint(a, b)  # noqa: S311
+    return randint(a, b)
 
 
 @worker.task()

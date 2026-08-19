@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from tierkreis._tierkreis import run_workflow
 
 from tests.controller.defaults_graphs import (
     defaults_not_none,
@@ -23,9 +24,10 @@ from tests.controller.sample_graphdata import (
     simple_map,
 )
 from tests.controller.typed_graphdata import (
+    embed_graph,
     eval_body_is_from_worker,
-    eval_graph_of_graph,
     eval_from_worker_with_graph_from_worker,
+    eval_graph_of_graph,
     factorial,
     gcd,
     tkr_conj,
@@ -36,7 +38,6 @@ from tests.controller.typed_graphdata import (
     typed_loop,
     typed_map,
     typed_map_simple,
-    embed_graph,
 )
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
@@ -49,7 +50,6 @@ from tierkreis.controller.storage.filestorage import ControllerFileStorage
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.models import Workflow
 from tierkreis.storage import read_outputs
-from tierkreis._tierkreis import run_workflow
 
 param_data: list[
     tuple[
@@ -185,7 +185,7 @@ storage_ids = ["FileStorage", "In-memory"]
     params,
     ids=ids,
 )
-def test_resume(  # noqa: PLR0913
+def test_resume(
     storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
     graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
@@ -216,7 +216,7 @@ def test_resume(  # noqa: PLR0913
     params,
     ids=ids,
 )
-def test_runtime(  # noqa: PLR0913
+def test_runtime(
     graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
     name: str,

@@ -1,8 +1,6 @@
+from hello_world_worker import greet
 from tierkreis.builder import Graph
 from tierkreis.controller.data.models import TKR
-
-from hello_world_worker import greet
-
 
 graph = Graph(inputs_type=TKR[str], outputs_type=TKR[str])
 hello = graph.const("Hello ")

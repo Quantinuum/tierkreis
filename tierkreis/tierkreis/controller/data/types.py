@@ -1,6 +1,5 @@
 """Valid Python types for annotating worker functions and their serialisation."""
 
-# ruff: noqa: ANN001 ANN003 ANN401 due to serialization and inheritance from json
 import json
 import logging
 import pickle
@@ -43,6 +42,8 @@ from tierkreis.exceptions import TierkreisError
 if TYPE_CHECKING:
     from tierkreis.controller.data.graph import GraphData
     from tierkreis.controller.data.models import TModel
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -120,7 +121,6 @@ type ElementaryType = (
     | Package
 )
 type JsonType = Container[ElementaryType]
-logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -128,7 +128,7 @@ class Struct(RestrictedNamedTuple[JsonType], Protocol):
     """Supertype for structs, which are named tuples with JSON-serialisable fields."""
 
 
-_StructPType = JsonType | Struct
+type _StructPType = JsonType | Struct
 PType = Container[_StructPType]
 """A restricted subset of Python types that can be used to annotate
 worker functions for automatic codegen of graph builder stubs."""
@@ -450,10 +450,12 @@ def get_serialization_format[T: PType](
         return sr.serialization_method
 
     unannotated = get_args(hint)[0] if get_origin(hint) is Annotated else hint
-    if isclass(unannotated) and issubclass(unannotated, (bytes, NdarraySurrogate)):
-        return "bytes"
-
-    elif isclass(unannotated) and issubclass(unannotated, Package):
+    if (
+        isclass(unannotated)
+        and issubclass(unannotated, (bytes, NdarraySurrogate))
+        or isclass(unannotated)
+        and issubclass(unannotated, Package)
+    ):
         return "bytes"
 
     return "json"

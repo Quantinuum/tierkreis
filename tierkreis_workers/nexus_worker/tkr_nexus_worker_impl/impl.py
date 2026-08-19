@@ -1,23 +1,23 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import qnexus as qnx
-from qnexus.models.job_status import JobStatusEnum
 from hugr.package import Package
 from hugr.qsystem.result import QsysResult
 from pytket._tket.circuit import Circuit
 from pytket.backends.backendresult import BackendResult
 from qnexus import BackendConfig
 from qnexus.exceptions import ResourceFetchFailed
+from qnexus.models.job_status import JobStatusEnum
 from qnexus.models.references import (
     ExecuteJobRef,
     ExecutionProgram,
     ExecutionResultRef,
     HUGRRef,
 )
+from tierkreis.exceptions import TierkreisError
 
 from tierkreis import Worker
-from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)
 worker = Worker("nexus_worker")
@@ -35,7 +35,7 @@ def upload_circuit(project_name: str, circ: Circuit) -> ExecutionProgram:
     :rtype: ExecutionProgram
     """
     my_project_ref = qnx.projects.get_or_create(name=project_name)
-    circuit_name = circ.name or f"circuit_{datetime.now()}"
+    circuit_name = circ.name or f"circuit_{datetime.now(UTC)}"
     qnx.context.set_active_project(my_project_ref)
     return qnx.circuits.upload(name=circuit_name, circuit=circ, project=my_project_ref)
 
@@ -161,7 +161,7 @@ def upload_hugr(
     :rtype: HUGRRef
     """
     if name is None:
-        name = f"tkr HUGR Package from {datetime.now()}"
+        name = f"tkr HUGR Package from {datetime.now(UTC)}"
     my_project_ref = qnx.projects.get_or_create(name=project_name)
     qnx.context.set_active_project(my_project_ref)
     return qnx.hugr.upload(hugr_package, name=name)

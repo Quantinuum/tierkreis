@@ -12,6 +12,7 @@ from pytket_worker import backend_result_to_dict
 
 from tierkreis.builder import Graph
 from tierkreis.builtins.stubs import append, gt, tkr_range
+from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import Workflow
 from tierkreis.graphs.nexus.submit_poll_hugr import (
@@ -19,7 +20,6 @@ from tierkreis.graphs.nexus.submit_poll_hugr import (
     nexus_submit_and_poll_hugr,
 )
 from tierkreis.storage import read_outputs
-from tierkreis.cli.run_workflow import run_workflow
 
 
 @guppy

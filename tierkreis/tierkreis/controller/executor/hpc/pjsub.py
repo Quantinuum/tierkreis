@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 _COMMAND_PREFIX = "#PJM"
 
 
-def generate_pjsub_script(spec: JobSpec) -> str:  # noqa: C901 complexity to cover options
+def generate_pjsub_script(spec: JobSpec) -> str:
     """Generate a job submission script according to PJSUB.
 
     This uses the "PJM"/pjsub syntax and represents a mapping from JobSpec

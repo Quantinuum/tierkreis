@@ -1,11 +1,11 @@
 import os
-from datetime import datetime
-from uuid import UUID
+from datetime import UTC, datetime
 from importlib.metadata import version
+from uuid import UUID
 
 from pydantic import BaseModel
-
 from tierkreis.controller.data.location import Loc
+
 from tierkreis_visualization.app_config import StorageType
 from tierkreis_visualization.config import CONFIG
 from tierkreis_visualization.storage import file_storage_fn
@@ -27,7 +27,7 @@ def get_workflows(storage_type: StorageType) -> list[WorkflowDisplay]:
                 id=UUID(int=0),
                 id_int=0,
                 name="tmp",
-                start_time=datetime.now().isoformat(),
+                start_time=datetime.now(UTC).isoformat(),
                 errors=[],
                 tkr_version=version("tierkreis"),
             ),
@@ -45,7 +45,7 @@ def get_workflows_from_disk() -> list[WorkflowDisplay]:
             storage = file_storage_fn(CONFIG.tierkreis_path)(id)
             metadata = storage.read_metadata(Loc(""))
             name = metadata["name"] or "workflow"
-            start = metadata.get("start_time", datetime.now().isoformat())
+            start = metadata.get("start_time", datetime.now(UTC).isoformat())
             errors = [x for x in storage.read_errors(Loc()).split("\n") if x]
             errors = list(set(errors))
             workflows.append(

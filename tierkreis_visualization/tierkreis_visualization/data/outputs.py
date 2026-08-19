@@ -3,6 +3,7 @@ import array
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+
 from tierkreis_visualization.data.models import NodeInputs
 
 

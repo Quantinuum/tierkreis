@@ -1,6 +1,7 @@
 """Implementation to access node storage data."""
 
 from typing import get_args, get_origin
+
 from typing_extensions import is_protocol
 
 from tierkreis.controller.data.graph import GraphData

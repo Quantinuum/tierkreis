@@ -1,8 +1,8 @@
 """Default file storage implementation."""
 
+import logging
 import os
 import shutil
-import logging
 from pathlib import Path
 from time import time_ns
 from typing import override
@@ -13,6 +13,8 @@ from tierkreis.controller.storage.protocol import (
     ControllerStorage,
     StorageEntryMetadata,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DIRECTORY = Path.home() / ".tierkreis" / "checkpoints"
 
@@ -47,7 +49,7 @@ class ControllerFileStorage(ControllerStorage):
             try:
                 shutil.move(path, tmp_dir)
             except OSError as e:
-                logging.warning(
+                logger.warning(
                     "Failed to move %s to %s for deletion: %s", path, tmp_dir, e
                 )
                 shutil.rmtree(path, ignore_errors=True)

@@ -23,7 +23,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
 from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis.controller.storage.walk_result import WalkResult, NodeRunData
+from tierkreis.controller.storage.walk_result import NodeRunData, WalkResult
 from tierkreis.labels import Labels
 
 logger = getLogger(__name__)

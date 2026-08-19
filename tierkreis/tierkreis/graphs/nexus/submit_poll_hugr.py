@@ -4,8 +4,8 @@
 from typing import NamedTuple
 
 from tierkreis.builder import Graph
-from tierkreis.builtins import tkr_sleep, at
-from tierkreis.models import OpaqueType, TKR, Workflow
+from tierkreis.builtins import at, tkr_sleep
+from tierkreis.models import TKR, OpaqueType, Workflow
 from tierkreis.nexus_worker import (
     get_results,
     is_running,
@@ -13,8 +13,7 @@ from tierkreis.nexus_worker import (
     upload_hugr,
 )
 
-
-type Package = OpaqueType["hugr.package.Package"]  # noqa: SLF001
+type Package = OpaqueType["hugr.package.Package"]
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]
 type ExecuteJobRef = OpaqueType["qnexus.models.references.ExecuteJobRef"]
 

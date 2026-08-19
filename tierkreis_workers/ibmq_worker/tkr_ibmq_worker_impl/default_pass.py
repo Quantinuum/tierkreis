@@ -70,9 +70,9 @@ def default_compilation_pass(
     elif optimization_level == 1:
         passlist.append(SynthesiseTket())
         passlist.append(AutoSquash(primitive_1q_gates))
-    elif optimization_level == 2:  # noqa: PLR2004
+    elif optimization_level == 2:
         passlist.append(FullPeepholeOptimise())
-    elif optimization_level == 3:  # noqa: PLR2004
+    elif optimization_level == 3:
         passlist.append(RemoveBarriers())
         passlist.append(
             AutoRebase(
@@ -118,7 +118,7 @@ def default_compilation_pass(
         )
     if optimization_level == 1:
         passlist.append(SynthesiseTket())
-    if optimization_level == 2:  # noqa: PLR2004
+    if optimization_level == 2:
         passlist.extend(
             [
                 KAKDecomposition(allow_swaps=False),
@@ -126,7 +126,7 @@ def default_compilation_pass(
                 SynthesiseTket(),
             ],
         )
-    if optimization_level == 3:  # noqa: PLR2004
+    if optimization_level == 3:
         passlist.append(SynthesiseTket())
     passlist.extend(
         [

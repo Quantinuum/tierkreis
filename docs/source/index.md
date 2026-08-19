@@ -11,17 +11,16 @@ Tierkreis combines task-based workers with context dependent execution on variou
 
 Tierkreis allows users to define hybrid workflows as computational graphs
 ```python
-
 class InParams(NamedTuple):
     a: TKR[float]
     b: TKR[float]
     c: TKR[float]
 
+
 g = Graph(InParams, TKR[float])
 x = g.task(add(g.inputs.a, g.inputs.b))
 y = g.task(add(x, g.inputs.c))
 workflow = g.finish_with_outputs(y)
-
 ```
 and run them on different execution platforms
 
