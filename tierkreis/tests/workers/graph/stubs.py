@@ -2,6 +2,7 @@
 
 # ruff: noqa: F821
 from typing import NamedTuple
+
 from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import Workflow
 

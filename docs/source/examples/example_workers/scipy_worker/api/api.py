@@ -2,6 +2,7 @@
 
 # ruff: noqa: F821
 from typing import NamedTuple, Protocol
+
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import Struct
 
