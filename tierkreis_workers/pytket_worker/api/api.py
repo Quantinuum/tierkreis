@@ -1,26 +1,24 @@
 """Code generated from pytket_worker namespace. Please do not edit."""
 
 # ruff: noqa: F821
-from typing import NamedTuple, Union
+from typing import NamedTuple
 from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
 
 
 class get_backend_info(NamedTuple):
     config: TKR[
-        Union[
-            OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"],
-        ]
+        OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"]
     ]
 
     @staticmethod
@@ -36,8 +34,8 @@ class device_name_from_info(NamedTuple):
     backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]
 
     @staticmethod
-    def out() -> type[TKR[Union[str, NoneType]]]:
-        return TKR[Union[str, NoneType]]
+    def out() -> type[TKR[str | NoneType]]:
+        return TKR[str | NoneType]
 
     @property
     def namespace(self) -> str:
@@ -48,19 +46,17 @@ class compile_using_info(NamedTuple):
     circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]
     backend_info: TKR[OpaqueType["pytket.backends.backendinfo.BackendInfo"]]
     config: TKR[
-        Union[
-            OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"],
-            OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"],
-        ]
+        OpaqueType["quantinuum_schemas.models.backend_config.AerConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.AerStateConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.AerUnitaryConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.BraketConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.QuantinuumConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.IBMQConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.IBMQEmulatorConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.QulacsConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.SeleneConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.SelenePlusConfig"]
+        | OpaqueType["quantinuum_schemas.models.backend_config.HeliosConfig"]
     ]
     optimisation_level: TKR[int] | None = None
     timeout: TKR[int] | None = None
@@ -125,21 +121,19 @@ class apply_pass(NamedTuple):
 
 
 class compile_generic_with_fixed_pass(NamedTuple):
-    circuit: TKR[Union[OpaqueType["pytket._tket.circuit.Circuit"], str, bytes]]
+    circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"] | str | bytes]
     input_format: TKR[str] | None = None
     optimisation_level: TKR[int] | None = None
-    gate_set: TKR[Union[list[str], NoneType]] | None = None
-    coupling_map: TKR[Union[list[tuple[int, int]], NoneType]] | None = None
+    gate_set: TKR[list[str] | NoneType] | None = None
+    coupling_map: TKR[list[tuple[int, int]] | NoneType] | None = None
     output_format: TKR[str] | None = None
     optimisation_pass: (
-        TKR[Union[OpaqueType["pytket._tket.passes.BasePass"], NoneType]] | None
+        TKR[OpaqueType["pytket._tket.passes.BasePass"] | NoneType] | None
     ) = None
 
     @staticmethod
-    def out() -> type[
-        TKR[Union[OpaqueType["pytket._tket.circuit.Circuit"], str, bytes]]
-    ]:
-        return TKR[Union[OpaqueType["pytket._tket.circuit.Circuit"], str, bytes]]
+    def out() -> type[TKR[OpaqueType["pytket._tket.circuit.Circuit"] | str | bytes]]:
+        return TKR[OpaqueType["pytket._tket.circuit.Circuit"] | str | bytes]
 
     @property
     def namespace(self) -> str:
