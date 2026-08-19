@@ -13,7 +13,7 @@ use miette::{Context, IntoDiagnostic, miette};
 use reqwest::{Client, ClientBuilder, cookie::Jar};
 use reqwest_websocket::{Bytes, Message, Upgrade};
 use serde::Deserialize;
-use tokio::{fs::File, io::AsyncReadExt, task::JoinHandle};
+use tokio::{fs::File, io::AsyncReadExt, task::JoinHandle, time::Instant};
 use tracing::warn;
 use url::Url;
 use uuid::Uuid;
@@ -64,7 +64,8 @@ impl JobStatusStream {
         let (mut sink, stream) = websocket.split();
         let (close_sender, mut close_receiver) = mpsc::channel(1);
         let join_handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(55));
+            let start = Instant::now() + Duration::from_secs(30);
+            let mut interval = tokio::time::interval_at(start, Duration::from_secs(55));
             loop {
                 tokio::select! {
                     _ = close_receiver.recv() => {
@@ -114,7 +115,7 @@ impl Stream for JobStatusStream {
                 Poll::Ready(None)
             }
             Poll::Ready(Some(Err(err))) => {
-                Poll::Ready(Some(Err(miette!("Websocket error: {err}"))))
+                Poll::Ready(Some(Err(miette!("Websocket error: {err:?}"))))
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
