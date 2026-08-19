@@ -492,7 +492,7 @@ fn process_identity(pid: u32) -> miette::Result<(u32, u64)> {
             .parse()
             .into_diagnostic()
             .wrap_err("Invalid subprocess start time")?;
-        return Ok((pid, start_time));
+        Ok((pid, start_time))
     }
 
     #[cfg(not(target_os = "linux"))]

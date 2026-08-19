@@ -213,16 +213,18 @@ fn init(config: &LoggingConfig, with_telemetry: bool) {
                     .with(fmt_layer)
                     .with(tracing)
                     .with(metrics);
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("Setting default subscriber failed");
+                if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
+                    tracing::error!("Setting default subscriber failed: {:?}", err);
+                }
             });
             return;
         }
 
         with_format_layer!(&config.log_format, writer, |fmt_layer| {
             let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
-            tracing::subscriber::set_global_default(subscriber)
-                .expect("Setting default subscriber failed");
+            if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
+                tracing::error!("Setting default subscriber failed: {:?}", err);
+            }
         });
     });
 }
