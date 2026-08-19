@@ -1,7 +1,7 @@
 """Code generated from scipy_worker namespace. Please do not edit."""
 
 # ruff: noqa: F821
-from typing import NamedTuple, Protocol, Union
+from typing import NamedTuple, Protocol
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import Struct
 
@@ -64,7 +64,7 @@ class transpose(NamedTuple):
 
 class reshape(NamedTuple):
     a: TKR[OpaqueType["numpy.ndarray"]]
-    shape: TKR[Union[int, list[int]]]
+    shape: TKR[int | list[int]]
 
     @staticmethod
     def out() -> type[TKR[OpaqueType["numpy.ndarray"]]]:

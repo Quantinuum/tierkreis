@@ -1,7 +1,7 @@
 """Code generated from aer_worker namespace. Please do not edit."""
 
 # ruff: noqa: F821
-from typing import NamedTuple, Union
+from typing import NamedTuple
 from types import NoneType
 from tierkreis.controller.data.models import TKR, OpaqueType
 
@@ -27,7 +27,7 @@ class run_circuit(NamedTuple):
     n_shots: TKR[int]
     simulation_method: TKR[str] | None = None
     n_qubits: TKR[int] | None = None
-    seed: TKR[Union[int, NoneType]] | None = None
+    seed: TKR[int | NoneType] | None = None
 
     @staticmethod
     def out() -> type[TKR[OpaqueType["pytket.backends.backendresult.BackendResult"]]]:
@@ -43,7 +43,7 @@ class run_circuits(NamedTuple):
     n_shots: TKR[list[int]]
     simulation_method: TKR[str] | None = None
     n_qubits: TKR[int] | None = None
-    seed: TKR[Union[int, NoneType]] | None = None
+    seed: TKR[int | NoneType] | None = None
 
     @staticmethod
     def out() -> type[

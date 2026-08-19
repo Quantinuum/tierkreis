@@ -36,8 +36,6 @@ def format_ptype(
         (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Package),
     ):
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
-    if _is_union(ptype):
-        return "Union"
     if ptype is NoneType or ptype is None:
         return "NoneType"
     if has_serialization:
@@ -67,6 +65,14 @@ def format_generic_type(
     bound_str = ": PType" if include_bound else ""
     if isinstance(generictype, str):
         out = generictype + bound_str
+        return f"TKR[{out}]" if is_tkr else out
+
+    if _is_union(generictype.origin):
+        variants = [
+            format_generic_type(x, include_bound=include_bound, is_tkr=False)
+            for x in generictype.args
+        ]
+        out = " | ".join(variants)
         return f"TKR[{out}]" if is_tkr else out
 
     origin_str = format_ptype(

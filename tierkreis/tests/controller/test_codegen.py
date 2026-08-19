@@ -14,11 +14,11 @@ formats: list[tuple[type[PType], str]] = [
     (bytes, "bytes"),
     (NoneType, "NoneType"),
     (list[str], "list[str]"),
-    (list[str | list[str | int]], "list[Union[str, list[Union[str, int]]]]"),
+    (list[str | list[str | int]], "list[str | list[str | int]]"),
     (tuple[str], "tuple[str]"),
     (
         tuple[str | list[str | int], NoneType],
-        "tuple[Union[str, list[Union[str, int]]], NoneType]",
+        "tuple[str | list[str | int], NoneType]",
     ),
 ]
 
