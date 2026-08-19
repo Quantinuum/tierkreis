@@ -42,11 +42,6 @@ target-version = "py312"
 extend-exclude = []
 format.preview = true
 
-[tool.pyright]
-include = ["."]
-exclude = []
-ignore = []
-
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
 

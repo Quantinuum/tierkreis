@@ -9,7 +9,6 @@ from typing import (
     Protocol,
     Union,
     cast,
-    dataclass_transform,
     get_args,
     get_origin,
     overload,
@@ -37,7 +36,6 @@ class PNamedModel(RestrictedNamedTuple[PType], Protocol):
     """
 
 
-@dataclass_transform()
 def portmapping[T: PNamedModel](cls: type[T]) -> type[T]:
     setattr(cls, TKR_PORTMAPPING_FLAG, True)
     return cls

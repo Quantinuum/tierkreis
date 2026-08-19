@@ -52,7 +52,7 @@ three = g.task(iadd(g.const(1), g.const(2)))
 ```
 
 In this example we import the type stubs provided by the Tierkreis library for the built-in functions.
-This allows us to use the [pyright](https://github.com/microsoft/pyright) static analysis tool to check that the input and outputs types of the tasks are what we expect them to be.
+This allows us to use the [ty](https://docs.astral.sh/ty/) static analysis tool to check that the input and output types of the tasks are what we expect them to be.
 
 To finish, we convert the graph into a runnable `Workflow` by specifying the outputs:
 

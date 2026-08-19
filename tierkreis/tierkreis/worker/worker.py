@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 from inspect import Signature, signature
 from pathlib import Path
-from typing import NoReturn, TypeVar
+from typing import NoReturn, Protocol, TypeVar
 
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.location import WorkerCallArgs
@@ -27,7 +27,16 @@ from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
 
 logger = logging.getLogger()
-PrimitiveTask = Callable[[WorkerCallArgs, WorkerStorage], None]
+
+
+class PrimitiveTask(Protocol):
+    """Primitive worker task with the metadata used for registration."""
+
+    __name__: str
+
+    def __call__(self, args: WorkerCallArgs, storage: WorkerStorage) -> None: ...
+
+
 type MethodName = str
 
 
@@ -35,7 +44,7 @@ class TierkreisWorkerError(TierkreisError):
     """Exception raised when a worker encounters an error."""
 
 
-F = TypeVar("F", bound=Callable[..., PModel])
+F = TypeVar("F", bound=WorkerFunction)
 
 
 class Worker:

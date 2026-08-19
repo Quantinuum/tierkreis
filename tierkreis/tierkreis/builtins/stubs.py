@@ -1,5 +1,6 @@
 """Code generated from builtins namespace. Please do not edit."""
 
+# ruff: noqa: F821
 from collections.abc import Sequence
 from typing import NamedTuple
 

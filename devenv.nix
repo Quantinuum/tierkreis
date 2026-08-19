@@ -23,7 +23,11 @@ in
     ++ lib.optionals pkgs.stdenv.isDarwin darwinRuntimeLibraries;
 
     git-hooks.hooks = {
-      pyright.enable = true;
+      ty = {
+        enable = true;
+        entry = "uv run --all-extras ty check";
+        pass_filenames = false;
+      };
       ruff.enable = true;
       ruff-format.enable = true;
       git-hooks.package = pkgs.prek;

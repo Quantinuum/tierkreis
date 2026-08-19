@@ -30,7 +30,7 @@ class State(starlette.datastructures.State):
 class App(FastAPI):
     """FastAPI App with custom state."""
 
-    state: State  # pyright: ignore[reportIncompatibleVariableOverride]
+    state: State
 
 
 class Request(fastapi.Request):

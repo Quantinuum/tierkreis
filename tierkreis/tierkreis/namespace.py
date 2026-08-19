@@ -2,12 +2,11 @@
 
 import shutil
 import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from inspect import Signature, signature
 from logging import getLogger
 from pathlib import Path
-from typing import Self
+from typing import Any, Protocol, Self, TypeVar
 
 from tierkreis.codegen import format_method, format_model
 from tierkreis.controller.data.models import PModel, is_portmapping
@@ -17,7 +16,15 @@ from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
 from tierkreis.idl.spec import spec
 
 logger = getLogger(__name__)
-WorkerFunction = Callable[..., PModel]
+
+
+class WorkerFunction(Protocol):
+    """Callable worker task with the metadata used for code generation."""
+
+    __name__: str
+    __type_params__: tuple[TypeVar, ...]
+
+    def __call__(self, *args: Any, **kwargs: Any) -> PModel: ...
 
 
 @dataclass
