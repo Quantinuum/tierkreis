@@ -24,13 +24,14 @@ lint:
   cargo clippy --all-features --all-targets -- -D warnings
   {{uvrun}} ruff format --check
   {{uvrun}} ruff check
-  {{uvrun}} pyright .
+  {{uvrun}} ty check
 
 fix:
   cargo fmt
   cargo clippy --all-features --all-targets --fix
   {{uvrun}} ruff format
   {{uvrun}} ruff check --fix
+  {{uvrun}} ty check --fix
 
 docs:
   just docs/build

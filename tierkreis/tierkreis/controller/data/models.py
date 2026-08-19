@@ -64,7 +64,7 @@ class TNamedModel(RestrictedNamedTuple[TKR[PType] | None], Protocol):
     """
 
 
-TModel = TNamedModel | TKR
+TModel = TNamedModel | TKR[PType]
 
 
 @overload
@@ -120,10 +120,12 @@ def dict_from_tmodel(tmodel: TModel) -> dict[PortID, ValueRef]:
 
 def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
     if is_portmapping(model):
-        return model._fields
+        # TypeIs assertion doesn't seem to be working here.
+        return model._fields  # type: ignore
 
     if is_tnamedmodel(model):
-        return model._fields
+        # TypeIs assertion doesn't seem to be working here.
+        return model._fields  # type: ignore
 
     return ["value"]
 

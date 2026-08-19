@@ -71,7 +71,7 @@ def state_prep(
     n_core_init = get_n_core(mo_occ, cas_init.n_ele)
     n_core_hsim = get_n_core(mo_occ, cas_hsim.n_ele)
     n_core = n_core_init - n_core_hsim
-    logging.info(
+    logger.info(
         f"mo_occ={mo_occ} n_cas_hsim={cas_hsim.n} n_elecas_hsim={cas_hsim.n_ele}",
     )
     n_active_hsim = get_n_active(mo_occ, cas_hsim.n, cas_hsim.n_ele)

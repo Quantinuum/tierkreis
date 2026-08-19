@@ -3,7 +3,7 @@ import secrets
 from time import time
 from typing import TYPE_CHECKING, NamedTuple, cast
 
-import pyscrypt  # type: ignore
+import pyscrypt
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -38,7 +38,7 @@ class SigningResult(NamedTuple):
 def encrypt(plaintext: str, work_factor: int) -> EncryptionResult:
     start_time = time()
     salt = secrets.token_bytes(32)
-    ciphertext = pyscrypt.hash(  # type:ignore
+    ciphertext = pyscrypt.hash(
         password=plaintext.encode(),
         salt=salt,
         N=work_factor,

@@ -11,7 +11,7 @@ from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.graphdata import GraphDataStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
-from watchfiles import awatch  # type: ignore
+from watchfiles import awatch
 
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location

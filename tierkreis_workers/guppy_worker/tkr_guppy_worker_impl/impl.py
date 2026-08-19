@@ -179,7 +179,7 @@ def normalize(package: Package) -> Package:
     :return: The normalized Hugr package.
     :rtype: Package
     """
-    normalize_pass = NormalizeGuppy()  # type: ignore
+    normalize_pass = NormalizeGuppy()
     return normalize_pass(package.modules[0]).to_package()
 
 
@@ -194,7 +194,7 @@ def apply_pytket_pass(package: Package, pytket_pass: BasePass) -> Package:
     :return: The Hugr package after applying the pass.
     :rtype: Package
     """
-    pass_ = PytketHugrPass(pytket_pass)  # type: ignore
+    pass_ = PytketHugrPass(pytket_pass)
     result = pass_(package.modules[0])
     return result.to_package()
 
@@ -208,7 +208,7 @@ def remove_redundancies(package: Package) -> Package:
     :return: The optimized Hugr package.
     :rtype: Package
     """
-    pass_ = PytketHugrPass(RemoveRedundancies())  # type: ignore
+    pass_ = PytketHugrPass(RemoveRedundancies())
     result = pass_(package.modules[0])
     return result.to_package()
 
@@ -222,7 +222,7 @@ def squash_rz_phased_x(package: Package) -> Package:
     :return: The optimized Hugr package.
     :rtype: Package
     """
-    pass_ = PytketHugrPass(SquashRzPhasedX())  # type: ignore
+    pass_ = PytketHugrPass(SquashRzPhasedX())
     result = pass_(package.modules[0])
     return result.to_package()
 

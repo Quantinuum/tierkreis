@@ -76,7 +76,7 @@ def guppy_nexus_graph() -> Workflow[MyInputs, TKR[dict[str, list[str]]]]:
     out = graph.ifelse(pred, if_true, if_false)
 
     final = graph.task(backend_result_to_dict(out))
-    return graph.finish_with_outputs(final)  # type: ignore
+    return graph.finish_with_outputs(final)
 
 
 @pytest.mark.skip("Needs nexus credentials")

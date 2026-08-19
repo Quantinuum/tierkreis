@@ -18,7 +18,7 @@ def graph() -> GraphData:
 
 def test_run_workflow(graph: GraphData) -> None:
     inputs = {}
-    run_workflow(inputs=inputs, workflow=graph, run_id=31415)  # type:ignore
+    run_workflow(inputs=inputs, workflow=graph, run_id=31415)
     with Path.open(
         Path.home()
         / ".tierkreis"

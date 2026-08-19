@@ -105,6 +105,7 @@ class GenericType:
         """
         if not hasattr(value, "origin"):
             return False
+        # Already asserted that value has origin above.
         return self.origin == value.origin
 
 

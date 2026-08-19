@@ -128,7 +128,7 @@ class Struct(RestrictedNamedTuple[JsonType], Protocol):
 
 
 _StructPType = JsonType | Struct
-PType = Container[_StructPType]
+type PType = Container[_StructPType]
 """A restricted subset of Python types that can be used to annotate
 worker functions for automatic codegen of graph builder stubs."""
 
