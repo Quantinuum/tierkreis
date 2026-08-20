@@ -9,5 +9,5 @@ worker = Worker("error_worker")
 @worker.task()
 def fail() -> str:
     msg = "I refuse!"
-    raise Exception(msg)
+    raise ValueError(msg)
     return "I failed to refuse"

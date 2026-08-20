@@ -10,6 +10,7 @@ from tierkreis.controller.data.types import ptype_from_bytes
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+
 from tierkreis_visualization.data.models import NodeInputs, NodeStatus, PyEdge, PyNode
 from tierkreis_visualization.data.outputs import outputs_from_loc, task_inputs
 from tierkreis_visualization.routers.models import PyGraph

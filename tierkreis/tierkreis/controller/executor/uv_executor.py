@@ -1,6 +1,5 @@
 """Default python executor based on uv."""
 
-# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import logging
 import os
 import shutil

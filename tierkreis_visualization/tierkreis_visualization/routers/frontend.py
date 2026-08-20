@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
 from tierkreis_visualization.routers.models import RuntimeMetadata
 
 PACKAGE_DIR = Path(__file__).parent.parent.absolute()

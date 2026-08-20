@@ -11,7 +11,7 @@ from tierkreis.aer_worker import (
 )
 from tierkreis.builder import Graph
 from tierkreis.builtins import str_eq, tkr_zip, untuple
-from tierkreis.models import OpaqueType, TKR, Workflow
+from tierkreis.models import TKR, OpaqueType, Workflow
 from tierkreis.qulacs_worker import (
     get_compiled_circuit as qulacs_compile,
 )
@@ -20,7 +20,7 @@ from tierkreis.qulacs_worker import (
 )
 
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]
-type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]  # noqa: SLF001
+type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]
 
 
 class SimulateJobInputs(NamedTuple):

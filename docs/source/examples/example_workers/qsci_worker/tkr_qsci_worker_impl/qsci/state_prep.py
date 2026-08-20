@@ -32,7 +32,7 @@ def make_pool(qubit_number: int) -> list[QubitPauliOperator]:
         }
         pool.append(QubitPauliOperator(terms))
     # Second order:
-    for i, j, k, l in itertools.combinations(range(qubit_number), 4):  # noqa: E741
+    for i, j, k, l in itertools.combinations(range(qubit_number), 4):
         terms1 = {}
         terms2 = {}
         terms3 = {}

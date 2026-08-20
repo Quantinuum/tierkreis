@@ -151,7 +151,7 @@ def resume_graph(
                 logger.error("Node: '%s' encountered an error.", error_loc)
                 logger.error(
                     "Stderr information is available at %s",
-                    storage._worker_logs_path(error_loc),  # noqa: SLF001
+                    storage._worker_logs_path(error_loc),
                 )
 
             logger.error("--- Tierkreis graph errors above this line. ---")

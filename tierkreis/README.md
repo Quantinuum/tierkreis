@@ -43,16 +43,14 @@ The following example shows how to multiple a user input with a constant value.
 
 ```python
 def times_5() -> GraphData:
-    """A graph that calculates input*5 """
+    """A graph that calculates input*5"""
     g = GraphData()
     # declare the constant value 5 with the output port "value"
     const = g.const(5)
     # declare the Input node that reads from a port "value" and maps to a port "value"
     user_input = g.input("value")
     # use a built in functionality that takes two inputs "a" and "b" and maps to a port "value"
-    output = g.func(
-        "builtins.itimes", {"a": const, "b": user_input}
-    )("value")
+    output = g.func("builtins.itimes", {"a": const, "b": user_input})("value")
     # the final output of the graph is put out at a port "value"
     g.add({"value": output})
     return g
@@ -109,10 +107,8 @@ graph = times_5()
 # Define a file based controller
 storage = ControllerFileStorage(UUID(int=id), name=name, do_cleanup=True)
 # Define an executor running binaries from the shell
-executor = ShellExecutor(
-    Path("./examples/launchers"), logs_path=storage.logs_path
-)
-inputs = {Labels.VALUE: json.dumps(3).encode()},
+executor = ShellExecutor(Path("./examples/launchers"), logs_path=storage.logs_path)
+inputs = ({Labels.VALUE: json.dumps(3).encode()},)
 run_graph(storage, executor, g, inputs)
 
 output_ports = g.nodes[g.output_idx()].inputs.keys()
@@ -169,17 +165,20 @@ from tierkreis import Worker, Value
 logger = logging.getLogger(__name__)
 worker = Worker("hello_world_worker")
 
+
 # Workers can expose multiple functions returning a Value object
 @worker.function()
 def greet(greeting: str, subject: str) -> Value[str]:
     logger.info("%s %s", greeting, subject)
     return Value(value=greeting + subject)
 
+
 # The worker will be invoked from the executor with the node definition path as the only argument
 def main() -> None:
     node_definition_path = argv[1]
     logger.info(node_definition_path)
     worker.run(Path(node_definition_path))
+
 
 if __name__ == "__main__":
     logger.info("starting worker")
@@ -189,13 +188,13 @@ if __name__ == "__main__":
 In a graph such a worker would be invoked by calling
 
 ```python
-    g = GraphData()
-    hello = g.const("hello ")
-    subject = g.add("world!")
-    output = g.func(
-        "hello_world_worker.greet", {"greeting": hello, "subject": subject}
-    )("value")
-    g.output({"value": output})
+g = GraphData()
+hello = g.const("hello ")
+subject = g.add("world!")
+output = g.func("hello_world_worker.greet", {"greeting": hello, "subject": subject})(
+    "value"
+)
+g.output({"value": output})
 ```
 
 [docs-home]: https://quantinuum.github.io/tierkreis/

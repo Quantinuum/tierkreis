@@ -9,9 +9,10 @@ from qnexus.models import IssuerEnum
 from qnexus.models.references import ExecutionResultRef
 from tierkreis.exceptions import TierkreisError
 
+from tierkreis import Worker
+
 from .default_pass_quantinuum import default_compilation_pass
 from .mock_pyqir import QuantinuumBackend
-from tierkreis import Worker
 
 worker = Worker("quantinuum_worker")
 

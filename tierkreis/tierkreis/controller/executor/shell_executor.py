@@ -1,6 +1,5 @@
 """Default executor for arbitrary scripts."""
 
-# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 import json
 import os
 import subprocess

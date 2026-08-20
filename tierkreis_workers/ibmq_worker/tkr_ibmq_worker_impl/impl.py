@@ -8,8 +8,9 @@ from pytket.extensions.qiskit.backends.ibm import IBMQBackend
 from pytket.passes import BasePass
 from tierkreis.exceptions import TierkreisError
 
-from .default_pass import IBMQ_GATE_SET, default_compilation_pass
 from tierkreis import Worker
+
+from .default_pass import IBMQ_GATE_SET, default_compilation_pass
 
 worker = Worker("ibmq_worker")
 

@@ -1,6 +1,5 @@
 import signal
 
-
 from tierkreis.controller.data.graph import GraphData
 
 from tierkreis_visualization.app_config import (

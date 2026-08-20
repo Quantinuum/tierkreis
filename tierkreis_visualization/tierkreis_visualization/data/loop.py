@@ -1,7 +1,7 @@
 from pydantic import BaseModel
-
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
+
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyEdge, PyNode
 from tierkreis_visualization.data.outputs import outputs_from_loc

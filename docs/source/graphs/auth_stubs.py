@@ -1,26 +1,27 @@
 """Code generated from auth_worker namespace. Please do not edit."""
 
 from typing import NamedTuple
+
 from tierkreis.controller.data.models import TKR
 
 
 class EncryptionResult(NamedTuple):
-    ciphertext: TKR[str]  # noqa: F821 # fmt: skip
-    time_taken: TKR[float]  # noqa: F821 # fmt: skip
+    ciphertext: TKR[str]  # fmt: skip
+    time_taken: TKR[float]  # fmt: skip
 
 
 class SigningResult(NamedTuple):
-    hex_signature: TKR[str]  # noqa: F821 # fmt: skip
-    time_taken: TKR[float]  # noqa: F821 # fmt: skip
+    hex_signature: TKR[str]  # fmt: skip
+    time_taken: TKR[float]  # fmt: skip
 
 
 class encrypt(NamedTuple):
-    plaintext: TKR[str]  # noqa: F821 # fmt: skip
-    work_factor: TKR[int]  # noqa: F821 # fmt: skip
+    plaintext: TKR[str]  # fmt: skip
+    work_factor: TKR[int]  # fmt: skip
 
     @staticmethod
-    def out() -> type[EncryptionResult]:  # noqa: F821 # fmt: skip
-        return EncryptionResult  # noqa: F821 # fmt: skip
+    def out() -> type[EncryptionResult]:  # fmt: skip
+        return EncryptionResult  # fmt: skip
 
     @property
     def namespace(self) -> str:
@@ -28,13 +29,13 @@ class encrypt(NamedTuple):
 
 
 class sign(NamedTuple):
-    private_key: TKR[bytes]  # noqa: F821 # fmt: skip
-    passphrase: TKR[bytes]  # noqa: F821 # fmt: skip
-    message: TKR[str]  # noqa: F821 # fmt: skip
+    private_key: TKR[bytes]  # fmt: skip
+    passphrase: TKR[bytes]  # fmt: skip
+    message: TKR[str]  # fmt: skip
 
     @staticmethod
-    def out() -> type[SigningResult]:  # noqa: F821 # fmt: skip
-        return SigningResult  # noqa: F821 # fmt: skip
+    def out() -> type[SigningResult]:  # fmt: skip
+        return SigningResult  # fmt: skip
 
     @property
     def namespace(self) -> str:
@@ -42,13 +43,13 @@ class sign(NamedTuple):
 
 
 class verify(NamedTuple):
-    public_key: TKR[bytes]  # noqa: F821 # fmt: skip
-    signature: TKR[str]  # noqa: F821 # fmt: skip
-    message: TKR[str]  # noqa: F821 # fmt: skip
+    public_key: TKR[bytes]  # fmt: skip
+    signature: TKR[str]  # fmt: skip
+    message: TKR[str]  # fmt: skip
 
     @staticmethod
-    def out() -> type[TKR[bool]]:  # noqa: F821 # fmt: skip
-        return TKR[bool]  # noqa: F821 # fmt: skip
+    def out() -> type[TKR[bool]]:  # fmt: skip
+        return TKR[bool]  # fmt: skip
 
     @property
     def namespace(self) -> str:

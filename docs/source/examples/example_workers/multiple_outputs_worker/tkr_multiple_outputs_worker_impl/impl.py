@@ -1,7 +1,8 @@
 from typing import NamedTuple
 
-from tierkreis import Worker
 from tierkreis.models import portmapping
+
+from tierkreis import Worker
 
 worker = Worker("multiple_outputs_worker")
 

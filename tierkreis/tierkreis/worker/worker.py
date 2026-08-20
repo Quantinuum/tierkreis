@@ -252,24 +252,15 @@ class Worker:
             logger.warning("OTEL_EXPORTER_OTLP_ENDPOINT not set, tracing disabled")
             return None
 
-        try:
-            set_global_textmap(TraceContextTextMapPropagator())
-            otel_provider = TracerProvider(
-                resource=Resource({
-                    "service.name": self.name,
-                    "service.namespace": "tierkreis.workers",
-                })
-            )
-            otel_provider.add_span_processor(
-                BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint))
-            )
-            trace.set_tracer_provider(otel_provider)
-            return otel_provider
-        except Exception as e:
-            logger.error(
-                "Failed to initialize OpenTelemetry with endpoint %s: %s. "
-                "Tracing is disabled, execution will continue.",
-                otel_endpoint,
-                e,
-            )
-            return None
+        set_global_textmap(TraceContextTextMapPropagator())
+        otel_provider = TracerProvider(
+            resource=Resource({
+                "service.name": self.name,
+                "service.namespace": "tierkreis.workers",
+            })
+        )
+        otel_provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint))
+        )
+        trace.set_tracer_provider(otel_provider)
+        return otel_provider

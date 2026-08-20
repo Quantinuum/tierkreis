@@ -4,20 +4,20 @@ import argparse
 import os
 import shutil
 import subprocess
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from tierkreis.cli.templates import (
     default_graph,
     external_worker_idl,
+    inputs_json,
     python_worker_api_pyproject,
     python_worker_impl,
     python_worker_main,
     python_worker_pyproject,
-    inputs_json,
+    worker_api_readme,
     worker_impl_init,
     worker_init,
-    worker_api_readme,
     worker_readme,
 )
 from tierkreis.exceptions import TierkreisError
@@ -209,12 +209,12 @@ def run_args(args: argparse.Namespace) -> None:
                 msg = f"Project directory {project_dir / 'tkr'} already exists and is not a directory."
                 raise TierkreisError(msg)
             if (
-                not input(
+                input(
                     f"Project directory {project_dir / 'tkr'} already exists. Continue? (y/n): "
                 )
                 .lower()
                 .strip()[:1]
-                == "y"
+                != "y"
             ):
                 return
         worker_name = "example_worker"

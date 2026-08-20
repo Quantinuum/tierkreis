@@ -1,10 +1,10 @@
 from pydantic import BaseModel
-
 from tierkreis.controller.data.graph import Map
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.adjacency import outputs_iter
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+
 from tierkreis_visualization.data.eval import check_error
 from tierkreis_visualization.data.models import PyEdge, PyNode
 

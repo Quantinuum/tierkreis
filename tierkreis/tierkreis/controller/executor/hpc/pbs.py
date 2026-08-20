@@ -1,9 +1,8 @@
 """Template and Executor for PBS."""
 
-# ruff: noqa: ERA001
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from tierkreis.controller.executor.hpc.hpc_executor import run_hpc_executor
 from tierkreis.controller.executor.hpc.job_spec import JobSpec
@@ -13,7 +12,7 @@ from tierkreis.exceptions import TierkreisError
 _COMMAND_PREFIX = "#PBS"
 
 
-def generate_pbs_script(spec: JobSpec) -> str:  # noqa: C901, PLR0912 complexity to cover options
+def generate_pbs_script(spec: JobSpec) -> str:
     """Generate a job submission script according to PBS.
 
     This uses the "PBS"/qsub syntax and represents a mapping from JobSpec

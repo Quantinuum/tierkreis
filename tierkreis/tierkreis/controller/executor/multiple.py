@@ -1,6 +1,5 @@
 """A meta executor consisting of multiple single executors."""
 
-# ruff: noqa: D102 (class methods inherited from ControllerExecutor)
 from pathlib import Path
 
 from tierkreis.controller.executor.protocol import ControllerExecutor

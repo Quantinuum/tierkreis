@@ -25,7 +25,11 @@ def mock_pyqir() -> None:
 
 
 try:
-    from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend  # noqa: F401
-except ImportError | ModuleNotFoundError:
+    from pytket.extensions.quantinuum.backends.quantinuum import (
+        QuantinuumBackend,
+    )
+except (ImportError, ModuleNotFoundError):
     mock_pyqir()
-    from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend  # noqa: F401
+    from pytket.extensions.quantinuum.backends.quantinuum import (
+        QuantinuumBackend,  # noqa: F401
+    )

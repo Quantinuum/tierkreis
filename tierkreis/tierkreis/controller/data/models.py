@@ -1,10 +1,10 @@
 """Models for type structures used for building the graph."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import isclass
 from typing import (
     Any,
-    Callable,
     Literal,
     Protocol,
     Union,
@@ -64,7 +64,7 @@ class TNamedModel(RestrictedNamedTuple[TKR[PType] | None], Protocol):
     """
 
 
-TModel = TNamedModel | TKR
+type TModel = TNamedModel | TKR[PType]
 
 
 @overload
@@ -89,14 +89,14 @@ def is_portmapping(
     return hasattr(o, TKR_PORTMAPPING_FLAG)
 
 
-def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:  # noqa: ANN001 inherited from get_origin
+def is_tnamedmodel(o) -> TypeIs[type[TNamedModel]]:
     origin = get_origin(o)
     if origin is not None:
         return is_tnamedmodel(origin)
     return isclass(o) and issubclass(o, TNamedModel)
 
 
-def dict_from_pmodel(pmodel: PModel) -> dict[PortID, PType]:
+def dict_from_pmodel(pmodel: PModel) -> dict[PortID, PType]:  # pyright: ignore[reportInvalidTypeForm]
     if is_portmapping(pmodel):
         return pmodel._asdict()
 
@@ -120,10 +120,10 @@ def dict_from_tmodel(tmodel: TModel) -> dict[PortID, ValueRef]:
 
 def model_fields(model: type[PModel] | type[TModel]) -> list[str]:
     if is_portmapping(model):
-        return getattr(model, "_fields")
+        return model._fields  # type: ignore
 
     if is_tnamedmodel(model):
-        return getattr(model, "_fields")
+        return model._fields  # type: ignore
 
     return ["value"]
 

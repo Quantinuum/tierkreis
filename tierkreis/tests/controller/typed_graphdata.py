@@ -1,10 +1,10 @@
 from typing import NamedTuple
 
 from tests.workers.graph.stubs import (
+    ApplyTwiceInput,
+    apply_twice,
     doubler_plus_graph,
     graph_of_graph,
-    apply_twice,
-    ApplyTwiceInput,
 )
 from tierkreis.builder import Graph, TypedGraphRef
 from tierkreis.builtins import (
@@ -15,11 +15,11 @@ from tierkreis.builtins import (
     igt,
     itimes,
     mod,
+    tkr_str,
     tkr_tuple,
     untuple,
-    tkr_str,
 )
-from tierkreis.models import EmptyModel, TKR, Workflow
+from tierkreis.models import TKR, EmptyModel, Workflow
 
 
 class DoublerInput(NamedTuple):

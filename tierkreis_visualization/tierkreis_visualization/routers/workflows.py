@@ -7,12 +7,12 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
-from watchfiles import awatch  # type: ignore
-
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.graphdata import GraphDataStorage
 from tierkreis.controller.storage.protocol import ControllerStorage
 from tierkreis.exceptions import TierkreisError
+from watchfiles import awatch  # type: ignore
+
 from tierkreis_visualization.app_config import Request
 from tierkreis_visualization.data.graph import get_node_data, parse_node_location
 from tierkreis_visualization.data.outputs import outputs_from_loc
