@@ -776,6 +776,7 @@ mod tests {
     /// Test that a Task node dispatched to the [`crate::executor::nexus::NexusExecutor`]
     /// is reattached to its Nexus job (rather than resubmitted) after the runtime
     /// is killed and resumed, and that the now-completed job's results are picked up.
+    #[allow(clippy::too_many_lines)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn run_can_resume_nexus_task_after_runtime_is_terminated() -> miette::Result<()> {
         use crate::executor::{

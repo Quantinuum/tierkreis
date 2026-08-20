@@ -213,6 +213,7 @@ impl Orchestrator {
     ///
     /// Will return Err if the function fails to retrieve the state of nodes from the workflow context
     /// or if it fails to record that nodes are being scheduled.
+    #[allow(clippy::too_many_lines)]
     #[instrument(skip_all, fields(run_id = %context.workflow_run_state.run_id(), attempt = context.workflow_run_state.attempt()), err)]
     pub async fn build_actions<'a>(
         &'a self,
@@ -232,7 +233,10 @@ impl Orchestrator {
         let run_id = context.workflow_run_state.run_id();
         let attempt = context.workflow_run_state.attempt();
         let ready_nodes: Vec<_> = {
-            let scheduled_this_lifetime = self.scheduled_this_lifetime.lock().unwrap();
+            let scheduled_this_lifetime = self
+                .scheduled_this_lifetime
+                .lock()
+                .map_err(|_| miette!("Failed to acquire lock"))?;
             Self::find_ready_nodes(
                 &context.parent_loc,
                 &workflow_graph,
@@ -245,11 +249,14 @@ impl Orchestrator {
         };
         // Mark all ready nodes as scheduled.
         Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
-        self.scheduled_this_lifetime.lock().unwrap().extend(
-            ready_nodes
-                .iter()
-                .map(|n| (run_id, attempt, context.parent_loc.with_node(*n))),
-        );
+        self.scheduled_this_lifetime
+            .lock()
+            .map_err(|_| miette!("Failed to acquire lock"))?
+            .extend(
+                ready_nodes
+                    .iter()
+                    .map(|n| (run_id, attempt, context.parent_loc.with_node(*n))),
+            );
 
         let node_states = Arc::new(node_states);
         Ok(stream::iter(ready_nodes)
@@ -1153,9 +1160,11 @@ impl Orchestrator {
 
         if plan.workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
-            self.scheduled_this_lifetime
+            let mut scheduled_this_lifetime = self
+                .scheduled_this_lifetime
                 .lock()
-                .unwrap()
+                .map_err(|_| miette!("Failed to acquire lock"))?;
+            scheduled_this_lifetime
                 .retain(|(rid, att, _)| *rid != workflow_run_id || *att != attempt);
         }
 
