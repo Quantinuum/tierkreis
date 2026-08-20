@@ -22,6 +22,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+stubs = [
+    "ruff>=0.16.2",
+]
 hpc = [
     "psij-python>=0.9.11",
 ]

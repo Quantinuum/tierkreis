@@ -3603,6 +3603,9 @@ dependencies = [
 hpc = [
     { name = "psij-python" },
 ]
+stubs = [
+    { name = "ruff" },
+]
 
 [package.dev-dependencies]
 build = [
@@ -3622,8 +3625,9 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.44.0" },
     { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
     { name = "pydantic", specifier = "~=2.5" },
+    { name = "ruff", marker = "extra == 'stubs'", specifier = ">=0.16.2" },
 ]
-provides-extras = ["hpc"]
+provides-extras = ["stubs", "hpc"]
 
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]

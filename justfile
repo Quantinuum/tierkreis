@@ -47,12 +47,12 @@ prod:
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run main.py --stubs-path ./stubs.py
+  uv run --all-extras main.py --stubs-path ./stubs.py
 
 stubs-generate-api dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run main.py --stubs-path ../api/api.py
+  uv run --all-extras main.py --stubs-path ../api/api.py
 
 generate: 
   just stubs-generate 'tierkreis/tierkreis/builtins'
