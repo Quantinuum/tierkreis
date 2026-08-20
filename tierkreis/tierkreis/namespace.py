@@ -185,12 +185,10 @@ from tierkreis.controller.data.types import PType, Struct, Workflow
                     ruff_binary,
                     "check",
                     "--fix",
-                    "--ignore",
-                    "D,N801,UP007",
                     "--unsafe-fixes",
                     stubs_path,
                 ],
-                check=False,
+                check=True,
             )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")
