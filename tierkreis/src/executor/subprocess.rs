@@ -291,6 +291,12 @@ pub struct SubprocessExecutor {
     asset_storage_registry: AssetStorageRegistry,
 }
 
+impl std::fmt::Debug for SubprocessExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SubprocessExecutor").finish_non_exhaustive()
+    }
+}
+
 type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
 
 impl SubprocessExecutor {
@@ -584,9 +590,50 @@ mod tests {
 
     use super::*;
 
+    #[tokio::test]
+    async fn rejects_invalid_storage_configuration() {
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+
+        let err = SubprocessExecutor::try_new(&registry, "missing", "file")
+            .await
+            .expect_err("unknown subprocess storage should be rejected");
+        assert_eq!(err.to_string(), "subprocess_storage_name not in registry");
+
+        let err = SubprocessExecutor::try_new(&registry, "memory", "file")
+            .await
+            .expect_err("non-file subprocess storage should be rejected");
+        assert_eq!(
+            err.to_string(),
+            "subprocess_storage_name must be of AssetKind::File"
+        );
+
+        let err = SubprocessExecutor::try_new(&registry, "file", "missing")
+            .await
+            .expect_err("unknown output storage should be rejected");
+        assert_eq!(err.to_string(), "output_storage_name not in registry");
+    }
+
+    #[tokio::test]
+    async fn listen_only_once() -> miette::Result<()> {
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+
+        let _stream = executor.listen()?;
+        let err = executor
+            .listen()
+            .err()
+            .expect("a second listener should be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "Failed to listen: Executor is already being listened to."
+        );
+        Ok(())
+    }
+
     // Test that we can list the available workers in $PATH
     #[tokio::test]
-    async fn subprocess_workers() -> miette::Result<()> {
+    async fn workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
         let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
@@ -616,7 +663,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn execute_subprocess(#[case] output_storage_name: &str) -> miette::Result<()> {
+    async fn executes_task(#[case] output_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
@@ -671,6 +718,106 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn preserves_identity_and_overrides_output_storage() -> miette::Result<()> {
+        let (registry, input_sets, _temp_dir) = test_storage_registry(
+            vec![json!({"greeting": "hello ", "subject": "dave"})],
+            vec![],
+        )
+        .await;
+        let workflow_run_id = Uuid::now_v7();
+        let attempt = 7;
+        let loc = Location::from_usize_iter([2, 1]);
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![TaskPlan {
+                workflow_run_id,
+                attempt,
+                loc: loc.clone(),
+                worker_name: "hello-world-worker".to_string(),
+                task_name: "greet".to_string(),
+                inputs: input_sets[0].clone(),
+                outputs: HashSet::from(["value".to_string()]),
+                output_storage_name: Some("memory".to_string()),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        for event in &events {
+            assert_matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    workflow_run_id: id,
+                    attempt: event_attempt,
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent { locs, .. }),
+                } if *id == workflow_run_id && *event_attempt == attempt && locs == &vec![loc.clone()]
+            );
+        }
+        assert_registry_contains_values(
+            &registry,
+            "memory",
+            &events[1].clone().outputs()[0],
+            json!({"value": "hello dave"}),
+        )
+        .await;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn missing_worker_emits_error() -> miette::Result<()> {
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![TaskPlan {
+                worker_name: "definitely-missing-worker".to_string(),
+                task_name: "anything".to_string(),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        assert_matches!(
+            events[1],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error { ref error, .. },
+                    ..
+                }),
+                ..
+            } if error.contains("Could not spawn worker `tkr-definitely-missing-worker`")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn missing_input_asset_returns_error() -> miette::Result<()> {
+        let (registry, input_sets, _) =
+            test_storage_registry(vec![json!({"greeting": "hello "})], vec![]).await;
+        let mut inputs = input_sets[0].clone();
+        inputs.get_mut("greeting").unwrap().storage_name = "missing".to_string();
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+
+        let err = executor
+            .execute(vec![TaskPlan {
+                worker_name: "hello-world-worker".to_string(),
+                task_name: "greet".to_string(),
+                inputs,
+                outputs: HashSet::from(["value".to_string()]),
+                ..Default::default()
+            }])
+            .await
+            .expect_err("missing input storage should fail task preparation");
+
+        assert!(err.to_string().contains("Failed to build task inputs"));
+        Ok(())
+    }
+
     // Test that we can launch a single task and listen for
     // the status changes when reading the input values from
     // a FileAssetStorage.
@@ -678,9 +825,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn execute_subprocess_with_file_inputs(
-        #[case] output_storage_name: &str,
-    ) -> miette::Result<()> {
+    async fn executes_with_file_inputs(#[case] output_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![],
             vec![json!({"greeting": "hello ", "subject": "dave"})],
@@ -742,7 +887,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn execute_subprocess_two_tasks(#[case] output_storage_name: &str) -> miette::Result<()> {
+    async fn executes_two_tasks(#[case] output_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![
                 json!({"greeting": "hello ", "subject": "dave"}),
@@ -853,7 +998,7 @@ mod tests {
     // the status changes even if we launch the task before
     // we start listening to the executor.
     #[tokio::test]
-    async fn execute_subprocess_execute_before_listen() -> miette::Result<()> {
+    async fn executes_before_listen() -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
@@ -912,7 +1057,7 @@ mod tests {
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
-    async fn execute_subprocess_error() -> miette::Result<()> {
+    async fn reports_execution_error() -> miette::Result<()> {
         let (registry, _, _dir) = test_storage_registry(vec![], vec![]).await;
         let task_plans = vec![TaskPlan {
             worker_name: "hello-world-worker".to_string(),
@@ -950,6 +1095,19 @@ mod tests {
                 ..
             } if error == "Subprocess failed with error code: exit status: 1"
         );
+        assert_matches!(
+            events[1],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error {
+                        detail: Some(ref detail),
+                        ..
+                    },
+                    ..
+                }),
+                ..
+            } if !detail.is_empty()
+        );
 
         Ok(())
     }
@@ -957,7 +1115,7 @@ mod tests {
     // Test that we can launch a task and then cancel it
     // before it completes.
     #[tokio::test]
-    async fn execute_subprocess_cancel() -> miette::Result<()> {
+    async fn cancels_running_task() -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],
@@ -1014,7 +1172,7 @@ mod tests {
     // Test that we can pass a non-existent ID to cancel and
     // it will not error.
     #[tokio::test]
-    async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
+    async fn cancel_non_existent_does_not_error() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
         let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
 
@@ -1027,7 +1185,7 @@ mod tests {
     // Test that we can pass a completed ID to cancel and
     // it will not error.
     #[tokio::test]
-    async fn execute_subprocess_cancel_completed() -> miette::Result<()> {
+    async fn cancel_completed_does_not_error() -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"greeting": "hello ", "subject": "dave"})],
             vec![],

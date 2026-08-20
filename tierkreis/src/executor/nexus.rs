@@ -414,6 +414,12 @@ pub struct NexusExecutor {
     asset_storage_registry: AssetStorageRegistry,
 }
 
+impl std::fmt::Debug for NexusExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NexusExecutor").finish_non_exhaustive()
+    }
+}
+
 impl NexusExecutor {
     /// Try to create a new [`NexusExecutor`] with an [`AssetStorageRegistry`], a
     /// configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
@@ -708,6 +714,41 @@ mod tests {
         Ok(hugr_asset_spec)
     }
 
+    async fn valid_task_plan(
+        registry: &AssetStorageRegistry,
+        loc: Location,
+    ) -> miette::Result<TaskPlan> {
+        let mut inputs = HashMap::new();
+        for (name, value) in [
+            ("n_shots", json!(5)),
+            ("project_name", json!("tkr-demo")),
+            ("job_name", json!("tkr-example-job")),
+        ] {
+            inputs.insert(
+                name.to_string(),
+                save_asset(
+                    registry,
+                    "memory",
+                    serde_json::to_vec(&value).into_diagnostic()?,
+                )
+                .await?,
+            );
+        }
+        inputs.insert(
+            "hugr_package".to_string(),
+            save_test_hugr(registry, empty_hugr()?).await?,
+        );
+
+        Ok(TaskPlan {
+            loc,
+            worker_name: "nexus_worker".to_string(),
+            task_name: "submit_and_run".to_string(),
+            inputs,
+            outputs: HashSet::from(["results".to_string()]),
+            ..Default::default()
+        })
+    }
+
     async fn send_ws_message(socket: &mut WebSocket, message: &serde_json::Value) {
         let msg = Message::text(serde_json::to_string(message).expect("failed to serialize"));
         socket.send(msg).await.expect("failed to send");
@@ -816,19 +857,202 @@ mod tests {
             )
     }
 
+    #[tokio::test]
+    async fn workers() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+
+        assert_eq!(
+            executor.workers().await?,
+            vec![WorkerSpec {
+                worker_name: "nexus_worker".to_string()
+            }]
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_unknown_output_storage() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+
+        let err = NexusExecutor::try_new(&config, &registry, "missing")
+            .await
+            .expect_err("unknown output storage should be rejected");
+
+        assert_eq!(err.to_string(), "output_storage_name not in registry");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn listen_only_once() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+
+        let _stream = executor.listen()?;
+        let err = executor
+            .listen()
+            .err()
+            .expect("a second listener should be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "Failed to listen: Executor is already being listened to."
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_unknown_worker_and_task() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+
+        let err = executor
+            .execute(vec![TaskPlan {
+                worker_name: "other_worker".to_string(),
+                task_name: "submit_and_run".to_string(),
+                ..Default::default()
+            }])
+            .await
+            .expect_err("unknown worker should be rejected");
+        assert_eq!(err.to_string(), "Unknown worker: `other_worker`");
+
+        let err = executor
+            .execute(vec![TaskPlan {
+                worker_name: "nexus_worker".to_string(),
+                task_name: "other_task".to_string(),
+                ..Default::default()
+            }])
+            .await
+            .expect_err("unknown task should be rejected");
+        assert_eq!(err.to_string(), "Unknown task: `other_task`");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn executes_before_listen() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _temp_dir) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+        let task_plan = valid_task_plan(&registry, Location::default()).await?;
+
+        executor.execute(vec![task_plan]).await?;
+        let events = executor.listen()?.take(3).collect::<Vec<_>>().await;
+
+        assert_eq!(events.len(), 3);
+        assert_matches!(
+            events[2],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Complete { .. },
+                    ..
+                }),
+                ..
+            }
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn executes_two_tasks() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _temp_dir) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+        let loc_a = Location::from_usize_iter([0]);
+        let loc_b = Location::from_usize_iter([1]);
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![
+                valid_task_plan(&registry, loc_a.clone()).await?,
+                valid_task_plan(&registry, loc_b.clone()).await?,
+            ])
+            .await?;
+
+        let events = stream.take(6).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 6);
+        for loc in [loc_a, loc_b] {
+            assert!(events.iter().any(|event| matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                        locs,
+                        status: NodeStatus::Complete { .. },
+                    }),
+                    ..
+                } if locs == &vec![loc.clone()]
+            )));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_missing_input() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _temp_dir) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+
+        let err = executor
+            .execute(vec![TaskPlan {
+                worker_name: "nexus_worker".to_string(),
+                task_name: "submit_and_run".to_string(),
+                outputs: HashSet::from(["results".to_string()]),
+                ..Default::default()
+            }])
+            .await
+            .expect_err("missing inputs should be rejected");
+
+        assert_eq!(err.to_string(), "Missing input: project_name");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_hugr_envelope() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _temp_dir) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+        let mut task_plan = valid_task_plan(&registry, Location::default()).await?;
+        task_plan.inputs.insert(
+            "hugr_package".to_string(),
+            save_asset(&registry, "memory", b"not a hugr envelope".to_vec()).await?,
+        );
+
+        executor
+            .execute(vec![task_plan])
+            .await
+            .expect_err("invalid HUGR envelope should be rejected");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancel_non_existent_does_not_error() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+
+        executor
+            .cancel(Uuid::now_v7(), 3, vec![Location::from_usize_iter([99])])
+            .await?;
+        Ok(())
+    }
+
     /// Test a scenario where we execute a hugr.
     #[tokio::test]
-    async fn execute_hugr() -> miette::Result<()> {
+    async fn executes_hugr() -> miette::Result<()> {
         let app = happy_test_app();
         let (config, _server, _token_dir) = test_config_for_app(app).await?;
 
         let (registry, input_sets, _temp_dir) = test_storage_registry(
+            vec![],
             vec![json!({
                 "n_shots": 5,
                 "project_name": "tkr-demo",
                 "job_name": "tkr-example-job",
             })],
-            vec![],
         )
         .await;
 
@@ -840,15 +1064,21 @@ mod tests {
         let mut outputs = HashSet::new();
         outputs.insert("results".to_string());
 
-        let output_storage_name = "memory";
-        let executor = NexusExecutor::try_new(&config, &registry, output_storage_name).await?;
+        let workflow_run_id = Uuid::now_v7();
+        let attempt = 7;
+        let loc = Location::from_usize_iter([2, 1]);
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
         let stream = executor.listen()?;
         executor
             .execute(vec![TaskPlan {
+                workflow_run_id,
+                attempt,
+                loc: loc.clone(),
                 worker_name: "nexus_worker".to_string(),
                 task_name: "submit_and_run".to_string(),
                 inputs,
                 outputs,
+                output_storage_name: Some("file".to_string()),
                 ..Default::default()
             }])
             .await?;
@@ -886,9 +1116,20 @@ mod tests {
             }
         );
 
+        for event in &events {
+            assert_matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    workflow_run_id: id,
+                    attempt: event_attempt,
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent { locs, .. }),
+                } if *id == workflow_run_id && *event_attempt == attempt && locs == &vec![loc.clone()]
+            );
+        }
+
         assert_registry_contains_values(
             &registry,
-            output_storage_name,
+            "file",
             &events[2].clone().outputs()[0],
             json!({"results": [
                 [], [], [], [], [],
@@ -944,10 +1185,105 @@ mod tests {
             )
     }
 
+    fn terminal_test_app(status: &'static str, message: &'static str) -> Router {
+        base_test_app()
+            .route(
+                "/api/jobs/v1beta3/{job_id}/attributes/status/ws",
+                axum::routing::get(move |ws: WebSocketUpgrade| async move {
+                    ws.on_upgrade(move |mut socket| async move {
+                        send_ws_message(
+                            &mut socket,
+                            &json!({"status": status, "message": message}),
+                        )
+                        .await;
+                        socket.send(Message::Close(None)).await.unwrap();
+                    })
+                }),
+            )
+            .route(
+                "/api/jobs/v1beta3/{job_id}",
+                axum::routing::get(move || async move {
+                    Json(json!({
+                        "data": {
+                            "attributes": {
+                                "status": {
+                                    "status": status,
+                                    "message": message,
+                                },
+                                "definition": {
+                                    "job_definition_type": "execute_job_definition",
+                                    "items": [{}],
+                                },
+                            },
+                        },
+                    }))
+                }),
+            )
+    }
+
+    #[rstest::rstest]
+    #[case("DEPLETED", "depleted upstream", "Job is depleted")]
+    #[case("TERMINATED", "terminated upstream", "Job was terminated")]
+    #[tokio::test]
+    async fn maps_remote_failure_statuses_to_error(
+        #[case] status: &'static str,
+        #[case] message: &'static str,
+        #[case] expected_error: &str,
+    ) -> miette::Result<()> {
+        let (config, _server, _token_dir) =
+            test_config_for_app(terminal_test_app(status, message)).await?;
+        let (registry, _, _temp_dir) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![valid_task_plan(&registry, Location::default()).await?])
+            .await?;
+
+        let event = stream.take(1).collect::<Vec<_>>().await.remove(0);
+        assert_matches!(
+            event,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error { ref error, .. },
+                    ..
+                }),
+                ..
+            } if error == expected_error
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reports_remote_cancellation() -> miette::Result<()> {
+        let (config, _server, _token_dir) =
+            test_config_for_app(terminal_test_app("CANCELLED", "cancelled upstream")).await?;
+        let (registry, _, _temp_dir) = test_storage_registry(vec![], vec![]).await;
+        let executor = NexusExecutor::try_new(&config, &registry, "memory").await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![valid_task_plan(&registry, Location::default()).await?])
+            .await?;
+
+        let event = stream.take(1).collect::<Vec<_>>().await.remove(0);
+        assert_matches!(
+            event,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Cancelled,
+                    ..
+                }),
+                ..
+            }
+        );
+        Ok(())
+    }
+
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
-    async fn execute_hugr_error() -> miette::Result<()> {
+    async fn reports_hugr_error() -> miette::Result<()> {
         let app = error_test_app();
         let (config, _server, _token_dir) = test_config_for_app(app).await?;
 
@@ -1063,7 +1399,7 @@ mod tests {
 
     /// Test a scenario where we start a task and then cancel it immediately.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn execute_and_cancel_hugr() -> miette::Result<()> {
+    async fn cancels_hugr() -> miette::Result<()> {
         let app = cancel_test_app();
         let (config, _server, _token_dir) = test_config_for_app(app).await?;
 

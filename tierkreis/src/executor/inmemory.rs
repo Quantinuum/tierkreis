@@ -445,6 +445,12 @@ pub struct InMemoryExecutor {
     output_storage_name: String,
 }
 
+impl std::fmt::Debug for InMemoryExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InMemoryExecutor").finish_non_exhaustive()
+    }
+}
+
 impl InMemoryExecutor {
     /// Try to create a new [`InMemoryExecutor`] with an [`AssetStorageRegistry`] and
     /// a configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
@@ -570,7 +576,36 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn inmemory_workers() -> miette::Result<()> {
+    async fn rejects_unknown_output_storage() {
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+
+        let err = InMemoryExecutor::try_new(&registry, "missing")
+            .await
+            .expect_err("unknown output storage should be rejected");
+
+        assert_eq!(err.to_string(), "output_storage_name not in registry");
+    }
+
+    #[tokio::test]
+    async fn listen_only_once() -> miette::Result<()> {
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+
+        let _stream = executor.listen()?;
+        let err = executor
+            .listen()
+            .err()
+            .expect("a second listener should be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "Failed to listen: Executor is already being listened to."
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
         let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
@@ -592,7 +627,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn execute_inmemory(#[case] default_storage_name: &str) -> miette::Result<()> {
+    async fn executes_task(#[case] default_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
 
@@ -642,6 +677,115 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn preserves_identity_and_overrides_output_storage() -> miette::Result<()> {
+        let (registry, input_sets, _temp_dir) =
+            test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
+        let workflow_run_id = Uuid::now_v7();
+        let attempt = 7;
+        let loc = Location::from_usize_iter([2, 1]);
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![TaskPlan {
+                workflow_run_id,
+                attempt,
+                loc: loc.clone(),
+                worker_name: "builtin".to_string(),
+                task_name: "iadd".to_string(),
+                inputs: input_sets[0].clone(),
+                output_storage_name: Some("file".to_string()),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        for event in &events {
+            assert_matches!(
+                event,
+                RuntimeEvent::WorkflowRun {
+                    workflow_run_id: id,
+                    attempt: event_attempt,
+                    event: WorkflowRunEvent::NodeEvent(NodeEvent { locs, .. }),
+                } if *id == workflow_run_id && *event_attempt == attempt && locs == &vec![loc.clone()]
+            );
+        }
+        assert_registry_contains_values(
+            &registry,
+            "file",
+            &events[1].clone().outputs()[0],
+            json!({"value": 4}),
+        )
+        .await;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn missing_input_emits_error() -> miette::Result<()> {
+        let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
+        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![TaskPlan {
+                worker_name: "builtin".to_string(),
+                task_name: "iadd".to_string(),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        assert_matches!(
+            events[1],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Error { ref error, .. },
+                    ..
+                }),
+                ..
+            } if error == "Missing input: a"
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[case("isub", json!({"a": 7, "b": 2}), json!({"value": 5}))]
+    #[case("itimes", json!({"a": 3, "b": 4}), json!({"value": 12}))]
+    #[case("fceil", json!({"a": 1.25}), json!({"value": 2.0}))]
+    #[case("neq", json!({"a": [1], "b": [2]}), json!({"value": true}))]
+    #[case(
+        "tkr_tuple",
+        json!({"a": 1, "b": "two"}),
+        json!({"value": [1, "two"]})
+    )]
+    #[case(
+        "tkr_range",
+        json!({"start": 1, "stop": 6, "step": 2}),
+        json!({"value": [1, 3, 5]})
+    )]
+    fn run_builtin_operation_families_and_aliases(
+        #[case] task_name: &str,
+        #[case] input: Value,
+        #[case] expected: Value,
+    ) -> miette::Result<()> {
+        let input = input
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, value)| Ok((name.clone(), serde_json::to_vec(value).into_diagnostic()?)))
+            .collect::<miette::Result<HashMap<_, _>>>()?;
+        let outputs = run_builtin(task_name, &input)?;
+        let actual = outputs
+            .into_iter()
+            .map(|(name, value)| Ok((name, serde_json::from_slice(&value).into_diagnostic()?)))
+            .collect::<miette::Result<serde_json::Map<_, _>>>()?;
+        assert_eq!(Value::Object(actual), expected);
+
+        Ok(())
+    }
+
     // Test that we can launch a single task and listen for
     // the status changes when reading the input values from
     // a FileAssetStorage
@@ -649,9 +793,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn execute_inmemory_with_file_inputs(
-        #[case] default_storage_name: &str,
-    ) -> miette::Result<()> {
+    async fn executes_with_file_inputs(#[case] default_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![], vec![json!({"a": 1, "b": 3})]).await;
 
@@ -707,7 +849,7 @@ mod tests {
     #[case("memory")]
     #[case("file")]
     #[tokio::test]
-    async fn execute_inmemory_two_tasks(#[case] default_storage_name: &str) -> miette::Result<()> {
+    async fn executes_two_tasks(#[case] default_storage_name: &str) -> miette::Result<()> {
         let (registry, input_sets, _dir) = test_storage_registry(
             vec![json!({"a": 1, "b": 3}), json!({"a": 4, "b": 8})],
             vec![],
@@ -811,7 +953,7 @@ mod tests {
     // the status changes even if we launch the task before
     // we start listening to the executor.
     #[tokio::test]
-    async fn execute_inmemory_execute_before_listen() -> miette::Result<()> {
+    async fn executes_before_listen() -> miette::Result<()> {
         let (registry, input_sets, _) =
             test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
 
@@ -864,7 +1006,7 @@ mod tests {
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
-    async fn execute_inmemory_error() -> miette::Result<()> {
+    async fn reports_execution_error() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
         let task_plans = vec![TaskPlan {
             worker_name: "builtin".to_string(),
@@ -909,7 +1051,7 @@ mod tests {
     // Test that we can launch a task and then cancel it
     // before it completes.
     #[tokio::test]
-    async fn execute_inmemory_cancel() -> miette::Result<()> {
+    async fn cancels_running_task() -> miette::Result<()> {
         let (registry, input_sets, _) =
             test_storage_registry(vec![json!({"delay_seconds": 1})], vec![]).await;
 
@@ -960,7 +1102,7 @@ mod tests {
     // Test that we can pass a non-existent ID to cancel and
     // it will not error.
     #[tokio::test]
-    async fn execute_inmemory_cancel_non_existent() -> miette::Result<()> {
+    async fn cancel_non_existent_does_not_error() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
         let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
 
@@ -973,7 +1115,7 @@ mod tests {
     // Test that we can pass a completed ID to cancel and
     // it will not error.
     #[tokio::test]
-    async fn execute_inmemory_cancel_completed() -> miette::Result<()> {
+    async fn cancel_completed_does_not_error() -> miette::Result<()> {
         let (registry, input_sets, _) =
             test_storage_registry(vec![json!({"a": 1, "b": 3})], vec![]).await;
 
