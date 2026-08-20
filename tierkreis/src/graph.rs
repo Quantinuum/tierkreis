@@ -941,9 +941,7 @@ mod tests {
     fn convert_graph(#[case] serialized_graph: &str) -> miette::Result<()> {
         let graph: LegacyWorkflowGraph =
             serde_json::from_str(serialized_graph).into_diagnostic()?;
-        dbg!(&graph);
         let converted = graph.to_workflow_graph()?;
-        dbg!(&converted);
 
         let original: LegacyWorkflowGraph =
             serde_json::from_str(serialized_graph).into_diagnostic()?;

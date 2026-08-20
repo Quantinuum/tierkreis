@@ -631,6 +631,8 @@ impl Executor for NexusExecutor {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use axum::{
         Json, Router,
         extract::{
@@ -853,7 +855,7 @@ mod tests {
 
         let events = stream.take(3).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 3);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -862,8 +864,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -872,8 +874,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -882,7 +884,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         assert_registry_contains_values(
             &registry,
@@ -983,7 +985,7 @@ mod tests {
 
         let events = stream.take(1).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 1);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -992,7 +994,7 @@ mod tests {
                 }),
                 ..
             } if error == "Job failed with message: job has errored"
-        ));
+        );
 
         Ok(())
     }
@@ -1102,8 +1104,7 @@ mod tests {
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        dbg!(&event);
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1112,7 +1113,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         Ok(())
     }

@@ -1242,6 +1242,7 @@ fn collect_inputs(
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
     use std::sync::Arc;
 
     use futures::StreamExt;
@@ -1508,8 +1509,8 @@ mod tests {
             next_actions(&orchestrator, &workflow_graph, &workflow_run_state, &inputs).await?;
 
         assert_eq!(actions.len(), 2);
-        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
-        assert!(matches!(actions[1].kind, ActionKind::SetComplete { .. }));
+        assert_matches!(actions[0].kind, ActionKind::SetComplete { .. });
+        assert_matches!(actions[1].kind, ActionKind::SetComplete { .. });
 
         Ok(())
     }
@@ -1545,7 +1546,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].loc, Location::new("N1")?);
-        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
+        assert_matches!(actions[0].kind, ActionKind::SetComplete { .. });
 
         orchestrator
             .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
@@ -1573,12 +1574,12 @@ mod tests {
             actions[0].loc,
             Location::from_node_index_iter([workflow_graph.output_idx()])
         );
-        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
+        assert_matches!(actions[0].kind, ActionKind::SetComplete { .. });
         assert_eq!(
             actions[1].loc,
             Location::from_node_index_iter([workflow_graph.output_idx()])
         );
-        assert!(matches!(actions[1].kind, ActionKind::WorkflowFinished {}));
+        assert_matches!(actions[1].kind, ActionKind::WorkflowFinished {});
 
         orchestrator
             .perform_actions(
@@ -1636,9 +1637,9 @@ mod tests {
 
         assert_eq!(actions.len(), 2);
         assert_eq!(actions[0].loc, Location::new("N2")?);
-        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
+        assert_matches!(actions[0].kind, ActionKind::SetComplete { .. });
         assert_eq!(actions[1].loc, Location::new("N1")?);
-        assert!(matches!(actions[1].kind, ActionKind::SetComplete { .. }));
+        assert_matches!(actions[1].kind, ActionKind::SetComplete { .. });
 
         orchestrator
             .perform_actions(Uuid::nil(), 0, stream::iter(actions.into_iter().map(Ok)))
@@ -1672,7 +1673,7 @@ mod tests {
 
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].loc, Location::new("N3.N1")?);
-        assert!(matches!(actions[0].kind, ActionKind::SetComplete { .. }));
+        assert_matches!(actions[0].kind, ActionKind::SetComplete { .. });
 
         orchestrator
             .perform_actions(
@@ -1818,25 +1819,25 @@ mod tests {
 
         let a_input_state = workflow_run_state.read(&Location::new("N1")?).await?;
 
-        assert!(matches!(
+        assert_matches!(
             a_input_state,
             NodeState {
                 complete_time: Some(..),
                 outputs: Some(..),
                 ..
             }
-        ));
+        );
 
         let subworkflow_input_state = workflow_run_state.read(&Location::new("N2")?).await?;
 
-        assert!(matches!(
+        assert_matches!(
             subworkflow_input_state,
             NodeState {
                 complete_time: Some(..),
                 outputs: Some(..),
                 ..
             }
-        ));
+        );
 
         let output_state = workflow_run_state.read(&Location::new("N0")?).await?;
 
@@ -1924,25 +1925,25 @@ mod tests {
 
         let a_input_state = workflow_run_state.read(&Location::new("N1")?).await?;
 
-        assert!(matches!(
+        assert_matches!(
             a_input_state,
             NodeState {
                 complete_time: Some(..),
                 outputs: Some(..),
                 ..
             }
-        ));
+        );
 
         let subworkflow_input_state = workflow_run_state.read(&Location::new("N2")?).await?;
 
-        assert!(matches!(
+        assert_matches!(
             subworkflow_input_state,
             NodeState {
                 complete_time: Some(..),
                 outputs: Some(..),
                 ..
             }
-        ));
+        );
 
         let output_state = workflow_run_state
             .read(&Location::from_node_index_iter([

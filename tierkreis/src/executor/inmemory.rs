@@ -555,6 +555,8 @@ impl Executor for InMemoryExecutor {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use futures::StreamExt;
     use rstest::rstest;
     use serde_json::json;
@@ -608,9 +610,8 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(2).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -619,8 +620,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -629,7 +630,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             default_storage_name,
@@ -669,7 +670,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -678,8 +679,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -688,7 +689,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             default_storage_name,
@@ -829,7 +830,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -838,8 +839,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -848,7 +849,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             "memory",
@@ -881,7 +882,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -890,8 +891,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -900,7 +901,7 @@ mod tests {
                 }),
                 ..
             } if error == "Unknown task: `backflip`"
-        ));
+        );
 
         Ok(())
     }
@@ -928,7 +929,7 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -937,12 +938,12 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -951,7 +952,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         Ok(())
     }
@@ -993,7 +994,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1002,8 +1003,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1012,7 +1013,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             "memory",

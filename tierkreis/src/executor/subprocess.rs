@@ -573,6 +573,7 @@ impl Executor for SubprocessExecutor {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
     use std::collections::HashSet;
 
     use futures::StreamExt;
@@ -639,7 +640,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -648,8 +649,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -658,7 +659,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -704,7 +705,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -713,8 +714,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -723,7 +724,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             output_storage_name,
@@ -783,7 +784,6 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let events = stream.take(4).collect::<Vec<_>>().await;
-        dbg!(&events);
         assert_eq!(events.len(), 4);
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
@@ -878,7 +878,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -887,8 +887,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -897,7 +897,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             "file",
@@ -930,7 +930,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -939,9 +939,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        dbg!(&events[1]);
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -950,7 +949,7 @@ mod tests {
                 }),
                 ..
             } if error == "Subprocess failed with error code: exit status: 1"
-        ));
+        );
 
         Ok(())
     }
@@ -984,7 +983,7 @@ mod tests {
         executor.execute(task_plans).await?;
 
         let event = stream.next().await.unwrap();
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -993,12 +992,12 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1007,7 +1006,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         Ok(())
     }
@@ -1055,7 +1054,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1064,8 +1063,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1074,7 +1073,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             "file",
