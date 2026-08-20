@@ -2,7 +2,7 @@
 This module defines the [`NexusExecutor`] struct which implements [Executor]
 by running tasks via the Nexus HTTP API.
 */
-mod client;
+pub(crate) mod client;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -24,16 +24,20 @@ use uuid::Uuid;
 use crate::{
     asset_storage::{
         AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs, save_asset_with_spec,
-    }, event::{
-        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error, send_queued, send_running,
-    }, executor::{
+    },
+    event::{
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
+        send_queued, send_running,
+    },
+    executor::{
         Executor,
         interface::{TaskHandle, TaskPlan, WorkerSpec},
         nexus::client::{
             NexusClient,
             models::jobs::{JobDefinition, StatusEnum},
         },
-    }, location::Location,
+    },
+    location::Location,
 };
 pub use client::NexusClientConfig;
 
@@ -515,6 +519,8 @@ impl NexusExecutor {
     }
 
     /// Checks whether a job referenced is already on nexus
+    /// This is a simple check and does not guarantee anything about the
+    /// state of the job.
     async fn is_job_active(&self, job_id: Uuid) -> miette::Result<Uuid> {
         self.client.refresh_tokens().await?;
         let _job = self.client.get_job(job_id).await?;

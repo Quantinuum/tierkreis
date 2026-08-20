@@ -534,7 +534,7 @@ pub async fn exec() -> miette::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builder::{input, link, output, task, workflow};
+    use crate::builder::{constant, input, link, output, task, workflow};
     use futures::future::{AbortHandle, Abortable};
     use tempfile::NamedTempFile;
 
@@ -613,6 +613,310 @@ mod tests {
                 .await?
                 .outputs
                 .is_some()
+        );
+
+        Ok(())
+    }
+
+    fn empty_hugr() -> miette::Result<hugr::Hugr> {
+        use hugr::{
+            builder::{FunctionBuilder, HugrBuilder},
+            types::Signature,
+        };
+        let hugr = FunctionBuilder::new("main", Signature::new(vec![], vec![]))
+            .into_diagnostic()?
+            .finish_hugr()
+            .into_diagnostic()?;
+        Ok(hugr)
+    }
+
+    fn hugr_package_bytes() -> miette::Result<Vec<u8>> {
+        use hugr::{
+            envelope::{EnvelopeConfig, write_envelope},
+            package::Package,
+        };
+        let package = Package::new([empty_hugr()?]);
+        let mut buf = Vec::new();
+        write_envelope(&mut buf, &package, EnvelopeConfig::binary()).into_diagnostic()?;
+        Ok(buf)
+    }
+
+    /// Happy path nexus test app
+    #[allow(clippy::too_many_lines)]
+    fn nexus_restart_test_app() -> (
+        axum::Router,
+        tokio::sync::watch::Sender<bool>,
+        Arc<std::sync::atomic::AtomicU32>,
+    ) {
+        use axum::{
+            Json, Router,
+            extract::{Query, State, WebSocketUpgrade, ws::WebSocket},
+        };
+        use serde::Deserialize;
+        use serde_json::json;
+        use tokio::sync::watch;
+
+        async fn send_ws_message(socket: &mut WebSocket, message: &serde_json::Value) {
+            let msg = axum::extract::ws::Message::text(
+                serde_json::to_string(message).expect("failed to serialize"),
+            );
+            socket.send(msg).await.expect("failed to send");
+        }
+
+        #[derive(Clone)]
+        struct AppState {
+            recv: watch::Receiver<bool>,
+            submission_count: Arc<std::sync::atomic::AtomicU32>,
+        }
+
+        async fn handle_test_socket(mut socket: WebSocket, mut recv: watch::Receiver<bool>) {
+            send_ws_message(
+                &mut socket,
+                &json!({"status": "SUBMITTED", "message": "job is submitted"}),
+            )
+            .await;
+            // Only progress towards completion once signalled by the test.
+            recv.wait_for(|completed| *completed).await.unwrap();
+            send_ws_message(
+                &mut socket,
+                &json!({"status": "COMPLETED", "message": "job is completed"}),
+            )
+            .await;
+            socket
+                .send(axum::extract::ws::Message::Close(None))
+                .await
+                .unwrap();
+        }
+
+        #[derive(Deserialize)]
+        struct ChunkParameters {
+            chunk_number: u64,
+        }
+
+        let (send, recv) = watch::channel(false);
+        let submission_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let app = Router::new()
+            .route("/auth/tokens/refresh", axum::routing::post(|| async {}))
+            .route(
+                "/api/projects/v1beta2",
+                axum::routing::get(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": [{"id": id}]}))
+                }),
+            )
+            .route(
+                "/api/hugr/v1beta",
+                axum::routing::post(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": {"id": id}}))
+                }),
+            )
+            .route(
+                "/api/jobs/v1beta3",
+                axum::routing::post(|State(state): State<AppState>| async move {
+                    state
+                        .submission_count
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": {"id": id}}))
+                }),
+            )
+            .route(
+                "/api/jobs/v1beta3/{job_id}/attributes/status/ws",
+                axum::routing::get(
+                    |State(state): State<AppState>, ws: WebSocketUpgrade| async move {
+                        let recv = state.recv.clone();
+                        ws.on_upgrade(|socket| handle_test_socket(socket, recv))
+                    },
+                ),
+            )
+            .route(
+                "/api/jobs/v1beta3/{job_id}",
+                axum::routing::get(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({
+                        "data": {
+                            "attributes": {
+                                "status": {
+                                    "status": "COMPLETED",
+                                    "message": "job has completed",
+                                },
+                                "definition": {
+                                    "job_definition_type": "execute_job_definition",
+                                    "items": [{"result_id": id}],
+                                },
+                            },
+                        },
+                    }))
+                }),
+            )
+            .route(
+                "/api/qsys_results/v1beta2/partial/{result_id}",
+                axum::routing::get(|parameters: Query<ChunkParameters>| async move {
+                    if parameters.chunk_number == 1 {
+                        return Err(axum::http::StatusCode::NOT_FOUND);
+                    }
+                    Ok(Json(json!({
+                        "data": {
+                            "attributes": {
+                                "results": [[]],
+                            },
+                        },
+                    })))
+                }),
+            )
+            .with_state(AppState {
+                recv,
+                submission_count: submission_count.clone(),
+            });
+
+        (app, send, submission_count)
+    }
+
+    /// Test that a Task node dispatched to the [`crate::executor::nexus::NexusExecutor`]
+    /// is reattached to its Nexus job (rather than resubmitted) after the runtime
+    /// is killed and resumed, and that the now-completed job's results are picked up.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn run_can_resume_nexus_task_after_runtime_is_terminated() -> miette::Result<()> {
+        use crate::executor::{
+            interface::TaskHandle,
+            nexus::{NexusClientConfig, client::TLSMode},
+        };
+
+        let (app, release_sender, submission_count) = nexus_restart_test_app();
+        let server = axum_test::TestServer::builder().http_transport().build(app);
+        let url = server.server_address().expect("No server address");
+
+        let token_dir = crate::executor::nexus::client::tests::setup_temp_tokens().await?;
+        let client_config = NexusClientConfig {
+            tls_mode: TLSMode::None,
+            host: format!(
+                "{}:{}",
+                url.host_str().expect("No host"),
+                url.port().expect("No port")
+            ),
+            token_dir: Some(token_dir.path().to_path_buf()),
+        };
+
+        let database_file = NamedTempFile::new().into_diagnostic()?;
+        let database_url = database_file.path().to_string_lossy().into_owned();
+        let mut config = RuntimeConfig::memory();
+        config.executors = HashMap::from([(
+            "nexus".to_string(),
+            ExecutorConfig::Nexus {
+                client_config,
+                output_storage_name: "memory".to_string(),
+            },
+        )]);
+        config.default_executor_name = "nexus".to_string();
+        config.runtime_state = RuntimeStateConfig::Sqlite {
+            memory: false,
+            url: Some(database_url),
+        };
+
+        let mut workflow_graph = workflow(["result"]);
+        let hugr_package = input(&mut workflow_graph, "hugr_package");
+        let project_name = constant(&mut workflow_graph, "tkr-demo")?;
+        let job_name = constant(&mut workflow_graph, "tkr-example-job")?;
+        let n_shots = constant(&mut workflow_graph, 5u64)?;
+        let task_node = task(
+            &mut workflow_graph,
+            "nexus_worker",
+            "submit_and_run",
+            ["project_name", "job_name", "n_shots", "hugr_package"],
+            ["results"],
+        );
+        let out = output(&workflow_graph, "result");
+        link(
+            &mut workflow_graph,
+            project_name,
+            (task_node, "project_name"),
+        )?;
+        link(&mut workflow_graph, job_name, (task_node, "job_name"))?;
+        link(&mut workflow_graph, n_shots, (task_node, "n_shots"))?;
+        link(
+            &mut workflow_graph,
+            hugr_package,
+            (task_node, "hugr_package"),
+        )?;
+        link(&mut workflow_graph, (task_node, "results"), out)?;
+
+        let mut runtime = Runtime::from_config(&config).await?;
+        let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
+        let inputs = HashMap::from([("hugr_package".to_string(), hugr_package_bytes()?)]);
+        let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
+        runtime.dedicated_run_id = Some(run_id);
+        let workflow_run_state = runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?;
+        let task_location = Location::root().with_node(task_node);
+        let mut state_updates = runtime.state.listen();
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let run = Abortable::new(runtime.run(), abort_registration);
+        tokio::pin!(run);
+        // Wait for the first submission, WS sends SUBMITTED
+        let wait_for_queued = async {
+            loop {
+                state_updates.changed().await.into_diagnostic()?;
+                if matches!(
+                    workflow_run_state.read(&task_location).await?.handle,
+                    Some(TaskHandle::Nexus { .. })
+                ) {
+                    return Ok::<(), miette::Report>(());
+                }
+            }
+        };
+        tokio::pin!(wait_for_queued);
+        tokio::select! {
+            result = &mut run => panic!("runtime terminated before interruption: {result:?}"),
+            result = &mut wait_for_queued => result?,
+        }
+        abort_handle.abort();
+        // TODO: At this point one monitor tokio::task is still running from the nexus executor.
+        // We will spawn a second one with the restart.
+        // For the purpose of this test this doesn't matter, but we should fix once we have a
+        // better cancel / shutdown mechanism for the runtime.
+
+        assert!(run.await.is_err(), "the first runtime was not terminated");
+        // Job Sumission counter should be 1
+        assert_eq!(
+            submission_count.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        let job_id_before_resume = workflow_run_state.read(&task_location).await?.handle;
+
+        // Let the mock Nexus job complete, as if it finished while the
+        // runtime was down.
+        release_sender.send(true).into_diagnostic()?;
+
+        let mut resumed_runtime = Runtime::from_config(&config).await?;
+        resumed_runtime.dedicated_run_id = Some(run_id);
+        resumed_runtime.run().await?;
+
+        // The resumed run must reattach to the same Nexus job rather than
+        // resubmitting.
+        assert_eq!(
+            submission_count.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        let resumed_state = resumed_runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?;
+        assert_eq!(
+            resumed_state.read(&task_location).await?.handle,
+            job_id_before_resume
+        );
+
+        let outputs = resumed_runtime.outputs(run_id, attempt).await?;
+        assert_eq!(
+            outputs.get("result").map(Vec::as_slice),
+            Some(
+                serde_json::to_vec(&serde_json::json!([[]]))
+                    .into_diagnostic()?
+                    .as_slice()
+            )
         );
 
         Ok(())
