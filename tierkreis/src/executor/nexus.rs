@@ -655,6 +655,8 @@ impl Executor for NexusExecutor {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use axum::{
         Json, Router,
         extract::{
@@ -877,7 +879,7 @@ mod tests {
 
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -886,8 +888,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -896,8 +898,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -906,8 +908,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[3],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -916,7 +918,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         assert_registry_contains_values(
             &registry,
@@ -1017,7 +1019,7 @@ mod tests {
 
         let events = stream.take(2).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 2);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1026,8 +1028,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1036,7 +1038,7 @@ mod tests {
                 }),
                 ..
             } if error == "Job failed with message: job has errored"
-        ));
+        );
 
         Ok(())
     }
@@ -1146,7 +1148,7 @@ mod tests {
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
         let event = stream.next().await.unwrap();
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1155,11 +1157,10 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         let event = stream.next().await.unwrap();
-        dbg!(&event);
-        assert!(matches!(
+        assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -1168,7 +1169,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
 
         Ok(())
     }
