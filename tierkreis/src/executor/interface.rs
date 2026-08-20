@@ -57,7 +57,7 @@ pub struct TaskPlan {
 
 /// An executor-specific identifier for a task that can be persisted and restored.
 /// None indicates Inmemory/needs to be scheduled
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "executor", content = "task")]
 pub enum TaskHandle {
     /// A task running as a subprocess.

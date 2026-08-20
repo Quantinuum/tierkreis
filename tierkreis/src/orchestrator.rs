@@ -31,7 +31,10 @@ use crate::{
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
         send_workflow_run_complete,
     },
-    executor::{ExecutorRegistry, interface::TaskPlan},
+    executor::{
+        ExecutorRegistry,
+        interface::{TaskHandle, TaskPlan},
+    },
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
@@ -60,6 +63,9 @@ pub enum ActionKind {
         inputs: HashMap<String, AssetSpec>,
         /// The names of the outputs of the Task.
         outputs: HashSet<String>,
+        /// A persisted handle used to reattach to a Task that was already
+        /// dispatched to an Executor before a crash/restart, if any.
+        task_handle: Option<TaskHandle>,
     },
     /// Mark the node as switching with a particular value.
     SetSwitching {
@@ -149,6 +155,11 @@ pub struct Orchestrator {
 
     default_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+
+    // (run_id, attempt, location) tuples for nodes that have been scheduled
+    // by this Orchestrator instance. This solves relying on scheduled_time == Some()
+    // after a runtime restart.
+    scheduled_this_lifetime: Mutex<HashSet<(Uuid, u32, Location)>>,
 }
 
 impl Orchestrator {
@@ -188,6 +199,8 @@ impl Orchestrator {
 
             default_storage_name: default_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
+
+            scheduled_this_lifetime: Mutex::new(HashSet::new()),
         })
     }
 
@@ -216,10 +229,27 @@ impl Orchestrator {
             return Ok(stream::empty().boxed());
         }
 
-        let ready_nodes: Vec<_> =
-            Self::find_ready_nodes(&context.parent_loc, &workflow_graph, &node_states).collect();
+        let run_id = context.workflow_run_state.run_id();
+        let attempt = context.workflow_run_state.attempt();
+        let ready_nodes: Vec<_> = {
+            let scheduled_this_lifetime = self.scheduled_this_lifetime.lock().unwrap();
+            Self::find_ready_nodes(
+                &context.parent_loc,
+                &workflow_graph,
+                &node_states,
+                run_id,
+                attempt,
+                &scheduled_this_lifetime,
+            )
+            .collect()
+        };
         // Mark all ready nodes as scheduled.
         Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
+        self.scheduled_this_lifetime.lock().unwrap().extend(
+            ready_nodes
+                .iter()
+                .map(|n| (run_id, attempt, context.parent_loc.with_node(*n))),
+        );
 
         let node_states = Arc::new(node_states);
         Ok(stream::iter(ready_nodes)
@@ -332,7 +362,10 @@ impl Orchestrator {
         parent_location: &'a Location,
         workflow_graph: &'a WorkflowGraph,
         node_states: &'a NodeStates,
-    ) -> impl Iterator<Item = NodeIndex> {
+        run_id: Uuid,
+        attempt: u32,
+        scheduled_this_lifetime: &'a HashSet<(Uuid, u32, Location)>,
+    ) -> impl Iterator<Item = NodeIndex> + 'a {
         // Find nodes that are ready for scheduling.
         workflow_graph
             // Traverse the graph to find nodes that are yet to run, starting
@@ -341,15 +374,19 @@ impl Orchestrator {
             // TODO: We shouldn't really need to sort every time
             .toposort_filtered_from_output_node(
                 // Returns true if a node should be traversed.
-                |n| {
+                move |n| {
                     let definition = workflow_graph
                         .node_definition(n)
                         .expect("Node definition not found");
 
                     if let Some(state) = node_states.get(&parent_location.with_node(n)) {
-                        // TODO: This sometimes means even const/input nodes
-                        // are run multiple times if their state is yet
-                        // to be updated from the last orchestration round.
+                        // A node scheduled in a previous process will be rescheduled
+                        // The executor deals with reattaching
+                        let scheduled_this_lifetime = scheduled_this_lifetime.contains(&(
+                            run_id,
+                            attempt,
+                            parent_location.with_node(n),
+                        ));
                         state.outputs.is_none()
                             && !(matches!(
                                 definition,
@@ -357,7 +394,8 @@ impl Orchestrator {
                                     | NodeDefinition::Input { .. }
                                     | NodeDefinition::Const { .. }
                                     | NodeDefinition::Output {}
-                            ) && state.scheduled_time.is_some())
+                            ) && state.scheduled_time.is_some()
+                                && scheduled_this_lifetime)
                     } else {
                         true
                     }
@@ -1047,6 +1085,7 @@ impl Orchestrator {
                     task_name,
                     inputs,
                     outputs,
+                    task_handle,
                 } => plan.tasks.push(TaskPlan {
                     workflow_run_id,
                     attempt,
@@ -1056,6 +1095,7 @@ impl Orchestrator {
                     inputs,
                     outputs,
                     output_storage_name: Some(self.default_storage_name.clone()),
+                    task_handle,
                     ..Default::default()
                 }),
                 ActionKind::SetSwitching { cond } => {
@@ -1113,6 +1153,10 @@ impl Orchestrator {
 
         if plan.workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
+            self.scheduled_this_lifetime
+                .lock()
+                .unwrap()
+                .retain(|(rid, att, _)| *rid != workflow_run_id || *att != attempt);
         }
 
         Ok(())
@@ -1174,16 +1218,19 @@ fn build_task_action(
     worker_name: &str,
     task_name: &str,
 ) -> miette::Result<Action> {
+    let loc = parent_location.with_node(n);
     let inputs = collect_inputs(&workflow_graph, node_states, parent_location, n)?;
     let outputs = workflow_graph.output_names(n)?.cloned().collect();
+    let task_handle = node_states.get(&loc).and_then(|state| state.handle.clone());
 
     Ok(Action {
-        loc: parent_location.with_node(n),
+        loc,
         kind: ActionKind::PerformTask {
             worker_name: worker_name.to_string(),
             task_name: task_name.to_string(),
             inputs,
             outputs,
+            task_handle,
         },
     })
 }
