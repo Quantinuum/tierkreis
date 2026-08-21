@@ -223,16 +223,24 @@ impl Orchestrator {
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
 
-        if let Some(output_state) =
-            node_states.get(&context.parent_loc.with_node(workflow_graph.output_idx()))
-            && output_state.scheduled_time.is_some()
+        let run_id = context.workflow_run_state.run_id();
+        let attempt = context.workflow_run_state.attempt();
+        let loc = context.parent_loc.with_node(workflow_graph.output_idx());
+
+        if self
+            .scheduled_this_lifetime
+            .read()
+            .await
+            .get(&(
+                run_id,
+                attempt,
+            ))
+            .is_some_and(|set| set.lock().unwrap().contains(&loc))
         {
             // Output is already scheduled, no actions to perform.
             return Ok(stream::empty().boxed());
         }
 
-        let run_id = context.workflow_run_state.run_id();
-        let attempt = context.workflow_run_state.attempt();
         let ready_nodes: Vec<_> = {
             let scheduled_this_lifetime = self.scheduled_this_lifetime.read().await;
             Self::find_ready_nodes(
@@ -246,7 +254,7 @@ impl Orchestrator {
             .collect()
         };
         // Mark all ready nodes as scheduled.
-        Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
+        // Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
         self.scheduled_this_lifetime
             .write()
             .await
@@ -384,26 +392,25 @@ impl Orchestrator {
                         .node_definition(n)
                         .expect("Node definition not found");
 
-                    if let Some(state) = node_states.get(&parent_location.with_node(n)) {
-                        // A node scheduled in a previous process will be rescheduled
-                        // The executor deals with reattaching
-                        let scheduled_this_lifetime = scheduled_this_lifetime
-                            .get(&(run_id, attempt))
-                            .is_some_and(|set| {
-                                set.lock().unwrap().contains(&parent_location.with_node(n))
-                            });
-                        state.outputs.is_none()
-                            && !(matches!(
-                                definition,
-                                NodeDefinition::Task { .. }
-                                    | NodeDefinition::Input { .. }
-                                    | NodeDefinition::Const { .. }
-                                    | NodeDefinition::Output {}
-                            ) && state.scheduled_time.is_some()
-                                && scheduled_this_lifetime)
-                    } else {
-                        true
-                    }
+                    // A node scheduled in a previous process will be rescheduled.
+                    // The executor deals with reattaching.
+                    let scheduled_this_lifetime = scheduled_this_lifetime
+                        .get(&(run_id, attempt))
+                        .is_some_and(|set| {
+                            set.lock().unwrap().contains(&parent_location.with_node(n))
+                        });
+                    let always_run = matches!(
+                        definition,
+                        NodeDefinition::Task { .. }
+                            | NodeDefinition::Input { .. }
+                            | NodeDefinition::Const { .. }
+                            | NodeDefinition::Output {}
+                    );
+
+                    let outputs_missing = node_states
+                        .get(&parent_location.with_node(n))
+                        .is_none_or(|state| state.outputs.is_none());
+                    outputs_missing && !(always_run && scheduled_this_lifetime)
                 },
                 // Returns true if a port should be traversed.
                 |n, p| {
@@ -477,6 +484,9 @@ impl Orchestrator {
             .is_some_and(|state| state.outputs.is_some()))
     }
 
+    // Currently unused in favor of `scheduled_this_lifetime`.
+    // Can be reused to emit the event later instead of directly using it.
+    #[allow(dead_code)]
     async fn mark_nodes_scheduled(
         context: &OrchestrationContext,
         nodes: impl Iterator<Item = &NodeIndex>,

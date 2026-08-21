@@ -84,20 +84,17 @@ type CancelSender = mpsc::Sender<(Uuid, u32, Location)>;
 type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
-type AbortHandles = Arc<Mutex<HashMap<(Uuid, u32, Location), AbortHandle>>>;
+type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
 
 #[instrument(skip_all, err)]
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
-    abort_handles: &AbortHandles,
+    abort_handles: &mut AbortHandles,
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles
-        .lock()
-        .unwrap()
-        .remove(&(workflow_run_id, attempt, loc.clone()));
+    let handle = abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
     if let Some(handle) = handle {
         handle.abort();
         send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
@@ -107,7 +104,7 @@ async fn process_cancelled_task(
 
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    abort_handles: &AbortHandles,
+    abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
 ) -> miette::Result<()> {
@@ -118,10 +115,7 @@ async fn process_finished_task(
     let attempt = background_task.attempt;
     let exit_status = background_task.exit_status;
 
-    abort_handles
-        .lock()
-        .unwrap()
-        .remove(&(workflow_run_id, attempt, loc.clone()));
+    abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
     match exit_status {
         Ok(status) => {
@@ -179,7 +173,7 @@ async fn process_finished_task(
 #[instrument(skip_all, err)]
 async fn start_task(
     event_sender: &mut EventSender,
-    abort_handles: &AbortHandles,
+    abort_handles: &mut AbortHandles,
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
@@ -199,6 +193,9 @@ async fn start_task(
             Err(_) => false,
         };
         if is_original_process {
+            // Original process is still running, terminate it to release the resources.
+            // Reattaching is not impossible but currently we don't know whwere
+            // the old process is writing its outputs and how to check its inputs.
             let status = Command::new("kill")
                 .arg(pid.to_string())
                 .status()
@@ -260,10 +257,7 @@ async fn start_task(
         .instrument(parent_span),
     );
 
-    abort_handles
-        .lock()
-        .unwrap()
-        .insert((workflow_run_id, attempt, loc), task.abort_handle());
+    abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
     running.push(task);
 
     Ok(())
@@ -274,7 +268,7 @@ async fn process_tasks(
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
-    abort_handles: AbortHandles,
+    mut abort_handles: AbortHandles,
 ) {
     let mut running: RunningFutures = FuturesUnordered::new();
 
@@ -283,7 +277,7 @@ async fn process_tasks(
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
                 tracing::debug!( workflow_run_id = %workflow_run_id, attempt = %attempt, loc = %loc, "Received cancel request",);
-                process_cancelled_task(&mut event_sender, &abort_handles, workflow_run_id, attempt, loc)
+                process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
             }
@@ -296,7 +290,7 @@ async fn process_tasks(
                 tracing::debug!( workflow_run_id = %background_task.workflow_run_id, attempt = %background_task.attempt, loc = %background_task.loc, "Task completed");
                 process_finished_task(
                     &mut event_sender,
-                    &abort_handles,
+                    &mut abort_handles,
                     &asset_storage_registry,
                     background_task,
                 )
@@ -308,7 +302,7 @@ async fn process_tasks(
                 tracing::debug!( workflow_run_id = %internal_task.workflow_run_id, attempt = %internal_task.attempt, loc = %internal_task.loc, "Received task {}", internal_task.worker_name);
                 start_task(
                     &mut event_sender,
-                    &abort_handles,
+                    &mut abort_handles,
                     &mut running,
                     internal_task,
                 )
@@ -375,13 +369,13 @@ impl SubprocessExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
-        let abort_handles = Arc::new(Mutex::new(HashMap::new()));
+        let abort_handles = HashMap::new();
         tokio::spawn(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
             background_asset_storage_registry,
-            Arc::clone(&abort_handles),
+            abort_handles,
         ));
 
         let asset_storage_registry = Arc::clone(asset_storage_registry);

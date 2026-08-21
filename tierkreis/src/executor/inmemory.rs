@@ -259,20 +259,16 @@ fn run_builtin(
 }
 
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
-type AbortHandles = Arc<Mutex<HashMap<(Uuid, u32, Location), AbortHandle>>>;
+type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
 
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
-    abort_handles: &AbortHandles,
+    abort_handles: &mut AbortHandles,
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles
-        .lock()
-        .unwrap()
-        .remove(&(workflow_run_id, attempt, loc.clone()));
-    if let Some(handle) = handle {
+    if let Some(handle) = abort_handles.remove(&(workflow_run_id, attempt, loc.clone())) {
         handle.abort();
         send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
     }
@@ -281,7 +277,7 @@ async fn process_cancelled_task(
 
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    abort_handles: &AbortHandles,
+    abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
 ) -> miette::Result<()> {
@@ -291,10 +287,7 @@ async fn process_finished_task(
     let workflow_run_id = background_task.workflow_run_id;
     let attempt = background_task.attempt;
 
-    abort_handles
-        .lock()
-        .unwrap()
-        .remove(&(workflow_run_id, attempt, loc.clone()));
+    abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
     let outputs = match task_outputs {
         Ok(outputs) => outputs,
@@ -324,7 +317,7 @@ async fn process_finished_task(
 
 async fn start_task(
     event_sender: &mut EventSender,
-    abort_handles: &AbortHandles,
+    abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
@@ -370,10 +363,7 @@ async fn start_task(
         })
     });
 
-    abort_handles
-        .lock()
-        .unwrap()
-        .insert((workflow_run_id, attempt, loc.clone()), task.abort_handle());
+    abort_handles.insert((workflow_run_id, attempt, loc.clone()), task.abort_handle());
     running.push(task);
 
     Ok(())
@@ -384,7 +374,7 @@ async fn process_tasks(
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
-    abort_handles: AbortHandles,
+    mut abort_handles: AbortHandles,
 ) {
     let mut running: RunningFutures = FuturesUnordered::new();
 
@@ -398,7 +388,7 @@ async fn process_tasks(
                     loc = %loc,
                     "Received cancel request"
                 );
-                process_cancelled_task(&mut event_sender, &abort_handles, workflow_run_id, attempt, loc)
+                process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
             }
@@ -416,7 +406,7 @@ async fn process_tasks(
                 );
                 process_finished_task(
                     &mut event_sender,
-                    &abort_handles,
+                    &mut abort_handles,
                     &asset_storage_registry,
                     background_task,
                 )
@@ -434,7 +424,7 @@ async fn process_tasks(
                 );
                 start_task(
                     &mut event_sender,
-                    &abort_handles,
+                    &mut abort_handles,
                     &asset_storage_registry,
                     &mut running,
                     internal_task,
@@ -481,13 +471,13 @@ impl InMemoryExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
-        let abort_handles = Arc::new(Mutex::new(HashMap::new()));
+        let abort_handles = HashMap::new();
         tokio::spawn(Box::pin(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
             asset_storage_registry,
-            Arc::clone(&abort_handles),
+            abort_handles,
         )));
 
         Ok(Self {
