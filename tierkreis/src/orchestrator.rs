@@ -823,6 +823,7 @@ impl Orchestrator {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[instrument(
         skip_all,
         fields(location = %parent_location.with_node(n)),
