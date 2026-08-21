@@ -5,23 +5,7 @@ default:
 
 setup:
     uv sync --all-extras
-   
-regenerate-changelogs:
-  @just regenerate-changelog tierkreis
-  @just regenerate-changelog tierkreis_visualization
-  @just regenerate-changelog tierkreis_workers/aer_worker
-  @just regenerate-changelog tierkreis_workers/guppy_worker
-  @just regenerate-changelog tierkreis_workers/ibmq_worker
-  @just regenerate-changelog tierkreis_workers/nexus_worker
-  @just regenerate-changelog tierkreis_workers/pytket_worker
-  @just regenerate-changelog tierkreis_workers/quantinuum_worker
-  @just regenerate-changelog tierkreis_workers/qulacs_worker
-    
-regenerate-changelog dir:
-    #!/usr/bin/env bash
-    cd {{dir}}
-    git cliff -o CHANGELOG.md
-    
+
 test:
     # We need to run a sync in the python environment to provide access to the workers
     # for the rust tests that use worker subprocesses.
@@ -100,5 +84,30 @@ generate:
 
 check-stubs:
   just generate
+  git update-index --refresh
+  git diff-index --quiet HEAD --
+
+
+# Generate changelog entries for all sub-projects from git history.
+generate-changelogs:
+  @just generate-changelog tierkreis
+  @just generate-changelog tierkreis_visualization
+  @just generate-changelog tierkreis_workers/aer_worker
+  @just generate-changelog tierkreis_workers/guppy_worker
+  @just generate-changelog tierkreis_workers/ibmq_worker
+  @just generate-changelog tierkreis_workers/nexus_worker
+  @just generate-changelog tierkreis_workers/pytket_worker
+  @just generate-changelog tierkreis_workers/quantinuum_worker
+  @just generate-changelog tierkreis_workers/qulacs_worker
+
+# Generate changelog entiries for a single sub-project from git history.
+generate-changelog dir:
+    #!/usr/bin/env bash
+    cd {{dir}}
+    git cliff -o CHANGELOG.md
+
+# Check that the CHANGELOG has been updated to the latest version.
+check-changelog:
+  @just generate-changelogs
   git update-index --refresh
   git diff-index --quiet HEAD --

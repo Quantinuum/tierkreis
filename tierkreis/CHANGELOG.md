@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Auto-correct typos from git history
+- Add Changelog generation from git history
 - Upgrade devenv by @johnchildren in [#607](https://github.com/Quantinuum/tierkreis/pull/607)
 - Update ruff and fix errors by @johnchildren in [#603](https://github.com/Quantinuum/tierkreis/pull/603)
 - Reorganise imports in codegen by @johnchildren in [#601](https://github.com/Quantinuum/tierkreis/pull/601)
@@ -55,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Change complex serialization format by @johnchildren in [#522](https://github.com/Quantinuum/tierkreis/pull/522)
 - Use diesel_async and improve event handling by @johnchildren in [#520](https://github.com/Quantinuum/tierkreis/pull/520)
 - Improve sqlite query efficiency by @johnchildren in [#516](https://github.com/Quantinuum/tierkreis/pull/516)
-- Bump the third-party-minor group across 1 directory with 9 updates by @dependabot[bot] in [#517](https://github.com/Quantinuum/tierkreis/pull/517)
 - Multiple locations in events by @johnchildren in [#515](https://github.com/Quantinuum/tierkreis/pull/515)
 - Expand error handling and testing by @johnchildren in [#513](https://github.com/Quantinuum/tierkreis/pull/513)
 - Expose the new orchestrator to python by @johnchildren in [#500](https://github.com/Quantinuum/tierkreis/pull/500)
@@ -201,7 +202,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflows based on trigger by @mwpb in [#222](https://github.com/Quantinuum/tierkreis/pull/222)
 - Move write stubs to namespace by @mwpb in [#212](https://github.com/Quantinuum/tierkreis/pull/212)
 - Include frontend assets in PyPI package by @mwpb in [#215](https://github.com/Quantinuum/tierkreis/pull/215)
-- Improve pytket worker and docs by @philipp-seitz in [#203](https://github.com/Quantinuum/tierkreis/pull/203)
 - Nexus worker improvements, graphs and docs by @mwpb in [#207](https://github.com/Quantinuum/tierkreis/pull/207)
 - Include more justfile commands in ci by @mwpb in [#192](https://github.com/Quantinuum/tierkreis/pull/192)
 - Improve frontend by @philipp-seitz in [#195](https://github.com/Quantinuum/tierkreis/pull/195)
@@ -330,7 +330,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Worker dumps exception trace to stderr by @acl-cqc
-- [Fix] Union of two different instantations of same Generic BaseModel by @acl-cqc
+- [Fix] Union of two different instantiations of same Generic BaseModel by @acl-cqc
 - [Fix] Optional enums by @acl-cqc
 
 ### Fixed
@@ -358,7 +358,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump version to 0.5.0 by @ss2165 in [#10](https://github.com/Quantinuum/tierkreis/pull/10)
 - Take optional python type annotation in `from_python` by @ss2165
 - Allow registration of alternate convertible types by @ss2165
-- OpaqueModel base class for deferring serialisation to pydantic by @ss2165
 - Version bump to 0.4.1 by @ss2165
 - Bump version to 0.4.0 and add changelog by @ss2165
 - Simplify Circuit to just be a newtype for the json string by @ss2165
@@ -441,7 +440,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Merge pull request #2 from CQCL/v0.1.0 by @ss2165 in [#2](https://github.com/Quantinuum/tierkreis/pull/2)
 - Bump version to 0.1.0 by @ss2165
 - Monkeypatch betterproto by @ss2165
-- Split out type check and intgration from python/ by @ss2165
+- Split out type check and integration from python/ by @ss2165
 - Improve type errors by @ss2165
 - Tidy+make deterministic node-renumbering in inline_boxes by @acl-cqc
 - Mypy no longer complains by @alexarice
@@ -537,7 +536,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Review suggestions by @ss2165
 - Mypy and pylint fixes by @ss2165
 - Source and changes for cqconf demo by @ss2165
-- Define and test common types with by @ss2165
 - Improve visualisation with unboxing by @ss2165
 - 'simpler' loop which returns  option<struct<data>> by @ss2165
 - Merge branch 'main' of https://github.com/CQCL-DEV/tierkreis by @ss2165
@@ -579,7 +577,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vec experiments by @ss2165
 - Use port order by @ss2165
 - Circuits and arrays by @ss2165
-- Alises by @ss2165
+- Aliases by @ss2165
 - True/False + implicit eval by @ss2165
 - Experiment with frontend language by @ss2165
 - Separate myqos-worker initialisation by @ss2165
@@ -599,7 +597,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Better docker error handling and cleanup by @ss2165
 - Allow workers to specified as container images by @ss2165
 - Run default workers automatically by @ss2165
-- Propogate type of python error in worker by @ss2165
+- Propagate type of python error in worker by @ss2165
 - More structured type errors in type inference API. by @zrho
 - Tracing with opentelemetry. by @zrho
 - Enable use of local workers as external workers. by @ss2165

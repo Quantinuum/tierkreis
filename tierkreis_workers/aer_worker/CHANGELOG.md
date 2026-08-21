@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Auto-correct typos from git history
+- Add Changelog generation from git history
 - Reorganise imports in codegen by @johnchildren in [#601](https://github.com/Quantinuum/tierkreis/pull/601)
 - Generate pipe characters for Union types by @johnchildren in [#600](https://github.com/Quantinuum/tierkreis/pull/600)
 - Release 2.0.12 by @philipp-seitz in [#417](https://github.com/Quantinuum/tierkreis/pull/417)
@@ -37,7 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Include frontend assets in PyPI package by @mwpb in [#215](https://github.com/Quantinuum/tierkreis/pull/215)
 - Clean up docs and fix worker install by @mwpb in [#210](https://github.com/Quantinuum/tierkreis/pull/210)
-- Improve pytket worker and docs by @philipp-seitz in [#203](https://github.com/Quantinuum/tierkreis/pull/203)
 
 ## [2.0.2] - 2025-09-11
 

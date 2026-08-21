@@ -79,7 +79,7 @@ Here we list the known cases where they are not congruent:
 The main difference is:
 - Tierkreis uses scheduler specific executor classes
 - You cannot provide a path to the scheduler command binary for `psij`. The command has to be in `$PATH`.
-- The `launchers_path` argument has no effect on the `PSIJExecutor`. We reommend using fully qualified paths for commands, e.g. `/home/pbsuser/.local/bin/uv run /mpi_worker/main.py` (for running on the compute nodes).
+- The `launchers_path` argument has no effect on the `PSIJExecutor`. We recommend using fully qualified paths for commands, e.g. `/home/pbsuser/.local/bin/uv run /mpi_worker/main.py` (for running on the compute nodes).
 - `psij` uses an internal script to launch jobs, this can cause jobs to not launch identically to corresponding tierkreis executors
 
 ### Specs

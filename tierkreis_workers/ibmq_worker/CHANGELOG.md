@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Auto-correct typos from git history
+- Add Changelog generation from git history
 - Update ruff and fix errors by @johnchildren in [#603](https://github.com/Quantinuum/tierkreis/pull/603)
 - Reorganise imports in codegen by @johnchildren in [#601](https://github.com/Quantinuum/tierkreis/pull/601)
 - Release 2.0.12 by @philipp-seitz in [#417](https://github.com/Quantinuum/tierkreis/pull/417)

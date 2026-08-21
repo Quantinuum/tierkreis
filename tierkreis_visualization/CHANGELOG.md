@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Auto-correct typos from git history
+- Add Changelog generation from git history
 - Update ruff and fix errors by @johnchildren in [#603](https://github.com/Quantinuum/tierkreis/pull/603)
 - Rust api by @philipp-seitz in [#576](https://github.com/Quantinuum/tierkreis/pull/576)
 - Bump vite from 7.3.3 to 7.3.5 in /tierkreis_visualization/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#511](https://github.com/Quantinuum/tierkreis/pull/511)
 - Supply chain attack hardening with pnpm + config. by @aidanCQ in [#505](https://github.com/Quantinuum/tierkreis/pull/505)
 - Bump dependencies by @philipp-seitz in [#486](https://github.com/Quantinuum/tierkreis/pull/486)
 - Add multiple frontend improvements by @philipp-seitz in [#468](https://github.com/Quantinuum/tierkreis/pull/468)
-- Bump the npm_and_yarn group across 1 directory with 6 updates by @dependabot[bot] in [#445](https://github.com/Quantinuum/tierkreis/pull/445)
 - Bump rollup from 4.44.2 to 4.59.0 in /tierkreis_visualization/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#361](https://github.com/Quantinuum/tierkreis/pull/361)
 - Release 2.0.12 by @philipp-seitz in [#417](https://github.com/Quantinuum/tierkreis/pull/417)
 - Add breakpoints by @philipp-seitz in [#404](https://github.com/Quantinuum/tierkreis/pull/404)
@@ -42,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling by @philipp-seitz in [#261](https://github.com/Quantinuum/tierkreis/pull/261)
 - Restart dependent nodes by @mwpb in [#274](https://github.com/Quantinuum/tierkreis/pull/274)
 - Extra visualiser pages and nested updating by @mwpb in [#260](https://github.com/Quantinuum/tierkreis/pull/260)
-- Bump js-yaml from 4.1.0 to 4.1.1 in /tierkreis_visualization/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#249](https://github.com/Quantinuum/tierkreis/pull/249)
 - Ndarray and custom serialization by @mwpb in [#257](https://github.com/Quantinuum/tierkreis/pull/257)
 - Refactor and get hot reloading working by @mwpb in [#248](https://github.com/Quantinuum/tierkreis/pull/248)
 - Bump vite from 7.1.6 to 7.1.11 in /tierkreis_visualization/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#237](https://github.com/Quantinuum/tierkreis/pull/237)
@@ -68,7 +68,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflows based on trigger by @mwpb in [#222](https://github.com/Quantinuum/tierkreis/pull/222)
 - Include frontend assets in PyPI package by @mwpb in [#215](https://github.com/Quantinuum/tierkreis/pull/215)
 - Bump vite from 7.1.5 to 7.1.6 in /tierkreis_visualization/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#206](https://github.com/Quantinuum/tierkreis/pull/206)
-- Bump vite from 7.1.0 to 7.1.5 in /tierkreis_visualization/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#188](https://github.com/Quantinuum/tierkreis/pull/188)
 - Improve frontend by @philipp-seitz in [#195](https://github.com/Quantinuum/tierkreis/pull/195)
 
 ## [2.0.2] - 2025-09-11
@@ -117,7 +116,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Add tkr-vis utility by @johnchildren in [#82](https://github.com/Quantinuum/tierkreis/pull/82)
-- Add fiew for not started nodes by @philipp-seitz in [#70](https://github.com/Quantinuum/tierkreis/pull/70)
 - Set default shape to ellipse for input and output nodes. by @aidanCQ in [#68](https://github.com/Quantinuum/tierkreis/pull/68)
 - Error-visualization by @philipp-seitz in [#60](https://github.com/Quantinuum/tierkreis/pull/60)
 - Merge pull request #67 from CQCL/feat/lazy-ifelse-node by @johnchildren in [#67](https://github.com/Quantinuum/tierkreis/pull/67)
