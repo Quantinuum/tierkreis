@@ -31,7 +31,7 @@ use crate::{
     },
     executor::{
         Executor,
-        interface::{TaskHandle, TaskPlan, WorkerSpec},
+        interface::{TaskPlan, WorkerSpec},
         nexus::client::{
             NexusClient,
             models::jobs::{JobDefinition, StatusEnum},
@@ -225,9 +225,7 @@ async fn monitor_task(
         workflow_run_id,
         attempt,
         loc.clone(),
-        Some(TaskHandle::Nexus {
-            job_id: job_id.to_string(),
-        }),
+        Some(job_id.to_string()),
     )
     .await?;
 
@@ -571,7 +569,7 @@ impl Executor for NexusExecutor {
 
                 // If we were given a handle to a previously submitted Nexus job
                 // and it's still active, reattach to it instead of resubmitting.
-                let job_id = if let Some(TaskHandle::Nexus { job_id }) = &task_plan.task_handle {
+                let job_id = if let Some(job_id) = &task_plan.task_handle {
                     let job_id = Uuid::parse_str(job_id)
                         .into_diagnostic()
                         .wrap_err("Invalid job_id in restored task handle")?;

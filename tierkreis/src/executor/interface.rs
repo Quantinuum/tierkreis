@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -56,23 +55,11 @@ pub struct TaskPlan {
 }
 
 /// An executor-specific identifier for a task that can be persisted and restored.
-/// None indicates Inmemory/needs to be scheduled
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "executor", content = "task")]
-pub enum TaskHandle {
-    /// A task running as a subprocess.
-    Subprocess {
-        /// The process identifier.
-        pid: u32,
-        /// The process start time in Linux clock ticks.
-        start_time: u64,
-    },
-    /// A task running on nexus.
-    Nexus {
-        /// The job identifier assigned by Nexus.
-        job_id: String,
-    },
-}
+/// `None` indicates in-memory execution or that the task still needs to be scheduled.
+///
+/// The format of the string is entirely up to the [Executor] that created it; each
+/// [Executor] is responsible for encoding and parsing its own handles.
+pub type TaskHandle = String;
 
 /// [`WorkerSpec`] defines the information about a Worker returned by an
 /// [Executor] from the [`Executor::workers`] method.

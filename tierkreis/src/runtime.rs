@@ -779,10 +779,7 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn run_can_resume_nexus_task_after_runtime_is_terminated() -> miette::Result<()> {
-        use crate::executor::{
-            interface::TaskHandle,
-            nexus::{NexusClientConfig, client::TLSMode},
-        };
+        use crate::executor::nexus::{NexusClientConfig, client::TLSMode};
 
         let (app, release_sender, submission_count) = nexus_restart_test_app();
         let server = axum_test::TestServer::builder().http_transport().build(app);
@@ -860,10 +857,12 @@ mod tests {
         let wait_for_queued = async {
             loop {
                 state_updates.changed().await.into_diagnostic()?;
-                if matches!(
-                    workflow_run_state.read(&task_location).await?.handle,
-                    Some(TaskHandle::Nexus { .. })
-                ) {
+                if workflow_run_state
+                    .read(&task_location)
+                    .await?
+                    .handle
+                    .is_some()
+                {
                     return Ok::<(), miette::Report>(());
                 }
             }

@@ -403,13 +403,7 @@ pub async fn read_node_state(
             .transpose()?;
 
         let outputs = read_outputs(conn, &db_node).await?;
-        let handle = db_node
-            .handle
-            .as_deref()
-            .map(serde_json::from_str)
-            .transpose()
-            .into_diagnostic()
-            .wrap_err("Failed to deserialize persisted task handle")?;
+        let handle = db_node.handle.clone();
 
         Ok(crate::state::interface::NodeState {
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
@@ -488,13 +482,7 @@ pub async fn read_node_states(
             .transpose()?;
 
         let outputs = read_outputs(conn, &db_node).await?;
-        let handle = db_node
-            .handle
-            .as_deref()
-            .map(serde_json::from_str)
-            .transpose()
-            .into_diagnostic()
-            .wrap_err("Failed to deserialize persisted task handle")?;
+        let handle = db_node.handle.clone();
 
         states.insert(
             db_node.node_location,

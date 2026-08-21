@@ -192,7 +192,8 @@ async fn start_task(
 
     // If the task has a handle, check if the process is still running and terminate it if so.
     // Other executors should reattach if possible.
-    if let Some(TaskHandle::Subprocess { pid, start_time }) = internal_task.handle {
+    if let Some(handle) = internal_task.handle {
+        let (pid, start_time) = parse_subprocess_handle(&handle)?;
         let is_original_process = match process_identity(pid) {
             Ok(identity) => identity == (pid, start_time),
             Err(_) => false,
@@ -229,7 +230,7 @@ async fn start_task(
     let process_identity = child.id().map(process_identity).transpose()?;
     let (pid, start_time) =
         process_identity.ok_or_else(|| miette!("Worker process did not have a PID"))?;
-    let handle = TaskHandle::Subprocess { pid, start_time };
+    let handle = format_subprocess_handle(pid, start_time);
     send_queued(
         event_sender,
         workflow_run_id,
@@ -499,6 +500,25 @@ fn process_identity(pid: u32) -> miette::Result<(u32, u64)> {
     {
         Ok((pid, 0))
     }
+}
+
+fn format_subprocess_handle(pid: u32, start_time: u64) -> TaskHandle {
+    format!("{pid}:{start_time}")
+}
+
+fn parse_subprocess_handle(handle: &str) -> miette::Result<(u32, u64)> {
+    let (pid, start_time) = handle
+        .split_once(':')
+        .ok_or_else(|| miette!("Invalid subprocess task handle: `{handle}`"))?;
+    let pid = pid
+        .parse()
+        .into_diagnostic()
+        .wrap_err("Invalid pid in subprocess task handle")?;
+    let start_time = start_time
+        .parse()
+        .into_diagnostic()
+        .wrap_err("Invalid start_time in subprocess task handle")?;
+    Ok((pid, start_time))
 }
 
 fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {

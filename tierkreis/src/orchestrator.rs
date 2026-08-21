@@ -143,6 +143,7 @@ impl OrchestrationContext {
 }
 
 type NodeStates = HashMap<Location, NodeState>;
+type ScheduledMap = HashMap<(Uuid, u32), Mutex<HashSet<Location>>>;
 
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
 /// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
@@ -159,7 +160,7 @@ pub struct Orchestrator {
 
     // Locations scheduled by this Orchestrator instance, keyed by (run_id, attempt).
     // This solves relying on scheduled_time == Some() after a runtime restart.
-    scheduled_this_lifetime: RwLock<HashMap<(Uuid, u32), Mutex<HashSet<Location>>>>,
+    scheduled_this_lifetime: RwLock<ScheduledMap>,
 }
 
 impl Orchestrator {
@@ -233,9 +234,7 @@ impl Orchestrator {
         let run_id = context.workflow_run_state.run_id();
         let attempt = context.workflow_run_state.attempt();
         let ready_nodes: Vec<_> = {
-            let scheduled_this_lifetime = self
-                .scheduled_this_lifetime
-                .read().await;
+            let scheduled_this_lifetime = self.scheduled_this_lifetime.read().await;
             Self::find_ready_nodes(
                 &context.parent_loc,
                 &workflow_graph,
@@ -253,13 +252,9 @@ impl Orchestrator {
             .await
             .entry((run_id, attempt))
             .or_insert_with(|| Mutex::new(HashSet::new()))
-            .lock()
+            .get_mut()
             .map_err(|_| miette!("Failed to acquire lock"))?
-            .extend(
-                ready_nodes
-                    .iter()
-                    .map(|n| context.parent_loc.with_node(*n)),
-            );
+            .extend(ready_nodes.iter().map(|n| context.parent_loc.with_node(*n)));
 
         let node_states = Arc::new(node_states);
         Ok(stream::iter(ready_nodes)
@@ -394,8 +389,9 @@ impl Orchestrator {
                         // The executor deals with reattaching
                         let scheduled_this_lifetime = scheduled_this_lifetime
                             .get(&(run_id, attempt))
-                            .map(|set| set.lock().unwrap().contains(&parent_location.with_node(n)))
-                            .unwrap_or(false);
+                            .is_some_and(|set| {
+                                set.lock().unwrap().contains(&parent_location.with_node(n))
+                            });
                         state.outputs.is_none()
                             && !(matches!(
                                 definition,

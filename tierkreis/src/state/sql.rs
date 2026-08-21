@@ -555,11 +555,7 @@ impl SqliteWorkflowRunState {
                     }
                     NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
-                        row.handle = handle
-                            .as_ref()
-                            .map(serde_json::to_string)
-                            .transpose()
-                            .into_diagnostic()?;
+                        row.handle.clone_from(handle);
                     }
                     NodeStatus::Running {
                         state_update: None, ..
