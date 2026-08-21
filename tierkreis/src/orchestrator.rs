@@ -116,6 +116,9 @@ pub struct OrchestrationContext {
     parent_loc: Location,
     graph_inputs: HashMap<String, AssetSpec>,
     workflow_run_state: Arc<dyn WorkflowRunState>,
+    // Locations scheduled in this orchestration context.
+    // This solves relying on scheduled_time == Some() after a runtime restart.
+    scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
 }
 
 impl Clone for OrchestrationContext {
@@ -124,6 +127,7 @@ impl Clone for OrchestrationContext {
             parent_loc: self.parent_loc.clone(),
             graph_inputs: self.graph_inputs.clone(),
             workflow_run_state: Arc::clone(&self.workflow_run_state),
+            scheduled_this_lifetime: Arc::clone(&self.scheduled_this_lifetime),
         }
     }
 }
@@ -138,12 +142,13 @@ impl OrchestrationContext {
             parent_loc: Location::root(),
             graph_inputs: inputs,
             workflow_run_state: Arc::clone(workflow_run_state),
+            scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 }
 
 type NodeStates = HashMap<Location, NodeState>;
-type ScheduledMap = HashMap<(Uuid, u32), Mutex<HashSet<Location>>>;
+type ScheduledSet = HashSet<Location>;
 
 /// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
 /// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
@@ -157,10 +162,6 @@ pub struct Orchestrator {
 
     default_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
-
-    // Locations scheduled by this Orchestrator instance, keyed by (run_id, attempt).
-    // This solves relying on scheduled_time == Some() after a runtime restart.
-    scheduled_this_lifetime: RwLock<ScheduledMap>,
 }
 
 impl Orchestrator {
@@ -200,8 +201,6 @@ impl Orchestrator {
 
             default_storage_name: default_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
-
-            scheduled_this_lifetime: RwLock::new(HashMap::new()),
         })
     }
 
@@ -223,45 +222,29 @@ impl Orchestrator {
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
 
-        let run_id = context.workflow_run_state.run_id();
-        let attempt = context.workflow_run_state.attempt();
         let loc = context.parent_loc.with_node(workflow_graph.output_idx());
 
-        if self
-            .scheduled_this_lifetime
-            .read()
-            .await
-            .get(&(
-                run_id,
-                attempt,
-            ))
-            .is_some_and(|set| set.lock().unwrap().contains(&loc))
-        {
+        if context.scheduled_this_lifetime.read().await.contains(&loc) {
             // Output is already scheduled, no actions to perform.
             return Ok(stream::empty().boxed());
         }
 
         let ready_nodes: Vec<_> = {
-            let scheduled_this_lifetime = self.scheduled_this_lifetime.read().await;
+            let scheduled_this_lifetime = context.scheduled_this_lifetime.read().await;
             Self::find_ready_nodes(
                 &context.parent_loc,
                 &workflow_graph,
                 &node_states,
-                run_id,
-                attempt,
                 &scheduled_this_lifetime,
             )
             .collect()
         };
         // Mark all ready nodes as scheduled.
         // Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
-        self.scheduled_this_lifetime
+        context
+            .scheduled_this_lifetime
             .write()
             .await
-            .entry((run_id, attempt))
-            .or_insert_with(|| Mutex::new(HashSet::new()))
-            .get_mut()
-            .map_err(|_| miette!("Failed to acquire lock"))?
             .extend(ready_nodes.iter().map(|n| context.parent_loc.with_node(*n)));
 
         let node_states = Arc::new(node_states);
@@ -305,6 +288,7 @@ impl Orchestrator {
                         .build_eval_actions(
                             workflow_graph.clone(),
                             context.workflow_run_state.clone(),
+                            context.scheduled_this_lifetime.clone(),
                             node_states,
                             parent_location,
                             n,
@@ -315,6 +299,7 @@ impl Orchestrator {
                         .build_loop_actions(
                             workflow_graph.clone(),
                             context.workflow_run_state.clone(),
+                            context.scheduled_this_lifetime.clone(),
                             node_states,
                             parent_location,
                             n,
@@ -325,6 +310,7 @@ impl Orchestrator {
                         .build_map_actions(
                             workflow_graph.clone(),
                             context.workflow_run_state.clone(),
+                            context.scheduled_this_lifetime.clone(),
                             node_states,
                             mapped_ports.clone(),
                             parent_location,
@@ -375,9 +361,7 @@ impl Orchestrator {
         parent_location: &'a Location,
         workflow_graph: &'a WorkflowGraph,
         node_states: &'a NodeStates,
-        run_id: Uuid,
-        attempt: u32,
-        scheduled_this_lifetime: &'a HashMap<(Uuid, u32), Mutex<HashSet<Location>>>,
+        scheduled_this_lifetime: &'a HashSet<Location>,
     ) -> impl Iterator<Item = NodeIndex> + 'a {
         // Find nodes that are ready for scheduling.
         workflow_graph
@@ -394,11 +378,8 @@ impl Orchestrator {
 
                     // A node scheduled in a previous process will be rescheduled.
                     // The executor deals with reattaching.
-                    let scheduled_this_lifetime = scheduled_this_lifetime
-                        .get(&(run_id, attempt))
-                        .is_some_and(|set| {
-                            set.lock().unwrap().contains(&parent_location.with_node(n))
-                        });
+                    let scheduled_this_lifetime =
+                        scheduled_this_lifetime.contains(&parent_location.with_node(n));
                     let always_run = matches!(
                         definition,
                         NodeDefinition::Task { .. }
@@ -710,6 +691,7 @@ impl Orchestrator {
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
+        scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         node_states: Arc<NodeStates>,
         parent_location: Location,
         n: NodeIndex,
@@ -745,6 +727,7 @@ impl Orchestrator {
                     parent_loc: loc,
                     graph_inputs: inputs,
                     workflow_run_state: workflow_run_state.clone(),
+                    scheduled_this_lifetime,
                 },
                 subgraph,
             )
@@ -762,6 +745,7 @@ impl Orchestrator {
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
+        scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         node_states: Arc<NodeStates>,
         parent_location: Location,
         n: NodeIndex,
@@ -809,6 +793,7 @@ impl Orchestrator {
                                     parent_loc: loop_loc,
                                     graph_inputs: inputs,
                                     workflow_run_state: Arc::clone(&workflow_run_state),
+                                    scheduled_this_lifetime,
                                 },
                                 subgraph,
                             )
@@ -847,6 +832,7 @@ impl Orchestrator {
         &'a self,
         workflow_graph: Arc<WorkflowGraph>,
         workflow_run_state: Arc<dyn WorkflowRunState>,
+        scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         node_states: Arc<NodeStates>,
         mapped_ports: HashSet<String>,
         parent_location: Location,
@@ -862,6 +848,7 @@ impl Orchestrator {
             None => {
                 self.build_initial_map_actions(
                     workflow_run_state,
+                    scheduled_this_lifetime,
                     mapped_ports,
                     parent_location.with_node(n),
                     inputs,
@@ -883,6 +870,7 @@ impl Orchestrator {
             Some(completed) => {
                 self.build_subsequent_map_actions(
                     workflow_run_state,
+                    scheduled_this_lifetime,
                     parent_location.with_node(n),
                     completed.to_bitvec(),
                     inputs,
@@ -901,6 +889,7 @@ impl Orchestrator {
     async fn build_initial_map_actions<'a>(
         &'a self,
         workflow_run_state: Arc<dyn WorkflowRunState>,
+        scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         mapped_ports: HashSet<String>,
         location: Location,
         inputs: HashMap<String, AssetSpec>,
@@ -932,6 +921,7 @@ impl Orchestrator {
                         parent_loc: map_loc,
                         graph_inputs: inputs,
                         workflow_run_state: Arc::clone(&workflow_run_state),
+                        scheduled_this_lifetime: Arc::clone(&scheduled_this_lifetime),
                     },
                     subgraph.clone(),
                 )
@@ -953,6 +943,7 @@ impl Orchestrator {
     async fn build_subsequent_map_actions<'a>(
         &'a self,
         workflow_run_state: Arc<dyn WorkflowRunState>,
+        scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         location: Location,
         completed: BitVec<u8>,
         inputs: HashMap<String, AssetSpec>,
@@ -972,6 +963,7 @@ impl Orchestrator {
                         parent_loc: map_loc,
                         graph_inputs: inputs.clone(),
                         workflow_run_state: Arc::clone(&workflow_run_state),
+                        scheduled_this_lifetime: Arc::clone(&scheduled_this_lifetime),
                     },
                     subgraph.clone(),
                 )
@@ -1168,8 +1160,6 @@ impl Orchestrator {
 
         if plan.workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
-            let mut scheduled_this_lifetime = self.scheduled_this_lifetime.write().await;
-            scheduled_this_lifetime.remove(&(workflow_run_id, attempt));
         }
 
         Ok(())
@@ -1526,6 +1516,7 @@ mod tests {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(workflow_run_state),
+            scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
         let actions = orchestrator
             .build_actions(context, Arc::clone(workflow_graph))
@@ -1841,6 +1832,7 @@ mod tests {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(&workflow_run_state),
+            scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
         let mut stream = orchestrator.listen()?;
         let state = Arc::clone(&workflow_run_state);
@@ -1947,6 +1939,7 @@ mod tests {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(&workflow_run_state),
+            scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
         let mut stream = orchestrator.listen()?;
         let state = Arc::clone(&workflow_run_state);
@@ -2063,6 +2056,7 @@ mod tests {
             parent_loc: Location::root(),
             graph_inputs: inputs.clone(),
             workflow_run_state: Arc::clone(&workflow_run_state),
+            scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
         let mut stream = orchestrator.listen()?;
         let state = Arc::clone(&workflow_run_state);
@@ -2144,6 +2138,7 @@ mod tests {
             parent_loc: Location::root(),
             graph_inputs: HashMap::new(),
             workflow_run_state: Arc::clone(&workflow_run_state),
+            scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
         let mut stream = orchestrator.listen()?;
         let state = Arc::clone(&workflow_run_state);

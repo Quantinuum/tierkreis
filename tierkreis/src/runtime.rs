@@ -1,7 +1,13 @@
 /*!
 The runtime module defines the entrypoint to running Workflows.
 */
-use std::{collections::HashMap, env::home_dir, hash::BuildHasher, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    env::home_dir,
+    hash::BuildHasher,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
@@ -354,6 +360,8 @@ impl Runtime {
         }));
 
         let mut state_recv = self.state.listen();
+        // TODO: this should probably be part of the runtime state
+        let mut contexts: HashMap<(Uuid, u32), OrchestrationContext> = HashMap::new();
 
         loop {
             let active_runs: Vec<(Uuid, u32)> = {
@@ -373,17 +381,26 @@ impl Runtime {
                     updated.active_runs.iter().copied().collect()
                 }
             };
+            let active_run_set: HashSet<(Uuid, u32)> = active_runs.iter().copied().collect();
+            contexts.retain(|key, _| active_run_set.contains(key));
+
             for (run_id, attempt) in active_runs {
                 let workflow_run_state =
                     self.state.load_workflow_run_state(run_id, attempt).await?;
                 let workflow_id = workflow_run_state.workflow_id();
                 let workflow_graph = self.state.load_workflow(workflow_id).await?;
-                let inputs = workflow_run_state.load_inputs().await?;
 
                 let workflow_run_state = Arc::new(workflow_run_state);
                 let workflow_graph = Arc::new(workflow_graph);
 
-                let context = OrchestrationContext::new(&workflow_run_state, inputs);
+                let context = if let Some(context) = contexts.get(&(run_id, attempt)) {
+                    context.clone()
+                } else {
+                    let inputs = workflow_run_state.load_inputs().await?;
+                    let context = OrchestrationContext::new(&workflow_run_state, inputs);
+                    contexts.insert((run_id, attempt), context.clone());
+                    context
+                };
 
                 let actions = self
                     .orchestrator
