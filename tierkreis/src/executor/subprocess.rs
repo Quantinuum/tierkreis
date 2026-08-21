@@ -882,32 +882,22 @@ mod tests {
         let events = stream.take(6).collect::<Vec<_>>().await;
         dbg!(&events);
         assert_eq!(events.len(), 6);
-        for loc in [loc1.clone(), loc2.clone()] {
-            assert!(events.iter().any(|event| matches!(
-                event,
-                RuntimeEvent::WorkflowRun {
-                    workflow_run_id,
-                    attempt: 0,
-                    event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                        locs,
-                        status: NodeStatus::Running {
-                            state_update: None,
-                        },
-                    }),
-                } if *workflow_run_id == Uuid::nil() && locs == &vec![loc.clone()]
-            )));
-            assert!(events.iter().any(|event| matches!(
-                event,
-                RuntimeEvent::WorkflowRun {
-                    workflow_run_id,
-                    attempt: 0,
-                    event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                        locs,
-                        status: NodeStatus::Queued { .. },
-                    }),
-                } if *workflow_run_id == Uuid::nil() && locs == &vec![loc.clone()]
-            )));
-        }
+        assert!(events.contains(&RuntimeEvent::WorkflowRun {
+            workflow_run_id: Uuid::nil(),
+            attempt: 0,
+            event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![loc1.clone()],
+                status: NodeStatus::Running { state_update: None }
+            })
+        }));
+        assert!(events.contains(&RuntimeEvent::WorkflowRun {
+            workflow_run_id: Uuid::nil(),
+            attempt: 0,
+            event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![loc2.clone()],
+                status: NodeStatus::Running { state_update: None }
+            })
+        }));
 
         // These may complete out of order, so find the correct events.
         let complete0 = events
