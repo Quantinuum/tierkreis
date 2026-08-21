@@ -522,7 +522,6 @@ impl NexusExecutor {
     /// This is a simple check and does not guarantee anything about the
     /// state of the job.
     async fn is_job_active(&self, job_id: Uuid) -> miette::Result<Uuid> {
-        self.client.refresh_tokens().await?;
         let _job = self.client.get_job(job_id).await?;
         Ok(job_id)
     }
@@ -572,18 +571,11 @@ impl Executor for NexusExecutor {
 
                 // If we were given a handle to a previously submitted Nexus job
                 // and it's still active, reattach to it instead of resubmitting.
-                let restored_job_id = match &task_plan.task_handle {
-                    Some(TaskHandle::Nexus { job_id }) => {
-                        let job_id = Uuid::parse_str(job_id)
-                            .into_diagnostic()
-                            .wrap_err("Invalid job_id in restored task handle")?;
-                        Some(self.is_job_active(job_id).await?)
-                    }
-                    _ => None,
-                };
-
-                let job_id = if let Some(job_id) = restored_job_id {
-                    job_id
+                let job_id = if let Some(TaskHandle::Nexus { job_id }) = &task_plan.task_handle {
+                    let job_id = Uuid::parse_str(job_id)
+                        .into_diagnostic()
+                        .wrap_err("Invalid job_id in restored task handle")?;
+                    self.is_job_active(job_id).await?
                 } else {
                     let mut inputs =
                         load_assets(&self.asset_storage_registry, &task_plan.inputs).await?;

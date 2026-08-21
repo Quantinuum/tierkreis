@@ -18,6 +18,7 @@ use futures::{
 };
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
+use tokio::sync::RwLock;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -156,10 +157,9 @@ pub struct Orchestrator {
     default_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
 
-    // (run_id, attempt, location) tuples for nodes that have been scheduled
-    // by this Orchestrator instance. This solves relying on scheduled_time == Some()
-    // after a runtime restart.
-    scheduled_this_lifetime: Mutex<HashSet<(Uuid, u32, Location)>>,
+    // Locations scheduled by this Orchestrator instance, keyed by (run_id, attempt).
+    // This solves relying on scheduled_time == Some() after a runtime restart.
+    scheduled_this_lifetime: RwLock<HashMap<(Uuid, u32), Mutex<HashSet<Location>>>>,
 }
 
 impl Orchestrator {
@@ -200,7 +200,7 @@ impl Orchestrator {
             default_storage_name: default_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
 
-            scheduled_this_lifetime: Mutex::new(HashSet::new()),
+            scheduled_this_lifetime: RwLock::new(HashMap::new()),
         })
     }
 
@@ -235,8 +235,7 @@ impl Orchestrator {
         let ready_nodes: Vec<_> = {
             let scheduled_this_lifetime = self
                 .scheduled_this_lifetime
-                .lock()
-                .map_err(|_| miette!("Failed to acquire lock"))?;
+                .read().await;
             Self::find_ready_nodes(
                 &context.parent_loc,
                 &workflow_graph,
@@ -250,12 +249,16 @@ impl Orchestrator {
         // Mark all ready nodes as scheduled.
         Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
         self.scheduled_this_lifetime
+            .write()
+            .await
+            .entry((run_id, attempt))
+            .or_insert_with(|| Mutex::new(HashSet::new()))
             .lock()
             .map_err(|_| miette!("Failed to acquire lock"))?
             .extend(
                 ready_nodes
                     .iter()
-                    .map(|n| (run_id, attempt, context.parent_loc.with_node(*n))),
+                    .map(|n| context.parent_loc.with_node(*n)),
             );
 
         let node_states = Arc::new(node_states);
@@ -371,7 +374,7 @@ impl Orchestrator {
         node_states: &'a NodeStates,
         run_id: Uuid,
         attempt: u32,
-        scheduled_this_lifetime: &'a HashSet<(Uuid, u32, Location)>,
+        scheduled_this_lifetime: &'a HashMap<(Uuid, u32), Mutex<HashSet<Location>>>,
     ) -> impl Iterator<Item = NodeIndex> + 'a {
         // Find nodes that are ready for scheduling.
         workflow_graph
@@ -389,11 +392,10 @@ impl Orchestrator {
                     if let Some(state) = node_states.get(&parent_location.with_node(n)) {
                         // A node scheduled in a previous process will be rescheduled
                         // The executor deals with reattaching
-                        let scheduled_this_lifetime = scheduled_this_lifetime.contains(&(
-                            run_id,
-                            attempt,
-                            parent_location.with_node(n),
-                        ));
+                        let scheduled_this_lifetime = scheduled_this_lifetime
+                            .get(&(run_id, attempt))
+                            .map(|set| set.lock().unwrap().contains(&parent_location.with_node(n)))
+                            .unwrap_or(false);
                         state.outputs.is_none()
                             && !(matches!(
                                 definition,
@@ -1160,12 +1162,8 @@ impl Orchestrator {
 
         if plan.workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
-            let mut scheduled_this_lifetime = self
-                .scheduled_this_lifetime
-                .lock()
-                .map_err(|_| miette!("Failed to acquire lock"))?;
-            scheduled_this_lifetime
-                .retain(|(rid, att, _)| *rid != workflow_run_id || *att != attempt);
+            let mut scheduled_this_lifetime = self.scheduled_this_lifetime.write().await;
+            scheduled_this_lifetime.remove(&(workflow_run_id, attempt));
         }
 
         Ok(())
