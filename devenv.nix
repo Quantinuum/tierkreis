@@ -23,6 +23,7 @@ in
       pkgs.sqlite
       pkgs.diesel-cli
       pkgs.nixfmt
+      pkgs.git-cliff
     ]
     ++ lib.optionals pkgs.stdenv.isDarwin darwinRuntimeLibraries;
 

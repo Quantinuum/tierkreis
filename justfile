@@ -5,7 +5,23 @@ default:
 
 setup:
     uv sync --all-extras
-
+   
+regenerate-changelogs:
+  @just regenerate-changelog tierkreis
+  @just regenerate-changelog tierkreis_visualization
+  @just regenerate-changelog tierkreis_workers/aer_worker
+  @just regenerate-changelog tierkreis_workers/guppy_worker
+  @just regenerate-changelog tierkreis_workers/ibmq_worker
+  @just regenerate-changelog tierkreis_workers/nexus_worker
+  @just regenerate-changelog tierkreis_workers/pytket_worker
+  @just regenerate-changelog tierkreis_workers/quantinuum_worker
+  @just regenerate-changelog tierkreis_workers/qulacs_worker
+    
+regenerate-changelog dir:
+    #!/usr/bin/env bash
+    cd {{dir}}
+    git cliff -o CHANGELOG.md
+    
 test:
     # We need to run a sync in the python environment to provide access to the workers
     # for the rust tests that use worker subprocesses.
