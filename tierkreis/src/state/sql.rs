@@ -29,17 +29,18 @@ use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec,
+    asset_storage::{AssetKey, AssetSpec},
     event::{NodeEvent, WorkflowRunEvent},
     graph::WorkflowGraph,
     state::{
-        interface::RuntimeWatchState,
+        interface::{AssetLocation, RuntimeWatchState},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
         queries::{
-            WorkflowRunSummary, add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, list_workflow_run_summaries, read_node_state,
-            read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
-            read_workflow_run_inputs, update_node_state,
+            WorkflowRunSummary, add_run_attempt_metadata, delete_asset_location, insert_workflow,
+            insert_workflow_run, insert_workflow_run_inputs, list_workflow_run_summaries,
+            read_asset_location, read_node_state, read_node_states, read_run_attempt_metadata,
+            read_workflow, read_workflow_run, read_workflow_run_inputs, update_node_state,
+            upsert_asset_location,
         },
     },
 };
@@ -213,6 +214,45 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
+    fn load_asset_location<'a>(
+        &'a self,
+        asset_key: AssetKey,
+        storage_name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<Option<AssetLocation>>> {
+        async move {
+            let _lock = self.lock.read().await;
+            let mut conn = self.get_conn().await?;
+            read_asset_location(&mut conn, asset_key, storage_name).await
+        }
+        .boxed()
+    }
+
+    fn put_asset_location(
+        &self,
+        asset_key: AssetKey,
+        location: AssetLocation,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            upsert_asset_location(&mut conn, asset_key, &location).await
+        }
+        .boxed()
+    }
+
+    fn delete_asset_location<'a>(
+        &'a self,
+        asset_key: AssetKey,
+        storage_name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<()>> {
+        async move {
+            let _lock = self.lock.write().await;
+            let mut conn = self.get_conn().await?;
+            delete_asset_location(&mut conn, asset_key, storage_name).await
+        }
+        .boxed()
+    }
+
     fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>> {
         async move {
             let _lock = self.lock.read().await;
@@ -578,12 +618,58 @@ mod tests {
     use std::collections::HashSet;
     use std::ops::BitOr;
 
+    use serde_json::json;
+
     use crate::{
         asset_storage::{AssetKey, AssetKind, AssetSpec},
         event::NodeStatus,
     };
 
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn asset_locations_round_trip_update_and_delete() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+        let asset_key = AssetKey::new();
+        let mut location = AssetLocation {
+            storage_name: "nexus".to_string(),
+            location_type: "nexus-resource".to_string(),
+            schema_version: 1,
+            data: json!({"resource_id": Uuid::now_v7()}),
+        };
+
+        runtime_state
+            .put_asset_location(asset_key, location.clone())
+            .await?;
+        assert_eq!(
+            runtime_state
+                .load_asset_location(asset_key, "nexus")
+                .await?,
+            Some(location.clone())
+        );
+
+        location.data = json!({"bucket": "future-s3-location"});
+        runtime_state
+            .put_asset_location(asset_key, location.clone())
+            .await?;
+        assert_eq!(
+            runtime_state
+                .load_asset_location(asset_key, "nexus")
+                .await?,
+            Some(location)
+        );
+
+        runtime_state
+            .delete_asset_location(asset_key, "nexus")
+            .await?;
+        assert_eq!(
+            runtime_state
+                .load_asset_location(asset_key, "nexus")
+                .await?,
+            None
+        );
+        Ok(())
+    }
 
     /// Test that reading a location returns the default value.
     #[tokio::test(flavor = "multi_thread")]

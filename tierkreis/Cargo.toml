@@ -18,6 +18,7 @@ crate-type = ["rlib", "cdylib"]
 axum = { version = "0.8.8", features = ["ws", "http2"] }
 axum-extra = { version = "0.12.6", features = ["query"] }
 bitvec = { version = "1.0.1", features = ["serde"] }
+base64 = "0.22.1"
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.0", features = ["derive"] }
 dashmap = "6.1.0"

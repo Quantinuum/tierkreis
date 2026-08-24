@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
-        save_assets,
+        AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage,
+        NexusProjectAssetStorage, load_assets, save_assets,
     },
     event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
@@ -108,7 +108,13 @@ impl Default for RuntimeConfig {
 #[derive(Deserialize)]
 enum AssetStorageConfig {
     Memory {},
-    File { asset_dir: PathBuf },
+    File {
+        asset_dir: PathBuf,
+    },
+    NexusProject {
+        client_config: NexusClientConfig,
+        project_name: String,
+    },
 }
 
 #[derive(Deserialize)]
@@ -121,8 +127,7 @@ enum ExecutorConfig {
         output_storage_name: String,
     },
     Nexus {
-        client_config: NexusClientConfig,
-        output_storage_name: String,
+        asset_storage_name: String,
     },
 }
 
@@ -145,19 +150,6 @@ struct Runtime {
 
 impl Runtime {
     async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
-        let asset_storage_registry = asset_storage_registry_from_config(config);
-
-        let executor_registry =
-            executor_registry_from_config(&asset_storage_registry, config).await?;
-
-        init_logging_and_tracing(config.logging_config.clone());
-        let orchestrator = Orchestrator::try_new(
-            &asset_storage_registry,
-            &executor_registry,
-            &config.default_storage_name,
-            &config.default_executor_name,
-        )
-        .await?;
         let runtime_state: Arc<dyn RuntimeState> = match config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
             RuntimeStateConfig::Sqlite { memory: true } => {
@@ -167,6 +159,25 @@ impl Runtime {
                 Arc::new(SqliteRuntimeState::try_new().await?)
             }
         };
+        let configured_storages =
+            asset_storages_from_config(config, Arc::clone(&runtime_state)).await?;
+        let asset_storage_registry = configured_storages.registry;
+
+        let executor_registry = executor_registry_from_config(
+            &asset_storage_registry,
+            &configured_storages.nexus,
+            config,
+        )
+        .await?;
+
+        init_logging_and_tracing(config.logging_config.clone());
+        let orchestrator = Orchestrator::try_new(
+            &asset_storage_registry,
+            &executor_registry,
+            &config.default_storage_name,
+            &config.default_executor_name,
+        )
+        .await?;
         tracing::info!("Starting Tierkreis runtime");
         Ok(Self {
             orchestrator,
@@ -414,6 +425,7 @@ impl Runtime {
 
 async fn executor_registry_from_config(
     asset_storage_registry: &AssetStorageRegistry,
+    nexus_storages: &HashMap<String, NexusProjectAssetStorage>,
     config: &RuntimeConfig,
 ) -> Result<ExecutorRegistry, miette::Error> {
     let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
@@ -441,30 +453,51 @@ async fn executor_registry_from_config(
                     .await?,
                 ),
             ),
-            ExecutorConfig::Nexus {
-                client_config,
-                output_storage_name,
-            } => executor_registry.insert(
-                executor_name.clone(),
-                Box::new(
-                    NexusExecutor::try_new(
-                        client_config,
-                        asset_storage_registry,
-                        output_storage_name,
-                    )
-                    .await?,
-                ),
-            ),
+            ExecutorConfig::Nexus { asset_storage_name } => {
+                let nexus_storage = nexus_storages
+                    .get(asset_storage_name)
+                    .ok_or_else(|| {
+                        miette!(
+                            "Nexus executor references unknown Nexus project storage: {asset_storage_name}"
+                        )
+                    })?
+                    .clone();
+                executor_registry.insert(
+                    executor_name.clone(),
+                    Box::new(NexusExecutor::try_new(nexus_storage, asset_storage_registry).await?),
+                )
+            }
         };
     }
     let executor_registry = Arc::new(executor_registry);
     Ok(executor_registry)
 }
 
-/// Create an [`AssetStorageRegistry`] from the given [`RuntimeConfig`].
-#[must_use]
-pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageRegistry {
+struct ConfiguredAssetStorages {
+    registry: AssetStorageRegistry,
+    nexus: HashMap<String, NexusProjectAssetStorage>,
+}
+
+/// Create an [`AssetStorageRegistry`] from a [`RuntimeConfig`] and shared state.
+///
+/// # Errors
+///
+/// Returns an error when a configured remote storage cannot be initialized.
+pub async fn asset_storage_registry_from_config(
+    config: &RuntimeConfig,
+    runtime_state: Arc<dyn RuntimeState>,
+) -> miette::Result<AssetStorageRegistry> {
+    Ok(asset_storages_from_config(config, runtime_state)
+        .await?
+        .registry)
+}
+
+async fn asset_storages_from_config(
+    config: &RuntimeConfig,
+    runtime_state: Arc<dyn RuntimeState>,
+) -> miette::Result<ConfiguredAssetStorages> {
     let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
+    let mut nexus_storages = HashMap::new();
     for (asset_storage_name, asset_storage_config) in &config.asset_storage {
         match asset_storage_config {
             AssetStorageConfig::Memory {} => asset_storage_registry
@@ -473,9 +506,26 @@ pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorag
                 asset_storage_name.clone(),
                 Box::new(FileAssetStorage::new(parent)),
             ),
+            AssetStorageConfig::NexusProject {
+                client_config,
+                project_name,
+            } => {
+                let storage = NexusProjectAssetStorage::try_new(
+                    client_config,
+                    Arc::clone(&runtime_state),
+                    asset_storage_name,
+                    project_name,
+                )
+                .await?;
+                nexus_storages.insert(asset_storage_name.clone(), storage.clone());
+                asset_storage_registry.insert(asset_storage_name.clone(), Box::new(storage))
+            }
         };
     }
-    Arc::new(RwLock::new(asset_storage_registry))
+    Ok(ConfiguredAssetStorages {
+        registry: Arc::new(RwLock::new(asset_storage_registry)),
+        nexus: nexus_storages,
+    })
 }
 
 #[tokio::main]

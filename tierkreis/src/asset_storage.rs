@@ -6,10 +6,14 @@ as well as some utility functions and an [`AssetStorageRegistry`] type.
 pub mod file;
 pub mod inmemory;
 pub mod interface;
+pub mod nexus;
 
 pub use crate::asset_storage::file::FileAssetStorage;
 pub use crate::asset_storage::inmemory::InMemoryStorage;
-pub use crate::asset_storage::interface::{AssetKey, AssetKind, AssetSpec, AssetStorage};
+pub use crate::asset_storage::interface::{
+    AssetDataType, AssetKey, AssetKind, AssetSpec, AssetStorage,
+};
+pub use crate::asset_storage::nexus::{NexusProjectAssetStorage, NexusResourceKind};
 
 use std::hash::BuildHasher;
 use std::{collections::HashMap, sync::Arc};
@@ -185,6 +189,31 @@ pub async fn save_asset(
     })
 }
 
+/// Save a typed Asset into a named storage.
+///
+/// # Errors
+///
+/// Will return an error if the storage is missing or rejects the requested data type.
+pub async fn save_asset_as(
+    registry: &AssetStorageRegistry,
+    storage_name: &str,
+    value: Vec<u8>,
+    data_type: AssetDataType,
+) -> miette::Result<AssetSpec> {
+    let registry = registry.read().await;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
+
+    let asset_key = AssetKey::new();
+    storage.save_typed(&asset_key, value, data_type).await?;
+    Ok(AssetSpec {
+        kind: storage.kind(),
+        storage_name: storage_name.to_string(),
+        asset_key,
+    })
+}
+
 /// Save an asset into an [`AssetStorage`] in the [`AssetStorageRegistry`] with a
 /// pre-assigned [`AssetSpec`].
 ///
@@ -301,6 +330,44 @@ pub async fn transfer_assets<S: BuildHasher>(
         }
     }
     Ok(transferred)
+}
+
+/// Transfer one Asset into a named storage using a semantic data-type hint.
+///
+/// If the Asset is already in the target storage it is returned unchanged.
+///
+/// # Errors
+///
+/// Will return an error if either storage is missing or the Asset cannot be loaded or saved.
+pub async fn transfer_asset_as(
+    registry: &AssetStorageRegistry,
+    storage_name_to: &str,
+    asset_from: &AssetSpec,
+    data_type: AssetDataType,
+) -> miette::Result<AssetSpec> {
+    if asset_from.storage_name == storage_name_to {
+        return Ok(asset_from.clone());
+    }
+
+    let registry = registry.read().await;
+    let storage_from = registry.get(&asset_from.storage_name).ok_or_else(|| {
+        miette!(
+            "Cannot find AssetStorage in AssetStorageRegistry with name: {}",
+            asset_from.storage_name
+        )
+    })?;
+    let storage_to = registry.get(storage_name_to).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_to}")
+    })?;
+
+    let value = storage_from.load(&asset_from.asset_key).await?;
+    let asset_key = AssetKey::new();
+    storage_to.save_typed(&asset_key, value, data_type).await?;
+    Ok(AssetSpec {
+        kind: storage_to.kind(),
+        storage_name: storage_name_to.to_string(),
+        asset_key,
+    })
 }
 
 /// Generate a `total` number of [`AssetSpec`]s for use as Task outputs or similar.

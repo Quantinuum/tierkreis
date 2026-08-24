@@ -106,6 +106,8 @@ async fn server(
 #[tokio::main]
 pub async fn serve() -> miette::Result<()> {
     let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
-    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default());
+    let asset_registry =
+        asset_storage_registry_from_config(&RuntimeConfig::default(), runtime_state.clone())
+            .await?;
     server(runtime_state, asset_registry).await
 }

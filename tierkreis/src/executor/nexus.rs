@@ -2,11 +2,10 @@
 This module defines the [`NexusExecutor`] struct which implements [Executor]
 by running tasks via the Nexus HTTP API.
 */
-mod client;
+pub(crate) mod client;
 
 use std::{
     collections::{HashMap, HashSet},
-    io::Cursor,
     sync::{Arc, Mutex},
 };
 
@@ -16,14 +15,14 @@ use futures::{
     future::{self, BoxFuture},
     stream::{BoxStream, FuturesUnordered},
 };
-use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
 use miette::{Context, IntoDiagnostic, miette};
 use tracing::{Instrument, instrument, warn};
 use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs, save_asset_with_spec,
+        AssetDataType, AssetSpec, AssetStorageRegistry, NexusProjectAssetStorage,
+        NexusResourceKind, load_assets, reserve_asset_specs, transfer_asset_as, transfer_assets,
     },
     event::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
@@ -48,6 +47,7 @@ struct BackgroundTaskPlan {
     loc: Location,
     job_id: Uuid,
     outputs: HashMap<String, AssetSpec>,
+    output_storage_name: String,
     parent_span: tracing::Span,
 }
 
@@ -58,6 +58,7 @@ struct BackgroundTask {
     loc: Location,
     job_id: Uuid,
     outputs: HashMap<String, AssetSpec>,
+    output_storage_name: String,
 }
 
 enum InternalJobMonitoringStatus {
@@ -104,6 +105,7 @@ async fn process_cancelled_task(
 #[instrument(skip_all, err)]
 async fn process_finished_task(
     client: &NexusClient,
+    nexus_storage: &NexusProjectAssetStorage,
     event_sender: &mut EventSender,
     job_handles: &mut JobHandles,
     asset_storage_registry: &AssetStorageRegistry,
@@ -124,30 +126,33 @@ async fn process_finished_task(
         StatusEnum::Completed => {
             let JobDefinition::ExecuteJobDefinition { items } = job.definition();
 
-            for item in items {
-                let result_id = item
-                    .result_id()
-                    .ok_or_else(|| miette!("Item is complete but has no `result_id`"))?;
-
-                let mut full_result = Vec::new();
-                let mut chunk_number = 0;
-                while let Some(result) = client
-                    .get_qsys_result_chunk(result_id, chunk_number)
-                    .await?
-                {
-                    full_result.extend(result.results());
-                    chunk_number += 1;
-                }
-                let result = serde_json::to_vec(&full_result).into_diagnostic()?;
-                save_asset_with_spec(
-                    asset_storage_registry,
-                    outputs
-                        .get("results")
-                        .ok_or_else(|| miette!("Missing output: `results`"))?,
-                    result,
-                )
-                .await?;
+            let mut items = items.into_iter();
+            let item = items
+                .next()
+                .ok_or_else(|| miette!("Completed job has no items"))?;
+            if items.next().is_some() {
+                return Err(miette!("Multiple Nexus job results are not yet supported"));
             }
+            let result_id = item
+                .result_id()
+                .ok_or_else(|| miette!("Item is complete but has no `result_id`"))?;
+            let result_spec = outputs
+                .get("results")
+                .ok_or_else(|| miette!("Missing output: `results`"))?;
+            nexus_storage
+                .bind_execution_result(result_spec.asset_key, result_id)
+                .await?;
+
+            let outputs = if background_task.output_storage_name == nexus_storage.storage_name() {
+                outputs
+            } else {
+                transfer_assets(
+                    asset_storage_registry,
+                    &background_task.output_storage_name,
+                    &outputs,
+                )
+                .await?
+            };
 
             send_complete(
                 event_sender,
@@ -223,6 +228,7 @@ async fn monitor_task(
     let task_loc = loc.clone();
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
+    let output_storage_name = internal_task.output_storage_name;
     let event_sender = event_sender.clone();
     let parent_span = internal_task.parent_span.clone();
 
@@ -286,6 +292,7 @@ async fn monitor_task(
                 loc: background_loc.clone(),
                 job_id,
                 outputs,
+                output_storage_name,
             },
             result
                 .map_err(|err| miette!("Failed to join task: {err}"))
@@ -305,6 +312,7 @@ async fn monitor_task(
 
 async fn process_tasks(
     client: NexusClient,
+    nexus_storage: NexusProjectAssetStorage,
     mut task_receiver: TaskReceiver,
     mut cancel_sender: CancelSender,
     mut cancel_receiver: CancelReceiver,
@@ -351,6 +359,7 @@ async fn process_tasks(
 
                 let processing_result = process_finished_task(
                     &client,
+                    &nexus_storage,
                     &mut event_sender,
                     &mut job_handles,
                     &asset_storage_registry,
@@ -407,34 +416,32 @@ async fn process_tasks(
 /// [`SubprocessExecutor`] defines an [Executor] that performs Task Nodes using the Nexus HTTP API.
 pub struct NexusExecutor {
     client: NexusClient,
+    nexus_storage: NexusProjectAssetStorage,
     task_sender: TaskSender,
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
-    output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
 }
 
 impl NexusExecutor {
-    /// Try to create a new [`NexusExecutor`] with an [`AssetStorageRegistry`], a
-    /// configured name for an [`AssetStorage`][crate::asset_storage::AssetStorage]
-    /// in the registry that determines where Assets are saved by default.
+    /// Try to create a new [`NexusExecutor`] backed by project-scoped Nexus Asset
+    /// storage and an [`AssetStorageRegistry`].
     ///
     /// # Errors
     ///
-    /// This function will return Err if the specified `output_storage_name` does not
-    /// exist inside the [`AssetStorageRegistry`] or if the [`NexusClient`] cannot
-    /// be initialized.
+    /// This function returns an error if the Nexus storage is not registered under
+    /// its configured name.
     pub async fn try_new(
-        client_config: &NexusClientConfig,
+        nexus_storage: NexusProjectAssetStorage,
         asset_storage_registry: &AssetStorageRegistry,
-        output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let client = NexusClient::try_new(client_config).await?;
-
+        let client = nexus_storage.client();
+        let storage_name = nexus_storage.storage_name();
         let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
-            return Err(miette!("output_storage_name not in registry"));
+        if !asset_storage_registry_lock.contains_key(storage_name) {
+            return Err(miette!("Nexus Asset storage not in registry"));
         }
+        drop(asset_storage_registry_lock);
 
         let background_asset_storage_registry = Arc::clone(asset_storage_registry);
         let (task_sender, task_receiver) = mpsc::channel(64);
@@ -442,6 +449,7 @@ impl NexusExecutor {
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         tokio::spawn(process_tasks(
             client.clone(),
+            nexus_storage.clone(),
             task_receiver,
             cancel_sender.clone(),
             cancel_receiver,
@@ -452,10 +460,10 @@ impl NexusExecutor {
         let asset_storage_registry = Arc::clone(asset_storage_registry);
         Ok(Self {
             client,
+            nexus_storage,
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
-            output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
         })
     }
@@ -473,24 +481,6 @@ impl NexusExecutor {
         .await?;
         let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
         Ok(outputs)
-    }
-
-    async fn upload_hugr(
-        &self,
-        project_id: Uuid,
-        hugr_name: &str,
-        hugr_package: &[u8],
-    ) -> miette::Result<Uuid> {
-        // TODO: Requiring Extensions for the enveleope read here might be problematic.
-        let (_, package) = read_envelope(Cursor::new(hugr_package), &ExtensionRegistry::new([]))
-            .into_diagnostic()?;
-
-        let hugr_data = self
-            .client
-            .new_hugr_data(hugr_name, None, project_id, package)
-            .await?;
-
-        Ok(hugr_data.id())
     }
 
     async fn start_single_job(
@@ -538,40 +528,70 @@ impl Executor for NexusExecutor {
                     return Err(miette!("Unknown worker: `{}`", task_plan.worker_name));
                 }
 
-                if task_plan.task_name != "submit_and_run" {
-                    return Err(miette!("Unknown task: `{}`", task_plan.task_name));
-                }
+                let (program_port, data_type, resource_kind) = match task_plan.task_name.as_str() {
+                    "submit_and_run" | "submit_hugr_and_run" => {
+                        ("hugr_package", AssetDataType::Hugr, NexusResourceKind::Hugr)
+                    }
+                    "submit_circuit_and_run" => (
+                        "circuit",
+                        AssetDataType::Circuit,
+                        NexusResourceKind::Circuit,
+                    ),
+                    task => return Err(miette!("Unknown task: `{task}`")),
+                };
 
                 let output_storage_name = task_plan
                     .output_storage_name
                     .clone()
-                    .unwrap_or_else(|| self.output_storage_name.clone());
+                    .unwrap_or_else(|| self.nexus_storage.storage_name().to_string());
 
                 let outputs = self
-                    .build_outputs(&output_storage_name, task_plan.outputs)
+                    .build_outputs(self.nexus_storage.storage_name(), task_plan.outputs)
                     .await?;
 
-                let mut inputs =
-                    load_assets(&self.asset_storage_registry, &task_plan.inputs).await?;
+                let program_spec = task_plan
+                    .inputs
+                    .get(program_port)
+                    .ok_or_else(|| miette!("Missing input: {program_port}"))?;
+                let program_spec = transfer_asset_as(
+                    &self.asset_storage_registry,
+                    self.nexus_storage.storage_name(),
+                    program_spec,
+                    data_type,
+                )
+                .await?;
+                let program_id = self
+                    .nexus_storage
+                    .resource_id(program_spec.asset_key, resource_kind)
+                    .await?;
 
-                let project_name: String = extract_json_input(&mut inputs, "project_name")?;
+                let scalar_input_specs: HashMap<_, _> = task_plan
+                    .inputs
+                    .iter()
+                    .filter(|(name, _)| name.as_str() != program_port)
+                    .map(|(name, spec)| (name.clone(), spec.clone()))
+                    .collect();
+                let mut inputs =
+                    load_assets(&self.asset_storage_registry, &scalar_input_specs).await?;
+
+                if inputs.contains_key("project_name") {
+                    let project_name: String = extract_json_input(&mut inputs, "project_name")?;
+                    if project_name != self.nexus_storage.project_name() {
+                        return Err(miette!(
+                            "Task project_name does not match NexusProjectAssetStorage"
+                        ));
+                    }
+                }
                 let job_name: String = extract_json_input(&mut inputs, "job_name")?;
                 let n_shots: u64 = extract_json_input(&mut inputs, "n_shots")?;
 
-                let project_data = self
-                    .client
-                    .find_or_create_project_data(&project_name, Some("trying new executor"))
-                    .await?;
-
-                let hugr_package = inputs
-                    .get("hugr_package")
-                    .ok_or_else(|| miette!("Missing input: hugr_package"))?;
-                let hugr_id = self
-                    .upload_hugr(project_data.id(), &job_name, hugr_package)
-                    .await?;
-
                 let job_id = self
-                    .start_single_job(project_data.id(), &job_name, hugr_id, n_shots)
+                    .start_single_job(
+                        self.nexus_storage.project_id(),
+                        &job_name,
+                        program_id,
+                        n_shots,
+                    )
                     .await?;
 
                 let parent_span = tracing::Span::current();
@@ -582,6 +602,7 @@ impl Executor for NexusExecutor {
                         loc: task_plan.loc,
                         job_id,
                         outputs,
+                        output_storage_name,
                         parent_span,
                     })
                     .await
@@ -651,9 +672,13 @@ mod tests {
     use tokio::sync::watch;
 
     use crate::{
-        asset_storage::{assert_registry_contains_values, save_asset, test_storage_registry},
+        asset_storage::{
+            NexusProjectAssetStorage, assert_registry_contains_values, save_asset,
+            test_storage_registry,
+        },
         event::{NodeEvent, NodeStatus, WorkflowRunEvent},
         executor::nexus::client::TLSMode,
+        state::{InMemoryRuntimeState, RuntimeState},
     };
 
     use super::*;
@@ -706,6 +731,20 @@ mod tests {
         Ok(hugr_asset_spec)
     }
 
+    async fn test_executor(
+        config: &NexusClientConfig,
+        registry: &AssetStorageRegistry,
+    ) -> miette::Result<NexusExecutor> {
+        let runtime_state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
+        let nexus_storage =
+            NexusProjectAssetStorage::try_new(config, runtime_state, "nexus", "tkr-demo").await?;
+        registry
+            .write()
+            .await
+            .insert("nexus".to_string(), Box::new(nexus_storage.clone()));
+        NexusExecutor::try_new(nexus_storage, registry).await
+    }
+
     async fn send_ws_message(socket: &mut WebSocket, message: &serde_json::Value) {
         let msg = Message::text(serde_json::to_string(message).expect("failed to serialize"));
         socket.send(msg).await.expect("failed to send");
@@ -727,6 +766,15 @@ mod tests {
             .route(
                 "/api/hugr/v1beta",
                 axum::routing::post(|| async {
+                    let id = Uuid::now_v7();
+                    Json(json!({"data": {"id": id}}))
+                }),
+            )
+            .route(
+                "/api/circuits/v1beta2",
+                axum::routing::post(|Json(body): Json<serde_json::Value>| async move {
+                    assert_eq!(body.pointer("/data/attributes/commands"), Some(&json!([])));
+                    assert_eq!(body.pointer("/data/type"), Some(&json!("circuit")));
                     let id = Uuid::now_v7();
                     Json(json!({"data": {"id": id}}))
                 }),
@@ -839,7 +887,7 @@ mod tests {
         outputs.insert("results".to_string());
 
         let output_storage_name = "memory";
-        let executor = NexusExecutor::try_new(&config, &registry, output_storage_name).await?;
+        let executor = test_executor(&config, &registry).await?;
         let stream = executor.listen()?;
         executor
             .execute(vec![TaskPlan {
@@ -847,6 +895,7 @@ mod tests {
                 task_name: "submit_and_run".to_string(),
                 inputs,
                 outputs,
+                output_storage_name: Some(output_storage_name.to_string()),
                 ..Default::default()
             }])
             .await?;
@@ -888,6 +937,56 @@ mod tests {
             &registry,
             output_storage_name,
             &events[2].clone().outputs()[0],
+            json!({"results": [
+                [], [], [], [], [],
+                [], [], [], [], [],
+                [], [], [], [], [],
+            ]}),
+        )
+        .await;
+
+        Ok(())
+    }
+
+    /// Test circuit upload and lazy result loading from the default Nexus storage.
+    #[tokio::test]
+    async fn execute_circuit_with_nexus_output() -> miette::Result<()> {
+        let (config, _server, _token_dir) = test_config_for_app(happy_test_app()).await?;
+        let (registry, input_sets, _temp_dir) = test_storage_registry(
+            vec![json!({
+                "n_shots": 5,
+                "project_name": "tkr-demo",
+                "job_name": "tkr-circuit-job",
+                "circuit": {"commands": [], "qubits": []},
+            })],
+            vec![],
+        )
+        .await;
+        let inputs = input_sets[0].clone();
+        let executor = test_executor(&config, &registry).await?;
+        let stream = executor.listen()?;
+
+        executor
+            .execute(vec![TaskPlan {
+                worker_name: "nexus_worker".to_string(),
+                task_name: "submit_circuit_and_run".to_string(),
+                inputs,
+                outputs: HashSet::from(["results".to_string()]),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(3).collect::<Vec<_>>().await;
+        let outputs = &events
+            .last()
+            .ok_or_else(|| miette!("Missing completion event"))?
+            .clone()
+            .outputs()[0];
+        assert_eq!(outputs["results"].storage_name, "nexus");
+        assert_registry_contains_values(
+            &registry,
+            "nexus",
+            outputs,
             json!({"results": [
                 [], [], [], [], [],
                 [], [], [], [], [],
@@ -968,7 +1067,7 @@ mod tests {
         outputs.insert("results".to_string());
 
         let output_storage_name = "memory";
-        let executor = NexusExecutor::try_new(&config, &registry, output_storage_name).await?;
+        let executor = test_executor(&config, &registry).await?;
         let stream = executor.listen()?;
 
         executor
@@ -977,6 +1076,7 @@ mod tests {
                 task_name: "submit_and_run".to_string(),
                 inputs,
                 outputs,
+                output_storage_name: Some(output_storage_name.to_string()),
                 ..Default::default()
             }])
             .await?;
@@ -1084,7 +1184,7 @@ mod tests {
         outputs.insert("results".to_string());
 
         let output_storage_name = "memory";
-        let executor = NexusExecutor::try_new(&config, &registry, output_storage_name).await?;
+        let executor = test_executor(&config, &registry).await?;
         let mut stream = executor.listen()?;
 
         let loc = Location::from_usize_iter([0]);
@@ -1095,6 +1195,7 @@ mod tests {
                 task_name: "submit_and_run".to_string(),
                 inputs,
                 outputs,
+                output_storage_name: Some(output_storage_name.to_string()),
                 ..Default::default()
             }])
             .await?;
