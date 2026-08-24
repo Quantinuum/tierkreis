@@ -68,7 +68,6 @@ struct BackgroundTask {
     attempt: u32,
     loc: Location,
     output_storage_name: String,
-    exit_status: Result<ExitStatus, std::io::Error>,
     outputs: HashMap<String, AssetSpec>,
     stderr: JoinHandle<String>,
 
@@ -82,7 +81,8 @@ type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
 type CancelSender = mpsc::Sender<(Uuid, u32, Location)>;
 type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 
-type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
+type RunningFutures<'a> =
+    FuturesUnordered<BoxFuture<'a, (BackgroundTask, miette::Result<ExitStatus>)>>;
 type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
 
 #[instrument(skip_all, err)]
@@ -106,64 +106,49 @@ async fn process_finished_task(
     abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
+    exit_status: ExitStatus,
 ) -> miette::Result<()> {
     let loc = background_task.loc;
     let outputs = background_task.outputs;
     let output_storage_name = background_task.output_storage_name;
     let workflow_run_id = background_task.workflow_run_id;
     let attempt = background_task.attempt;
-    let exit_status = background_task.exit_status;
 
     abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
-    match exit_status {
-        Ok(status) => {
-            if status.success() {
-                let outputs =
-                    transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
-                match outputs {
-                    Ok(outputs) => {
-                        send_complete(
-                            event_sender,
-                            workflow_run_id,
-                            attempt,
-                            vec![loc],
-                            vec![outputs],
-                        )
-                        .await?;
-                    }
-                    Err(err) => {
-                        send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
-                    }
-                }
-            } else {
-                let stderr = background_task.stderr.await.ok();
-                event_sender
-                    .send(RuntimeEvent::WorkflowRun {
-                        workflow_run_id,
-                        attempt,
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs: vec![loc],
-                            status: NodeStatus::Error {
-                                error: format!("Subprocess failed with error code: {status}"),
-                                detail: stderr,
-                            },
-                        }),
-                    })
-                    .await
-                    .map_err(|err| miette!("Failed to send error event: {err}"))?;
+    if exit_status.success() {
+        let outputs = transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
+        match outputs {
+            Ok(outputs) => {
+                send_complete(
+                    event_sender,
+                    workflow_run_id,
+                    attempt,
+                    vec![loc],
+                    vec![outputs],
+                )
+                .await?;
+            }
+            Err(err) => {
+                send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
             }
         }
-        Err(err) => {
-            send_error(
-                event_sender,
+    } else {
+        let stderr = background_task.stderr.await.ok();
+        event_sender
+            .send(RuntimeEvent::WorkflowRun {
                 workflow_run_id,
                 attempt,
-                loc,
-                &miette!("Failed to run worker: {err}"),
-            )
-            .await?;
-        }
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    locs: vec![loc],
+                    status: NodeStatus::Error {
+                        error: format!("Subprocess failed with error code: {exit_status}"),
+                        detail: stderr,
+                    },
+                }),
+            })
+            .await
+            .map_err(|err| miette!("Failed to send error event: {err}"))?;
     }
 
     Ok(())
@@ -173,7 +158,7 @@ async fn process_finished_task(
 async fn start_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
-    running: &mut RunningFutures,
+    running: &mut RunningFutures<'_>,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
     let loc = internal_task.loc;
@@ -200,25 +185,30 @@ async fn start_task(
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
-    let task = tokio::task::spawn(
-        async move {
-            let exit_status = child.wait().await;
-            BackgroundTask {
-                workflow_run_id,
-                attempt,
-                loc: background_loc,
-                output_storage_name,
-                exit_status,
-                outputs,
-                stderr,
-                _worker_args: worker_args,
-            }
-        }
-        .instrument(parent_span),
-    );
+    let task = tokio::task::spawn(async move { child.wait().instrument(parent_span).await });
 
     abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
-    running.push(task);
+    let task = task
+        .map(move |result| {
+            (
+                BackgroundTask {
+                    workflow_run_id,
+                    attempt,
+                    loc: background_loc,
+                    output_storage_name,
+                    outputs,
+                    stderr,
+                    _worker_args: worker_args,
+                },
+                result
+                    .map(|res| res.map_err(|err| miette!("Failed to run worker: {err}")))
+                    .map_err(|err| miette!("Failed to join task: {err}"))
+                    .flatten(),
+            )
+        })
+        .boxed();
+
+    running.push(task.boxed());
 
     Ok(())
 }
@@ -236,30 +226,58 @@ async fn process_tasks(
         tokio::select! {
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
-                tracing::debug!( workflow_run_id = %workflow_run_id, attempt = %attempt, loc = %loc, "Received cancel request",);
+                tracing::debug!(
+                    workflow_run_id = %workflow_run_id,
+                    attempt = %attempt,
+                    loc = %loc,
+                    "Received cancel request"
+                );
                 process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
                     .await
                     .expect("Failed to cancel task");
             }
             // A task has completed
-            Some(res) = running.next() => {
-                let background_task = match res {
-                    Ok(ok) => ok,
-                    Err(err) => panic!("Failed to join to future: {err}"),
+            Some((task, result)) = running.next() => {
+                tracing::debug!(
+                    workflow_run_id = %task.workflow_run_id,
+                    attempt = %task.attempt,
+                    loc = %task.loc,
+                    "Task completed"
+                );
+                let exit_code = match result {
+                    Ok(exit_code) => exit_code,
+                    Err(err) => {
+                        send_error(
+                            &mut event_sender,
+                            task.workflow_run_id,
+                            task.attempt,
+                            task.loc.clone(),
+                            &err,
+                        )
+                        .await
+                        .expect("Failed to send error event");
+                        continue
+                    }
                 };
-                tracing::debug!( workflow_run_id = %background_task.workflow_run_id, attempt = %background_task.attempt, loc = %background_task.loc, "Task completed");
+
                 process_finished_task(
                     &mut event_sender,
                     &mut abort_handles,
                     &asset_storage_registry,
-                    background_task,
+                    task,
+                    exit_code,
                 )
                 .await
                 .expect("Failed to complete task");
             }
             // A task has been submitted
             Some(internal_task) = task_receiver.next() => {
-                tracing::debug!( workflow_run_id = %internal_task.workflow_run_id, attempt = %internal_task.attempt, loc = %internal_task.loc, "Received task {}", internal_task.worker_name);
+                tracing::debug!(
+                    workflow_run_id = %internal_task.workflow_run_id,
+                    attempt = %internal_task.attempt,
+                    loc = %internal_task.loc,
+                    "Received task to monitor"
+                );
                 start_task(
                     &mut event_sender,
                     &mut abort_handles,
