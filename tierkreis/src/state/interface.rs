@@ -11,13 +11,34 @@ use std::{
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
 use futures::future::BoxFuture;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph, location::Location,
+    asset_storage::{AssetKey, AssetSpec},
+    event::WorkflowRunEvent,
+    graph::WorkflowGraph,
+    location::Location,
     state::queries::WorkflowRunSummary,
 };
+
+/// Backend-specific information describing where an Asset is stored.
+///
+/// The runtime treats `data` as opaque. The named [`AssetStorage`][crate::asset_storage::AssetStorage]
+/// owns the schema identified by `location_type` and `schema_version`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetLocation {
+    /// The configured storage containing this copy of the Asset.
+    pub storage_name: String,
+    /// A storage-owned discriminator, for example `nexus-resource` or `s3-object`.
+    pub location_type: String,
+    /// The version of the storage-owned `data` schema.
+    pub schema_version: u32,
+    /// Opaque backend-specific locator data. Credentials must not be stored here.
+    pub data: Value,
+}
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
@@ -72,6 +93,24 @@ pub struct NodeState {
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 pub trait RuntimeState: Debug + Send + Sync {
+    /// Load the backend-specific location for an Asset in a named storage.
+    fn load_asset_location<'a>(
+        &'a self,
+        asset_key: AssetKey,
+        storage_name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<Option<AssetLocation>>>;
+    /// Persist or replace the backend-specific location for an Asset.
+    fn put_asset_location(
+        &self,
+        asset_key: AssetKey,
+        location: AssetLocation,
+    ) -> BoxFuture<'_, miette::Result<()>>;
+    /// Remove the backend-specific location for an Asset in a named storage.
+    fn delete_asset_location<'a>(
+        &'a self,
+        asset_key: AssetKey,
+        storage_name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<()>>;
     /// Retrieve the [`WorkflowGraph`] specified by id.
     fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>>;
     /// Save a [`WorkflowGraph`] and return a new id.

@@ -1,6 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    asset_locations (asset_key, storage_name) {
+        asset_key -> Text,
+        storage_name -> Text,
+        location_type -> Text,
+        schema_version -> Integer,
+        data -> Binary,
+    }
+}
+
+diesel::table! {
     node_outputs (id) {
         id -> Integer,
         node_state_id -> Integer,
@@ -76,6 +86,7 @@ diesel::joinable!(workflow_run_inputs -> workflow_runs (workflow_run_id));
 diesel::joinable!(workflow_runs -> workflows (workflow_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    asset_locations,
     node_outputs,
     node_states,
     workflow_run_attempts,

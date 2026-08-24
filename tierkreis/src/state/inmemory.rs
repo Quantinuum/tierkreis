@@ -19,8 +19,10 @@ use uuid::Uuid;
 
 use crate::state::queries::WorkflowRunSummary;
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
-    state::interface::RuntimeWatchState,
+    asset_storage::{AssetKey, AssetSpec},
+    event::WorkflowRunEvent,
+    graph::WorkflowGraph,
+    state::interface::{AssetLocation, RuntimeWatchState},
 };
 use crate::{
     event::{NodeEvent, RunningStateUpdate},
@@ -47,6 +49,7 @@ struct RunAttemptState {
 struct InMemoryRuntimeStateInner {
     workflows: DashMap<Uuid, WorkflowGraph>,
     runs: DashMap<(Uuid, u32), RunAttemptState>,
+    asset_locations: DashMap<(AssetKey, String), AssetLocation>,
 }
 
 /// [`InMemoryRuntimeState`] implements [`RuntimeState`] but with an in-memory backing
@@ -67,6 +70,7 @@ impl InMemoryRuntimeState {
             inner: Arc::new(InMemoryRuntimeStateInner {
                 workflows: DashMap::new(),
                 runs: DashMap::new(),
+                asset_locations: DashMap::new(),
             }),
 
             update_sender: sender,
@@ -82,6 +86,42 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
+    fn load_asset_location<'a>(
+        &'a self,
+        asset_key: AssetKey,
+        storage_name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<Option<AssetLocation>>> {
+        future::ok(
+            self.inner
+                .asset_locations
+                .get(&(asset_key, storage_name.to_string()))
+                .map(|entry| entry.clone()),
+        )
+        .boxed()
+    }
+
+    fn put_asset_location(
+        &self,
+        asset_key: AssetKey,
+        location: AssetLocation,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        self.inner
+            .asset_locations
+            .insert((asset_key, location.storage_name.clone()), location);
+        future::ok(()).boxed()
+    }
+
+    fn delete_asset_location<'a>(
+        &'a self,
+        asset_key: AssetKey,
+        storage_name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<()>> {
+        self.inner
+            .asset_locations
+            .remove(&(asset_key, storage_name.to_string()));
+        future::ok(()).boxed()
+    }
+
     fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>> {
         async move {
             let workflow = self
@@ -416,9 +456,48 @@ fn handle_node_event(
 mod tests {
     use std::collections::HashSet;
 
+    use serde_json::json;
+
     use crate::event::NodeStatus;
 
     use super::*;
+
+    #[tokio::test]
+    async fn asset_locations_round_trip_and_are_storage_scoped() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+        let asset_key = AssetKey::new();
+        let location = AssetLocation {
+            storage_name: "nexus".to_string(),
+            location_type: "nexus-resource".to_string(),
+            schema_version: 1,
+            data: json!({"resource_id": Uuid::now_v7()}),
+        };
+
+        runtime_state
+            .put_asset_location(asset_key, location.clone())
+            .await?;
+        assert_eq!(
+            runtime_state
+                .load_asset_location(asset_key, "nexus")
+                .await?,
+            Some(location)
+        );
+        assert_eq!(
+            runtime_state.load_asset_location(asset_key, "s3").await?,
+            None
+        );
+
+        runtime_state
+            .delete_asset_location(asset_key, "nexus")
+            .await?;
+        assert_eq!(
+            runtime_state
+                .load_asset_location(asset_key, "nexus")
+                .await?,
+            None
+        );
+        Ok(())
+    }
 
     /// Test that reading a location returns the default value.
     #[tokio::test]

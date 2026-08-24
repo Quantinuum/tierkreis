@@ -31,6 +31,11 @@ pub enum AssetKind {
         /// in the filesystem.
         root: PathBuf,
     },
+    /// An Asset represented by a resource in a Quantinuum Nexus project.
+    NexusProject {
+        /// The Nexus project containing the resource.
+        project_id: Uuid,
+    },
 }
 
 impl FromStr for AssetKind {
@@ -45,6 +50,15 @@ impl FromStr for AssetKind {
                     miette!("Failed to parse root folder location, for url: {url}")
                 })?,
             }),
+            "nexus" => {
+                let project_id = url
+                    .path_segments()
+                    .and_then(Iterator::last)
+                    .ok_or_else(|| miette!("Missing Nexus project id in url: {url}"))?
+                    .parse()
+                    .into_diagnostic()?;
+                Ok(Self::NexusProject { project_id })
+            }
             scheme => Err(miette!("Unknown scheme: {scheme}")),
         }
     }
@@ -55,8 +69,21 @@ impl Display for AssetKind {
         match self {
             Self::Memory => write!(f, "memory://process"),
             Self::File { root } => write!(f, "file://{}", root.to_string_lossy()),
+            Self::NexusProject { project_id } => write!(f, "nexus://project/{project_id}"),
         }
     }
+}
+
+/// A semantic hint for storage implementations that map byte payloads to typed resources.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AssetDataType {
+    /// Uninterpreted bytes.
+    #[default]
+    Opaque,
+    /// A binary HUGR package envelope.
+    Hugr,
+    /// A JSON-encoded pytket circuit.
+    Circuit,
 }
 
 /// [`AssetSpec`] describes how an Asset should be stored.
@@ -160,6 +187,17 @@ pub trait AssetStorage: Send + Sync {
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
     fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>>;
+    /// Save a typed Asset.
+    ///
+    /// Implementations that do not distinguish resource types may use the default behavior.
+    fn save_typed<'a>(
+        &'a self,
+        key: &'a AssetKey,
+        value: Vec<u8>,
+        _data_type: AssetDataType,
+    ) -> BoxFuture<'a, miette::Result<()>> {
+        self.save(key, value)
+    }
     /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors
@@ -178,6 +216,7 @@ mod tests {
     #[case::memory(AssetKind::Memory, "memory://process")]
     #[case::empty_root(AssetKind::File { root: "/".parse().unwrap() }, "file:///")]
     #[case::tmp_dir(AssetKind::File { root: "/tmp".parse().unwrap() }, "file:///tmp")]
+    #[case::nexus_project(AssetKind::NexusProject { project_id: Uuid::nil() }, "nexus://project/00000000-0000-0000-0000-000000000000")]
     fn test_asset_kind_to_from_str(
         #[case] asset_kind: AssetKind,
         #[case] expected_str: &str,

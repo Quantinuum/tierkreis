@@ -1,10 +1,35 @@
 #![allow(missing_docs)]
 use crate::location::Location;
 use crate::state::schema::{
-    node_outputs, node_states, workflow_run_attempts, workflow_run_inputs, workflow_runs, workflows,
+    asset_locations, node_outputs, node_states, workflow_run_attempts, workflow_run_inputs,
+    workflow_runs, workflows,
 };
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+
+// -----------------------------------------------------------------------------
+// Asset Locations
+// -----------------------------------------------------------------------------
+
+#[derive(Queryable, Selectable, Debug, Clone)]
+#[diesel(table_name = asset_locations)]
+pub struct AssetLocation {
+    pub asset_key: String,
+    pub storage_name: String,
+    pub location_type: String,
+    pub schema_version: i32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Insertable, AsChangeset, Debug, Clone)]
+#[diesel(table_name = asset_locations)]
+pub struct NewAssetLocation<'a> {
+    pub asset_key: &'a str,
+    pub storage_name: &'a str,
+    pub location_type: &'a str,
+    pub schema_version: i32,
+    pub data: &'a [u8],
+}
 
 // -----------------------------------------------------------------------------
 // Workflows

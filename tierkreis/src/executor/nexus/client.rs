@@ -3,6 +3,7 @@ pub(crate) mod models;
 use core::task;
 use std::{env::home_dir, path::PathBuf, pin::Pin, sync::Arc, task::Poll, time::Duration};
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use futures::{
     SinkExt, Stream, StreamExt,
     channel::mpsc,
@@ -28,6 +29,7 @@ use crate::executor::nexus::client::models::{
 const REFRESH_ENDPOINT: &str = "/auth/tokens/refresh";
 const PROJECTS_ENDPOINT: &str = "/api/projects/v1beta2";
 const HUGR_ENDPOINT: &str = "/api/hugr/v1beta";
+const CIRCUITS_ENDPOINT: &str = "/api/circuits/v1beta2";
 const JOBS_ENDPOINT: &str = "/api/jobs/v1beta3";
 const QSYS_RESULTS_PARTIAL_ENDPOINT: &str = "/api/qsys_results/v1beta2/partial";
 
@@ -372,6 +374,91 @@ impl NexusClient {
         response.error_for_status_ref().into_diagnostic()?;
         let hugr: Document = response.json().await.into_diagnostic()?;
         Ok(hugr.data())
+    }
+
+    pub async fn get_hugr_bytes(&self, hugr_id: Uuid) -> miette::Result<Vec<u8>> {
+        let url = self
+            .base_url
+            .join(&format!("{HUGR_ENDPOINT}/{hugr_id}"))
+            .into_diagnostic()?;
+        let response = self.client.get(url).send().await.into_diagnostic()?;
+        response.error_for_status_ref().into_diagnostic()?;
+        let response: serde_json::Value = response.json().await.into_diagnostic()?;
+        let contents = response
+            .pointer("/data/attributes/contents")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| miette!("Missing HUGR contents"))?;
+        BASE64.decode(contents).into_diagnostic()
+    }
+
+    pub async fn new_circuit_data(
+        &self,
+        name: &str,
+        project_id: Uuid,
+        mut circuit: serde_json::Value,
+    ) -> miette::Result<Data> {
+        let attributes = circuit
+            .as_object_mut()
+            .ok_or_else(|| miette!("Circuit payload must be a JSON object"))?;
+        attributes.insert("name".to_string(), name.into());
+        attributes
+            .entry("properties".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        let body = serde_json::json!({
+            "data": {
+                "attributes": attributes,
+                "relationships": {
+                    "project": {"data": {"id": project_id, "type": "project"}}
+                },
+                "type": "circuit"
+            }
+        });
+        let url = self.base_url.join(CIRCUITS_ENDPOINT).into_diagnostic()?;
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .send()
+            .await
+            .into_diagnostic()?;
+        response.error_for_status_ref().into_diagnostic()?;
+        let circuit: Document = response.json().await.into_diagnostic()?;
+        Ok(circuit.data())
+    }
+
+    pub async fn get_circuit_bytes(&self, circuit_id: Uuid) -> miette::Result<Vec<u8>> {
+        let url = self
+            .base_url
+            .join(&format!("{CIRCUITS_ENDPOINT}/{circuit_id}"))
+            .into_diagnostic()?;
+        let response = self.client.get(url).send().await.into_diagnostic()?;
+        response.error_for_status_ref().into_diagnostic()?;
+        let response: serde_json::Value = response.json().await.into_diagnostic()?;
+        let attributes = response
+            .pointer("/data/attributes")
+            .ok_or_else(|| miette!("Missing circuit attributes"))?;
+        serde_json::to_vec(attributes).into_diagnostic()
+    }
+
+    pub async fn resource_exists(&self, resource: &str, id: Uuid) -> miette::Result<bool> {
+        let endpoint = match resource {
+            "hugr" => HUGR_ENDPOINT,
+            "circuit" => CIRCUITS_ENDPOINT,
+            "execution-result" => QSYS_RESULTS_PARTIAL_ENDPOINT,
+            other => return Err(miette!("Unknown Nexus resource kind: {other}")),
+        };
+        let path = if resource == "execution-result" {
+            format!("{endpoint}/{id}?chunk_number=0")
+        } else {
+            format!("{endpoint}/{id}")
+        };
+        let url = self.base_url.join(&path).into_diagnostic()?;
+        let response = self.client.get(url).send().await.into_diagnostic()?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        response.error_for_status_ref().into_diagnostic()?;
+        Ok(true)
     }
 
     pub async fn new_job_data(

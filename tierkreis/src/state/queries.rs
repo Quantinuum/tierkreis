@@ -17,12 +17,95 @@ use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use miette::{IntoDiagnostic, WrapErr, miette};
 
-use crate::asset_storage::AssetSpec;
+use crate::asset_storage::{AssetKey, AssetSpec};
 use crate::location::Location;
+use crate::state::interface::AssetLocation;
 use crate::state::models::{
-    NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
-    UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
+    AssetLocation as DbAssetLocation, NewAssetLocation, NewNodeOutput, NewWorkflow, NewWorkflowRun,
+    NewWorkflowRunInput, NodeOutput, NodeState, UpsertNodeState, Workflow, WorkflowRun,
+    WorkflowRunAttempt, WorkflowRunInput,
 };
+
+/// Load a backend-specific Asset location.
+///
+/// # Errors
+///
+/// Returns an error if the database query or locator deserialization fails.
+pub async fn read_asset_location(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    asset_key: AssetKey,
+    storage_name: &str,
+) -> miette::Result<Option<AssetLocation>> {
+    use crate::state::schema::asset_locations::dsl as al;
+
+    let row = al::asset_locations
+        .find((asset_key.to_string(), storage_name))
+        .select(DbAssetLocation::as_select())
+        .first(conn)
+        .await
+        .optional()
+        .into_diagnostic()?;
+
+    row.map(|row| {
+        Ok(AssetLocation {
+            storage_name: row.storage_name,
+            location_type: row.location_type,
+            schema_version: row.schema_version.try_into().into_diagnostic()?,
+            data: serde_json::from_slice(&row.data).into_diagnostic()?,
+        })
+    })
+    .transpose()
+}
+
+/// Insert or replace a backend-specific Asset location.
+///
+/// # Errors
+///
+/// Returns an error if the locator cannot be serialized or the database write fails.
+pub async fn upsert_asset_location(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    asset_key: AssetKey,
+    location: &AssetLocation,
+) -> miette::Result<()> {
+    use crate::state::schema::asset_locations::dsl as al;
+
+    let asset_key = asset_key.to_string();
+    let data = serde_json::to_vec(&location.data).into_diagnostic()?;
+    let row = NewAssetLocation {
+        asset_key: &asset_key,
+        storage_name: &location.storage_name,
+        location_type: &location.location_type,
+        schema_version: location.schema_version.try_into().into_diagnostic()?,
+        data: &data,
+    };
+    diesel::insert_into(al::asset_locations)
+        .values(&row)
+        .on_conflict((al::asset_key, al::storage_name))
+        .do_update()
+        .set(&row)
+        .execute(conn)
+        .await
+        .into_diagnostic()?;
+    Ok(())
+}
+
+/// Delete a backend-specific Asset location.
+///
+/// # Errors
+///
+/// Returns an error if the database delete fails.
+pub async fn delete_asset_location(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    asset_key: AssetKey,
+    storage_name: &str,
+) -> miette::Result<()> {
+    use crate::state::schema::asset_locations::dsl as al;
+    diesel::delete(al::asset_locations.find((asset_key.to_string(), storage_name)))
+        .execute(conn)
+        .await
+        .into_diagnostic()?;
+    Ok(())
+}
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
