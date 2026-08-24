@@ -203,6 +203,7 @@ fn run_builtin(
 
             output_value(&mut outputs, value.to_string())?;
         }
+        "str_eq" => bin_op!(inputs, outputs, ==, String),
         // Legacy built-in name.
         "tuple" | "tkr_tuple" => {
             let a: Value = extract_value(inputs, "a")?;
@@ -222,22 +223,20 @@ fn run_builtin(
                 serde_json::to_vec(&value.1).into_diagnostic()?,
             );
         }
-        "range" | "tkr_range" => {
-            let start: i64 = extract_value(inputs, "start")?;
-            let stop: i64 = extract_value(inputs, "stop")?;
-            let maybe_step: Option<i64> = extract_optional_value(inputs, "step")?;
-
-            let range = start..stop;
-
-            let out = if let Some(step) = maybe_step {
-                range
-                    .step_by(step.try_into().into_diagnostic()?)
-                    .collect::<Vec<_>>()
+        "mean" => {
+            let values: Vec<f64> = extract_value(inputs, "values")?;
+            let count: i32 = values.len().try_into().into_diagnostic()?;
+            let sum: f64 = values.iter().sum();
+            let out: f64 = if count > 0 {
+                sum / f64::from(count)
             } else {
-                range.collect::<Vec<_>>()
+                return Err(miette!("Cannot obtain `mean` of an empty list"));
             };
 
             output_value(&mut outputs, out)?;
+        }
+        "range" | "tkr_range" => {
+            range_impl(inputs, &mut outputs)?;
         }
         "conjugate" => {
             let z: Complex64 = extract_value(inputs, "z")?;
@@ -250,9 +249,35 @@ fn run_builtin(
 
             output_value(&mut outputs, true)?;
         }
+        "rand_int" => {
+            let a: i64 = extract_value(inputs, "a")?;
+            let b: i64 = extract_value(inputs, "b")?;
+
+            let value = rand::random_range(a..=b);
+            output_value(&mut outputs, value)?;
+        }
         task => return Err(miette!("Unknown task: `{task}`")),
     }
     Ok(outputs)
+}
+
+fn range_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let start: i64 = extract_value(inputs, "start")?;
+    let stop: i64 = extract_value(inputs, "stop")?;
+    let maybe_step: Option<i64> = extract_optional_value(inputs, "step")?;
+    let range = start..stop;
+    let out = if let Some(step) = maybe_step {
+        range
+            .step_by(step.try_into().into_diagnostic()?)
+            .collect::<Vec<_>>()
+    } else {
+        range.collect::<Vec<_>>()
+    };
+    output_value(outputs, out)?;
+    Ok(())
 }
 
 type RunningFutures = FuturesUnordered<JoinHandle<BackgroundTask>>;
