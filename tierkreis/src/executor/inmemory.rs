@@ -28,7 +28,10 @@ use crate::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
         send_running,
     },
-    executor::interface::{Executor, TaskPlan, WorkerSpec},
+    executor::{
+        Executor,
+        interface::{TaskPlan, WorkerSpec},
+    },
     location::Location,
 };
 
@@ -265,8 +268,7 @@ async fn process_cancelled_task(
     attempt: u32,
     loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
-    if let Some(handle) = handle {
+    if let Some(handle) = abort_handles.remove(&(workflow_run_id, attempt, loc.clone())) {
         handle.abort();
         send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
     }
@@ -320,6 +322,7 @@ async fn start_task(
     running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
+    // InMemory doesn't need to check if this is already running
     let task_plan = internal_task.task_plan;
     let loc = task_plan.loc;
     let output_storage_name = internal_task.output_storage_name;
@@ -371,8 +374,8 @@ async fn process_tasks(
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
+    mut abort_handles: AbortHandles,
 ) {
-    let mut abort_handles: AbortHandles = HashMap::new();
     let mut running: RunningFutures = FuturesUnordered::new();
 
     loop {
@@ -468,11 +471,13 @@ impl InMemoryExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
+        let abort_handles = HashMap::new();
         tokio::spawn(Box::pin(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
             asset_storage_registry,
+            abort_handles,
         )));
 
         Ok(Self {
@@ -739,7 +744,6 @@ mod tests {
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
-
         let events = stream.take(4).collect::<Vec<_>>().await;
         assert_eq!(events.len(), 4);
         assert!(events.contains(&RuntimeEvent::WorkflowRun {

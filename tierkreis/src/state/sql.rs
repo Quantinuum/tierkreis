@@ -34,12 +34,12 @@ use crate::{
     graph::WorkflowGraph,
     state::{
         interface::RuntimeWatchState,
-        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput},
+        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
             WorkflowRunSummary, add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, list_workflow_run_summaries, read_node_state,
-            read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
-            read_workflow_run_inputs, update_node_state,
+            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries,
+            read_node_state, read_node_states, read_run_attempt_metadata, read_workflow,
+            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
@@ -159,6 +159,38 @@ impl SqliteRuntimeState {
         let pool = build_conn_pool()
             .await
             .wrap_err("Failed to establish database connection")?;
+        let mut conn = pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let interrupted = list_active_runs(&mut conn).await?;
+        sender.send_modify(|watch| watch.active_runs.extend(interrupted));
+        Ok(Self {
+            pool,
+            lock: Arc::new(RwLock::new(())),
+            update_sender: sender,
+            update_receiver: receiver,
+        })
+    }
+
+    /// Create a new [`SqliteRuntimeState`] backed by the specified `SQLite` URL.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the `SQLite` database connection pool cannot be established.
+    pub async fn try_new_with_url(database_url: &str) -> miette::Result<Self> {
+        let (sender, receiver) = watch::channel(RuntimeWatchState::default());
+        let pool = build_conn_pool_with_url(database_url)
+            .await
+            .wrap_err("Failed to establish database connection")?;
+        let mut conn = pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let interrupted = list_active_runs(&mut conn).await?;
+        sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -184,6 +216,13 @@ impl SqliteRuntimeState {
         let pool = build_conn_pool_with_url(&url)
             .await
             .wrap_err("Failed to establish in-memory database")?;
+        let mut conn = pool
+            .get()
+            .await
+            .into_diagnostic()
+            .wrap_err("Error acquiring connection from pool")?;
+        let interrupted = list_active_runs(&mut conn).await?;
+        sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
             lock: Arc::new(RwLock::new(())),
@@ -386,15 +425,42 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         async move {
             let _lock = self.lock.write().await;
             let mut send_workflow_stopped = false;
+            let now = Utc::now().naive_utc();
+            let mut workflow_update = UpsertWorkflowRun::default();
 
             match event {
-                WorkflowRunEvent::Started {} => {}
-                WorkflowRunEvent::Cancelled {}
-                | WorkflowRunEvent::Errored {}
-                | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+                WorkflowRunEvent::Started {} => {
+                    workflow_update.started_time = Some(now);
+                }
+                WorkflowRunEvent::Queued {} => workflow_update.queued_time = Some(now),
+                WorkflowRunEvent::Cancelled {} => {
+                    workflow_update.cancelled_time = Some(now);
+                    send_workflow_stopped = true;
+                }
+                WorkflowRunEvent::Errored {} => {
+                    workflow_update.error_time = Some(now);
+                    send_workflow_stopped = true;
+                }
+                WorkflowRunEvent::Completed {} => {
+                    workflow_update.complete_time = Some(now);
+                    send_workflow_stopped = true;
+                }
                 WorkflowRunEvent::NodeEvent(ref node_event) => {
+                    // TODO: can we receive node events before start is set?
                     self.handle_node_event(node_event).await?;
                 }
+            }
+
+            if !matches!(event, WorkflowRunEvent::NodeEvent(_)) {
+                let attempt = self.attempt.try_into().into_diagnostic()?;
+                let mut conn = self.get_conn().await?;
+                update_workflow_run(
+                    &mut conn,
+                    &self.run_id.to_string(),
+                    attempt,
+                    workflow_update,
+                )
+                .await?;
             }
 
             self.update_sender.send_modify(|run_attempt_updated| {
@@ -467,6 +533,7 @@ impl SqliteWorkflowRunState {
         Ok(conn)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
@@ -482,31 +549,36 @@ impl SqliteWorkflowRunState {
                     node_location: loc.clone(),
                     ..Default::default()
                 };
-
                 match event.status {
                     NodeStatus::Scheduled => {
                         row.scheduled_time = Some(now);
                     }
-                    NodeStatus::Queued => {
+                    NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
+                        row.handle.clone_from(handle);
                     }
-                    NodeStatus::Running { state_update: None } => {
+                    NodeStatus::Running {
+                        state_update: None, ..
+                    } => {
                         row.running_time = Some(now);
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::Switching { cond }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.cond = Some(cond);
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::Looping { index }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.loop_index = Some(index.try_into().into_diagnostic()?);
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::MapStarted { size }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.map_size = Some(size.try_into().into_diagnostic()?);
@@ -517,6 +589,7 @@ impl SqliteWorkflowRunState {
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                        ..
                     } => {
                         row.running_time = Some(now);
                         row.map_completed = Some(bits.clone().into_vec());
@@ -659,7 +732,7 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus::Queued,
+                status: NodeStatus::Queued { handle: None },
             }))
             .await?;
 

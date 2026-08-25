@@ -16,6 +16,7 @@ CREATE TABLE `node_states`(
 	`map_completed` BLOB DEFAULT NULL,
 	`error` TEXT DEFAULT NULL,
 	`error_detail` TEXT DEFAULT NULL,
+	'handle' TEXT DEFAULT NULL,
 	UNIQUE (`run_id`, `attempt`, `node_location`),
 	FOREIGN KEY (`run_id`, `attempt`)
 		REFERENCES `workflow_run_attempts`(`workflow_run_id`, `attempt`)
@@ -50,8 +51,11 @@ CREATE TABLE `workflow_run_attempts`(
 	`workflow_run_id` TEXT NOT NULL,
 	`attempt` INTEGER NOT NULL DEFAULT 0,
 	`run_metadata` BLOB NOT NULL CHECK (json_valid(run_metadata, 8)) DEFAULT (jsonb('{}')),
-	`status` TEXT DEFAULT NULL,
 	`started_time` TIMESTAMP DEFAULT NULL,
+	`queued_time` TIMESTAMP DEFAULT NULL,
+	`complete_time` TIMESTAMP DEFAULT NULL,
+	`cancelled_time` TIMESTAMP DEFAULT NULL,
+	`error_time` TIMESTAMP DEFAULT NULL,
 	UNIQUE (`workflow_run_id`, `attempt`),
 	FOREIGN KEY (`workflow_run_id`) REFERENCES `workflow_runs`(`id`)
 );

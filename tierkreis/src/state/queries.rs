@@ -16,12 +16,14 @@ use diesel::{
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use miette::{IntoDiagnostic, WrapErr, miette};
+use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
-    UpsertNodeState, Workflow, WorkflowRun, WorkflowRunAttempt, WorkflowRunInput,
+    UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
+    WorkflowRunInput,
 };
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
@@ -168,6 +170,54 @@ define_sql_function!(
     fn max_int(x: Nullable<Integer>, y: Nullable<Integer>) -> Nullable<Integer>;
 );
 
+/// Update the persisted timing state for a workflow run attempt.
+///
+/// # Errors
+///
+/// Returns an error when the update fails.
+pub async fn update_workflow_run(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+    workflow_update: UpsertWorkflowRun,
+) -> miette::Result<bool> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    let rows_affected = diesel::update(
+        wra::workflow_run_attempts
+            .filter(wra::workflow_run_id.eq(run_id))
+            .filter(wra::attempt.eq(attempt)),
+    )
+    .set((
+        wra::started_time.eq(coalesce_datetime(
+            wra::started_time,
+            workflow_update.started_time,
+        )),
+        wra::queued_time.eq(coalesce_datetime(
+            wra::queued_time,
+            workflow_update.queued_time,
+        )),
+        wra::complete_time.eq(coalesce_datetime(
+            wra::complete_time,
+            workflow_update.complete_time,
+        )),
+        wra::cancelled_time.eq(coalesce_datetime(
+            wra::cancelled_time,
+            workflow_update.cancelled_time,
+        )),
+        wra::error_time.eq(coalesce_datetime(
+            wra::error_time,
+            workflow_update.error_time,
+        )),
+    ))
+    .execute(conn)
+    .await
+    .into_diagnostic()
+    .wrap_err("Failed to update workflow run timing")?;
+
+    Ok(rows_affected > 0)
+}
+
 /// Ensure a node-state row exists for the given run/location.
 ///
 /// # Errors
@@ -228,6 +278,7 @@ pub async fn update_node_state(
                             excluded(ns::map_completed),
                             ns::map_completed,
                         )),
+                        ns::handle.eq(coalesce_text(excluded(ns::handle), ns::handle)),
                         ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
                         ns::error_detail
                             .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
@@ -352,6 +403,7 @@ pub async fn read_node_state(
             .transpose()?;
 
         let outputs = read_outputs(conn, &db_node).await?;
+        let handle = db_node.handle.clone();
 
         Ok(crate::state::interface::NodeState {
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
@@ -366,6 +418,7 @@ pub async fn read_node_state(
             error: db_node.error.clone(),
             error_detail: db_node.error_detail.clone(),
             outputs,
+            handle,
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
@@ -429,6 +482,7 @@ pub async fn read_node_states(
             .transpose()?;
 
         let outputs = read_outputs(conn, &db_node).await?;
+        let handle = db_node.handle.clone();
 
         states.insert(
             db_node.node_location,
@@ -445,6 +499,7 @@ pub async fn read_node_states(
                 error: db_node.error.clone(),
                 error_detail: db_node.error_detail.clone(),
                 outputs,
+                handle,
             },
         );
     }
@@ -753,10 +808,48 @@ pub async fn list_workflow_run_summaries(
             workflow_id,
             name: workflow_name,
             started_time: run_attempt.started_time.map(utc_timestamp),
-            status: run_attempt.status,
+            status: [
+                (run_attempt.complete_time.is_some(), "Completed"),
+                (run_attempt.cancelled_time.is_some(), "Cancelled"),
+                (run_attempt.error_time.is_some(), "Errored"),
+                (run_attempt.started_time.is_some(), "Started"),
+                (run_attempt.queued_time.is_some(), "Queued"),
+            ]
+            .into_iter()
+            .find_map(|(present, status)| present.then(|| status.to_owned())),
             errored_locations,
         });
     }
 
     Ok(summaries)
+}
+
+/// List all workflow run attempts that have not yet reached a terminal state.
+/// Used during crash recovery to identify interrupted runs.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the query fails.
+pub async fn list_active_runs(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+) -> miette::Result<Vec<(uuid::Uuid, u32)>> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    let runs: Vec<(String, i32)> = wra::workflow_run_attempts
+        .select((wra::workflow_run_id, wra::attempt))
+        .filter(wra::complete_time.is_null())
+        .filter(wra::cancelled_time.is_null())
+        .filter(wra::error_time.is_null())
+        .get_results(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to list interrupted workflow runs")?;
+
+    runs.into_iter()
+        .map(|(run_id_str, attempt_i32)| {
+            let run_id = run_id_str.parse().into_diagnostic()?;
+            let attempt = u32::try_from(attempt_i32).into_diagnostic()?;
+            Ok((run_id, attempt))
+        })
+        .collect()
 }

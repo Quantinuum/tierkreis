@@ -10,7 +10,9 @@ use futures::{SinkExt, channel::mpsc};
 use miette::{Context, IntoDiagnostic};
 use uuid::Uuid;
 
-use crate::{asset_storage::interface::AssetSpec, location::Location};
+use crate::{
+    asset_storage::interface::AssetSpec, executor::interface::TaskHandle, location::Location,
+};
 
 /// [`RuntimeEvent`] messages correspond to an update in the Runtime.
 #[derive(Clone, Debug, PartialEq)]
@@ -63,6 +65,8 @@ pub enum WorkflowRunEvent {
         // TODO: Should this contain outputs?
         // if so also update the outputs function
     },
+    /// The workflow run is waiting to be executed.
+    Queued {},
     /// An event relating to a specific set of nodes in the workflow run.
     NodeEvent(NodeEvent),
 }
@@ -152,7 +156,10 @@ pub enum NodeStatus {
     /// The node is scheduled to be run by the [Orchestrator].
     Scheduled,
     /// The node is queued to run using an [Executor][crate::executor::Executor].
-    Queued,
+    Queued {
+        /// Unique handle to the task on the executor that is running this node.
+        handle: Option<TaskHandle>,
+    },
     /// The node is running on an [Executor][crate::executor::Executor].
     Running {
         /// An update to the state of the Node to apply.
@@ -236,6 +243,33 @@ pub async fn send_cancelled(
         .await
         .into_diagnostic()
         .wrap_err("Failed to send node cancelled event")
+}
+
+/// Utility function to send a new [`Event`] with [`NodeStatus::Queued`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_queued(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+    handle: Option<TaskHandle>,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
+            status: NodeStatus::Queued { handle },
+        }),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send node queued event")
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Complete`] and output [`AssetSpec`]s.
@@ -422,7 +456,7 @@ pub async fn send_error(
         .wrap_err("Failed to send node error event")
 }
 
-/// Utility function to send a new [`Event`].
+/// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Completed`].
 ///
 /// # Errors
 ///
@@ -444,6 +478,27 @@ pub async fn send_workflow_run_complete(
         .wrap_err("Failed to send workflow complete event")
 }
 
+/// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Queued`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_workflow_run_queued(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::Queued {},
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send workflow queued event")
+}
 #[cfg(test)]
 mod tests {
     use super::*;

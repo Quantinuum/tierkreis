@@ -27,6 +27,7 @@ diesel::table! {
         loop_index -> Nullable<Integer>,
         map_size -> Nullable<Integer>,
         map_completed -> Nullable<Binary>,
+        handle -> Nullable<Text>,
         error -> Nullable<Text>,
         error_detail -> Nullable<Text>,
     }
@@ -38,8 +39,11 @@ diesel::table! {
         workflow_run_id -> Text,
         attempt -> Integer,
         run_metadata -> Binary,
-        status -> Nullable<Text>,
         started_time -> Nullable<Timestamp>,
+        queued_time -> Nullable<Timestamp>,
+        complete_time -> Nullable<Timestamp>,
+        cancelled_time -> Nullable<Timestamp>,
+        error_time -> Nullable<Timestamp>,
     }
 }
 

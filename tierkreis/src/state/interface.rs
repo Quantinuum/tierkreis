@@ -15,8 +15,8 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph, location::Location,
-    state::queries::WorkflowRunSummary,
+    asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle,
+    graph::WorkflowGraph, location::Location, state::queries::WorkflowRunSummary,
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
@@ -67,10 +67,18 @@ pub struct NodeState {
     pub error: Option<String>,
     /// The detail of the error for the node if any.
     pub error_detail: Option<String>,
+
+    /// The handle to the node
+    pub handle: Option<TaskHandle>,
 }
 
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
+///
+/// At creation time  (or after a potential crash) implementations should re-populate the
+/// in-memory [`RuntimeWatchState`] from any runs that were not in a terminal
+/// state when the process last exited. Implementations without durable storage
+/// may treat this as a no-op.
 pub trait RuntimeState: Debug + Send + Sync {
     /// Retrieve the [`WorkflowGraph`] specified by id.
     fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>>;

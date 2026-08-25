@@ -38,6 +38,11 @@ struct RunAttemptState {
     inputs: HashMap<String, AssetSpec>,
     nodes: HashMap<Location, NodeState>,
     metadata: HashMap<String, String>,
+    started_time: Option<chrono::DateTime<Utc>>,
+    queued_time: Option<chrono::DateTime<Utc>>,
+    complete_time: Option<chrono::DateTime<Utc>>,
+    cancelled_time: Option<chrono::DateTime<Utc>>,
+    error_time: Option<chrono::DateTime<Utc>>,
 }
 
 /// [`InMemoryRuntimeStateInner`] is a shared struct that can be accessed
@@ -63,6 +68,8 @@ impl InMemoryRuntimeState {
     #[must_use]
     pub fn new() -> Self {
         let (sender, receiver) = watch::channel(RuntimeWatchState::default());
+        // In-memory state does not survive process restarts; nothing to restore.
+
         Self {
             inner: Arc::new(InMemoryRuntimeStateInner {
                 workflows: DashMap::new(),
@@ -229,18 +236,43 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
     #[instrument]
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>> {
         let global_state = &self.global_state;
-        let run_state = global_state
+        let mut run_state = global_state
             .runs
             .entry((self.run_id, self.attempt))
             .or_default();
 
+        let now = Utc::now();
         let mut send_workflow_stopped = false;
 
         match event {
-            WorkflowRunEvent::Started {} => {}
-            WorkflowRunEvent::Cancelled {}
-            | WorkflowRunEvent::Errored {}
-            | WorkflowRunEvent::Completed {} => send_workflow_stopped = true,
+            WorkflowRunEvent::Started {} => {
+                if run_state.started_time.is_none() {
+                    run_state.started_time = Some(now);
+                }
+            }
+            WorkflowRunEvent::Queued {} => {
+                if run_state.queued_time.is_none() {
+                    run_state.queued_time = Some(now);
+                }
+            }
+            WorkflowRunEvent::Cancelled {} => {
+                if run_state.cancelled_time.is_none() {
+                    run_state.cancelled_time = Some(now);
+                }
+                send_workflow_stopped = true;
+            }
+            WorkflowRunEvent::Errored {} => {
+                if run_state.error_time.is_none() {
+                    run_state.error_time = Some(now);
+                }
+                send_workflow_stopped = true;
+            }
+            WorkflowRunEvent::Completed {} => {
+                if run_state.complete_time.is_none() {
+                    run_state.complete_time = Some(now);
+                }
+                send_workflow_stopped = true;
+            }
             WorkflowRunEvent::NodeEvent(ref node_event) => handle_node_event(run_state, node_event),
         }
 
@@ -337,18 +369,22 @@ fn handle_node_event(
                     node_state.scheduled_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Queued => {
+            crate::event::NodeStatus::Queued { ref handle } => {
+                node_state.handle.clone_from(handle);
                 if node_state.queued_time.is_none() {
                     node_state.queued_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Running { state_update: None } => {
+            crate::event::NodeStatus::Running {
+                state_update: None, ..
+            } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
@@ -359,6 +395,7 @@ fn handle_node_event(
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
@@ -369,6 +406,7 @@ fn handle_node_event(
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted { size }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
@@ -379,6 +417,7 @@ fn handle_node_event(
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);

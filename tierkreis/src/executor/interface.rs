@@ -10,8 +10,13 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::asset_storage::interface::AssetSpec;
-use crate::event::RuntimeEvent;
+use crate::event::{NodeStatus, RuntimeEvent};
 use crate::location::Location;
+
+/// A node location and its recovered status.
+pub type UniqueLocState = (Uuid, u32, Location, NodeStatus);
+/// A node location and the persisted handle used to restore it.
+pub type UniqueNodeHandle = (Uuid, u32, Location, TaskHandle);
 
 /// [`TaskPlan`] describes how a Task should be executed on an Executor.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -43,7 +48,18 @@ pub struct TaskPlan {
     /// An arbitrary Environment specification for the Task. [Executor]s
     /// should validate this and convert it to a usable representation.
     pub environment: HashMap<String, Value>,
+
+    /// An executor-specific identifier for a task that can be persisted and restored.
+    /// Obligation of the [Executor] to check this when a task is received.
+    pub task_handle: Option<TaskHandle>,
 }
+
+/// An executor-specific identifier for a task that can be persisted and restored.
+/// `None` indicates in-memory execution or that the task still needs to be scheduled.
+///
+/// The format of the string is entirely up to the [Executor] that created it; each
+/// [Executor] is responsible for encoding and parsing its own handles.
+pub type TaskHandle = String;
 
 /// [`WorkerSpec`] defines the information about a Worker returned by an
 /// [Executor] from the [`Executor::workers`] method.
@@ -62,6 +78,7 @@ pub trait Executor: Send + Sync {
     ///
     /// This method does not block and updates about the Tasks will appear in the
     /// stream provided by the [`Executor::listen`] method.
+    /// This needs to handle the case when a Task has already started.
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>>;
     /// Listen to a stream of [Event]s from the [Executor] about changes in Task state.
     ///
