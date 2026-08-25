@@ -6,7 +6,7 @@ by storing files in a single directory.
 use std::path::{Path, PathBuf};
 
 use futures::future::{BoxFuture, FutureExt};
-use miette::{Context, IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -49,7 +49,10 @@ impl AssetStorage for FileAssetStorage {
                 .await
                 .into_diagnostic()
                 .wrap_err_with(|| {
-                    miette!("Could not determine whether file exists at location: {location:?}")
+                    format!(
+                        "Failed to check whether asset file `{}` exists",
+                        location.display()
+                    )
                 })
         }
         .boxed()
@@ -61,10 +64,18 @@ impl AssetStorage for FileAssetStorage {
             let mut file = File::create(&location)
                 .await
                 .into_diagnostic()
-                .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
+                .wrap_err_with(|| {
+                    format!("Failed to create asset file `{}`", location.display())
+                })?;
 
-            file.write_all(&value).await.into_diagnostic()?;
-            file.flush().await.into_diagnostic()?;
+            file.write_all(&value)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Failed to write asset file `{}`", location.display()))?;
+            file.flush()
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Failed to flush asset file `{}`", location.display()))?;
 
             Ok(())
         }
@@ -77,10 +88,13 @@ impl AssetStorage for FileAssetStorage {
             let mut file = File::open(&location)
                 .await
                 .into_diagnostic()
-                .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
+                .wrap_err_with(|| format!("Failed to open asset file `{}`", location.display()))?;
 
             let mut value = Vec::new();
-            file.read_to_end(&mut value).await.into_diagnostic()?;
+            file.read_to_end(&mut value)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Failed to read asset file `{}`", location.display()))?;
 
             Ok(value)
         }

@@ -10,7 +10,7 @@ use std::{
 };
 
 use futures::{Stream, StreamExt};
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic, miette};
 use serde::Deserialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -164,8 +164,9 @@ impl Runtime {
     async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config);
 
-        let executor_registry =
-            executor_registry_from_config(&asset_storage_registry, config).await?;
+        let executor_registry = executor_registry_from_config(&asset_storage_registry, config)
+            .await
+            .wrap_err("Failed to configure runtime executors")?;
 
         init_logging_and_tracing(config.logging_config.clone());
         let orchestrator = Orchestrator::try_new(
@@ -174,15 +175,31 @@ impl Runtime {
             &config.default_storage_name,
             &config.default_executor_name,
         )
-        .await?;
+        .await
+        .wrap_err_with(|| {
+            format!(
+                "Failed to configure the orchestrator with default storage `{}` and executor `{}`",
+                config.default_storage_name, config.default_executor_name
+            )
+        })?;
         let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
-            RuntimeStateConfig::Sqlite { memory: true, .. } => {
-                Arc::new(SqliteRuntimeState::try_new_in_memory().await?)
-            }
+            RuntimeStateConfig::Sqlite { memory: true, .. } => Arc::new(
+                SqliteRuntimeState::try_new_in_memory()
+                    .await
+                    .wrap_err("Failed to configure the in-memory SQLite runtime state")?,
+            ),
             RuntimeStateConfig::Sqlite { memory: false, url } => match url.as_deref() {
-                Some(url) => Arc::new(SqliteRuntimeState::try_new_with_url(url).await?),
-                None => Arc::new(SqliteRuntimeState::try_new().await?),
+                Some(url) => Arc::new(
+                    SqliteRuntimeState::try_new_with_url(url)
+                        .await
+                        .wrap_err_with(|| {
+                            format!("Failed to configure SQLite runtime state at `{url}`")
+                        })?,
+                ),
+                None => Arc::new(SqliteRuntimeState::try_new().await.wrap_err(
+                    "Failed to configure SQLite runtime state using the default database location",
+                )?),
             },
         };
         tracing::info!("Starting Tierkreis runtime");
@@ -196,7 +213,10 @@ impl Runtime {
     }
 
     async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
-        self.state.save_workflow(workflow_graph).await
+        self.state
+            .save_workflow(workflow_graph)
+            .await
+            .wrap_err("Failed to persist workflow graph")
     }
 
     async fn start_new_run<S: BuildHasher>(
@@ -209,11 +229,18 @@ impl Runtime {
             &self.default_storage_name,
             inputs,
         )
-        .await?;
+        .await
+        .wrap_err_with(|| {
+            format!(
+                "Failed to save inputs for workflow `{workflow_id}` in asset storage `{}`",
+                self.default_storage_name
+            )
+        })?;
         let workflow_run_state = self
             .state
             .new_workflow_run_state(workflow_id, inputs)
-            .await?;
+            .await
+            .wrap_err_with(|| format!("Failed to create a run for workflow `{workflow_id}`"))?;
         let attempt = workflow_run_state.attempt();
         let run_id = workflow_run_state.run_id();
         tracing::info!(workflow_id = %workflow_id.to_string(), run_id = %run_id.to_string(), attempt = attempt, "Starting new run attempt");
@@ -234,7 +261,8 @@ impl Runtime {
                 } => {
                     let workflow_state = state
                         .load_workflow_run_state(workflow_run_id, attempt)
-                        .await?;
+                        .await
+                        .wrap_err_with(|| format!("Failed to load state for run `{workflow_run_id}` attempt {attempt} while processing an event"))?;
                     let workflow_id = workflow_state.workflow_id().to_string();
                     match &event {
                         WorkflowRunEvent::Started {} => {
@@ -321,7 +349,9 @@ impl Runtime {
                             }
                         }
                     }
-                    workflow_state.write(event).await?;
+                    workflow_state.write(event).await.wrap_err_with(|| {
+                        format!("Failed to persist an event for run `{workflow_run_id}` attempt {attempt}")
+                    })?;
                 }
             }
         }
@@ -329,7 +359,10 @@ impl Runtime {
     }
 
     async fn run(&mut self) -> miette::Result<()> {
-        let stream = self.orchestrator.listen()?;
+        let stream = self
+            .orchestrator
+            .listen()
+            .wrap_err("Failed to start listening for runtime events")?;
         let state = self.state.clone();
         let _task = AbortOnDrop(tokio::spawn(async move {
             tokio::select! {
@@ -385,10 +418,19 @@ impl Runtime {
             contexts.retain(|key, _| active_run_set.contains(key));
 
             for (run_id, attempt) in active_runs {
-                let workflow_run_state =
-                    self.state.load_workflow_run_state(run_id, attempt).await?;
+                let workflow_run_state = self
+                    .state
+                    .load_workflow_run_state(run_id, attempt)
+                    .await
+                    .wrap_err_with(|| {
+                        format!("Failed to load state for active run `{run_id}` attempt {attempt}")
+                    })?;
                 let workflow_id = workflow_run_state.workflow_id();
-                let workflow_graph = self.state.load_workflow(workflow_id).await?;
+                let workflow_graph = self
+                    .state
+                    .load_workflow(workflow_id)
+                    .await
+                    .wrap_err_with(|| format!("Failed to load workflow `{workflow_id}` for run `{run_id}` attempt {attempt}"))?;
 
                 let workflow_run_state = Arc::new(workflow_run_state);
                 let workflow_graph = Arc::new(workflow_graph);
@@ -396,7 +438,9 @@ impl Runtime {
                 let context = if let Some(context) = contexts.get(&(run_id, attempt)) {
                     context.clone()
                 } else {
-                    let inputs = workflow_run_state.load_inputs().await?;
+                    let inputs = workflow_run_state.load_inputs().await.wrap_err_with(|| {
+                        format!("Failed to load inputs for run `{run_id}` attempt {attempt}")
+                    })?;
                     let context = OrchestrationContext::new(&workflow_run_state, inputs);
                     contexts.insert((run_id, attempt), context.clone());
                     context
@@ -405,12 +449,22 @@ impl Runtime {
                 let actions = self
                     .orchestrator
                     .build_actions(context, workflow_graph)
-                    .await?;
+                    .await
+                    .wrap_err_with(|| {
+                        format!("Failed to plan actions for run `{run_id}` attempt {attempt}")
+                    })?;
                 self.orchestrator
                     .perform_actions(run_id, attempt, actions)
-                    .await?;
+                    .await
+                    .wrap_err_with(|| {
+                        format!("Failed to perform actions for run `{run_id}` attempt {attempt}")
+                    })?;
             }
-            state_recv.changed().await.into_diagnostic()?;
+            state_recv
+                .changed()
+                .await
+                .into_diagnostic()
+                .wrap_err("Runtime state update channel closed unexpectedly")?;
         }
         tracing::info!("Runtime exiting, shutting down logging");
         flush_logs();
@@ -422,16 +476,29 @@ impl Runtime {
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
-        let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let workflow_run_state = self
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await
+            .wrap_err_with(|| {
+                format!("Failed to load state for run `{run_id}` attempt {attempt}")
+            })?;
         let workflow_id = workflow_run_state.workflow_id();
         // TODO: Use LRU cache for workflows or similar here?
-        let workflow_graph = self.state.load_workflow(workflow_id).await?;
+        let workflow_graph = self
+            .state
+            .load_workflow(workflow_id)
+            .await
+            .wrap_err_with(|| format!("Failed to load workflow `{workflow_id}` while collecting outputs for run `{run_id}` attempt {attempt}"))?;
 
         let output_state = workflow_run_state
             .read(&Location::from_node_index_iter([
                 workflow_graph.output_idx()
             ]))
-            .await?;
+            .await
+            .wrap_err_with(|| {
+                format!("Failed to read the output node state for run `{run_id}` attempt {attempt}")
+            })?;
 
         let outputs = load_assets(
             &self.asset_storage_registry,
@@ -439,7 +506,10 @@ impl Runtime {
                 .outputs
                 .ok_or_else(|| miette!("No output values on Output node."))?,
         )
-        .await?;
+        .await
+        .wrap_err_with(|| {
+            format!("Failed to load output assets for run `{run_id}` attempt {attempt}")
+        })?;
 
         Ok(outputs)
     }
@@ -457,7 +527,9 @@ async fn executor_registry_from_config(
             } => executor_registry.insert(
                 executor_name.clone(),
                 Box::new(
-                    InMemoryExecutor::try_new(asset_storage_registry, output_storage_name).await?,
+                    InMemoryExecutor::try_new(asset_storage_registry, output_storage_name)
+                        .await
+                        .wrap_err_with(|| format!("Failed to configure executor `{executor_name}` with output storage `{output_storage_name}`"))?,
                 ),
             ),
             ExecutorConfig::Subprocess {
@@ -471,7 +543,8 @@ async fn executor_registry_from_config(
                         subprocess_storage_name,
                         output_storage_name,
                     )
-                    .await?,
+                    .await
+                    .wrap_err_with(|| format!("Failed to configure subprocess executor `{executor_name}` with subprocess storage `{subprocess_storage_name}` and output storage `{output_storage_name}`"))?,
                 ),
             ),
             ExecutorConfig::Nexus {
@@ -485,7 +558,8 @@ async fn executor_registry_from_config(
                         asset_storage_registry,
                         output_storage_name,
                     )
-                    .await?,
+                    .await
+                    .wrap_err_with(|| format!("Failed to configure Nexus executor `{executor_name}` with output storage `{output_storage_name}`"))?,
                 ),
             ),
         };
@@ -516,15 +590,27 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     workflow_graph: WorkflowGraph,
     inputs: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory()).await?;
+    let mut runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory())
+        .await
+        .wrap_err("Failed to initialize the in-memory runtime")?;
 
-    let workflow_id = runtime.save_workflow(workflow_graph).await?;
-    let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
+    let workflow_id = runtime
+        .save_workflow(workflow_graph)
+        .await
+        .wrap_err("Failed to register workflow with the runtime")?;
+    let (run_id, attempt) = runtime
+        .start_new_run(workflow_id, inputs)
+        .await
+        .wrap_err_with(|| format!("Failed to start workflow `{workflow_id}`"))?;
 
     runtime.dedicated_run_id = Some(run_id);
-    runtime.run().await?;
+    runtime.run().await.wrap_err_with(|| {
+        format!("Runtime failed while executing run `{run_id}` attempt {attempt}")
+    })?;
 
-    let outputs = runtime.outputs(run_id, attempt).await?;
+    let outputs = runtime.outputs(run_id, attempt).await.wrap_err_with(|| {
+        format!("Failed to collect outputs for run `{run_id}` attempt {attempt}")
+    })?;
 
     flush_logs();
 
@@ -543,8 +629,13 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 /// Will panic if there is already a tokio runtime active.
 #[tokio::main]
 pub async fn exec() -> miette::Result<()> {
-    let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
-    runtime.run().await?;
+    let mut runtime = Runtime::from_config(&RuntimeConfig::default())
+        .await
+        .wrap_err("Failed to initialize the Tierkreis runtime")?;
+    runtime
+        .run()
+        .await
+        .wrap_err("Tierkreis runtime stopped with an error")?;
     Ok(())
 }
 

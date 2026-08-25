@@ -47,7 +47,7 @@ pub async fn read_workflow(
         .get_result(conn)
         .await
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to select workflow with id: {}", workflow_id))?;
+        .wrap_err_with(|| format!("Failed to select workflow with id: {workflow_id}"))?;
 
     Ok(workflow)
 }
@@ -87,9 +87,9 @@ pub async fn read_workflow_run(
     use crate::state::schema::workflow_run_attempts::dsl as wra;
     use crate::state::schema::workflow_runs::dsl as wr;
 
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let attempt_i32 = i32::try_from(attempt).into_diagnostic().wrap_err_with(|| {
+        format!("Attempt {attempt} for run `{run_id}` cannot be stored in SQLite")
+    })?;
 
     wr::workflow_runs
         .filter(wr::id.eq(run_id.to_string()))
@@ -99,7 +99,7 @@ pub async fn read_workflow_run(
         .first::<(WorkflowRun, WorkflowRunAttempt)>(conn)
         .await
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to query workflow run"))
+        .wrap_err_with(|| format!("Failed to query run `{run_id}` attempt {attempt}"))
 }
 
 /// Insert a workflow run row.
@@ -213,7 +213,7 @@ pub async fn update_workflow_run(
     .execute(conn)
     .await
     .into_diagnostic()
-    .wrap_err("Failed to update workflow run timing")?;
+    .wrap_err_with(|| format!("Failed to update timing for run `{run_id}` attempt {attempt}"))?;
 
     Ok(rows_affected > 0)
 }
@@ -357,9 +357,9 @@ pub async fn read_node_state(
 ) -> miette::Result<crate::state::interface::NodeState> {
     use crate::state::schema::node_states::dsl as ns;
 
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let attempt_i32 = i32::try_from(attempt).into_diagnostic().wrap_err_with(|| {
+        format!("Attempt {attempt} for run `{run_id}` at node `{loc}` cannot be stored in SQLite")
+    })?;
     let db_node = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
@@ -369,7 +369,7 @@ pub async fn read_node_state(
         .optional()
         .into_diagnostic()
         .wrap_err_with(|| {
-            miette!(
+            format!(
                 "Failed to query node state for run {run_id} attempt {attempt} location {loc:?}"
             )
         })?;
@@ -380,9 +380,8 @@ pub async fn read_node_state(
             .map(|idx| {
                 u32::try_from(idx)
                     .into_diagnostic()
-                    .wrap_err_with(||miette!(
-                        "Stored loop index {idx} is invalid for run {run_id} attempt {attempt} location {:?}",
-                        loc
+                    .wrap_err_with(|| format!(
+                        "Stored loop index {idx} is invalid for run {run_id} attempt {attempt} location {loc:?}"
                     ))
             })
             .transpose()?;
@@ -440,9 +439,9 @@ pub async fn read_node_states(
     use crate::state::schema::node_states::dsl as ns;
 
     let mut states = HashMap::new();
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let attempt_i32 = i32::try_from(attempt).into_diagnostic().wrap_err_with(|| {
+        format!("Attempt {attempt} for run `{run_id}` cannot be stored in SQLite")
+    })?;
     let db_nodes = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
@@ -451,7 +450,7 @@ pub async fn read_node_states(
         .await
         .into_diagnostic()
         .wrap_err_with(|| {
-            miette!("Failed to query node state for run {run_id} attempt {attempt}")
+            format!("Failed to query node state for run {run_id} attempt {attempt}")
         })?;
 
     for db_node in db_nodes {
@@ -460,7 +459,7 @@ pub async fn read_node_states(
             .map(|idx| {
                 u32::try_from(idx)
                     .into_diagnostic()
-                    .wrap_err_with(||miette!(
+                    .wrap_err_with(|| format!(
                         "Stored loop index {idx} is invalid for run {run_id} attempt {attempt}",
                     ))
             })
@@ -657,9 +656,9 @@ pub async fn add_run_attempt_metadata<S: BuildHasher>(
 ) -> miette::Result<()> {
     use crate::state::schema::workflow_run_attempts::dsl as wra;
 
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let attempt_i32 = i32::try_from(attempt).into_diagnostic().wrap_err_with(|| {
+        format!("Attempt {attempt} for run `{run_id}` cannot be stored in SQLite")
+    })?;
 
     let run_id_str = run_id.to_string();
 
@@ -675,11 +674,7 @@ pub async fn add_run_attempt_metadata<S: BuildHasher>(
     .await
     .into_diagnostic()
     .wrap_err_with(|| {
-        miette!(
-            "Failed to update workflow run metadata for run {} attempt {}",
-            run_id,
-            attempt
-        )
+        format!("Failed to update workflow run metadata for run {run_id} attempt {attempt}")
     })?;
 
     Ok(())
@@ -703,9 +698,9 @@ pub async fn read_run_attempt_metadata(
 ) -> miette::Result<HashMap<String, String>> {
     use crate::state::schema::workflow_run_attempts::dsl as wra;
 
-    let attempt_i32 = i32::try_from(attempt)
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let attempt_i32 = i32::try_from(attempt).into_diagnostic().wrap_err_with(|| {
+        format!("Attempt {attempt} for run `{run_id}` cannot be stored in SQLite")
+    })?;
 
     let run_id_str = run_id.to_string();
 
@@ -716,15 +711,14 @@ pub async fn read_run_attempt_metadata(
         .first::<String>(conn)
         .await
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Failed to query workflow run for metadata update"))?;
+        .wrap_err_with(|| {
+            format!("Failed to query run `{run_id}` attempt {attempt} before updating metadata")
+        })?;
 
     let metadata = serde_json::from_str::<HashMap<String, String>>(&metadata)
         .into_diagnostic()
         .wrap_err_with(|| {
-            miette!(
-                "Failed to parse existing run metadata JSON for run {}",
-                run_id_str
-            )
+            format!("Failed to parse existing run metadata JSON for run {run_id_str}")
         })?;
 
     Ok(metadata)
@@ -782,15 +776,15 @@ pub async fn list_workflow_run_summaries(
             .id
             .parse()
             .into_diagnostic()
-            .wrap_err_with(|| miette!("Invalid run UUID: {}", run.id))?;
+            .wrap_err_with(|| format!("Invalid run UUID: {}", run.id))?;
         let workflow_id: uuid::Uuid = run
             .workflow_id
             .parse()
             .into_diagnostic()
-            .wrap_err_with(|| miette!("Invalid workflow UUID: {}", run.workflow_id))?;
+            .wrap_err_with(|| format!("Invalid workflow UUID: {}", run.workflow_id))?;
         let attempt = u32::try_from(run_attempt.attempt)
             .into_diagnostic()
-            .wrap_err_with(|| miette!("Invalid attempt value: {}", run_attempt.attempt))?;
+            .wrap_err_with(|| format!("Invalid attempt value: {}", run_attempt.attempt))?;
 
         let errored_locations: Vec<Location> = ns::node_states
             .select(ns::node_location)
@@ -800,7 +794,7 @@ pub async fn list_workflow_run_summaries(
             .get_results(conn)
             .await
             .into_diagnostic()
-            .wrap_err_with(|| miette!("Failed to list errored nodes for run {}", run.id))?;
+            .wrap_err_with(|| format!("Failed to list errored nodes for run {}", run.id))?;
 
         summaries.push(WorkflowRunSummary {
             run_id,

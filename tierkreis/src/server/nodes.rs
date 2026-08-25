@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use miette::Context;
+use miette::{Context, IntoDiagnostic};
 
 use crate::asset_storage::{load_asset, load_assets};
 use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
@@ -411,8 +411,11 @@ fn load_subgraph_from_const_node(
             Ok(val)
         } else {
             let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone())
-                .map_err(|_| miette::miette!("Fallback Failed"))?;
-            Ok(legacy_val.to_workflow_graph()?)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Const node {source_node:?} connected to node {node_index:?} contains neither a current nor a legacy workflow graph"))?;
+            legacy_val.to_workflow_graph().wrap_err_with(|| {
+                format!("Failed to convert the legacy workflow graph stored in Const node {source_node:?}")
+            })
         }
     } else {
         Err(miette::miette!("Node {node_index:?} is not a Const node"))

@@ -1153,11 +1153,14 @@ impl Orchestrator {
         let executor = self
             .executor_registry
             .get(default_executor_name)
-            .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Nodes")?;
+            .ok_or_else(|| miette!("Executor `{default_executor_name}` is not registered"))
+            .wrap_err_with(|| {
+                format!("Cannot run task nodes for run `{workflow_run_id}` attempt {attempt}")
+            })?;
         executor
             .execute(plan.tasks)
             .await
-            .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
+            .wrap_err_with(|| format!("Failed to submit task nodes to executor `{default_executor_name}` for run `{workflow_run_id}` attempt {attempt}"))?;
 
         if plan.workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
@@ -1271,9 +1274,10 @@ fn collect_inputs(
         let input_name = workflow_graph.get_port_name(i.into())?;
         let output_name = workflow_graph.get_port_name(o.into())?;
         let linked_node = workflow_graph.port_node(o)?;
-        let node_state = node_states
-            .get(&parent_location.with_node(linked_node))
-            .wrap_err_with(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
+        let linked_location = parent_location.with_node(linked_node);
+        let node_state = node_states.get(&linked_location).wrap_err_with(|| {
+            format!("Cannot collect input `{input_name}` for node `{}` because linked node `{linked_location}` has no runtime state", parent_location.with_node(n))
+        })?;
         let outputs = node_state
             .outputs
             .as_ref()
