@@ -3956,6 +3956,7 @@ dependencies = [
  "opentelemetry_sdk",
  "portgraph",
  "pyo3",
+ "rand 0.10.2",
  "regex",
  "reqwest",
  "reqwest-websocket",
