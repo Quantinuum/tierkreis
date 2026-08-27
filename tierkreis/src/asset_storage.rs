@@ -44,7 +44,12 @@ pub async fn load_assets<S: BuildHasher>(
         let storage = registry.get(storage_name).ok_or_else(|| {
             miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
         })?;
-        let asset = storage.load(&v.asset_key).await?;
+        let asset = storage.load(&v.asset_key).await.wrap_err_with(|| {
+            format!(
+                "Failed to load asset `{k}` (key `{}`) from storage `{storage_name}`",
+                v.asset_key
+            )
+        })?;
         loaded.insert(k.clone(), asset);
     }
     Ok(loaded)
@@ -72,7 +77,15 @@ pub async fn load_asset<S: BuildHasher>(
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
     })?;
 
-    let asset = storage.load(&asset_spec.asset_key).await?;
+    let asset = storage
+        .load(&asset_spec.asset_key)
+        .await
+        .wrap_err_with(|| {
+            format!(
+                "Failed to load asset `{name}` (key `{}`) from storage `{storage_name}`",
+                asset_spec.asset_key
+            )
+        })?;
 
     Ok(asset)
 }
@@ -102,16 +115,25 @@ pub async fn unfold_asset<S: BuildHasher>(
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
     })?;
 
-    let asset = storage.load(&asset_spec.asset_key).await?;
+    let asset = storage.load(&asset_spec.asset_key).await.wrap_err_with(|| {
+        format!("Failed to load asset `{name}` (key `{}`) from storage `{storage_name}` before unfolding it", asset_spec.asset_key)
+    })?;
 
-    let asset_value_list: Vec<serde_json::Value> =
-        serde_json::from_slice(&asset).map_err(|err| miette!("Could not unfold asset: {err}"))?;
+    let asset_value_list: Vec<serde_json::Value> = serde_json::from_slice(&asset)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("Asset `{name}` is not a JSON array and cannot be unfolded"))?;
 
     let mut asset_spec_list = Vec::new();
     for asset_value in asset_value_list {
         let asset_key = AssetKey::new();
-        let asset_bytes = serde_json::to_vec(&asset_value).into_diagnostic()?;
-        storage.save(&asset_key, asset_bytes).await?;
+        let asset_bytes = serde_json::to_vec(&asset_value)
+            .into_diagnostic()
+            .wrap_err_with(|| {
+                format!("Failed to encode an element while unfolding asset `{name}`")
+            })?;
+        storage.save(&asset_key, asset_bytes).await.wrap_err_with(|| {
+            format!("Failed to save unfolded asset element with key `{asset_key}` to storage `{storage_name}`")
+        })?;
 
         asset_spec_list.push(AssetSpec {
             kind: storage.kind(),
@@ -144,7 +166,9 @@ pub async fn save_assets<S: BuildHasher>(
     let mut asset_specs = HashMap::new();
     for (name, raw_asset) in raw_assets {
         let asset_key = AssetKey::new();
-        storage.save(&asset_key, raw_asset).await?;
+        storage.save(&asset_key, raw_asset).await.wrap_err_with(|| {
+            format!("Failed to save asset `{name}` with key `{asset_key}` to storage `{storage_name}`")
+        })?;
         asset_specs.insert(
             name,
             AssetSpec {
@@ -176,7 +200,9 @@ pub async fn save_asset(
     })?;
 
     let asset_key = AssetKey::new();
-    storage.save(&asset_key, value).await?;
+    storage.save(&asset_key, value).await.wrap_err_with(|| {
+        format!("Failed to save asset with key `{asset_key}` to storage `{storage_name}`")
+    })?;
 
     Ok(AssetSpec {
         kind: storage.kind(),
@@ -205,7 +231,15 @@ pub async fn save_asset_with_spec(
         )
     })?;
 
-    storage.save(&asset_spec.asset_key, value).await?;
+    storage
+        .save(&asset_spec.asset_key, value)
+        .await
+        .wrap_err_with(|| {
+            format!(
+                "Failed to save asset with key `{}` to storage `{}`",
+                asset_spec.asset_key, asset_spec.storage_name
+            )
+        })?;
 
     Ok(())
 }
@@ -232,8 +266,12 @@ pub async fn fold_assets(
             miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
         })?;
 
-        let asset = storage.load(&asset_spec.asset_key).await?;
-        let asset_value: serde_json::Value = serde_json::from_slice(&asset).into_diagnostic()?;
+        let asset = storage.load(&asset_spec.asset_key).await.wrap_err_with(|| {
+            format!("Failed to load asset with key `{}` from storage `{storage_name}` while folding assets", asset_spec.asset_key)
+        })?;
+        let asset_value: serde_json::Value = serde_json::from_slice(&asset)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Asset with key `{}` from storage `{storage_name}` is not valid JSON and cannot be folded", asset_spec.asset_key))?;
 
         asset_values.push(asset_value);
     }
@@ -242,8 +280,17 @@ pub async fn fold_assets(
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
     })?;
     let asset_key = AssetKey::new();
-    let asset_bytes = serde_json::to_vec(&asset_values).into_diagnostic()?;
-    storage.save(&asset_key, asset_bytes).await?;
+    let asset_bytes = serde_json::to_vec(&asset_values)
+        .into_diagnostic()
+        .wrap_err("Failed to encode folded assets as JSON")?;
+    storage
+        .save(&asset_key, asset_bytes)
+        .await
+        .wrap_err_with(|| {
+            format!(
+                "Failed to save folded asset with key `{asset_key}` to storage `{storage_name}`"
+            )
+        })?;
 
     Ok(AssetSpec {
         kind: storage.kind(),
@@ -283,13 +330,13 @@ pub async fn transfer_assets<S: BuildHasher>(
             let asset = storage_from
                 .load(&asset_from.asset_key)
                 .await
-                .wrap_err("Failed to load asset")?;
+                .wrap_err_with(|| format!("Failed to load asset `{name}` (key `{}`) from storage `{storage_name_from}` for transfer to `{storage_name_to}`", asset_from.asset_key))?;
 
             let asset_key = AssetKey::new();
             storage_to
                 .save(&asset_key, asset)
                 .await
-                .wrap_err("Failed to save asset")?;
+                .wrap_err_with(|| format!("Failed to save transferred asset `{name}` with key `{asset_key}` to storage `{storage_name_to}`"))?;
             transferred.insert(
                 name.clone(),
                 AssetSpec {

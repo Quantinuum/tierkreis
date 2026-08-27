@@ -197,7 +197,7 @@ impl WorkflowGraph {
             Ok(())
         };
         res.wrap_err_with(|| {
-            miette!("Failed to link ports {from:?}:{from_output} -> {to:?}:{to_input}")
+            format!("Failed to link ports {from:?}:{from_output} -> {to:?}:{to_input}")
         })
     }
 

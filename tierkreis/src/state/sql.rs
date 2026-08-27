@@ -87,19 +87,23 @@ pub async fn build_conn_pool_with_url(database_url: &str) -> miette::Result<Conn
         .runtime(Runtime::Tokio1)
         .wait_timeout(Some(Duration::from_secs(1)))
         .build()
-        .into_diagnostic()?;
-
-    let mut conn = pool
-        .get()
-        .await
         .into_diagnostic()
-        .wrap_err("Error acquiring connection from pool")?;
+        .wrap_err_with(|| format!("Failed to build SQLite connection pool for `{database_url}`"))?;
+
+    let mut conn =
+        pool.get().await.into_diagnostic().wrap_err_with(|| {
+            format!("Failed to acquire a SQLite connection for `{database_url}`")
+        })?;
 
     sql_query("PRAGMA journal_mode=WAL")
         .execute(&mut conn)
         .await
-        .into_diagnostic()?;
-    run_migrations(conn)?;
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            format!("Failed to enable WAL journal mode for SQLite database `{database_url}`")
+        })?;
+    run_migrations(conn)
+        .wrap_err_with(|| format!("Failed to migrate SQLite database `{database_url}`"))?;
 
     Ok(pool)
 }
@@ -115,7 +119,7 @@ pub async fn build_conn_pool() -> miette::Result<ConnPool> {
     let database_url = match env::var("DATABASE_URL") {
         Ok(database_url) => database_url,
         Err(_err) => resolve_default_db_path()
-            .wrap_err("No `DATABASE_URL` set, trying default fall back file paths")?
+            .wrap_err("`DATABASE_URL` is not set and the default SQLite database path could not be prepared")?
             .to_string_lossy()
             .to_string(),
     };
@@ -158,13 +162,15 @@ impl SqliteRuntimeState {
         let (sender, receiver) = watch::channel(RuntimeWatchState::default());
         let pool = build_conn_pool()
             .await
-            .wrap_err("Failed to establish database connection")?;
+            .wrap_err("Failed to establish SQLite connection using `DATABASE_URL` or the default database path")?;
         let mut conn = pool
             .get()
             .await
             .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
-        let interrupted = list_active_runs(&mut conn).await?;
+            .wrap_err("Failed to acquire a SQLite connection while restoring active runs")?;
+        let interrupted = list_active_runs(&mut conn)
+            .await
+            .wrap_err("Failed to restore active runs from SQLite")?;
         sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
@@ -183,13 +189,17 @@ impl SqliteRuntimeState {
         let (sender, receiver) = watch::channel(RuntimeWatchState::default());
         let pool = build_conn_pool_with_url(database_url)
             .await
-            .wrap_err("Failed to establish database connection")?;
+            .wrap_err_with(|| {
+                format!("Failed to establish SQLite database connection to `{database_url}`")
+            })?;
         let mut conn = pool
             .get()
             .await
             .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
-        let interrupted = list_active_runs(&mut conn).await?;
+            .wrap_err_with(|| format!("Failed to acquire a SQLite connection to `{database_url}` while restoring active runs"))?;
+        let interrupted = list_active_runs(&mut conn).await.wrap_err_with(|| {
+            format!("Failed to restore active runs from SQLite database `{database_url}`")
+        })?;
         sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
@@ -213,15 +223,19 @@ impl SqliteRuntimeState {
         // that `:memory:` has with pooled connections.
         let url = format!("file:{db_name}?mode=memory&cache=shared");
         let (sender, receiver) = watch::channel(RuntimeWatchState::default());
-        let pool = build_conn_pool_with_url(&url)
-            .await
-            .wrap_err("Failed to establish in-memory database")?;
-        let mut conn = pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
-        let interrupted = list_active_runs(&mut conn).await?;
+        let pool = build_conn_pool_with_url(&url).await.wrap_err_with(|| {
+            format!("Failed to establish shared in-memory SQLite database `{db_name}`")
+        })?;
+        let mut conn = pool.get().await.into_diagnostic().wrap_err_with(|| {
+            format!(
+                "Failed to acquire a connection to shared in-memory SQLite database `{db_name}`"
+            )
+        })?;
+        let interrupted = list_active_runs(&mut conn).await.wrap_err_with(|| {
+            format!(
+                "Failed to restore active runs from shared in-memory SQLite database `{db_name}`"
+            )
+        })?;
         sender.send_modify(|watch| watch.active_runs.extend(interrupted));
         Ok(Self {
             pool,
@@ -240,7 +254,7 @@ impl SqliteRuntimeState {
             .get()
             .await
             .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
+            .wrap_err("Failed to acquire a SQLite connection from the runtime state pool")?;
         Ok(conn)
     }
 }
@@ -257,7 +271,9 @@ impl RuntimeState for SqliteRuntimeState {
             let _lock = self.lock.read().await;
             let mut conn = self.get_conn().await?;
             let workflow = read_workflow(&mut conn, workflow_id).await?;
-            serde_json::from_slice(&workflow.definition).into_diagnostic()
+            serde_json::from_slice(&workflow.definition)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Stored definition for workflow `{workflow_id}` is not a valid workflow graph"))
         }
         .boxed()
     }
@@ -269,14 +285,18 @@ impl RuntimeState for SqliteRuntimeState {
                 id: &id.to_string(),
                 name: None,
                 created_time: Some(Utc::now().naive_utc()),
-                definition: &serde_json::to_vec(&workflow_graph).into_diagnostic()?,
+                definition: &serde_json::to_vec(&workflow_graph)
+                    .into_diagnostic()
+                    .wrap_err_with(|| {
+                        format!("Failed to serialize workflow `{id}` for SQLite storage")
+                    })?,
             };
             let _lock = self.lock.write().await;
             let mut conn = self.get_conn().await?;
             insert_workflow(&mut conn, &workflow)
                 .await
                 .into_diagnostic()
-                .wrap_err("Failed to save workflow")?;
+                .wrap_err_with(|| format!("Failed to save workflow `{id}` to SQLite"))?;
             Ok(id)
         }
         .boxed()
@@ -315,7 +335,9 @@ impl RuntimeState for SqliteRuntimeState {
             })
             .await
             .into_diagnostic()
-            .wrap_err("Failed to insert new workflow run")?;
+            .wrap_err_with(|| {
+                format!("Failed to insert run `{run_id}` for workflow `{workflow_id}` into SQLite")
+            })?;
 
             self.update_sender.send_modify(|active_runs| {
                 active_runs.active_runs.insert((run_id, 0));
@@ -524,12 +546,12 @@ impl SqliteWorkflowRunState {
         &self,
     ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
     {
-        let conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
+        let conn = self.pool.get().await.into_diagnostic().wrap_err_with(|| {
+            format!(
+                "Failed to acquire a SQLite connection for run `{}` attempt {}",
+                self.run_id, self.attempt
+            )
+        })?;
         Ok(conn)
     }
 
@@ -632,7 +654,7 @@ impl SqliteWorkflowRunState {
             .get()
             .await
             .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
+            .wrap_err_with(|| format!("Failed to acquire a SQLite connection while persisting node events for run `{}` attempt {}", self.run_id, self.attempt))?;
 
         update_node_state(
             &mut conn,

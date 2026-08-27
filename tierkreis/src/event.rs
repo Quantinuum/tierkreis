@@ -208,7 +208,7 @@ pub async fn send_running(
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Running { state_update: None },
         }),
     };
@@ -216,7 +216,9 @@ pub async fn send_running(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send node running event")
+        .wrap_err_with(|| {
+            format!("Failed to send running event for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Cancelled`].
@@ -234,7 +236,7 @@ pub async fn send_cancelled(
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Cancelled,
         }),
     };
@@ -242,7 +244,9 @@ pub async fn send_cancelled(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send node cancelled event")
+        .wrap_err_with(|| {
+            format!("Failed to send cancelled event for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Queued`].
@@ -261,7 +265,7 @@ pub async fn send_queued(
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Queued { handle },
         }),
     };
@@ -269,7 +273,9 @@ pub async fn send_queued(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send node queued event")
+        .wrap_err_with(|| {
+            format!("Failed to send queued event for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Complete`] and output [`AssetSpec`]s.
@@ -284,6 +290,7 @@ pub async fn send_complete(
     locs: Vec<Location>,
     outputs: Vec<HashMap<String, AssetSpec, RandomState>>,
 ) -> miette::Result<()> {
+    let locations = locs.iter().map(ToString::to_string).collect::<Vec<_>>();
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
@@ -296,7 +303,9 @@ pub async fn send_complete(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send node complete event")
+        .wrap_err_with(|| {
+            format!("Failed to send completion event for nodes {locations:?} in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a conditional value
@@ -316,7 +325,7 @@ pub async fn send_running_switching(
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             },
@@ -326,7 +335,9 @@ pub async fn send_running_switching(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send running switch node event")
+        .wrap_err_with(|| {
+            format!("Failed to send switch state `{cond}` for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a loop index value
@@ -346,7 +357,7 @@ pub async fn send_running_loop(
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             },
@@ -356,7 +367,9 @@ pub async fn send_running_loop(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send running loop node event")
+        .wrap_err_with(|| {
+            format!("Failed to send loop index {index} for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and the number of
@@ -373,15 +386,18 @@ pub async fn send_running_map(
     loc: Location,
     size: usize,
 ) -> miette::Result<()> {
+    let size = u32::try_from(size).into_diagnostic().wrap_err_with(|| {
+        format!(
+            "Map size is too large for node `{loc}` in run `{workflow_run_id}` attempt {attempt}"
+        )
+    })?;
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapStarted {
-                    size: u32::try_from(size).into_diagnostic()?,
-                }),
+                state_update: Some(RunningStateUpdate::MapStarted { size }),
             },
         }),
     };
@@ -389,7 +405,9 @@ pub async fn send_running_map(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send running map node event")
+        .wrap_err_with(|| {
+            format!("Failed to send map size {size} for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and index of
@@ -420,7 +438,9 @@ pub async fn send_map_elem_complete(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send map node element complete event")
+        .wrap_err_with(|| {
+            format!("Failed to send map progress for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Error`] and an error message.
@@ -442,7 +462,7 @@ pub async fn send_error(
         workflow_run_id,
         attempt,
         event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+            locs: vec![loc.clone()],
             status: NodeStatus::Error {
                 error: err.to_string(),
                 detail: Some(detail),
@@ -453,7 +473,9 @@ pub async fn send_error(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send node error event")
+        .wrap_err_with(|| {
+            format!("Failed to send error event for node `{loc}` in run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Completed`].
@@ -475,7 +497,9 @@ pub async fn send_workflow_run_complete(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send workflow complete event")
+        .wrap_err_with(|| {
+            format!("Failed to send completion event for run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 
 /// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Queued`].
@@ -497,7 +521,9 @@ pub async fn send_workflow_run_queued(
         .send(event)
         .await
         .into_diagnostic()
-        .wrap_err("Failed to send workflow queued event")
+        .wrap_err_with(|| {
+            format!("Failed to send queued event for run `{workflow_run_id}` attempt {attempt}")
+        })
 }
 #[cfg(test)]
 mod tests {

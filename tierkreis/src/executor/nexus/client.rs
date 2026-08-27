@@ -133,13 +133,15 @@ impl JobStatusStream {
             .send(())
             .await
             .into_diagnostic()
-            .wrap_err("Failed to send close signal to sink")?;
-        let sink = self.join_handle.await.into_diagnostic()??;
-        let websocket = self
-            .stream
-            .reunite(sink)
+            .wrap_err("Failed to signal the Nexus job status WebSocket writer to close")?;
+        let sink = self
+            .join_handle
+            .await
             .into_diagnostic()
-            .wrap_err("Failed to reunite websocket stream with sink")?;
+            .wrap_err("Nexus job status WebSocket writer task failed while closing")??;
+        let websocket = self.stream.reunite(sink).into_diagnostic().wrap_err(
+            "Failed to reunite the Nexus job status WebSocket reader and writer while closing",
+        )?;
 
         let res = websocket
             .close(reqwest_websocket::CloseCode::Normal, None)

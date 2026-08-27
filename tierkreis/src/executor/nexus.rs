@@ -241,13 +241,13 @@ async fn monitor_task(
             let mut job_status_stream = client
                 .listen_for_job_status(internal_task.job_id)
                 .await
-                .wrap_err("Failed to listen for job status")?;
+                .wrap_err_with(|| format!("Failed to open a status stream for Nexus job `{job_id}` (run `{workflow_run_id}` attempt {attempt}, node `{task_loc}`)"))?;
 
             'outer: loop {
                 while let Some(job_status) = job_status_stream
                     .try_next()
                     .await
-                    .wrap_err("Failed while listening for job status")?
+                    .wrap_err_with(|| format!("Failed while reading status updates for Nexus job `{job_id}` (run `{workflow_run_id}` attempt {attempt}, node `{task_loc}`)"))?
                 {
                     match job_status.status() {
                         StatusEnum::Submitted | StatusEnum::Cancelling | StatusEnum::Retrying => {}
@@ -274,13 +274,13 @@ async fn monitor_task(
                 job_status_stream = client
                     .listen_for_job_status(internal_task.job_id)
                     .await
-                    .wrap_err("Failed to listen for job status")?;
+                    .wrap_err_with(|| format!("Failed to reconnect the status stream for Nexus job `{job_id}` (run `{workflow_run_id}` attempt {attempt}, node `{task_loc}`)"))?;
             }
             tracing::debug!("Job status stream ended, processing finished task");
             job_status_stream
                 .close()
                 .await
-                .wrap_err("Failed to close job status stream")?;
+                .wrap_err_with(|| format!("Failed to close the status stream for Nexus job `{job_id}`"))?;
 
             Ok(())
         }
@@ -437,11 +437,15 @@ impl NexusExecutor {
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let client = NexusClient::try_new(client_config).await?;
+        let client = NexusClient::try_new(client_config)
+            .await
+            .wrap_err("Failed to initialize the Nexus client")?;
 
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(output_storage_name) {
-            return Err(miette!("output_storage_name not in registry"));
+            return Err(miette!(
+                "Nexus output storage `{output_storage_name}` is not registered"
+            ));
         }
 
         let background_asset_storage_registry = Arc::clone(asset_storage_registry);
@@ -478,7 +482,13 @@ impl NexusExecutor {
             output_storage_name,
             outputs.len(),
         )
-        .await?;
+        .await
+        .wrap_err_with(|| {
+            format!(
+                "Failed to reserve {} Nexus task outputs in storage `{output_storage_name}`",
+                outputs.len()
+            )
+        })?;
         let outputs: HashMap<String, AssetSpec> = outputs.into_iter().zip(output_specs).collect();
         Ok(outputs)
     }
@@ -491,12 +501,18 @@ impl NexusExecutor {
     ) -> miette::Result<Uuid> {
         // TODO: Requiring Extensions for the enveleope read here might be problematic.
         let (_, package) = read_envelope(Cursor::new(hugr_package), &ExtensionRegistry::new([]))
-            .into_diagnostic()?;
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to decode HUGR package `{hugr_name}` before uploading it to Nexus project `{project_id}`"))?;
 
         let hugr_data = self
             .client
             .new_hugr_data(hugr_name, None, project_id, package)
-            .await?;
+            .await
+            .wrap_err_with(|| {
+                format!(
+                    "Failed to upload HUGR package `{hugr_name}` to Nexus project `{project_id}`"
+                )
+            })?;
 
         Ok(hugr_data.id())
     }
@@ -511,7 +527,8 @@ impl NexusExecutor {
         let job_data = self
             .client
             .new_job_data(job_name, None, project_id, [(program_id, n_shots)])
-            .await?;
+            .await
+            .wrap_err_with(|| format!("Failed to start Nexus job `{job_name}` in project `{project_id}` using program `{program_id}` with {n_shots} shots"))?;
 
         Ok(job_data.id())
     }
@@ -520,7 +537,11 @@ impl NexusExecutor {
     /// This is a simple check and does not guarantee anything about the
     /// state of the job.
     async fn is_job_active(&self, job_id: Uuid) -> miette::Result<Uuid> {
-        let _job = self.client.get_job(job_id).await?;
+        let _job = self
+            .client
+            .get_job(job_id)
+            .await
+            .wrap_err_with(|| format!("Failed to check restored Nexus job `{job_id}`"))?;
         Ok(job_id)
     }
 }
@@ -532,7 +553,11 @@ fn extract_json_input<T: for<'b> serde::Deserialize<'b>>(
     let input_bytes = inputs
         .remove(name)
         .ok_or_else(|| miette!("Missing input: {name}"))?;
-    let input: T = serde_json::from_slice(&input_bytes).into_diagnostic()?;
+    let input: T = serde_json::from_slice(&input_bytes)
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            format!("Nexus task input `{name}` is not valid JSON of the expected type")
+        })?;
     Ok(input)
 }
 
@@ -547,7 +572,10 @@ impl Executor for NexusExecutor {
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut task_sender = self.task_sender.clone();
-            self.client.refresh_tokens().await?;
+            self.client
+                .refresh_tokens()
+                .await
+                .wrap_err("Failed to refresh Nexus credentials before submitting tasks")?;
 
             for task_plan in task_plans {
                 if task_plan.worker_name != "nexus_worker" {
@@ -565,18 +593,20 @@ impl Executor for NexusExecutor {
 
                 let outputs = self
                     .build_outputs(&output_storage_name, task_plan.outputs)
-                    .await?;
+                    .await
+                    .wrap_err_with(|| format!("Failed to prepare outputs for Nexus task at node `{}` in run `{}` attempt {}", task_plan.loc, task_plan.workflow_run_id, task_plan.attempt))?;
 
                 // If we were given a handle to a previously submitted Nexus job
                 // and it's still active, reattach to it instead of resubmitting.
                 let job_id = if let Some(job_id) = &task_plan.task_handle {
                     let job_id = Uuid::parse_str(job_id)
                         .into_diagnostic()
-                        .wrap_err("Invalid job_id in restored task handle")?;
+                        .wrap_err_with(|| format!("Restored task handle `{job_id}` is not a valid Nexus job UUID for node `{}` in run `{}` attempt {}", task_plan.loc, task_plan.workflow_run_id, task_plan.attempt))?;
                     self.is_job_active(job_id).await?
                 } else {
-                    let mut inputs =
-                        load_assets(&self.asset_storage_registry, &task_plan.inputs).await?;
+                    let mut inputs = load_assets(&self.asset_storage_registry, &task_plan.inputs)
+                        .await
+                        .wrap_err_with(|| format!("Failed to load inputs for Nexus task at node `{}` in run `{}` attempt {}", task_plan.loc, task_plan.workflow_run_id, task_plan.attempt))?;
 
                     let project_name: String = extract_json_input(&mut inputs, "project_name")?;
                     let job_name: String = extract_json_input(&mut inputs, "job_name")?;
@@ -599,6 +629,10 @@ impl Executor for NexusExecutor {
                 };
 
                 let parent_span = tracing::Span::current();
+                let enqueue_context = format!(
+                    "Nexus job `{job_id}` for node `{}` in run `{}` attempt {}",
+                    task_plan.loc, task_plan.workflow_run_id, task_plan.attempt
+                );
                 task_sender
                     .send(BackgroundTaskPlan {
                         workflow_run_id: task_plan.workflow_run_id,
@@ -609,7 +643,8 @@ impl Executor for NexusExecutor {
                         parent_span,
                     })
                     .await
-                    .into_diagnostic()?;
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("Failed to enqueue {enqueue_context}; the Nexus executor may have stopped"))?;
             }
 
             Ok(())

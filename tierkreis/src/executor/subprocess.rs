@@ -201,7 +201,7 @@ async fn start_task(
                 .status()
                 .await
                 .into_diagnostic()
-                .wrap_err_with(|| miette!("Could not terminate restored worker process {pid}"))?;
+                .wrap_err_with(|| format!("Failed to invoke `kill` for restored worker process {pid} in run `{workflow_run_id}` attempt {attempt} at node `{loc}`"))?;
             if !status.success() {
                 return Err(miette!(
                     "Could not terminate restored worker process {pid}: {status}"
@@ -393,10 +393,10 @@ impl SubprocessExecutor {
         let task = tokio::task::spawn_blocking(|| {
             let re = Regex::new(r"tkr-.*-worker")
                 .into_diagnostic()
-                .wrap_err("Failed to compile Worker name regex")?;
-            let paths = which_re(&re)
-                .into_diagnostic()
-                .wrap_err("Failed to search for Worker binaries")?;
+                .wrap_err("Failed to compile worker executable pattern `tkr-.*-worker`")?;
+            let paths = which_re(&re).into_diagnostic().wrap_err(
+                "Failed to search PATH for worker executables matching `tkr-.*-worker`",
+            )?;
             Ok(paths
                 .map(|path| WorkerSpec {
                     worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
@@ -416,8 +416,12 @@ impl SubprocessExecutor {
             inputs,
         )
         .await?;
-        let inputs =
-            write_input_paths(&inputs).wrap_err("Failed to collect Worker input filepaths")?;
+        let inputs = write_input_paths(&inputs).wrap_err_with(|| {
+            format!(
+                "Failed to resolve input paths in subprocess storage `{}`",
+                self.subprocess_storage_name
+            )
+        })?;
         Ok(inputs)
     }
 
@@ -460,10 +464,12 @@ fn spawn_worker(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let child = command
-        .spawn()
-        .into_diagnostic()
-        .wrap_err_with(|| miette!("Could not spawn worker `{cmd}`"))?;
+    let child = command.spawn().into_diagnostic().wrap_err_with(|| {
+        format!(
+            "Failed to spawn worker executable `{cmd}` with argument file `{}`",
+            worker_args_path.display()
+        )
+    })?;
     Ok(child)
 }
 
@@ -473,7 +479,7 @@ fn process_identity(pid: u32) -> miette::Result<(u32, u64)> {
     {
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))
             .into_diagnostic()
-            .wrap_err("Could not read subprocess status")?;
+            .wrap_err_with(|| format!("Failed to read process status from `/proc/{pid}/stat`"))?;
         let fields = stat
             .rsplit_once(')')
             .map(|(_, fields)| fields)
@@ -483,10 +489,9 @@ fn process_identity(pid: u32) -> miette::Result<(u32, u64)> {
             .nth(19)
             .ok_or_else(|| miette!("Subprocess status has no start time"))?;
 
-        let start_time = start_time
-            .parse()
-            .into_diagnostic()
-            .wrap_err("Invalid subprocess start time")?;
+        let start_time = start_time.parse().into_diagnostic().wrap_err_with(|| {
+            format!("Process {pid} has an invalid start time `{start_time}` in `/proc/{pid}/stat`")
+        })?;
         Ok((pid, start_time))
     }
 
@@ -504,14 +509,12 @@ fn parse_subprocess_handle(handle: &str) -> miette::Result<(u32, u64)> {
     let (pid, start_time) = handle
         .split_once(':')
         .ok_or_else(|| miette!("Invalid subprocess task handle: `{handle}`"))?;
-    let pid = pid
-        .parse()
-        .into_diagnostic()
-        .wrap_err("Invalid pid in subprocess task handle")?;
-    let start_time = start_time
-        .parse()
-        .into_diagnostic()
-        .wrap_err("Invalid start_time in subprocess task handle")?;
+    let pid = pid.parse().into_diagnostic().wrap_err_with(|| {
+        format!("Invalid process ID `{pid}` in subprocess task handle `{handle}`")
+    })?;
+    let start_time = start_time.parse().into_diagnostic().wrap_err_with(|| {
+        format!("Invalid start time `{start_time}` in subprocess task handle `{handle}`")
+    })?;
     Ok((pid, start_time))
 }
 
@@ -561,29 +564,37 @@ impl Executor for SubprocessExecutor {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
+                let task_context = format!(
+                    "task `{}` on worker `{}` at node `{}` in run `{}` attempt {}",
+                    task_plan.task_name,
+                    task_plan.worker_name,
+                    task_plan.loc,
+                    task_plan.workflow_run_id,
+                    task_plan.attempt
+                );
                 let inputs = self
                     .build_inputs(&task_plan.inputs)
                     .await
-                    .wrap_err("Failed to build task inputs")?;
+                    .wrap_err_with(|| format!("Failed to prepare inputs for {task_context}"))?;
                 let (outputs, output_paths) = self
                     .build_outputs(task_plan.outputs)
                     .await
-                    .wrap_err("Failed to build task outputs")?;
+                    .wrap_err_with(|| format!("Failed to reserve outputs for {task_context}"))?;
 
-                let worker_args = NamedTempFile::new()
-                    .into_diagnostic()
-                    .wrap_err("Failed to create worker call args file.")?;
+                let worker_args = NamedTempFile::new().into_diagnostic().wrap_err_with(|| {
+                    format!("Failed to create the argument file for {task_context}")
+                })?;
 
                 // Redirect the done_file to a temporary file as we
                 // do not need it to figure out if a process has
                 // completed currently.
-                let done_file = NamedTempFile::new()
-                    .into_diagnostic()
-                    .wrap_err("Failed to create `done` file")?;
+                let done_file = NamedTempFile::new().into_diagnostic().wrap_err_with(|| {
+                    format!("Failed to create the completion marker file for {task_context}")
+                })?;
 
-                let error_file = NamedTempFile::new()
-                    .into_diagnostic()
-                    .wrap_err("Failed to create `error` file")?;
+                let error_file = NamedTempFile::new().into_diagnostic().wrap_err_with(|| {
+                    format!("Failed to create the error marker file for {task_context}")
+                })?;
 
                 serde_json::to_writer(
                     &worker_args,
@@ -597,7 +608,9 @@ impl Executor for SubprocessExecutor {
                     },
                 )
                 .into_diagnostic()
-                .wrap_err("Failed to write worker call args")?;
+                .wrap_err_with(|| {
+                    format!("Failed to write the argument file for {task_context}")
+                })?;
 
                 let output_storage_name = task_plan
                     .output_storage_name
@@ -618,7 +631,7 @@ impl Executor for SubprocessExecutor {
                     })
                     .await
                     .into_diagnostic()
-                    .wrap_err("Failed to enqueue background task.")?;
+                    .wrap_err_with(|| format!("Failed to enqueue {task_context}; the subprocess executor may have stopped"))?;
             }
 
             Ok(())

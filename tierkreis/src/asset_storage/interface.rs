@@ -37,15 +37,20 @@ impl FromStr for AssetKind {
     type Err = miette::Report;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let url = Url::from_str(s).into_diagnostic()?;
+        let url = Url::from_str(s)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to parse asset storage URL `{s}`"))?;
         match url.scheme() {
             "memory" => Ok(Self::Memory),
             "file" => Ok(Self::File {
                 root: url.path().parse().into_diagnostic().wrap_err_with(|| {
-                    miette!("Failed to parse root folder location, for url: {url}")
+                    format!("Failed to parse root folder from asset storage URL `{url}`")
                 })?,
             }),
-            scheme => Err(miette!("Unknown scheme: {scheme}")),
+            scheme => Err(miette!(
+                help = "Supported schemes are `file` and `memory`.",
+                "Unsupported asset storage URL scheme `{scheme}` in `{url}`"
+            )),
         }
     }
 }
