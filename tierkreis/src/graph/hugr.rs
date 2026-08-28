@@ -84,7 +84,7 @@ fn convert_dfg<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowG
                 )
             })
             .collect::<HashMap<String, (portgraph::NodeIndex, String)>>();
-        let mut outs = graph.insert_graph(child_graph, inputs);
+        let (_, mut outs) = graph.insert_graph(child_graph, inputs);
         let out_srcports = hugr
             .out_value_types(n)
             .map(|(p, _)| {
