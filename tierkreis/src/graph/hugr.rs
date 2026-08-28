@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use super::NodeDefinition;
 use super::WorkflowGraph;
-use hugr::{Hugr, HugrView, PortIndex as _, ops::OpType};
+use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType};
+use hugr::{Hugr, HugrView, PortIndex as _};
 use miette::Report;
 use petgraph::algo::dominators::{self, Dominators};
 use petgraph::visit::{Topo, Walker};
@@ -22,6 +23,7 @@ fn compute_dominator<H: HugrView>(
 fn convert_node<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowGraph> {
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node),
+        OpType::ExtensionOp(eop) => convert_ext_op(hugr, node, eop),
         other => todo!("{other:?}"),
     }
 }
@@ -100,6 +102,74 @@ fn convert_dfg<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowG
             .unwrap();
     }
     Ok(graph)
+}
+
+fn convert_ext_op<H: HugrView>(
+    hugr: &H,
+    node: H::Node,
+    eop: &ExtensionOp,
+) -> miette::Result<WorkflowGraph> {
+    let (mut graph, inps) = graph_for_node(hugr, node);
+    // Keep it simple for now, support only hugr ops that become a single node in the workflow graph
+    let (node_def, inports, outports) = lookup_ext_op(eop)?;
+
+    let new_node = graph.add_node(node_def, inports.clone(), outports.clone());
+
+    assert_eq!(inps.len(), inports.len());
+    for ((inp_n, inp_p), tgt_port) in inps.iter().zip(inports) {
+        graph
+            .link_nodes_by_port_name(*inp_n, inp_p, new_node, &tgt_port)
+            .unwrap();
+    }
+
+    let graph_outputs = graph
+        .input_names(graph.output_node)
+        .unwrap()
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(graph_outputs.len(), outports.len());
+    for (src_port, tgt_port) in outports.iter().zip(graph_outputs) {
+        graph
+            .link_nodes_by_port_name(new_node, src_port, graph.output_node, &tgt_port)
+            .unwrap();
+    }
+    Ok(graph)
+}
+
+fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<String>, Vec<String>)> {
+    let num_inputs = eop.signature().input().len();
+    let num_outputs = eop.signature().output().len();
+    if [
+        hugr::std_extensions::arithmetic::int_ops::EXTENSION_ID,
+        hugr::std_extensions::arithmetic::float_ops::EXTENSION_ID,
+        hugr::std_extensions::arithmetic::conversions::EXTENSION_ID,
+    ]
+    .contains(eop.extension_id())
+    {
+        // Assume everything works (we might need some renames?)
+        // and let the runtime fail if it doesn't.
+        static INPUT_PORT_NAMES: [&str; 2] = ["a", "b"];
+        assert_eq!(num_inputs, INPUT_PORT_NAMES.len());
+        assert_eq!(num_outputs, 1);
+        Ok((
+            NodeDefinition::Task {
+                worker_name: "inmemory".to_string(),
+                task_name: eop.def().name().to_string(),
+            },
+            INPUT_PORT_NAMES
+                .iter()
+                .take(num_inputs)
+                .map(|s| s.to_string())
+                .collect(),
+            vec!["value".to_string()],
+        ))
+    } else {
+        Err(miette::miette!(
+            "Unknown extension op: {} {}",
+            eop.def().extension_id(),
+            eop.def().name()
+        ))
+    }
 }
 
 impl TryFrom<Hugr> for WorkflowGraph {
