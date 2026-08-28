@@ -26,6 +26,19 @@ struct GraphWithFuncs<N: HugrNode> {
     funcs: HashMap<N, NodeIndex>,
 }
 
+fn wire_up(
+    graph: &mut WorkflowGraph,
+    inputs: Vec<(NodeIndex, String)>,
+    tgt_node: NodeIndex,
+    tgt_ports: impl IntoIterator<Item = String>,
+) {
+    for ((src_node, src_port), tgt_port) in inputs.into_iter().zip(tgt_ports) {
+        graph
+            .link_nodes_by_port_name(src_node, &src_port, tgt_node, &tgt_port)
+            .unwrap();
+    }
+}
+
 fn convert_dataflow_op<H: HugrView>(
     hugr: &H,
     node: H::Node,
@@ -35,6 +48,30 @@ fn convert_dataflow_op<H: HugrView>(
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node, graph, inputs),
         OpType::ExtensionOp(eop) => convert_ext_op(eop, &mut graph.graph, inputs),
+        OpType::CallIndirect(_) => {
+            let mut ins = hugr.in_value_types(node);
+            let (port, ty) = ins.next().unwrap();
+            debug_assert!(port.index() == 0 && matches!(*ty, hugr::types::Term::FunctionType(_)));
+
+            let ins = ins
+                .map(|(p, _)| {
+                    if p.index() == 0 {
+                        "func".to_string()
+                    } else {
+                        format!("in{}", p.index() - 1)
+                    }
+                })
+                .collect::<Vec<_>>();
+            let outs = hugr
+                .out_value_types(node)
+                .map(|(p, _)| format!("out{}", p.index()))
+                .collect::<Vec<_>>();
+            let ni = graph
+                .graph
+                .add_node(NodeDefinition::Eval {}, ins.clone(), outs.clone());
+            wire_up(&mut graph.graph, inputs, ni, ins);
+            return Ok(outs.into_iter().map(|port| (ni, port)).collect());
+        }
         other => todo!("{other:?}"),
     }
 }
@@ -89,11 +126,7 @@ fn convert_ext_op(
     let new_node = graph.add_node(node_def, inports.clone(), outports.clone());
 
     assert_eq!(inputs.len(), inports.len());
-    for ((inp_n, inp_p), tgt_port) in inputs.iter().zip(inports) {
-        graph
-            .link_nodes_by_port_name(*inp_n, inp_p, new_node, &tgt_port)
-            .unwrap();
-    }
+    wire_up(graph, inputs, new_node, inports);
 
     Ok(outports.into_iter().map(|port| (new_node, port)).collect())
 }
@@ -165,41 +198,41 @@ impl TryFrom<Hugr> for WorkflowGraph {
     type Error = Report;
 
     fn try_from(hugr: Hugr) -> miette::Result<Self> {
-        let entrypoint = hugr.entrypoint();
-        let (graph, outputs) = match hugr.entrypoint_optype() {
-            OpType::FuncDefn(_) => {
-                // Not supported by convert_dataflow_op as not a DataflowOp!
-                let [inp, out] = hugr
-                    .get_io(entrypoint)
-                    .ok_or_else(|| miette::miette!("entrypoint must have IO children"))?;
-                let (mut graph, inputs) =
-                    wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
-                let outputs = convert_dfg(&hugr, entrypoint, &mut graph, inputs)?;
-                (graph, outputs)
-            }
-            OpType::DFG(_) | OpType::CFG(_) => {
-                let (mut graph, inputs) = wrapper_graph(
-                    hugr.in_value_types(entrypoint),
-                    hugr.out_value_types(entrypoint),
-                );
-                let outputs = convert_dataflow_op(&hugr, entrypoint, &mut graph, inputs)?;
-                (graph, outputs)
-            }
-            // We could support others, but we don't really expect them to occur
-            other => panic!("Entrypoint must be FuncDefn, DFG or CFG, got {other:?}"),
-        };
-
-        let mut graph = graph.graph;
-        let output_names = graph
-            .input_names(graph.output_node)
-            .unwrap()
-            .cloned()
-            .collect::<Vec<_>>();
-        for ((src_node, src_port), port) in outputs.into_iter().zip(output_names) {
-            graph.link_nodes_by_port_name(src_node, &src_port, graph.output_node, &port)?;
-        }
-        Ok(graph)
+        graph_from_hugr(&hugr, hugr.entrypoint())
     }
+}
+
+fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<WorkflowGraph> {
+    let (graph, outputs) = match hugr.entrypoint_optype() {
+        OpType::FuncDefn(_) => {
+            // Not supported by convert_dataflow_op as not a DataflowOp!
+            let [inp, out] = hugr
+                .get_io(parent)
+                .ok_or_else(|| miette::miette!("entrypoint must have IO children"))?;
+            let (mut graph, inputs) =
+                wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
+            let outputs = convert_dfg(&hugr, parent, &mut graph, inputs)?;
+            (graph, outputs)
+        }
+        OpType::DFG(_) | OpType::CFG(_) => {
+            let (mut graph, inputs) =
+                wrapper_graph(hugr.in_value_types(parent), hugr.out_value_types(parent));
+            let outputs = convert_dataflow_op(&hugr, parent, &mut graph, inputs)?;
+            (graph, outputs)
+        }
+        // We could support others, but we don't really expect them to occur
+        other => panic!("Entrypoint must be FuncDefn, DFG or CFG, got {other:?}"),
+    };
+
+    let mut graph = graph.graph;
+    let output_names = graph
+        .input_names(graph.output_node)
+        .unwrap()
+        .cloned()
+        .collect::<Vec<_>>();
+    let o = graph.output_node;
+    wire_up(&mut graph, outputs, o, output_names);
+    Ok(graph)
 }
 
 #[cfg(test)]
