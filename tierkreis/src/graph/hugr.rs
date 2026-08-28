@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::NodeDefinition;
 use super::WorkflowGraph;
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType};
-use hugr::{Hugr, HugrView, PortIndex as _};
+use hugr::{Hugr, HugrView, PortIndex, types::Type};
 use miette::Report;
 use petgraph::algo::dominators::{self, Dominators};
 use petgraph::visit::{Topo, Walker};
@@ -28,16 +28,17 @@ fn convert_node<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<Workflow
     }
 }
 
-fn graph_for_node<H: HugrView>(
-    hugr: &H,
-    node: H::Node,
+fn wrapper_graph(
+    inputs: impl IntoIterator<Item = (impl PortIndex, Type)>,
+    outputs: impl IntoIterator<Item = (impl PortIndex, Type)>,
 ) -> (WorkflowGraph, Vec<(NodeIndex, String)>) {
     let mut graph = WorkflowGraph::new(
-        hugr.out_value_types(node)
+        outputs
+            .into_iter()
             .map(|(p, _)| format!("out{}", p.index())),
     );
-    let input_results = hugr
-        .in_value_types(node)
+    let input_results = inputs
+        .into_iter()
         .map(|(p, _)| {
             let name = format!("in{}", p.index());
             let n = graph.add_node(
@@ -57,7 +58,7 @@ fn convert_dfg<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowG
         .ok_or_else(|| miette::miette!("DFG node must have IO children"))?;
     // Ignore Order edges...
 
-    let (mut graph, inps) = graph_for_node(hugr, node);
+    let (mut graph, inps) = wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
 
     let mut node_map = HashMap::from([(inp, inps)]);
 
@@ -109,7 +110,7 @@ fn convert_ext_op<H: HugrView>(
     node: H::Node,
     eop: &ExtensionOp,
 ) -> miette::Result<WorkflowGraph> {
-    let (mut graph, inps) = graph_for_node(hugr, node);
+    let (mut graph, inps) = wrapper_graph(hugr.in_value_types(node), hugr.out_value_types(node));
     // Keep it simple for now, support only hugr ops that become a single node in the workflow graph
     let (node_def, inports, outports) = lookup_ext_op(eop)?;
 
