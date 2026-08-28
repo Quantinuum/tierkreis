@@ -3962,6 +3962,8 @@ dependencies = [
  "diesel_migrations",
  "futures",
  "hugr",
+ "hugr-core",
+ "itertools 0.15.0",
  "libsqlite3-sys",
  "miette",
  "mockito",

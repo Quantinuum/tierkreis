@@ -55,12 +55,14 @@ which = { version = "8.0.2", features = ["regex"] }
 reqwest = { version = "0.13.4", features = ["cookies", "gzip", "json", "query"] }
 serde_with = { version = "3.21.0", features = ["base64"] }
 hugr = "0.29.1"
+hugr-core = "0.29.1"
 reqwest-websocket = { version = "0.6.0", features = ["json"] }
 rand = "0.10.2"
 toml = "1.1.4"
 # Copied from hugr: "These public dependencies usually require breaking
 # changes downstream, so we try to be as permissive as possible."
 petgraph = { version = ">= 0.8.3, < 0.9", default-features = false }
+itertools = "0.15.0"
 
 [dev-dependencies]
 axum-test = { version = "21.0.0", features = ["ws"] }

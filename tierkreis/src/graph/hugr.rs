@@ -8,20 +8,11 @@ use hugr::types::Signature;
 use hugr::{Hugr, HugrView, PortIndex as _};
 use miette::IntoDiagnostic;
 use miette::Report;
-use petgraph::algo::dominators::{self, Dominators};
 use petgraph::visit::{Topo, Walker};
 use portgraph::NodeIndex;
 
-#[expect(unused)]
-fn compute_dominator<H: HugrView>(
-    hugr: &H,
-    parent: H::Node,
-) -> (Dominators<portgraph::NodeIndex>, H::RegionPortgraphNodes) {
-    let sg = hugr.scheduling_graph(parent);
-    let entry_node = hugr.children(parent).next().unwrap();
-    let doms = dominators::simple_fast(sg.petgraph(), sg.node_to_pg(entry_node));
-    (doms, sg.into_node_map())
-}
+mod cfg;
+use cfg::convert_cfg;
 
 struct GraphWithFuncs<N: HugrNode> {
     graph: WorkflowGraph,
@@ -72,6 +63,7 @@ fn convert_dataflow_op<H: HugrView>(
 ) -> miette::Result<Vec<(NodeIndex, String)>> {
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node, graph, inputs),
+        OpType::CFG(_) => convert_cfg(hugr, node, graph, inputs),
         OpType::ExtensionOp(eop) => convert_ext_op(eop, &mut graph.graph, inputs),
         OpType::CallIndirect(_) => {
             let mut ins = hugr.in_value_types(node);
