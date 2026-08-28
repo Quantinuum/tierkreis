@@ -22,7 +22,7 @@ fn compute_dominator<H: HugrView>(
 
 fn convert_node<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowGraph> {
     match hugr.get_optype(node) {
-        OpType::DFG(_) => convert_dfg(hugr, node),
+        OpType::DFG(_) | OpType::FuncDefn(_) => convert_dfg(hugr, node),
         OpType::ExtensionOp(eop) => convert_ext_op(hugr, node, eop),
         other => todo!("{other:?}"),
     }
@@ -178,5 +178,18 @@ impl TryFrom<Hugr> for WorkflowGraph {
 
     fn try_from(hugr: Hugr) -> miette::Result<Self> {
         convert_node(&hugr, hugr.entrypoint())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use hugr::Hugr;
+    use std::fs::File;
+    use std::io::BufReader;
+    #[test]
+    fn test_convert_simple_arith() {
+        let f = File::open("../simple_arith.hugr").unwrap();
+        let hugr = Hugr::load(BufReader::new(f), None).unwrap();
+        super::WorkflowGraph::try_from(hugr).unwrap();
     }
 }
