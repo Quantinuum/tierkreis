@@ -319,6 +319,7 @@ pub struct SubprocessExecutor {
     task_sender: TaskSender,
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
+    background_abort_handle: AbortHandle,
 
     // The name of the storage that the subprocess will read
     // and write files from. Must be file based.
@@ -329,6 +330,12 @@ pub struct SubprocessExecutor {
     // no copying will occur.
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+}
+
+impl Drop for SubprocessExecutor {
+    fn drop(&mut self) {
+        self.background_abort_handle.abort();
+    }
 }
 
 type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
@@ -370,7 +377,7 @@ impl SubprocessExecutor {
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         let abort_handles = HashMap::new();
-        tokio::spawn(process_tasks(
+        let background_task = tokio::spawn(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
@@ -383,6 +390,7 @@ impl SubprocessExecutor {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
+            background_abort_handle: background_task.abort_handle(),
             subprocess_storage_name: subprocess_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
