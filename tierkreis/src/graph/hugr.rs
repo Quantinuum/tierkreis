@@ -20,10 +20,15 @@ fn compute_dominator<H: HugrView>(
     (doms, sg.into_node_map())
 }
 
-fn convert_node<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowGraph> {
+fn convert_node<H: HugrView>(
+    hugr: &H,
+    node: H::Node,
+    graph: &mut WorkflowGraph,
+    inputs: Vec<(NodeIndex, String)>,
+) -> miette::Result<Vec<(NodeIndex, String)>> {
     match hugr.get_optype(node) {
-        OpType::DFG(_) | OpType::FuncDefn(_) => convert_dfg(hugr, node),
-        OpType::ExtensionOp(eop) => convert_ext_op(hugr, node, eop),
+        OpType::DFG(_) | OpType::FuncDefn(_) => convert_dfg(hugr, node, graph, inputs),
+        OpType::ExtensionOp(eop) => convert_ext_op(eop, graph, inputs),
         other => todo!("{other:?}"),
     }
 }
@@ -52,15 +57,18 @@ fn wrapper_graph(
     (graph, input_results)
 }
 
-fn convert_dfg<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowGraph> {
+fn convert_dfg<H: HugrView>(
+    hugr: &H,
+    node: H::Node,
+    graph: &mut WorkflowGraph,
+    inputs: Vec<(NodeIndex, String)>,
+) -> miette::Result<Vec<(NodeIndex, String)>> {
     let [inp, out] = hugr
         .get_io(node)
         .ok_or_else(|| miette::miette!("DFG node must have IO children"))?;
     // Ignore Order edges...
 
-    let (mut graph, inps) = wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
-
-    let mut node_map = HashMap::from([(inp, inps)]);
+    let mut node_map = HashMap::from([(inp, inputs)]);
 
     let sg = hugr.scheduling_graph(node);
     let topo = Topo::new(sg.petgraph());
@@ -69,72 +77,43 @@ fn convert_dfg<H: HugrView>(hugr: &H, node: H::Node) -> miette::Result<WorkflowG
         if matches!(hugr.get_optype(n), OpType::Input(_) | OpType::Output(_)) {
             continue;
         }
-        let child_graph = convert_node(hugr, n)?;
         let inputs = hugr
             .in_value_types(n)
             .map(|(p, _)| {
-                let name = format!("in{}", p.index());
                 let (src_n, src_p) = hugr.single_linked_output(n, p).unwrap();
-                let outport = node_map[&src_n][src_p.index()].clone();
-                (name, outport)
+                node_map[&src_n][src_p.index()].clone()
             })
-            .collect::<HashMap<String, (portgraph::NodeIndex, String)>>();
-        let (_, mut outs) = graph.insert_graph(child_graph, inputs);
-        let out_srcs = hugr
-            .out_value_types(n)
-            .map(|(p, _)| {
-                let name = format!("out{}", p.index());
-                outs.remove(&name).unwrap()
-            })
-            .collect::<Vec<_>>();
-        assert!(outs.is_empty());
+            .collect();
+        let out_srcs = convert_node(hugr, n, graph, inputs)?;
         node_map.insert(n, out_srcs);
     }
-    for (p, _) in hugr.in_value_types(out) {
-        let (src_n, src_p) = hugr.single_linked_output(out, p).unwrap();
-        let (src_n, ref src_p) = node_map[&src_n][src_p.index()];
-        graph
-            .link_nodes_by_port_name(
-                src_n,
-                src_p,
-                graph.output_node,
-                &format!("out{}", p.index()),
-            )
-            .unwrap();
-    }
-    Ok(graph)
+    Ok(hugr
+        .in_value_types(out)
+        .map(|(p, _)| {
+            let (src_n, src_p) = hugr.single_linked_output(out, p).unwrap();
+            node_map[&src_n][src_p.index()].clone()
+        })
+        .collect())
 }
 
-fn convert_ext_op<H: HugrView>(
-    hugr: &H,
-    node: H::Node,
+fn convert_ext_op(
     eop: &ExtensionOp,
-) -> miette::Result<WorkflowGraph> {
-    let (mut graph, inps) = wrapper_graph(hugr.in_value_types(node), hugr.out_value_types(node));
+    graph: &mut WorkflowGraph,
+    inputs: Vec<(NodeIndex, String)>,
+) -> miette::Result<Vec<(NodeIndex, String)>> {
     // Keep it simple for now, support only hugr ops that become a single node in the workflow graph
     let (node_def, inports, outports) = lookup_ext_op(eop)?;
 
     let new_node = graph.add_node(node_def, inports.clone(), outports.clone());
 
-    assert_eq!(inps.len(), inports.len());
-    for ((inp_n, inp_p), tgt_port) in inps.iter().zip(inports) {
+    assert_eq!(inputs.len(), inports.len());
+    for ((inp_n, inp_p), tgt_port) in inputs.iter().zip(inports) {
         graph
             .link_nodes_by_port_name(*inp_n, inp_p, new_node, &tgt_port)
             .unwrap();
     }
 
-    let graph_outputs = graph
-        .input_names(graph.output_node)
-        .unwrap()
-        .cloned()
-        .collect::<Vec<_>>();
-    assert_eq!(graph_outputs.len(), outports.len());
-    for (src_port, tgt_port) in outports.iter().zip(graph_outputs) {
-        graph
-            .link_nodes_by_port_name(new_node, src_port, graph.output_node, &tgt_port)
-            .unwrap();
-    }
-    Ok(graph)
+    Ok(outports.into_iter().map(|port| (new_node, port)).collect())
 }
 
 fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<String>, Vec<String>)> {
@@ -177,7 +156,23 @@ impl TryFrom<Hugr> for WorkflowGraph {
     type Error = Report;
 
     fn try_from(hugr: Hugr) -> miette::Result<Self> {
-        convert_node(&hugr, hugr.entrypoint())
+        let entrypoint = hugr.entrypoint();
+        let [inp, out] = hugr
+            .get_io(entrypoint)
+            .ok_or_else(|| miette::miette!("entrypoint must have IO children"))?;
+        let (mut graph, inputs) =
+            wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
+        let outputs = convert_node(&hugr, entrypoint, &mut graph, inputs)?;
+
+        for ((src_node, src_port), (port, _)) in outputs.into_iter().zip(hugr.in_value_types(out)) {
+            graph.link_nodes_by_port_name(
+                src_node,
+                &src_port,
+                graph.output_node,
+                &format!("out{}", port.index()),
+            )?;
+        }
+        Ok(graph)
     }
 }
 
