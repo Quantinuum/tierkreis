@@ -16,7 +16,7 @@ dependencies = [
 [dependency-groups]
 test = [
     "pytket-qiskit>=0.77.0",
-    "pytket-quantinuum>=0.57.0",
+    "pytket-quantinuum>=0.59.2",
 ]
 
 
