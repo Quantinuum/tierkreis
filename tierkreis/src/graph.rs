@@ -122,6 +122,62 @@ impl WorkflowGraph {
         self.graph.nodes_iter()
     }
 
+    /// Insert another graph, given a map from the inputs of the inserted graph
+    /// to outports of nodes in the current graph (between which edges will be added),
+    /// and return a tuple of:
+    /// * a map from nodes in the inserted graph (except [NodeDefinition::Input]s and the
+    ///   [NodeDefinition::Output]) to their indices in the current graph.
+    /// * a map from the outputs of the inserted graph to outports of nodes in the current graph.
+    pub fn insert_graph(
+        &mut self,
+        graph: WorkflowGraph,
+        inputs: impl IntoIterator<Item = (String, (NodeIndex, String))>,
+    ) -> (
+        BTreeMap<NodeIndex, NodeIndex>,
+        HashMap<String, (NodeIndex, String)>,
+    ) {
+        let inputs: HashMap<_, _> = inputs.into_iter().collect();
+        let mut node_map = BTreeMap::new();
+
+        for (node, definition) in &graph.node_definitions {
+            if !matches!(
+                definition,
+                NodeDefinition::Input { .. } | NodeDefinition::Output {}
+            ) {
+                let inserted_node = self.add_node(
+                    definition.clone(),
+                    graph.input_port_indices[node].keys().cloned(),
+                    graph.output_port_indices[node].keys().cloned(),
+                );
+                node_map.insert(*node, inserted_node);
+            }
+        }
+
+        let mut outputs = HashMap::new();
+        for (target, input_ports) in &graph.input_port_indices {
+            for (input_name, input_port) in input_ports {
+                let Some(link) = graph.graph.port_link(*input_port) else {
+                    continue;
+                };
+                let source_port: PortIndex = link.port().into();
+                let src_node = graph.graph.port_node(source_port).unwrap();
+                let source = match &graph.node_definitions[&src_node] {
+                    NodeDefinition::Input { name } => inputs[name].clone(),
+                    _ => (node_map[&src_node], graph.port_names[&source_port].clone()),
+                };
+
+                if *target == graph.output_node {
+                    outputs.insert(input_name.clone(), source);
+                } else {
+                    self.link_nodes_by_port_name(source.0, &source.1, node_map[target], input_name)
+                        .expect("inserted graph contains an invalid link");
+                }
+            }
+        }
+
+        (node_map, outputs)
+    }
+
     /// Add a node to the graph using a definition and the names of the input and output ports.
     pub fn add_node(
         &mut self,
@@ -921,6 +977,50 @@ mod tests {
         let deserialized_graph = serde_json::from_slice(&graph_bytes).into_diagnostic()?;
 
         assert_eq!(workflow_graph, deserialized_graph);
+
+        Ok(())
+    }
+
+    #[test]
+    fn insert_graph() -> miette::Result<()> {
+        let to_insert = {
+            let mut g = WorkflowGraph::new(["result".to_string()]);
+
+            let input = g.add_node(
+                NodeDefinition::Input {
+                    name: "inp".to_string(),
+                },
+                [],
+                ["inp".to_string()],
+            );
+            let task = g.add_node(
+                NodeDefinition::Task {
+                    worker_name: "test".to_string(),
+                    task_name: "identity".to_string(),
+                },
+                ["value".to_string()],
+                ["result".to_string()],
+            );
+            g.link_nodes_by_port_name(input, "inp", task, "value")?;
+            g.link_nodes_by_port_name(task, "result", g.output_idx(), "result")?;
+            g
+        };
+        let mut graph = WorkflowGraph::new(["result".to_string()]);
+        let cst = graph.add_node(
+            NodeDefinition::Const { value: 1.into() },
+            [],
+            ["value".to_string()],
+        );
+
+        let (_, outputs) =
+            graph.insert_graph(to_insert, [("inp".to_string(), (cst, "value".to_string()))]);
+        let (task, port) = outputs["result"].clone();
+
+        assert_eq!(port, "result");
+        assert_eq!(
+            graph.connected_input_by_port_name(task, "value")?,
+            (cst, graph.output_port_indices[&cst]["value"])
+        );
 
         Ok(())
     }
