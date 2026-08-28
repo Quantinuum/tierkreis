@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use super::NodeDefinition;
 use super::WorkflowGraph;
+use hugr::core::HugrNode;
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType};
 use hugr::{Hugr, HugrView, PortIndex, types::Type};
 use miette::Report;
@@ -20,15 +21,20 @@ fn compute_dominator<H: HugrView>(
     (doms, sg.into_node_map())
 }
 
+struct GraphWithFuncs<N: HugrNode> {
+    graph: WorkflowGraph,
+    funcs: HashMap<N, NodeIndex>,
+}
+
 fn convert_dataflow_op<H: HugrView>(
     hugr: &H,
     node: H::Node,
-    graph: &mut WorkflowGraph,
+    graph: &mut GraphWithFuncs<H::Node>,
     inputs: Vec<(NodeIndex, String)>,
 ) -> miette::Result<Vec<(NodeIndex, String)>> {
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node, graph, inputs),
-        OpType::ExtensionOp(eop) => convert_ext_op(eop, graph, inputs),
+        OpType::ExtensionOp(eop) => convert_ext_op(eop, &mut graph.graph, inputs),
         other => todo!("{other:?}"),
     }
 }
@@ -36,7 +42,7 @@ fn convert_dataflow_op<H: HugrView>(
 fn convert_dfg<H: HugrView>(
     hugr: &H,
     node: H::Node,
-    graph: &mut WorkflowGraph,
+    graph: &mut GraphWithFuncs<H::Node>,
     inputs: Vec<(NodeIndex, String)>,
 ) -> miette::Result<Vec<(NodeIndex, String)>> {
     let [inp, out] = hugr
@@ -128,20 +134,23 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
     }
 }
 
-fn wrapper_graph(
+fn wrapper_graph<N: HugrNode>(
     inputs: impl IntoIterator<Item = (impl PortIndex, Type)>,
     outputs: impl IntoIterator<Item = (impl PortIndex, Type)>,
-) -> (WorkflowGraph, Vec<(NodeIndex, String)>) {
-    let mut graph = WorkflowGraph::new(
-        outputs
-            .into_iter()
-            .map(|(p, _)| format!("out{}", p.index())),
-    );
+) -> (GraphWithFuncs<N>, Vec<(NodeIndex, String)>) {
+    let mut graph = GraphWithFuncs {
+        graph: WorkflowGraph::new(
+            outputs
+                .into_iter()
+                .map(|(p, _)| format!("out{}", p.index())),
+        ),
+        funcs: HashMap::new(),
+    };
     let input_results = inputs
         .into_iter()
         .map(|(p, _)| {
             let name = format!("in{}", p.index());
-            let n = graph.add_node(
+            let n = graph.graph.add_node(
                 NodeDefinition::Input { name: name.clone() },
                 vec![],
                 vec![name.clone()],
@@ -157,7 +166,7 @@ impl TryFrom<Hugr> for WorkflowGraph {
 
     fn try_from(hugr: Hugr) -> miette::Result<Self> {
         let entrypoint = hugr.entrypoint();
-        let (mut graph, outputs) = match hugr.entrypoint_optype() {
+        let (graph, outputs) = match hugr.entrypoint_optype() {
             OpType::FuncDefn(_) => {
                 // Not supported by convert_dataflow_op as not a DataflowOp!
                 let [inp, out] = hugr
@@ -180,6 +189,7 @@ impl TryFrom<Hugr> for WorkflowGraph {
             other => panic!("Entrypoint must be FuncDefn, DFG or CFG, got {other:?}"),
         };
 
+        let mut graph = graph.graph;
         let output_names = graph
             .input_names(graph.output_node)
             .unwrap()
