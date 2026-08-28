@@ -3954,6 +3954,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "petgraph",
  "portgraph",
  "pyo3",
  "rand 0.10.2",
