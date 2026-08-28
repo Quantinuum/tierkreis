@@ -23,12 +23,14 @@ pub mod state;
 mod tierkreis {
     use std::collections::HashMap;
 
+    use hugr::Hugr;
     use miette::{Diagnostic, IntoDiagnostic};
     use num_complex::Complex64;
     use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*, types::PyBytes};
     use serde::{Deserialize, Serialize};
     use tracing::info;
 
+    use crate::graph::WorkflowGraph;
     use crate::{graph::LegacyWorkflowGraph, runtime};
 
     #[allow(clippy::unnecessary_wraps)]
@@ -125,6 +127,30 @@ mod tierkreis {
             .to_workflow_graph()
             .map_err(|err| convert_err(py, err))?;
 
+        run_workflow_graph(py, workflow_graph, inputs)
+    }
+
+    #[pyfunction]
+    fn run_hugr(
+        py: Python<'_>,
+        name: &str,
+        hugr: &[u8], // Will this work for passing from python??
+        inputs: ValueOrMappingOrBytes,
+    ) -> PyResult<ValueOrMapping> {
+        info!("converting hugr: '{name}'");
+        let hugr = Hugr::load(hugr, None).map_err(|err| convert_err(py, miette::miette!(err)))?;
+        let workflow_graph = WorkflowGraph::try_from(hugr)
+            //.into_diagnostic()
+            .map_err(|err| convert_err(py, err))?;
+
+        run_workflow_graph(py, workflow_graph, inputs)
+    }
+
+    fn run_workflow_graph(
+        py: Python<'_>,
+        workflow_graph: WorkflowGraph,
+        inputs: ValueOrMappingOrBytes,
+    ) -> PyResult<ValueOrMapping> {
         let inputs = match inputs {
             ValueOrMappingOrBytes::BytesMapping(bytes_mapping) => bytes_mapping
                 .into_iter()
