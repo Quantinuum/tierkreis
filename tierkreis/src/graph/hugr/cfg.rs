@@ -22,15 +22,18 @@ fn build_dom_tree<H: HugrView>(
         let ni = node_map.to_portgraph(n);
         let children = doms.immediately_dominated_by(ni).map(|c| build(hugr, doms, node_map.from_portgraph(c), node_map))
             .collect::<Vec<_>>();
+        let child_bbs = children.iter().map(|c| c.node).collect::<Vec<_>>();
         let mut exit_edges = Vec::new();
         let mut loop_backedges = Vec::new();
         for child in &children {
             for (src, idx, dst) in &child.exit_edges {
                 assert!(doms.dominators(ni).unwrap().contains(&doms.immediate_dominator(node_map.to_portgraph(*dst)).unwrap()));
-                if *dst == n {
-                    loop_backedges.push((*src, *idx));
-                } else {
-                    exit_edges.push((*src, *idx, *dst));
+                if !child_bbs.contains(dst) {
+                    if *dst == n {
+                        loop_backedges.push((*src, *idx));
+                    } else {
+                        exit_edges.push((*src, *idx, *dst));
+                    }
                 }
             }
         }
