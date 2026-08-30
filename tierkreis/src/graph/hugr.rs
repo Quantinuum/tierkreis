@@ -5,6 +5,7 @@ use super::WorkflowGraph;
 use hugr::core::HugrNode;
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType};
 use hugr::{Hugr, HugrView, PortIndex, types::Type};
+use miette::IntoDiagnostic;
 use miette::Report;
 use petgraph::algo::dominators::{self, Dominators};
 use petgraph::visit::{Topo, Walker};
@@ -24,6 +25,29 @@ fn compute_dominator<H: HugrView>(
 struct GraphWithFuncs<N: HugrNode> {
     graph: WorkflowGraph,
     funcs: HashMap<N, NodeIndex>,
+}
+
+impl<N: HugrNode> GraphWithFuncs<N> {
+    fn get_func_const(
+        &mut self,
+        hugr: &impl HugrView<Node = N>,
+        node: N,
+    ) -> miette::Result<NodeIndex> {
+        if let Some(n) = self.funcs.get(&node) {
+            return Ok(*n);
+        }
+        hugr.get_optype(node).as_func_defn().unwrap();
+        let wg = graph_from_hugr(hugr, node)?;
+        let new_node = self.graph.add_node(
+            NodeDefinition::Const {
+                value: serde_json::to_value(wg).into_diagnostic()?,
+            },
+            vec![],
+            vec!["value".to_string()],
+        );
+        self.funcs.insert(node, new_node);
+        Ok(new_node)
+    }
 }
 
 fn wire_up(
@@ -211,13 +235,13 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
                 .ok_or_else(|| miette::miette!("entrypoint must have IO children"))?;
             let (mut graph, inputs) =
                 wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
-            let outputs = convert_dfg(&hugr, parent, &mut graph, inputs)?;
+            let outputs = convert_dfg(hugr, parent, &mut graph, inputs)?;
             (graph, outputs)
         }
         OpType::DFG(_) | OpType::CFG(_) => {
             let (mut graph, inputs) =
                 wrapper_graph(hugr.in_value_types(parent), hugr.out_value_types(parent));
-            let outputs = convert_dataflow_op(&hugr, parent, &mut graph, inputs)?;
+            let outputs = convert_dataflow_op(hugr, parent, &mut graph, inputs)?;
             (graph, outputs)
         }
         // We could support others, but we don't really expect them to occur
