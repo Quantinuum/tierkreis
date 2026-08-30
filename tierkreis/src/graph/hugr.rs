@@ -97,6 +97,30 @@ fn convert_dataflow_op<H: HugrView>(
             wire_up(&mut graph.graph, inputs, ni, ins);
             return Ok(outs.into_iter().map(|port| (ni, port)).collect());
         }
+        OpType::Call(_) => {
+            let func = hugr
+                .static_source(node)
+                .ok_or_else(|| miette::miette!("Call {node} did not have a static source"))?;
+            let func_node = graph.get_func_const(hugr, func)?;
+            let args_in = hugr
+                .in_value_types(node)
+                .map(|(p, _)| format!("in{}", p.index()))
+                .collect::<Vec<_>>();
+            let outs = hugr
+                .out_value_types(node)
+                .map(|(p, _)| format!("out{}", p.index()))
+                .collect::<Vec<_>>();
+            let ni = graph.graph.add_node(
+                NodeDefinition::Eval {},
+                Some("func".to_string()).into_iter().chain(args_in.clone()),
+                outs.clone(),
+            );
+            graph
+                .graph
+                .link_nodes_by_port_name(func_node, "value", ni, "func")?;
+            wire_up(&mut graph.graph, inputs, ni, args_in);
+            return Ok(outs.into_iter().map(|port| (ni, port)).collect());
+        }
         other => todo!("{other:?}"),
     }
 }
