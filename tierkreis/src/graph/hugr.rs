@@ -121,6 +121,13 @@ fn convert_dataflow_op<H: HugrView>(
             wire_up(&mut graph.graph, inputs, ni, args_in);
             return Ok(outs.into_iter().map(|port| (ni, port)).collect());
         }
+        OpType::LoadFunction(_) => {
+            let func = hugr.static_source(node).ok_or_else(|| {
+                miette::miette!("LoadFunction {node} did not have a static source")
+            })?;
+            let func_node = graph.get_func_const(hugr, func)?;
+            return Ok(vec![(func_node, "value".to_string())]);
+        }
         other => todo!("{other:?}"),
     }
 }
