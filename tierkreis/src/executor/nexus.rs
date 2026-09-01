@@ -18,6 +18,7 @@ use futures::{
 };
 use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
 use miette::{Context, IntoDiagnostic, miette};
+use tokio::task::AbortHandle;
 use tracing::{Instrument, instrument, warn};
 use uuid::Uuid;
 
@@ -418,8 +419,15 @@ pub struct NexusExecutor {
     task_sender: TaskSender,
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
+    background_abort_handle: AbortHandle,
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+}
+
+impl Drop for NexusExecutor {
+    fn drop(&mut self) {
+        self.background_abort_handle.abort();
+    }
 }
 
 impl NexusExecutor {
@@ -448,7 +456,7 @@ impl NexusExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
-        tokio::spawn(process_tasks(
+        let background_task = tokio::spawn(process_tasks(
             client.clone(),
             task_receiver,
             cancel_sender.clone(),
@@ -463,6 +471,7 @@ impl NexusExecutor {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
+            background_abort_handle: background_task.abort_handle(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
         })

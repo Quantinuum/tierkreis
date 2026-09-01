@@ -470,7 +470,14 @@ pub struct InMemoryExecutor {
     task_sender: TaskSender,
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
+    background_abort_handle: AbortHandle,
     output_storage_name: String,
+}
+
+impl Drop for InMemoryExecutor {
+    fn drop(&mut self) {
+        self.background_abort_handle.abort();
+    }
 }
 
 impl InMemoryExecutor {
@@ -497,7 +504,7 @@ impl InMemoryExecutor {
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         let abort_handles = HashMap::new();
-        tokio::spawn(Box::pin(process_tasks(
+        let background_task = tokio::spawn(Box::pin(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
@@ -509,6 +516,7 @@ impl InMemoryExecutor {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
+            background_abort_handle: background_task.abort_handle(),
             output_storage_name: output_storage_name.to_string(),
         })
     }
