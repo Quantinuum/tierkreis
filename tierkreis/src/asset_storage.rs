@@ -111,10 +111,10 @@ pub async fn unfold_asset<S: BuildHasher>(
     for asset_value in asset_value_list {
         let asset_key = AssetKey::new();
         let asset_bytes = serde_json::to_vec(&asset_value).into_diagnostic()?;
-        storage.save(&asset_key, asset_bytes).await?;
+        let kind = storage.save(&asset_key, asset_bytes).await?;
 
         asset_spec_list.push(AssetSpec {
-            kind: storage.kind(),
+            kind,
             storage_name: storage_name.clone(),
             asset_key,
         });
@@ -144,11 +144,11 @@ pub async fn save_assets<S: BuildHasher>(
     let mut asset_specs = HashMap::new();
     for (name, raw_asset) in raw_assets {
         let asset_key = AssetKey::new();
-        storage.save(&asset_key, raw_asset).await?;
+        let kind = storage.save(&asset_key, raw_asset).await?;
         asset_specs.insert(
             name,
             AssetSpec {
-                kind: storage.kind(),
+                kind,
                 storage_name: storage_name.to_string(),
                 asset_key,
             },
@@ -176,10 +176,10 @@ pub async fn save_asset(
     })?;
 
     let asset_key = AssetKey::new();
-    storage.save(&asset_key, value).await?;
+    let kind = storage.save(&asset_key, value).await?;
 
     Ok(AssetSpec {
-        kind: storage.kind(),
+        kind,
         storage_name: storage_name.to_string(),
         asset_key,
     })
@@ -243,10 +243,10 @@ pub async fn fold_assets(
     })?;
     let asset_key = AssetKey::new();
     let asset_bytes = serde_json::to_vec(&asset_values).into_diagnostic()?;
-    storage.save(&asset_key, asset_bytes).await?;
+    let kind = storage.save(&asset_key, asset_bytes).await?;
 
     Ok(AssetSpec {
-        kind: storage.kind(),
+        kind,
         asset_key,
         storage_name: storage_name.to_string(),
     })
@@ -286,14 +286,14 @@ pub async fn transfer_assets<S: BuildHasher>(
                 .wrap_err("Failed to load asset")?;
 
             let asset_key = AssetKey::new();
-            storage_to
+            let kind = storage_to
                 .save(&asset_key, asset)
                 .await
                 .wrap_err("Failed to save asset")?;
             transferred.insert(
                 name.clone(),
                 AssetSpec {
-                    kind: storage_to.kind(),
+                    kind,
                     asset_key,
                     storage_name: storage_name_to.to_string(),
                 },
@@ -323,8 +323,9 @@ pub async fn reserve_asset_specs(
     let mut asset_specs = Vec::new();
     for _ in 0..total {
         let asset_key = AssetKey::new();
+        let kind = storage.reserve(&asset_key).await?;
         asset_specs.push(AssetSpec {
-            kind: storage.kind(),
+            kind,
             asset_key,
             storage_name: storage_name.to_string(),
         });
@@ -364,11 +365,11 @@ pub async fn test_storage_registry(
         for (name, value) in inputs {
             let asset_key = AssetKey::new();
             let asset = serde_json::to_vec(&value).unwrap();
-            memory_storage.save(&asset_key, asset).await.unwrap();
+            let kind = memory_storage.save(&asset_key, asset).await.unwrap();
             input_assets.insert(
                 name,
                 AssetSpec {
-                    kind: memory_storage.kind(),
+                    kind,
                     storage_name: memory_storage_name.clone(),
                     asset_key,
                 },
@@ -389,11 +390,11 @@ pub async fn test_storage_registry(
         for (name, value) in inputs {
             let asset_key = AssetKey::new();
             let asset = serde_json::to_vec(&value).unwrap();
-            file_storage.save(&asset_key, asset).await.unwrap();
+            let kind = file_storage.save(&asset_key, asset).await.unwrap();
             input_assets.insert(
                 name,
                 AssetSpec {
-                    kind: file_storage.kind(),
+                    kind,
                     storage_name: file_storage_name.clone(),
                     asset_key,
                 },

@@ -3,7 +3,10 @@ This module defines the [`FileAssetStorage`] struct which implements [`AssetStor
 by storing files in a single directory.
 */
 
-use std::path::{Path, PathBuf};
+use std::{
+    ops::Not,
+    path::{Path, PathBuf},
+};
 
 use futures::future::{BoxFuture, FutureExt};
 use miette::{Context, IntoDiagnostic, miette};
@@ -36,37 +39,43 @@ impl FileAssetStorage {
 }
 
 impl AssetStorage for FileAssetStorage {
-    fn kind(&self) -> AssetKind {
-        AssetKind::File {
-            root: self.base_dir.clone(),
-        }
-    }
-
-    fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>> {
+    fn reserve(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<AssetKind>> {
         let location = self.location(key);
         async move {
             tokio::fs::try_exists(&location)
                 .await
                 .into_diagnostic()
                 .wrap_err_with(|| {
-                    miette!("Could not determine whether file exists at location: {location:?}")
+                    miette!(
+                        "Could not determine whether file exists at location: {}",
+                        location.display()
+                    )
+                })?
+                .not()
+                .then(|| AssetKind::File {
+                    root: self.base_dir.clone(),
                 })
+                .ok_or_else(|| miette!("Asset already exists at location: {}", location.display()))
         }
         .boxed()
     }
 
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>> {
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<AssetKind>> {
         let location = self.location(key);
         async move {
             let mut file = File::create(&location)
                 .await
                 .into_diagnostic()
-                .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
+                .wrap_err_with(|| {
+                    miette!("Cannot find file at location: {}", location.display())
+                })?;
 
             file.write_all(&value).await.into_diagnostic()?;
             file.flush().await.into_diagnostic()?;
 
-            Ok(())
+            Ok(AssetKind::File {
+                root: self.base_dir.clone(),
+            })
         }
         .boxed()
     }
@@ -77,7 +86,9 @@ impl AssetStorage for FileAssetStorage {
             let mut file = File::open(&location)
                 .await
                 .into_diagnostic()
-                .wrap_err_with(|| miette!("Cannot find file at location: {location:?}"))?;
+                .wrap_err_with(|| {
+                    miette!("Cannot find file at location: {}", location.display())
+                })?;
 
             let mut value = Vec::new();
             file.read_to_end(&mut value).await.into_diagnostic()?;

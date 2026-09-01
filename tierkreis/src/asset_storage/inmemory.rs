@@ -2,6 +2,8 @@
 This module defines the [`InMemoryStorage`] struct which implements [`AssetStorage`]
 by storing files in concurrent map data structure implemented by [`dashmap::DashMap`].
 */
+use std::ops::Not;
+
 use dashmap::DashMap;
 use futures::{
     FutureExt,
@@ -37,17 +39,20 @@ impl Default for InMemoryStorage {
 }
 
 impl AssetStorage for InMemoryStorage {
-    fn kind(&self) -> AssetKind {
-        AssetKind::Memory
+    fn reserve(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<AssetKind>> {
+        future::ready(
+            self.store
+                .contains_key(key)
+                .not()
+                .then_some(AssetKind::Memory)
+                .ok_or_else(|| miette!("Asset does not exist in memory")),
+        )
+        .boxed()
     }
 
-    fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>> {
-        future::ok(self.store.contains_key(key)).boxed()
-    }
-
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>> {
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<AssetKind>> {
         self.store.insert(*key, value);
-        future::ok(()).boxed()
+        future::ok(AssetKind::Memory).boxed()
     }
 
     fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>> {
