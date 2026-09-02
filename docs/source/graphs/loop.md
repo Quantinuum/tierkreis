@@ -2,6 +2,8 @@
 file_format: mystnb
 kernelspec:
   name: python3
+mystnb:
+  execution_timeout: 300
 ---
 
 # Loop: Iterating graphs
