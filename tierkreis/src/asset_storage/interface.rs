@@ -146,20 +146,21 @@ impl Display for AssetKey {
 ///
 /// The interface is essentially a key-value store, keyed by [`AssetKey`]s.
 pub trait AssetStorage: Send + Sync {
-    /// Retrieve the [`AssetKind`] for the [`AssetStorage`].
-    fn kind(&self) -> AssetKind;
-    /// Determine if an Asset exists in the storage for the [`AssetKey`].
+    /// Reserve an [`AssetKey`] for this [`AssetStorage`].
+    ///
+    /// For most implementations this will just involve checking that an Asset does not
+    /// already exist with that key.
     ///
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn exists(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<bool>>;
+    fn reserve(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<AssetKind>>;
     /// Save an Asset to the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>>;
+    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<AssetKind>>;
     /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors

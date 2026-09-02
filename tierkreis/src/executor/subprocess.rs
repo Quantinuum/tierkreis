@@ -3,6 +3,7 @@ This module defines the [`SubprocessExecutor`] struct which implements [Executor
 by running subprocesses.
 */
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
@@ -31,7 +32,7 @@ use which::which_re;
 
 use crate::{
     asset_storage::{
-        AssetKind, AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets,
+        AssetSpec, AssetStorageRegistry, FileAssetStorage, reserve_asset_specs, transfer_assets,
     },
     event::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
@@ -377,9 +378,10 @@ impl SubprocessExecutor {
     ) -> miette::Result<Self> {
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if let Some(subprocess_storage) = asset_storage_registry_lock.get(subprocess_storage_name) {
-            if !matches!(subprocess_storage.kind(), AssetKind::File { .. }) {
+            let subprocess_storage: &dyn Any = subprocess_storage as &dyn Any;
+            if subprocess_storage.is::<FileAssetStorage>() {
                 return Err(miette!(
-                    "subprocess_storage_name must be of AssetKind::File"
+                    "subprocess_storage_name must be an instance of FileAssetStorage"
                 ));
             }
         } else {
