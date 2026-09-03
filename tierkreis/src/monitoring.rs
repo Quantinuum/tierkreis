@@ -8,7 +8,7 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     env::home_dir,
     path::{Path, PathBuf},
@@ -23,7 +23,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 
 /// The log format to use for the runtime.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[allow(missing_docs)]
 pub enum LogFormat {
@@ -33,7 +33,7 @@ pub enum LogFormat {
 }
 
 /// The logging configuration for the runtime.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
     log_file: Option<PathBuf>,
     log_format: LogFormat,
