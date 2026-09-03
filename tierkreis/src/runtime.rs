@@ -20,7 +20,6 @@ use crate::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
     },
-    config::ResourceConfig,
     event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
         Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor,
@@ -36,9 +35,6 @@ use crate::{
 /// `RuntimeConfig` defines the configuration for the runtime
 #[derive(Serialize, Deserialize)]
 pub struct RuntimeConfig {
-    /// Configuration format version.
-    #[serde(default = "default_config_version")]
-    pub version: String,
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
     runtime_state: RuntimeStateConfig,
@@ -46,27 +42,11 @@ pub struct RuntimeConfig {
     default_storage_name: String,
     default_executor_name: String,
     logging_config: Option<LoggingConfig>,
-
-    /// Independently configured resources, keyed by name e.g.
-    ///
-    /// [resources.large]
-    /// `nodes` = 16
-    /// `cpu_cores` = 4.0
-    /// [resources.small]
-    /// `nodes` = 4
-    /// `cpu_cores` = 2.0
-    #[serde(default)]
-    pub resources: HashMap<String, ResourceConfig>,
-}
-
-fn default_config_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
 }
 
 impl RuntimeConfig {
     fn memory() -> Self {
         RuntimeConfig {
-            version: default_config_version(),
             asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
                 .into_iter()
                 .collect(),
@@ -82,7 +62,6 @@ impl RuntimeConfig {
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
             logging_config: Some(LoggingConfig::default()),
-            resources: HashMap::new(),
         }
     }
 
@@ -104,7 +83,6 @@ impl Default for RuntimeConfig {
 
         let asset_dir = tierkreis_dir.join("assets");
         RuntimeConfig {
-            version: default_config_version(),
             asset_storage: [
                 ("memory".to_string(), AssetStorageConfig::Memory {}),
                 ("file".to_string(), AssetStorageConfig::File { asset_dir }),
@@ -132,7 +110,6 @@ impl Default for RuntimeConfig {
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
             logging_config: Some(LoggingConfig::default()),
-            resources: HashMap::new(),
         }
     }
 }

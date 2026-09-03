@@ -10,7 +10,6 @@ use std::{
 };
 
 use miette::{Context, IntoDiagnostic};
-use serde::{Deserialize, Serialize};
 
 use crate::runtime::RuntimeConfig;
 
@@ -18,56 +17,6 @@ use crate::runtime::RuntimeConfig;
 pub const CONFIG_FILE_NAME: &str = "tierkreis.toml";
 /// Fallback env var
 pub const CONFIG_ENV_VAR: &str = "TIERKREIS_CONFIG";
-
-/// Requirements or capabilities associated with a named resource.
-#[derive(Serialize, Deserialize)]
-pub struct ResourceConfig {
-    /// Number of compute nodes.
-    pub nodes: Option<u32>,
-    /// CPU cores per node, allowing fractional quotas.
-    pub cpu_cores: Option<f64>,
-    /// Memory per node, retained as a human-readable quantity such as `16G`.
-    pub memory: Option<String>,
-    /// GPU requirement or capacity.
-    pub gpu: Option<GpuConfig>,
-    /// Named QPUs and their optional qubit counts.
-    pub qpu: Option<Vec<QpuConfig>>,
-    /// Generic scheduler resources such as `sharedtmp-size=64Gi`.
-    pub gres: Option<Vec<String>>,
-    /// MPI requirements.
-    pub mpi: Option<MpiConfig>,
-    /// Hard task timeout, for example `2h`.
-    pub timeout: Option<String>,
-    /// Optional executor name to constrain placement.
-    pub executor: Option<String>,
-}
-
-/// GPU requirement or capacity.
-#[derive(Serialize, Deserialize)]
-pub struct GpuConfig {
-    /// Number of GPUs.
-    pub count: u32,
-    /// Optional GPU vendor, such as `nvidia`.
-    pub vendor: Option<String>,
-}
-
-/// Named QPU requirement or capacity.
-#[derive(Serialize, Deserialize)]
-pub struct QpuConfig {
-    /// QPU name.
-    pub name: String,
-    /// Optional number of available qubits.
-    pub qubits: Option<u32>,
-}
-
-/// MPI requirement or capacity.
-#[derive(Serialize, Deserialize)]
-pub struct MpiConfig {
-    /// Whether MPI is enabled.
-    pub enabled: bool,
-    /// MPI processes per node.
-    pub processes_per_node: Option<u32>,
-}
 
 /// Locate a `RuntimeConfig` TOML file, searching:
 ///
@@ -189,54 +138,5 @@ mod tests {
         let original: toml::Value = toml::from_str(&config.to_toml_string().unwrap()).unwrap();
         let round_tripped: toml::Value = toml::from_str(&loaded.to_toml_string().unwrap()).unwrap();
         assert_eq!(original, round_tripped);
-    }
-
-    #[test]
-    fn resource_requirements_deserialize_from_toml() {
-        let config = RuntimeConfig::from_toml_str(
-            r#"
-version = "1.0"
-default_storage_name = "memory"
-default_executor_name = "local1"
-
-[asset_storage.memory]
-type = "Memory"
-
-[executors.local1]
-type = "Memory"
-output_storage_name = "memory"
-
-[runtime_state]
-type = "Memory"
-
-[resources.large]
-nodes = 16
-cpu_cores = 4.0
-memory = "16G"
-timeout = "2h"
-executor = "local1"
-
-[resources.large.gpu]
-count = 2
-vendor = "nvidia"
-
-[[resources.large.qpu]]
-name = "helios"
-qubits = 98
-
-[resources.large.mpi]
-enabled = true
-processes_per_node = 4
-"#,
-        )
-        .unwrap();
-
-        let resource = config.resources.get("large").unwrap();
-        assert_eq!(resource.nodes, Some(16));
-        assert_eq!(resource.cpu_cores, Some(4.0));
-        assert_eq!(resource.memory.as_deref(), Some("16G"));
-        assert_eq!(resource.gpu.as_ref().unwrap().count, 2);
-        assert_eq!(resource.qpu.as_ref().unwrap()[0].qubits, Some(98));
-        assert_eq!(resource.mpi.as_ref().unwrap().processes_per_node, Some(4));
     }
 }
