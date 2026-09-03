@@ -550,21 +550,29 @@ pub async fn exec() -> miette::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
-    use crate::builder::{constant, input, link, output, task, workflow};
+    use crate::{
+        builder::{constant, input, link, output, task, workflow},
+        executor::nexus::client::TLSMode,
+    };
     use futures::future::{AbortHandle, Abortable};
     use tempfile::NamedTempFile;
+    use url::Url;
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn run_can_resume_after_runtime_is_terminated() -> miette::Result<()> {
-        let database_file = NamedTempFile::new().into_diagnostic()?;
-        let database_url = database_file.path().to_string_lossy().into_owned();
+    async fn test_persistent_runtime(database_filepath: &Path) -> miette::Result<Runtime> {
+        let database_url = database_filepath.to_string_lossy().into_owned();
         let mut config = RuntimeConfig::memory();
         config.runtime_state = RuntimeStateConfig::Sqlite {
             memory: false,
             url: Some(database_url),
         };
+        let runtime = Runtime::from_config(&config).await?;
+        Ok(runtime)
+    }
 
+    fn sleep_graph_with_task_location() -> miette::Result<(WorkflowGraph, Location)> {
         let mut workflow_graph = workflow(["result"]);
         let delay = input(&mut workflow_graph, "delay_seconds");
         let task = task(
@@ -578,7 +586,15 @@ mod tests {
         link(&mut workflow_graph, delay, (task, "delay_seconds"))?;
         link(&mut workflow_graph, (task, "value"), out)?;
 
-        let mut runtime = Runtime::from_config(&config).await?;
+        Ok((workflow_graph, Location::root().with_node(task)))
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn run_can_resume_after_runtime_is_terminated() -> miette::Result<()> {
+        let database_file = NamedTempFile::new().into_diagnostic()?;
+        let mut runtime = test_persistent_runtime(database_file.path()).await?;
+        let (workflow_graph, task_location) = sleep_graph_with_task_location()?;
+
         let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
         let inputs = HashMap::from([(
             "delay_seconds".to_string(),
@@ -590,33 +606,30 @@ mod tests {
             .state
             .load_workflow_run_state(run_id, attempt)
             .await?;
-        let task_location = Location::root().with_node(task);
 
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let run = Abortable::new(runtime.run(), abort_registration);
-        tokio::pin!(run);
-        let wait_for_completion = async {
+        let mut updates = runtime.state.listen();
+        let (handle, registration) = AbortHandle::new_pair();
+        let task = Abortable::new(runtime.run(), registration);
+        tokio::spawn(async move {
             loop {
+                // Wait until our sleep task has outputs
+                updates.changed().await.into_diagnostic()?;
                 if workflow_run_state
                     .read(&task_location)
                     .await?
                     .outputs
                     .is_some()
                 {
-                    return Ok::<(), miette::Report>(());
+                    handle.abort();
+                    break;
                 }
-                tokio::task::yield_now().await;
             }
-        };
-        tokio::pin!(wait_for_completion);
-        tokio::select! {
-            result = &mut run => panic!("runtime terminated before interruption: {result:?}"),
-            result = &mut wait_for_completion => result?,
-        }
-        abort_handle.abort();
-        assert!(run.await.is_err(), "the first runtime was not terminated");
+            Ok::<_, miette::Report>(())
+        });
+        assert!(task.await.is_err(), "the first runtime was not aborted");
+        drop(runtime);
 
-        let mut resumed_runtime = Runtime::from_config(&config).await?;
+        let mut resumed_runtime = test_persistent_runtime(database_file.path()).await?;
         resumed_runtime.dedicated_run_id = Some(run_id);
         resumed_runtime.run().await?;
 
@@ -790,32 +803,22 @@ mod tests {
         (app, send, submission_count)
     }
 
-    /// Test that a Task node dispatched to the [`crate::executor::nexus::NexusExecutor`]
-    /// is reattached to its Nexus job (rather than resubmitted) after the runtime
-    /// is killed and resumed, and that the now-completed job's results are picked up.
-    #[ignore = "Race conditions in test"]
-    #[allow(clippy::too_many_lines)]
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn run_can_resume_nexus_task_after_runtime_is_terminated() -> miette::Result<()> {
-        use crate::executor::nexus::{NexusClientConfig, client::TLSMode};
-
-        let (app, release_sender, submission_count) = nexus_restart_test_app();
-        let server = axum_test::TestServer::builder().http_transport().build(app);
-        let url = server.server_address().expect("No server address");
-
-        let token_dir = crate::executor::nexus::client::tests::setup_temp_tokens().await?;
+    async fn test_persistent_runtime_with_nexus(
+        nexus_url: &Url,
+        token_dir: &Path,
+        database_filepath: &Path,
+    ) -> miette::Result<Runtime> {
         let client_config = NexusClientConfig {
             tls_mode: TLSMode::None,
             host: format!(
                 "{}:{}",
-                url.host_str().expect("No host"),
-                url.port().expect("No port")
+                nexus_url.host_str().expect("No host"),
+                nexus_url.port().expect("No port")
             ),
-            token_dir: Some(token_dir.path().to_path_buf()),
+            token_dir: Some(token_dir.to_path_buf()),
         };
 
-        let database_file = NamedTempFile::new().into_diagnostic()?;
-        let database_url = database_file.path().to_string_lossy().into_owned();
+        let database_url = database_filepath.to_string_lossy().into_owned();
         let mut config = RuntimeConfig::memory();
         config.executors = HashMap::from([(
             "nexus".to_string(),
@@ -829,7 +832,11 @@ mod tests {
             memory: false,
             url: Some(database_url),
         };
+        let runtime = Runtime::from_config(&config).await?;
+        Ok(runtime)
+    }
 
+    fn submit_and_run_graph_with_task_location() -> miette::Result<(WorkflowGraph, Location)> {
         let mut workflow_graph = workflow(["result"]);
         let hugr_package = input(&mut workflow_graph, "hugr_package");
         let project_name = constant(&mut workflow_graph, "tkr-demo")?;
@@ -857,7 +864,26 @@ mod tests {
         )?;
         link(&mut workflow_graph, (task_node, "results"), out)?;
 
-        let mut runtime = Runtime::from_config(&config).await?;
+        Ok((workflow_graph, Location::root().with_node(task_node)))
+    }
+
+    /// Test that a Task node dispatched to the [`crate::executor::nexus::NexusExecutor`]
+    /// is reattached to its Nexus job (rather than resubmitted) after the runtime
+    /// is killed and resumed, and that the now-completed job's results are picked up.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn run_can_resume_nexus_task_after_runtime_is_terminated() -> miette::Result<()> {
+        let (app, release_sender, submission_count) = nexus_restart_test_app();
+        let server = axum_test::TestServer::builder().http_transport().build(app);
+        let nexus_url = server.server_address().expect("No server address");
+
+        let token_dir = crate::executor::nexus::client::tests::setup_temp_tokens().await?;
+        let database_file = NamedTempFile::new().into_diagnostic()?;
+        let mut runtime =
+            test_persistent_runtime_with_nexus(&nexus_url, token_dir.path(), database_file.path())
+                .await?;
+
+        let (workflow_graph, task_location) = submit_and_run_graph_with_task_location()?;
+
         let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
         let inputs = HashMap::from([("hugr_package".to_string(), hugr_package_bytes()?)]);
         let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
@@ -866,38 +892,39 @@ mod tests {
             .state
             .load_workflow_run_state(run_id, attempt)
             .await?;
-        let task_location = Location::root().with_node(task_node);
-        let mut state_updates = runtime.state.listen();
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let run = Abortable::new(runtime.run(), abort_registration);
-        tokio::pin!(run);
-        // Wait for the first submission, WS sends SUBMITTED
-        let wait_for_queued = async {
+
+        let mut updates = runtime.state.listen();
+        let (handle, registration) = AbortHandle::new_pair();
+        let task = Abortable::new(runtime.run(), registration);
+        let background_task_location = task_location.clone();
+        tokio::spawn(async move {
             loop {
-                state_updates.changed().await.into_diagnostic()?;
+                // Wait until our nexus task has a handle set
+                updates.changed().await.into_diagnostic()?;
                 if workflow_run_state
-                    .read(&task_location)
+                    .read(&background_task_location)
                     .await?
                     .handle
                     .is_some()
                 {
-                    return Ok::<(), miette::Report>(());
+                    handle.abort();
+                    break;
                 }
             }
-        };
-        tokio::pin!(wait_for_queued);
-        tokio::select! {
-            result = &mut run => panic!("runtime terminated before interruption: {result:?}"),
-            result = &mut wait_for_queued => result?,
-        }
-        abort_handle.abort();
-        // TODO: At this point one monitor tokio::task is still running from the nexus executor.
-        // We will spawn a second one with the restart.
-        // For the purpose of this test this doesn't matter, but we should fix once we have a
-        // better cancel / shutdown mechanism for the runtime.
+            Ok::<_, miette::Report>(())
+        });
+        assert!(task.await.is_err(), "the first runtime was not aborted");
+        drop(runtime); // Dropping the runtime should abort any remaining background tasks.
 
-        assert!(run.await.is_err(), "the first runtime was not terminated");
-        // Job Sumission counter should be 1
+        let mut resumed_runtime =
+            test_persistent_runtime_with_nexus(&nexus_url, token_dir.path(), database_file.path())
+                .await?;
+        let workflow_run_state = resumed_runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?;
+
+        // Job Submission counter should be 1
         assert_eq!(
             submission_count.load(std::sync::atomic::Ordering::SeqCst),
             1
@@ -907,8 +934,6 @@ mod tests {
         // Let the mock Nexus job complete, as if it finished while the
         // runtime was down.
         release_sender.send(true).into_diagnostic()?;
-
-        let mut resumed_runtime = Runtime::from_config(&config).await?;
         resumed_runtime.dedicated_run_id = Some(run_id);
         resumed_runtime.run().await?;
 
