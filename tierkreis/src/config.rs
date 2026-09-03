@@ -1,4 +1,4 @@
-/*! 
+/*!
 Handling of project configuration files.
 Discovery and (de)serialization of the [`RuntimeConfig`](crate::runtime::RuntimeConfig)
 from a TOML file on disk.
@@ -18,7 +18,6 @@ use crate::runtime::RuntimeConfig;
 pub const CONFIG_FILE_NAME: &str = "tierkreis.toml";
 /// Fallback env var
 pub const CONFIG_ENV_VAR: &str = "TIERKREIS_CONFIG";
-
 
 /// Requirements or capabilities associated with a named resource.
 #[derive(Serialize, Deserialize)]
@@ -92,7 +91,7 @@ pub fn discover_config_path() -> Option<PathBuf> {
         }
     }
 
-    let default =     home_dir()
+    let default = home_dir()
         .unwrap_or_else(|| "/tmp".into())
         .join(".tierkreis")
         .join(CONFIG_FILE_NAME);
@@ -111,7 +110,6 @@ fn find_in_ancestors(start: &Path, name: &str) -> Option<PathBuf> {
     }
     None
 }
-
 
 impl RuntimeConfig {
     /// Load the runtime config from the file found by [`discover_config_path`],
@@ -189,8 +187,7 @@ mod tests {
         // fields don't serialize in a stable order, so compare the parsed
         // TOML values rather than the raw strings.
         let original: toml::Value = toml::from_str(&config.to_toml_string().unwrap()).unwrap();
-        let round_tripped: toml::Value =
-            toml::from_str(&loaded.to_toml_string().unwrap()).unwrap();
+        let round_tripped: toml::Value = toml::from_str(&loaded.to_toml_string().unwrap()).unwrap();
         assert_eq!(original, round_tripped);
     }
 

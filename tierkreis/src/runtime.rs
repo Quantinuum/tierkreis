@@ -19,10 +19,18 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    }, config::ResourceConfig, event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent}, executor::{
+    },
+    config::ResourceConfig,
+    event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
+    executor::{
         Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor,
         nexus::{NexusClientConfig, NexusExecutor},
-    }, graph::WorkflowGraph, location::Location, monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    },
+    graph::WorkflowGraph,
+    location::Location,
+    monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
+    orchestrator::{OrchestrationContext, Orchestrator},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -40,16 +48,15 @@ pub struct RuntimeConfig {
     logging_config: Option<LoggingConfig>,
 
     /// Independently configured resources, keyed by name e.g.
-    /// 
+    ///
     /// [resources.large]
-    /// nodes = 16
-    /// cpu_cores = 4.0
+    /// `nodes` = 16
+    /// `cpu_cores` = 4.0
     /// [resources.small]
-    /// nodes = 4
-    /// cpu_cores = 2.0
+    /// `nodes` = 4
+    /// `cpu_cores` = 2.0
     #[serde(default)]
     pub resources: HashMap<String, ResourceConfig>,
-
 }
 
 fn default_config_version() -> String {
