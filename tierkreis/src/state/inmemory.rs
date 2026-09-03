@@ -50,7 +50,7 @@ struct RunAttemptState {
 /// references.
 #[derive(Debug, Default)]
 struct InMemoryRuntimeStateInner {
-    workflows: DashMap<Uuid, WorkflowGraph>,
+    workflows: DashMap<Uuid, (Option<String>, WorkflowGraph)>,
     runs: DashMap<(Uuid, u32), RunAttemptState>,
 }
 
@@ -96,14 +96,20 @@ impl RuntimeState for InMemoryRuntimeState {
                 .workflows
                 .get(&workflow_id)
                 .ok_or_else(|| miette!("Workflow not found with workflow id: {workflow_id}"))?;
-            Ok(workflow.clone())
+            Ok(workflow.value().1.clone())
         }
         .boxed()
     }
 
-    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>> {
+    fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> BoxFuture<'_, miette::Result<Uuid>> {
         let workflow_id = Uuid::now_v7();
-        self.inner.workflows.insert(workflow_id, workflow_graph);
+        self.inner
+            .workflows
+            .insert(workflow_id, (name, workflow_graph));
         future::ok(workflow_id).boxed()
     }
 
@@ -159,7 +165,47 @@ impl RuntimeState for InMemoryRuntimeState {
     fn list_workflow_run_summaries(
         &self,
     ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
-        unimplemented!()
+        let summaries = self
+            .inner
+            .runs
+            .iter()
+            .map(|entry| {
+                let ((run_id, attempt), run) = entry.pair();
+                let name = self
+                    .inner
+                    .workflows
+                    .get(&run.workflow_id)
+                    .and_then(|workflow| workflow.value().0.clone());
+                let status = if run.complete_time.is_some() {
+                    Some("Completed".to_string())
+                } else if run.cancelled_time.is_some() {
+                    Some("Cancelled".to_string())
+                } else if run.error_time.is_some() {
+                    Some("Errored".to_string())
+                } else if run.started_time.is_some() {
+                    Some("Started".to_string())
+                } else if run.queued_time.is_some() {
+                    Some("Queued".to_string())
+                } else {
+                    None
+                };
+                let errored_locations = run
+                    .nodes
+                    .iter()
+                    .filter_map(|(loc, state)| state.error_time.map(|_| loc.clone()))
+                    .collect();
+                WorkflowRunSummary {
+                    run_id: *run_id,
+                    attempt: *attempt,
+                    workflow_id: run.workflow_id,
+                    name,
+                    started_time: run.started_time,
+                    status,
+                    errored_locations,
+                }
+            })
+            .collect();
+        future::ok(summaries).boxed()
     }
 }
 
@@ -339,6 +385,18 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
             });
 
             states.collect()
+        }
+        .boxed()
+    }
+
+    fn read_all(&self) -> BoxFuture<'_, miette::Result<HashMap<Location, NodeState>>> {
+        async move {
+            let run_state = self
+                .global_state
+                .runs
+                .get(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+            Ok(run_state.nodes.clone())
         }
         .boxed()
     }

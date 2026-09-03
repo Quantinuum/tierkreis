@@ -45,7 +45,7 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    fn memory() -> Self {
+    pub(crate) fn memory() -> Self {
         RuntimeConfig {
             asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
                 .into_iter()
@@ -61,15 +61,52 @@ impl RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
-            logging_config: Some(LoggingConfig::default()),
+            logging_config: Some(LoggingConfig::stderr()),
         }
     }
 
-    fn sqlite_memory() -> Self {
+    pub(crate) fn sqlite_memory() -> Self {
         let mut config = Self::memory();
         config.runtime_state = RuntimeStateConfig::Sqlite {
             memory: true,
             url: None,
+        };
+        config
+    }
+
+    /// Create a SQLite-backed configuration suitable for a Python session.
+    pub(crate) fn sqlite(
+        database_url: String,
+        asset_dir: PathBuf,
+        use_subprocess_executor: bool,
+    ) -> Self {
+        let mut config = Self::memory();
+        config
+            .asset_storage
+            .insert("file".to_string(), AssetStorageConfig::File { asset_dir });
+        config.default_storage_name = "file".to_string();
+        let executor_name = if use_subprocess_executor {
+            config.executors.insert(
+                "subprocess".to_string(),
+                ExecutorConfig::Subprocess {
+                    subprocess_storage_name: "file".to_string(),
+                    output_storage_name: "file".to_string(),
+                },
+            );
+            "subprocess"
+        } else {
+            config.executors.insert(
+                "memory-file".to_string(),
+                ExecutorConfig::Memory {
+                    output_storage_name: "file".to_string(),
+                },
+            );
+            "memory-file"
+        };
+        config.default_executor_name = executor_name.to_string();
+        config.runtime_state = RuntimeStateConfig::Sqlite {
+            memory: false,
+            url: Some(database_url),
         };
         config
     }
@@ -141,7 +178,7 @@ enum RuntimeStateConfig {
     Sqlite { memory: bool, url: Option<String> },
 }
 
-struct Runtime {
+pub(crate) struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
@@ -150,6 +187,7 @@ struct Runtime {
     // Optional Run ID to execute exclusively. Once this run completes the
     // runtime should end execution.
     dedicated_run_id: Option<Uuid>,
+    shutdown: Option<tokio::sync::watch::Receiver<bool>>,
 }
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -161,7 +199,7 @@ impl Drop for AbortOnDrop {
 }
 
 impl Runtime {
-    async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
+    pub(crate) async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config);
 
         let executor_registry =
@@ -192,15 +230,20 @@ impl Runtime {
             asset_storage_registry,
             default_storage_name: config.default_storage_name.clone(),
             dedicated_run_id: None,
+            shutdown: None,
         })
     }
 
-    async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
-        self.state.save_workflow(workflow_graph).await
+    pub(crate) async fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> miette::Result<Uuid> {
+        self.state.save_workflow(name, workflow_graph).await
     }
 
-    async fn start_new_run<S: BuildHasher>(
-        &mut self,
+    pub(crate) async fn start_new_run<S: BuildHasher>(
+        &self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
@@ -236,21 +279,26 @@ impl Runtime {
                         .load_workflow_run_state(workflow_run_id, attempt)
                         .await?;
                     let workflow_id = workflow_state.workflow_id().to_string();
-                    match &event {
+                    let terminal_event = match &event {
                         WorkflowRunEvent::Started {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started");
+                            None
                         }
                         WorkflowRunEvent::Queued {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow queued");
+                            None
                         }
                         WorkflowRunEvent::Completed {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed");
+                            None
                         }
                         WorkflowRunEvent::Errored {} => {
                             tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow errored");
+                            None
                         }
                         WorkflowRunEvent::Cancelled {} => {
                             tracing::error!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "Workflow cancelled");
+                            None
                         }
                         WorkflowRunEvent::NodeEvent(NodeEvent { locs, status }) => {
                             let locs = locs.iter().map(ToString::to_string).collect::<Vec<_>>();
@@ -265,6 +313,7 @@ impl Runtime {
                                         ?locs,
                                         "node scheduled"
                                     );
+                                    None
                                 }
                                 NodeStatus::Queued { .. } => {
                                     tracing::info!(
@@ -275,6 +324,7 @@ impl Runtime {
                                         ?locs,
                                         "node queued   "
                                     );
+                                    None
                                 }
                                 NodeStatus::Running { state_update } => {
                                     tracing::info!(
@@ -286,6 +336,7 @@ impl Runtime {
                                         ?state_update,
                                         "node running  "
                                     );
+                                    None
                                 }
                                 NodeStatus::Complete { .. } => {
                                     tracing::info!(
@@ -296,6 +347,7 @@ impl Runtime {
                                         ?locs,
                                         "node completed"
                                     );
+                                    None
                                 }
                                 NodeStatus::Error { error, .. } => {
                                     tracing::error!(
@@ -307,6 +359,7 @@ impl Runtime {
                                         ?error,
                                         "node errored  "
                                     );
+                                    Some(WorkflowRunEvent::Errored {})
                                 }
                                 NodeStatus::Cancelled => {
                                     tracing::error!(
@@ -317,18 +370,22 @@ impl Runtime {
                                         ?locs,
                                         "node cancelled"
                                     );
+                                    Some(WorkflowRunEvent::Cancelled {})
                                 }
                             }
                         }
-                    }
+                    };
                     workflow_state.write(event).await?;
+                    if let Some(terminal_event) = terminal_event {
+                        workflow_state.write(terminal_event).await?;
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    async fn run(&mut self) -> miette::Result<()> {
+    pub(crate) async fn run(&mut self) -> miette::Result<()> {
         let stream = self.orchestrator.listen()?;
         let state = self.state.clone();
         let _task = AbortOnDrop(tokio::spawn(async move {
@@ -410,15 +467,27 @@ impl Runtime {
                     .perform_actions(run_id, attempt, actions)
                     .await?;
             }
-            state_recv.changed().await.into_diagnostic()?;
+            if let Some(shutdown) = &mut self.shutdown {
+                tokio::select! {
+                    changed = state_recv.changed() => changed.into_diagnostic()?,
+                    changed = shutdown.changed() => {
+                        changed.into_diagnostic()?;
+                        if *shutdown.borrow() {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                state_recv.changed().await.into_diagnostic()?;
+            }
         }
         tracing::info!("Runtime exiting, shutting down logging");
         flush_logs();
         Ok(())
     }
 
-    async fn outputs(
-        &mut self,
+    pub(crate) async fn outputs(
+        &self,
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
@@ -442,6 +511,22 @@ impl Runtime {
         .await?;
 
         Ok(outputs)
+    }
+
+    pub(crate) fn state(&self) -> Arc<dyn RuntimeState> {
+        Arc::clone(&self.state)
+    }
+
+    pub(crate) fn asset_storage_registry(&self) -> AssetStorageRegistry {
+        Arc::clone(&self.asset_storage_registry)
+    }
+
+    pub(crate) fn default_storage_name(&self) -> String {
+        self.default_storage_name.clone()
+    }
+
+    pub(crate) fn set_shutdown(&mut self, shutdown: tokio::sync::watch::Receiver<bool>) {
+        self.shutdown = Some(shutdown);
     }
 }
 
@@ -518,7 +603,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory()).await?;
 
-    let workflow_id = runtime.save_workflow(workflow_graph).await?;
+    let workflow_id = runtime.save_workflow(None, workflow_graph).await?;
     let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
 
     runtime.dedicated_run_id = Some(run_id);
@@ -579,7 +664,7 @@ mod tests {
         link(&mut workflow_graph, (task, "value"), out)?;
 
         let mut runtime = Runtime::from_config(&config).await?;
-        let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
+        let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
         let inputs = HashMap::from([(
             "delay_seconds".to_string(),
             serde_json::to_vec(&1).into_diagnostic()?,
@@ -858,7 +943,7 @@ mod tests {
         link(&mut workflow_graph, (task_node, "results"), out)?;
 
         let mut runtime = Runtime::from_config(&config).await?;
-        let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
+        let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
         let inputs = HashMap::from([("hugr_package".to_string(), hugr_package_bytes()?)]);
         let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
         runtime.dedicated_run_id = Some(run_id);

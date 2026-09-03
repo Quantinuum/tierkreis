@@ -32,7 +32,7 @@ opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "gzip-tonic", "metrics"] }
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 portgraph = { version = "0.16.1", features = ["serde"] }
-pyo3 = { version = "0.29.0", features = ["abi3", "abi3t", "num-complex"] }
+pyo3 = { version = "0.29.0", features = ["abi3", "abi3t", "num-complex", "uuid"] }
 regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_plain = "1.0.2"

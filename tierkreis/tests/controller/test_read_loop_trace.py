@@ -1,16 +1,10 @@
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 
 from tests.controller.loop_graphdata import loop_multiple_acc, loop_multiple_acc_untyped
-from tierkreis.controller import run_graph
+from tierkreis import Runtime
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.executor.shell_executor import ShellExecutor
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
-from tierkreis.storage import read_loop_trace
 
 return_value = [
     {"acc1": x, "acc2": y, "acc3": z}
@@ -36,26 +30,48 @@ ids = [
     "loop_multiple_acc",
 ]
 
-storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
-storage_ids = ["FileStorage", "In-memory"]
+storage_kinds = ["sqlite", "memory"]
 
 
-@pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
+@pytest.mark.parametrize("storage_kind", storage_kinds)
 @pytest.mark.parametrize(("graph", "output", "name", "workflow_id"), params, ids=ids)
 def test_read_loop_trace(
-    storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
+    storage_kind: str,
     graph: GraphData,
     output: list[dict[str, int]],
     name: str,
     workflow_id: int,
+    tmp_path: Path,
 ) -> None:
-    g = graph
-    storage = storage_class(UUID(int=workflow_id), name=name)
-    executor = ShellExecutor(Path("./python/examples/launchers"), Path())
-    if isinstance(storage, ControllerInMemoryStorage):
-        executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, {})
+    del workflow_id
+    runtime = (
+        Runtime()
+        if storage_kind == "memory"
+        else Runtime.sqlite(tmp_path / "runtime.sqlite", tmp_path / "assets")
+    )
+    with runtime:
+        uploaded_id = runtime.upload_workflow(name, graph)
+        run_id = runtime.start_workflow(uploaded_id, {})
+        assert runtime.wait(run_id, timeout=30) == "Completed"
+        state = runtime.get_workflow_state(run_id)
 
-    actual_output = read_loop_trace(g, storage, "my_loop")
-    assert actual_output == output
+        loop_idx = graph.named_nodes["my_loop"]
+        loop_state = state.nodes[f"N{loop_idx}"]
+        assert loop_state.loop_index == len(output) - 1
+
+        actual_output = []
+        for iteration in range(len(output)):
+            prefix = f"N{loop_idx}.L{iteration}."
+            output_nodes = [
+                node
+                for location, node in state.nodes.items()
+                if location.startswith(prefix) and "should_continue" in node.outputs
+            ]
+            assert len(output_nodes) == 1
+            actual_output.append({
+                key: value
+                for key, value in output_nodes[0].outputs.items()
+                if key != "should_continue"
+            })
+
+        assert actual_output == output

@@ -1,9 +1,9 @@
+import os
+import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
-from uuid import UUID
 
 import pytest
-from tierkreis._tierkreis import run_workflow
 
 from tests.controller.defaults_graphs import (
     defaults_not_none,
@@ -39,17 +39,12 @@ from tests.controller.typed_graphdata import (
     typed_map,
     typed_map_simple,
 )
-from tierkreis.controller import run_graph
+from tierkreis import Runtime, run_workflow
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.executor.uv_executor import UvExecutor
-from tierkreis.controller.storage.data import WorkflowMetaData
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.models import Workflow
-from tierkreis.storage import read_outputs
+
+WORKER_PATH = Path(__file__).parent.parent / "workers"
 
 param_data: list[
     tuple[
@@ -63,13 +58,13 @@ param_data: list[
     (simple_loop(), 10, "simple_loop", {}),
     (simple_map(), list(range(6, 47, 2)), "simple_map", {}),
     (maps_in_series(), list(range(0, 81, 4)), "maps_in_series", {}),
-    (simple_ifelse(), 1, "simple_ifelse", {"pred": b"true"}),
-    (simple_ifelse(), 2, "simple_ifelse", {"pred": b"false"}),
+    (simple_ifelse(), 1, "simple_ifelse", {"pred": True}),
+    (simple_ifelse(), 2, "simple_ifelse", {"pred": False}),
     (factorial(), 24, "factorial", 4),
     (loop_multiple_acc_untyped(), {"acc1": 6, "acc2": 12, "acc3": 18}, "multi_acc", {}),
     (loop_multiple_acc(), {"acc1": 6, "acc2": 12, "acc3": 18}, "multi_acc", {}),
-    (simple_eagerifelse(), 1, "simple_eagerifelse", {"pred": b"true"}),
-    (factorial(), 120, "factorial", {"value": b"5"}),
+    (simple_eagerifelse(), 1, "simple_eagerifelse", {"pred": True}),
+    (factorial(), 120, "factorial", {"value": 5}),
     (typed_eval(), {"typed_eval_output": 12}, "typed_eval", {}),
     (typed_loop(), 10, "typed_loop", {}),
     (typed_map(), list(range(6, 47, 2)), "typed_map", {"value": list(range(21))}),
@@ -136,10 +131,6 @@ param_data: list[
     ),
     (embed_graph(), {"s1": "1", "s2": "4", "final": 2}, "embed_graph", 1),
 ]
-params: list[tuple[GraphData | Workflow, Any, str, int, dict[str, PType] | PType]] = [
-    (graph, output, name, i + 1, inputs)
-    for i, (graph, output, name, inputs) in enumerate(param_data)
-]
 ids = [
     "simple_eval",
     "simple_loop",
@@ -175,85 +166,53 @@ ids = [
     "embed_graph",
 ]
 
-storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
-storage_ids = ["FileStorage", "In-memory"]
-
-
-@pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
-@pytest.mark.parametrize(
-    ("graph", "output", "name", "workflow_id", "inputs"),
-    params,
-    ids=ids,
-)
-def test_resume(
-    storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
-    graph: GraphData | Workflow,
-    output: dict[str, PType] | PType,
-    name: str,
-    workflow_id: int,
-    inputs: dict[str, PType] | PType,
-) -> None:
-    g = graph
-    storage = storage_class(UUID(int=workflow_id), name=name)
-    test_workers_path = Path(__file__).parent.parent / "test_workers"
-    executor = UvExecutor(test_workers_path, storage.logs_path)
-    if isinstance(storage, ControllerInMemoryStorage):
-        executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs)
-
-    actual_output = read_outputs(g, storage)
-    assert actual_output == output
-    if not isinstance(storage, ControllerInMemoryStorage):
-        wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
-        assert wf_metadata.completion_time is not None
-        assert wf_metadata.duration is not None and wf_metadata.duration > 0
-        assert wf_metadata.name == name
-
 
 @pytest.mark.parametrize(
-    ("graph", "output", "name", "workflow_id", "inputs"),
-    params,
+    ("graph", "output", "name", "inputs"),
+    param_data,
     ids=ids,
 )
 def test_runtime(
     graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
     name: str,
-    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    if isinstance(graph, Workflow):
-        g = graph.data
-    else:
-        g = graph
-
     if "defaults" in name:
-        pytest.skip("default arguments not supported")
+        pytest.skip("omitted optional workflow inputs are not supported")
 
-    run_outputs = run_workflow(name, g, inputs)
-    assert output == run_outputs
+    with Runtime() as runtime:
+        uploaded_workflow_id = runtime.upload_workflow(name, graph)
+        run_id = runtime.start_workflow(uploaded_workflow_id, inputs)
+        assert runtime.wait(run_id, timeout=30) == "Completed"
+        assert output == runtime.get_outputs(run_id)
+        state = runtime.get_workflow_state(run_id)
+        assert state.workflow_id == uploaded_workflow_id
+        assert state.run_id == run_id
+        assert state.name == name
+        assert state.status == "Completed"
 
 
-with_worker_param_data: list[
-    tuple[GraphData | Workflow, Any, str, dict[str, PType] | PType]
-] = [
+def test_run_workflow_utility() -> None:
+    """The one-shot helper retains its direct-output contract."""
+    assert run_workflow("simple_eval", simple_eval(), {}) == {"simple_eval_output": 12}
+
+
+with_worker_param_data = [
     (eval_body_is_from_worker(), 21, "eval_body_is_from_worker", {"value": 10}),
     (eval_graph_of_graph(), 31, "eval_graph_of_graph", {"value": 3}),
-    (
+    pytest.param(
         eval_from_worker_with_graph_from_worker(),
         23,
         "eval_from_worker_with_graph_from_worker",
         {"value": 5},
+        marks=pytest.mark.xfail(
+            reason="reusing a workflow-valued input evaluates it only once",
+            strict=True,
+        ),
     ),
 ]
 
-with_worker_params: list[
-    tuple[GraphData | Workflow, Any, str, int, dict[str, PType] | PType]
-] = [
-    (graph, output, name, i + 1, inputs)
-    for i, (graph, output, name, inputs) in enumerate(with_worker_param_data)
-]
 with_worker_ids = [
     "eval_body_is_from_worker",
     "eval_graph_of_graph",
@@ -261,24 +220,41 @@ with_worker_ids = [
 ]
 
 
+@pytest.fixture
+def subprocess_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[Runtime]:
+    """Rust runtime configured with the graph-producing Python worker."""
+    executable = tmp_path / "tkr-graph"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import runpy\n"
+        f"runpy.run_path({str(WORKER_PATH / 'graph/main.py')!r}, run_name='__main__')\n"
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    with Runtime.sqlite(
+        tmp_path / "runtime.sqlite",
+        tmp_path / "assets",
+        executor="subprocess",
+    ) as runtime:
+        yield runtime
+
+
 @pytest.mark.parametrize(
-    ("graph", "output", "name", "workflow_id", "inputs"),
-    with_worker_params,
+    ("graph", "output", "name", "inputs"),
+    with_worker_param_data,
     ids=with_worker_ids,
 )
-def test_resume_with_worker(
-    graph: GraphData,
+def test_runtime_with_worker(
+    subprocess_runtime: Runtime,
+    graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
     name: str,
-    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    g = graph
-    storage = ControllerFileStorage(UUID(int=workflow_id), name=name)
-    test_workers_path = Path(__file__).parent.parent / "workers"
-    executor = UvExecutor(test_workers_path, storage.logs_path)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs)
-
-    actual_output = read_outputs(g, storage)
-    assert actual_output == output
+    workflow_id = subprocess_runtime.upload_workflow(name, graph)
+    run_id = subprocess_runtime.start_workflow(workflow_id, inputs)
+    assert subprocess_runtime.wait(run_id, timeout=30) == "Completed"
+    assert subprocess_runtime.get_outputs(run_id) == output

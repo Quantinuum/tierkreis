@@ -58,6 +58,12 @@ impl AssetStorage for FileAssetStorage {
     fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<()>> {
         let location = self.location(key);
         async move {
+            tokio::fs::create_dir_all(&self.base_dir)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    miette!("Could not create asset directory: {:?}", self.base_dir)
+                })?;
             let mut file = File::create(&location)
                 .await
                 .into_diagnostic()

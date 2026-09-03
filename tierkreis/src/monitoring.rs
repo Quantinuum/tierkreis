@@ -63,6 +63,21 @@ impl Default for LoggingConfig {
     }
 }
 
+impl LoggingConfig {
+    /// Create a logging configuration that writes to stderr instead of a file.
+    #[must_use]
+    pub fn stderr() -> Self {
+        Self {
+            log_file: None,
+            log_format: LogFormat::Compact,
+            log_level: Some("info".to_string()),
+            otel_endpoint: None,
+            service_name: Some("tierkreis".to_string()),
+            service_namespace: None,
+        }
+    }
+}
+
 static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 static TRACER_PROVIDER: Mutex<Option<SdkTracerProvider>> = Mutex::new(None);

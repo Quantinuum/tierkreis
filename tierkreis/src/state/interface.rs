@@ -82,8 +82,12 @@ pub struct NodeState {
 pub trait RuntimeState: Debug + Send + Sync {
     /// Retrieve the [`WorkflowGraph`] specified by id.
     fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>>;
-    /// Save a [`WorkflowGraph`] and return a new id.
-    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>>;
+    /// Save a named [`WorkflowGraph`] and return a new id.
+    fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> BoxFuture<'_, miette::Result<Uuid>>;
 
     /// Create a new [`WorkflowRunState`] for a Workflow in the [`RuntimeState`] specified by id.
     ///
@@ -132,6 +136,8 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         &'a self,
         locations: &'a mut (dyn Iterator<Item = Location> + Send),
     ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>>;
+    /// Read every node state currently recorded for this run attempt.
+    fn read_all(&self) -> BoxFuture<'_, miette::Result<HashMap<Location, NodeState>>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.

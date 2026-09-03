@@ -8,11 +8,11 @@ from tests.controller.sample_graphdata import (
     simple_eagerifelse,
     simple_ifelse,
 )
+from tierkreis import Runtime
 from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.executor.shell_executor import ShellExecutor
 from tierkreis.controller.executor.uv_executor import UvExecutor
 from tierkreis.controller.storage.filestorage import ControllerFileStorage
 
@@ -50,19 +50,21 @@ def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -> None
 
 def test_eagerifelse_nodes() -> None:
     g = simple_eagerifelse()
-    storage = ControllerFileStorage(UUID(int=151), name="simple_if_else")
-    executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, {"pred": b"true"})
-    assert storage.is_node_finished(Loc("-.N3"))
-    assert storage.is_node_finished(Loc("-.N4"))
+    with Runtime() as runtime:
+        workflow_id = runtime.upload_workflow("simple_eager_if_else", g)
+        run_id = runtime.start_workflow(workflow_id, {"pred": True})
+        assert runtime.wait(run_id, timeout=30) == "Completed"
+        state = runtime.get_workflow_state(run_id)
+        assert state.nodes["N3"].status == "Completed"
+        assert state.nodes["N4"].status == "Completed"
 
 
 def test_ifelse_nodes() -> None:
     g = simple_ifelse()
-    storage = ControllerFileStorage(UUID(int=152), name="simple_if_else")
-    executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, {"pred": b"true"})
-    assert storage.is_node_finished(Loc("-.N1"))
-    assert not storage.is_node_finished(Loc("-.N2"))
+    with Runtime() as runtime:
+        workflow_id = runtime.upload_workflow("simple_if_else", g)
+        run_id = runtime.start_workflow(workflow_id, {"pred": True})
+        assert runtime.wait(run_id, timeout=30) == "Completed"
+        state = runtime.get_workflow_state(run_id)
+        assert state.nodes["N1"].status == "Completed"
+        assert "N2" not in state.nodes

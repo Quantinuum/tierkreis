@@ -1,16 +1,14 @@
+import os
+import sys
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 
 from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
+from tierkreis import Runtime
 from tierkreis.builder import Graph
-from tierkreis.controller import run_graph
 from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.executor.uv_executor import UvExecutor
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.exceptions import TierkreisError
 from tierkreis.models import TKR, Workflow
 
 WORKER_PATH = Path(__file__).parent.parent / "workers"
@@ -36,40 +34,62 @@ def non_zero_exit_code() -> Workflow[EmptyModel, TKR[int]]:
     return graph.finish_with_outputs(graph.task(exit_code_1()))
 
 
-def test_raise_error() -> None:
-    g = will_fail_graph()
-    storage = ControllerFileStorage(UUID(int=42), name="will_fail")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.data, {}, n_iterations=1000)
-    assert storage.node_has_error(Loc("-.N0"))
+@pytest.fixture
+def runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A subprocess runtime with the failing test worker on PATH."""
+    executable = tmp_path / "tkr-failing-worker"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import runpy\n"
+        f"runpy.run_path({str(WORKER_PATH / 'failing_worker/main.py')!r}, run_name='__main__')\n"
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    with Runtime.sqlite(
+        tmp_path / "runtime.sqlite",
+        tmp_path / "assets",
+        executor="subprocess",
+    ) as runtime:
+        yield runtime
 
 
-def test_raises_no_error() -> None:
-    g = wont_fail_graph()
-    storage = ControllerFileStorage(UUID(int=43), name="wont_fail")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g.data, {}, n_iterations=100)
-    assert not storage.node_has_error(Loc("-.N0"))
+def run(runtime: Runtime, name: str, workflow: Workflow) -> tuple[UUID, str]:
+    workflow_id = runtime.upload_workflow(name, workflow)
+    run_id = runtime.start_workflow(workflow_id, {})
+    return run_id, runtime.wait(run_id, timeout=30)
 
 
-def test_nested_error() -> None:
-    g = fail_in_eval()
-    storage = ControllerFileStorage(UUID(int=44), name="eval_will_fail")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.data, {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/_error").exists()
+def test_raise_error(runtime: Runtime) -> None:
+    run_id, status = run(runtime, "will_fail", will_fail_graph())
+    assert status == "Errored"
+    state = runtime.get_workflow_state(run_id)
+    errors = [node for node in state.nodes.values() if node.status == "Errored"]
+    assert len(errors) == 1
+    assert errors[0].error is not None
 
 
-def test_non_zero_exit_code() -> None:
-    g = non_zero_exit_code()
-    storage = ControllerFileStorage(UUID(int=46), name="non_zero_exit_code")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.data, {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/_error").exists()
+def test_raises_no_error(runtime: Runtime) -> None:
+    run_id, status = run(runtime, "wont_fail", wont_fail_graph())
+    state = runtime.get_workflow_state(run_id)
+    assert status == "Completed", state.nodes["N0"].error_detail
+    assert runtime.get_outputs(run_id) == 0
+    assert all(
+        node.status != "Errored"
+        for node in runtime.get_workflow_state(run_id).nodes.values()
+    )
+
+
+def test_nested_error(runtime: Runtime) -> None:
+    run_id, status = run(runtime, "eval_will_fail", fail_in_eval())
+    assert status == "Errored"
+    state = runtime.get_workflow_state(run_id)
+    assert any(node.status == "Errored" for node in state.nodes.values())
+
+
+def test_non_zero_exit_code(runtime: Runtime) -> None:
+    run_id, status = run(runtime, "non_zero_exit_code", non_zero_exit_code())
+    assert status == "Errored"
+    state = runtime.get_workflow_state(run_id)
+    errors = [node for node in state.nodes.values() if node.status == "Errored"]
+    assert errors
+    assert any("error code" in (node.error or "") for node in errors)

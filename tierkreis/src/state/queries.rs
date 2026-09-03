@@ -507,6 +507,29 @@ pub async fn read_node_states(
     Ok(states)
 }
 
+/// Read all persisted node states for a workflow run attempt.
+///
+/// # Errors
+///
+/// Returns an error when the attempt does not fit in `SQLite`'s integer type or
+/// the node states and their outputs cannot be queried or decoded.
+pub async fn read_all_node_states(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+) -> miette::Result<HashMap<Location, crate::state::interface::NodeState>> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let locations = ns::node_states
+        .select(ns::node_location)
+        .filter(ns::run_id.eq(run_id.to_string()))
+        .filter(ns::attempt.eq(i32::try_from(attempt).into_diagnostic()?))
+        .load::<Location>(conn)
+        .await
+        .into_diagnostic()?;
+    read_node_states(conn, run_id, attempt, &mut locations.into_iter()).await
+}
+
 /// Insert persisted workflow inputs for a workflow run.
 ///
 /// # Errors
