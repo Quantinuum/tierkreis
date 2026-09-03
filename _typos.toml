@@ -32,3 +32,5 @@ Braket = "Braket"
 # Used as a HUGR operation name.
 "ine" = "ine"
 
+# False positive in a regex in cliff.toml
+upport = "upport"
