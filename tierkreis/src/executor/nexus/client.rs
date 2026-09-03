@@ -157,7 +157,7 @@ impl JobStatusStream {
     }
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum TLSMode {
     #[cfg(test)]
     None,
@@ -184,7 +184,7 @@ impl TLSMode {
 }
 
 /// Configuration for the `NexusClient`.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct NexusClientConfig {
     /// Whether to use TLS.
     pub tls_mode: TLSMode,

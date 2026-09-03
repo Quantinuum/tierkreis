@@ -33,7 +33,7 @@ pub enum LogFormat {
 }
 
 /// The logging configuration for the runtime.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoggingConfig {
     log_file: Option<PathBuf>,
     log_format: LogFormat,

@@ -33,7 +33,7 @@ use crate::{
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
@@ -114,14 +114,14 @@ impl Default for RuntimeConfig {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum AssetStorageConfig {
     Memory {},
     File { asset_dir: PathBuf },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum ExecutorConfig {
     Memory {
@@ -137,7 +137,7 @@ enum ExecutorConfig {
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum RuntimeStateConfig {
     Memory {},

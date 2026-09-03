@@ -68,9 +68,11 @@ impl RuntimeConfig {
     ///
     /// Returns an error if a config file is found but cannot be read or parsed.
     pub fn load() -> miette::Result<Self> {
-        match discover_config_path() {
-            Some(path) => Self::from_file(&path),
-            None => Ok(Self::default()),
+        if let Some(path) = discover_config_path() {
+            Self::from_file(&path)
+        } else {
+            tracing::warn!("No config file found, using default configuration.");
+            Ok(Self::default())
         }
     }
 
@@ -105,19 +107,6 @@ impl RuntimeConfig {
     pub fn to_toml_string(&self) -> miette::Result<String> {
         toml::to_string_pretty(self).into_diagnostic()
     }
-
-    /// Serialize this `RuntimeConfig` to a TOML file at `path`, creating
-    /// parent directories as needed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the config cannot be serialized or the file cannot be written.
-    pub fn save(&self, path: &Path) -> miette::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).into_diagnostic()?;
-        }
-        std::fs::write(path, self.to_toml_string()?).into_diagnostic()
-    }
 }
 
 #[cfg(test)]
@@ -127,16 +116,11 @@ mod tests {
     #[test]
     fn default_config_round_trips_through_toml_file() {
         let config = RuntimeConfig::default();
-        let file = tempfile::NamedTempFile::new().unwrap();
-
-        config.save(file.path()).unwrap();
-        let loaded = RuntimeConfig::from_file(file.path()).unwrap();
-
-        // `RuntimeConfig` doesn't implement `PartialEq` and its `HashMap`
-        // fields don't serialize in a stable order, so compare the parsed
-        // TOML values rather than the raw strings.
-        let original: toml::Value = toml::from_str(&config.to_toml_string().unwrap()).unwrap();
-        let round_tripped: toml::Value = toml::from_str(&loaded.to_toml_string().unwrap()).unwrap();
-        assert_eq!(original, round_tripped);
+        let toml_str = config
+            .to_toml_string()
+            .expect("Failed to serialize default config to TOML");
+        let parsed_config = RuntimeConfig::from_toml_str(&toml_str)
+            .expect("Failed to parse TOML string back to config");
+        assert_eq!(config, parsed_config);
     }
 }
