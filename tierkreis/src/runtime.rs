@@ -11,7 +11,7 @@ use std::{
 
 use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -19,22 +19,18 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    },
-    event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
-    executor::{
+    }, config::ResourceConfig, event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent}, executor::{
         Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor,
         nexus::{NexusClientConfig, NexusExecutor},
-    },
-    graph::WorkflowGraph,
-    location::Location,
-    monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
-    orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    }, graph::WorkflowGraph, location::Location, monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct RuntimeConfig {
+    /// Configuration format version.
+    #[serde(default = "default_config_version")]
+    pub version: String,
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
     runtime_state: RuntimeStateConfig,
@@ -42,11 +38,28 @@ pub struct RuntimeConfig {
     default_storage_name: String,
     default_executor_name: String,
     logging_config: Option<LoggingConfig>,
+
+    /// Independently configured resources, keyed by name e.g.
+    /// 
+    /// [resources.large]
+    /// nodes = 16
+    /// cpu_cores = 4.0
+    /// [resources.small]
+    /// nodes = 4
+    /// cpu_cores = 2.0
+    #[serde(default)]
+    pub resources: HashMap<String, ResourceConfig>,
+
+}
+
+fn default_config_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 impl RuntimeConfig {
     fn memory() -> Self {
         RuntimeConfig {
+            version: default_config_version(),
             asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
                 .into_iter()
                 .collect(),
@@ -62,6 +75,7 @@ impl RuntimeConfig {
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
             logging_config: Some(LoggingConfig::default()),
+            resources: HashMap::new(),
         }
     }
 
@@ -83,6 +97,7 @@ impl Default for RuntimeConfig {
 
         let asset_dir = tierkreis_dir.join("assets");
         RuntimeConfig {
+            version: default_config_version(),
             asset_storage: [
                 ("memory".to_string(), AssetStorageConfig::Memory {}),
                 ("file".to_string(), AssetStorageConfig::File { asset_dir }),
@@ -110,17 +125,20 @@ impl Default for RuntimeConfig {
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
             logging_config: Some(LoggingConfig::default()),
+            resources: HashMap::new(),
         }
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
 enum AssetStorageConfig {
     Memory {},
     File { asset_dir: PathBuf },
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
 enum ExecutorConfig {
     Memory {
         output_storage_name: String,
@@ -135,7 +153,8 @@ enum ExecutorConfig {
     },
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
 enum RuntimeStateConfig {
     Memory {},
     Sqlite { memory: bool, url: Option<String> },
