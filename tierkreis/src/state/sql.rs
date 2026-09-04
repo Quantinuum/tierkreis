@@ -276,21 +276,31 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
-    fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>> {
+    fn load_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>> {
         async move {
             let mut conn = self.get_conn().await?;
             let workflow = read_workflow(&mut conn, workflow_id).await?;
-            serde_json::from_slice(&workflow.definition).into_diagnostic()
+            Ok((
+                workflow.name,
+                serde_json::from_slice(&workflow.definition).into_diagnostic()?,
+            ))
         }
         .boxed()
     }
 
-    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>> {
+    fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> BoxFuture<'_, miette::Result<Uuid>> {
         async move {
             let id = Uuid::now_v7();
             let workflow = NewWorkflow {
                 id: &id.to_string(),
-                name: None,
+                name: name.as_deref(),
                 created_time: Some(Utc::now().naive_utc()),
                 definition: &serde_json::to_vec(&workflow_graph).into_diagnostic()?,
             };
@@ -671,7 +681,9 @@ mod tests {
     async fn read_location_returns_default() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
@@ -690,7 +702,9 @@ mod tests {
 
         let mut recv = runtime_state.listen();
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
@@ -721,7 +735,9 @@ mod tests {
     async fn write_and_read() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
@@ -757,7 +773,9 @@ mod tests {
     async fn write_and_read_outputs() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
@@ -792,7 +810,9 @@ mod tests {
     async fn write_and_read_map_completed() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
@@ -852,7 +872,9 @@ mod tests {
     async fn write_and_read_metadata() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
@@ -871,7 +893,9 @@ mod tests {
     async fn merge_metadata() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
-        let workflow_id = runtime_state.save_workflow(WorkflowGraph::new([])).await?;
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
         let workflow_run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;

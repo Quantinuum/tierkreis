@@ -50,7 +50,7 @@ struct RunAttemptState {
 /// references.
 #[derive(Debug, Default)]
 struct InMemoryRuntimeStateInner {
-    workflows: DashMap<Uuid, WorkflowGraph>,
+    workflows: DashMap<Uuid, (Option<String>, WorkflowGraph)>,
     runs: DashMap<(Uuid, u32), RunAttemptState>,
 }
 
@@ -89,7 +89,10 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
-    fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>> {
+    fn load_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>> {
         async move {
             let workflow = self
                 .inner
@@ -101,9 +104,15 @@ impl RuntimeState for InMemoryRuntimeState {
         .boxed()
     }
 
-    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>> {
+    fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> BoxFuture<'_, miette::Result<Uuid>> {
         let workflow_id = Uuid::now_v7();
-        self.inner.workflows.insert(workflow_id, workflow_graph);
+        self.inner
+            .workflows
+            .insert(workflow_id, (name, workflow_graph));
         future::ok(workflow_id).boxed()
     }
 

@@ -100,7 +100,7 @@ pub async fn list_nodes(
     tracing::info!("Listing nodes for {}", run_id);
 
     // TODO can we somehow avoid loading the entire graph (e.g. only the nested ones we need)
-    let top_level_graph = state.runtime_state.load_workflow(workflow_id).await?;
+    let (_name, top_level_graph) = state.runtime_state.load_workflow(workflow_id).await?;
 
     let mut graphs = HashMap::new();
     for loc_str in &query.locs {
@@ -242,7 +242,7 @@ pub async fn get_input(
         .await?;
 
     let workflow_id = run_state.workflow_id();
-    let top_level_graph = state.runtime_state.load_workflow(workflow_id).await?;
+    let (_name, top_level_graph) = state.runtime_state.load_workflow(workflow_id).await?;
 
     let loc = parse_location(&node_location_str)?;
     let node_location = loc.to_string();

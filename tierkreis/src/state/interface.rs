@@ -81,9 +81,16 @@ pub struct NodeState {
 /// may treat this as a no-op.
 pub trait RuntimeState: Debug + Send + Sync {
     /// Retrieve the [`WorkflowGraph`] specified by id.
-    fn load_workflow(&self, workflow_id: Uuid) -> BoxFuture<'_, miette::Result<WorkflowGraph>>;
+    fn load_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>>;
     /// Save a [`WorkflowGraph`] and return a new id.
-    fn save_workflow(&self, workflow_graph: WorkflowGraph) -> BoxFuture<'_, miette::Result<Uuid>>;
+    fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> BoxFuture<'_, miette::Result<Uuid>>;
 
     /// Create a new [`WorkflowRunState`] for a Workflow in the [`RuntimeState`] specified by id.
     ///
