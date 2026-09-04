@@ -5,7 +5,7 @@ version = "0.2.1"
 authors = [ {name = "Quantinuum Tierkreis Team"} ]
 requires-python = ">=3.12"
 dependencies = [
-    "guppylang>=0.21.0",
+    "guppylang>=1.0.2",
     "hugr",
     "hugr-qir",
     "pytket",
