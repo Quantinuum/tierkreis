@@ -11,7 +11,7 @@ use std::{
 
 use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -33,7 +33,7 @@ use crate::{
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
@@ -114,13 +114,15 @@ impl Default for RuntimeConfig {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 enum AssetStorageConfig {
     Memory {},
     File { asset_dir: PathBuf },
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 enum ExecutorConfig {
     Memory {
         output_storage_name: String,
@@ -135,7 +137,8 @@ enum ExecutorConfig {
     },
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 enum RuntimeStateConfig {
     Memory {},
     Sqlite { memory: bool, url: Option<String> },

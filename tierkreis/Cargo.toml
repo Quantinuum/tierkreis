@@ -57,6 +57,7 @@ serde_with = { version = "3.21.0", features = ["base64"] }
 hugr = "0.27.2"
 reqwest-websocket = { version = "0.6.0", features = ["json"] }
 rand = "0.10.2"
+toml = "1.1.4"
 
 [dev-dependencies]
 axum-test = { version = "21.0.0", features = ["ws"] }

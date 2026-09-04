@@ -7,6 +7,7 @@ Workflow Management system.
 pub mod asset_storage;
 #[cfg(test)]
 pub mod builder;
+pub mod config;
 pub mod event;
 pub mod executor;
 pub mod graph;

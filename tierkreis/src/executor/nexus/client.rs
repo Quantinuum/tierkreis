@@ -12,7 +12,7 @@ use hugr::package::Package;
 use miette::{Context, IntoDiagnostic, miette};
 use reqwest::{Client, ClientBuilder, cookie::Jar};
 use reqwest_websocket::{Bytes, Message, Upgrade};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncReadExt, task::JoinHandle, time::Instant};
 use tracing::warn;
 use url::Url;
@@ -157,7 +157,7 @@ impl JobStatusStream {
     }
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum TLSMode {
     #[cfg(test)]
     None,
@@ -184,7 +184,7 @@ impl TLSMode {
 }
 
 /// Configuration for the `NexusClient`.
-#[derive(Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct NexusClientConfig {
     /// Whether to use TLS.
     pub tls_mode: TLSMode,
