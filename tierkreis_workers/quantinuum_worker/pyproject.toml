@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pytket-quantinuum>=0.57.0",
-    "qnexus==0.37.1",
+    "qnexus==0.48.2",
     "tierkreis",
     "tkr-quantinuum-worker"
 ]
