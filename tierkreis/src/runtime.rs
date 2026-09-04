@@ -198,8 +198,12 @@ impl Runtime {
         })
     }
 
-    async fn save_workflow(&self, workflow_graph: WorkflowGraph) -> miette::Result<Uuid> {
-        self.state.save_workflow(workflow_graph).await
+    async fn save_workflow(
+        &self,
+        name: Option<String>,
+        workflow_graph: WorkflowGraph,
+    ) -> miette::Result<Uuid> {
+        self.state.save_workflow(name, workflow_graph).await
     }
 
     async fn start_new_run<S: BuildHasher>(
@@ -391,7 +395,8 @@ impl Runtime {
                 let workflow_run_state =
                     self.state.load_workflow_run_state(run_id, attempt).await?;
                 let workflow_id = workflow_run_state.workflow_id();
-                let workflow_graph = self.state.load_workflow(workflow_id).await?;
+                let (_workflow_name, workflow_graph) =
+                    self.state.load_workflow(workflow_id).await?;
 
                 let workflow_run_state = Arc::new(workflow_run_state);
                 let workflow_graph = Arc::new(workflow_graph);
@@ -428,7 +433,7 @@ impl Runtime {
         let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
         let workflow_id = workflow_run_state.workflow_id();
         // TODO: Use LRU cache for workflows or similar here?
-        let workflow_graph = self.state.load_workflow(workflow_id).await?;
+        let (_workflow_name, workflow_graph) = self.state.load_workflow(workflow_id).await?;
 
         let output_state = workflow_run_state
             .read(&Location::from_node_index_iter([
@@ -521,7 +526,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory()).await?;
 
-    let workflow_id = runtime.save_workflow(workflow_graph).await?;
+    let workflow_id = runtime.save_workflow(None, workflow_graph).await?;
     let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
 
     runtime.dedicated_run_id = Some(run_id);
@@ -598,7 +603,7 @@ mod tests {
         let mut runtime = test_persistent_runtime(database_file.path()).await?;
         let (workflow_graph, task_location) = sleep_graph_with_task_location()?;
 
-        let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
+        let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
         let inputs = HashMap::from([(
             "delay_seconds".to_string(),
             serde_json::to_vec(&1).into_diagnostic()?,
@@ -887,7 +892,7 @@ mod tests {
 
         let (workflow_graph, task_location) = submit_and_run_graph_with_task_location()?;
 
-        let workflow_id = runtime.save_workflow(workflow_graph.clone()).await?;
+        let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
         let inputs = HashMap::from([("hugr_package".to_string(), hugr_package_bytes()?)]);
         let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
         runtime.dedicated_run_id = Some(run_id);
