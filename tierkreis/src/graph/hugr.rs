@@ -4,7 +4,8 @@ use super::NodeDefinition;
 use super::WorkflowGraph;
 use hugr::core::HugrNode;
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType};
-use hugr::{Hugr, HugrView, PortIndex, types::Type};
+use hugr::types::Signature;
+use hugr::{Hugr, HugrView, PortIndex as _};
 use miette::IntoDiagnostic;
 use miette::Report;
 use petgraph::algo::dominators::{self, Dominators};
@@ -191,22 +192,14 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
     }
 }
 
-fn wrapper_graph<N: HugrNode>(
-    inputs: impl IntoIterator<Item = (impl PortIndex, Type)>,
-    outputs: impl IntoIterator<Item = (impl PortIndex, Type)>,
-) -> (GraphWithFuncs<N>, Vec<(NodeIndex, String)>) {
+fn wrapper_graph<N: HugrNode>(sig: &Signature) -> (GraphWithFuncs<N>, Vec<(NodeIndex, String)>) {
     let mut graph = GraphWithFuncs {
-        graph: WorkflowGraph::new(
-            outputs
-                .into_iter()
-                .map(|(p, _)| format!("out{}", p.index())),
-        ),
+        graph: WorkflowGraph::new((0..sig.output_count()).map(|i| format!("out{i}"))),
         funcs: HashMap::new(),
     };
-    let input_results = inputs
-        .into_iter()
-        .map(|(p, _)| {
-            let name = format!("in{}", p.index());
+    let input_results = (0..sig.input_count())
+        .map(|i| {
+            let name = format!("in{i}");
             let n = graph.graph.add_node(
                 NodeDefinition::Input { name: name.clone() },
                 vec![],
@@ -228,19 +221,14 @@ impl TryFrom<Hugr> for WorkflowGraph {
 
 fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<WorkflowGraph> {
     let (graph, outputs) = match hugr.entrypoint_optype() {
-        OpType::FuncDefn(_) => {
+        OpType::FuncDefn(fd) => {
             // Not supported by convert_dataflow_op as not a DataflowOp!
-            let [inp, out] = hugr
-                .get_io(parent)
-                .ok_or_else(|| miette::miette!("entrypoint must have IO children"))?;
-            let (mut graph, inputs) =
-                wrapper_graph(hugr.out_value_types(inp), hugr.in_value_types(out));
+            let (mut graph, inputs) = wrapper_graph(fd.signature().body());
             let outputs = convert_dfg(hugr, parent, &mut graph, inputs)?;
             (graph, outputs)
         }
         OpType::DFG(_) | OpType::CFG(_) => {
-            let (mut graph, inputs) =
-                wrapper_graph(hugr.in_value_types(parent), hugr.out_value_types(parent));
+            let (mut graph, inputs) = wrapper_graph(hugr.signature(parent).unwrap().as_ref());
             let outputs = convert_dataflow_op(hugr, parent, &mut graph, inputs)?;
             (graph, outputs)
         }
