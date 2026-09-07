@@ -14,8 +14,8 @@ struct DomTreeNode<N> {
     node: N,
     // In topsort order (child before any sibling it can reach)
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
-    exit_edges: Vec<(GatingPath<N>, N, OutgoingPort, N)>,
-    loop_backedges: Vec<(GatingPath<N>, N, OutgoingPort)>,
+    exit_edges: Vec<(GatingPath<N>, N)>, // Include cache of target node
+    loop_backedges: Vec<GatingPath<N>>
 }
 
 fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
@@ -43,7 +43,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             .map(|p| GatingPath::Always(n, p));
         for outport in hugr.node_outputs(n.into()) {
             let path = path.clone().unwrap_or(GatingPath::branch(n, outport));
-            // Çontrol Flow outports should have exactly one outgoing edge
+            // Control Flow outports should have exactly one outgoing edge
             let (tgt, _) = hugr
                 .linked_inputs(n.into(), outport)
                 .exactly_one()
@@ -52,9 +52,9 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             if children_by_bb.contains_key(&tgt) {
                 child_paths.entry(tgt).or_default().union(&path);
             } else if tgt == n {
-                loop_backedges.push((path, n, outport));
+                loop_backedges.push(path);
             } else {
-                exit_edges.push((path, n, outport, tgt));
+                exit_edges.push((path, tgt));
             }
         }
         // We want to process children in reverse topsort order: any child C1 with an exit edge to C2, must be processed *before* C2.
@@ -68,7 +68,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 return;
             };
             // Targets of exit edges pushed onto <ordered> first
-            for (_, _, _, succ) in &dtn.exit_edges {
+            for (_, succ) in &dtn.exit_edges {
                 rev_sort(ordered, *succ, remaining_children);
             }
             ordered.push(child);
@@ -86,7 +86,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
         for child in ordered_children {
             let path_to_child = child_paths.remove(&child).unwrap();
             let child_dtn = children_by_bb.remove(&child).unwrap();
-            for (path_from_child_to_exit, src, idx, dst) in &child_dtn.exit_edges {
+            for (path_from_child_to_exit, dst) in &child_dtn.exit_edges {
                 let path_to_exit = path_to_child.concat(path_from_child_to_exit);
                 assert!(
                     doms.dominators(ni).unwrap().contains(
@@ -98,9 +98,9 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 if children_by_bb.contains_key(dst) {
                     child_paths.entry(*dst).or_default().union(&path_to_exit);
                 } else if *dst == n {
-                    loop_backedges.push((path_to_exit, *src, *idx));
+                    loop_backedges.push(path_to_exit);
                 } else {
-                    exit_edges.push((path_to_exit, *src, *idx, *dst));
+                    exit_edges.push((path_to_exit, *dst));
                 }
             }
             children.push((path_to_child, child_dtn))
