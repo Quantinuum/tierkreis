@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["tierkreis", "mpi4py"]
 # [tool.uv.sources]
-# tierkreis = { path = "/tierkreis", editable = true }
+# tierkreis = { path = "../../tierkreis", editable = true }
 # ///
 import logging
 import socket
@@ -27,6 +27,22 @@ def mpi_rank_info() -> str | None:
     if rank == 0:
         return "\n".join(
             f"Rank {info['rank']} out of {size} on {info['hostname']}."
+            for info in all_processes_info
+        )
+    return None
+
+
+@worker.task()
+def mpi_rank_info_with_input(value: str) -> str | None:
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    hostname = socket.gethostname()
+    info = {"rank": rank, "hostname": hostname, "value": value}
+    all_processes_info = comm.gather(info, root=0)
+    if rank == 0:
+        return "\n".join(
+            f"Rank {info['rank']} out of {size} on {info['hostname']} with value {info['value']}."
             for info in all_processes_info
         )
     return None
