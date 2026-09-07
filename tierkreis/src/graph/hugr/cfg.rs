@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use itertools::Itertools;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use hugr::core::HugrNode;
-use hugr::{HugrView, OutgoingPort};
+use hugr::{HugrView, OutgoingPort, PortIndex as _};
 use hugr_core::hugr::internal::PortgraphNodeMap;
 use petgraph::algo::dominators::{self, Dominators};
 use portgraph::NodeIndex;
@@ -31,7 +30,52 @@ impl<N: HugrNode> DomTreeNode<N> {
         HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>, // values delivered to exit edges of this DomTreeNode
     )> {
         if !self.loop_backedges.is_empty() {
-            todo!("loop")
+            let mut blocks = HashSet::new();
+            let mut queue = VecDeque::from_iter(
+                self.loop_backedges
+                    .iter()
+                    .flat_map(GatingPath::leaves)
+                    .map(|(n, _p)| n),
+            );
+            while let Some(n) = queue.pop_front() {
+                if n == self.node || !blocks.insert(n) {
+                    continue;
+                }
+                queue.extend(hugr.input_neighbours(n));
+            }
+            let loop_exits = blocks
+                .iter()
+                .flat_map(|&n| hugr.node_outputs(n).map(move |p| (n, p)))
+                .filter(|(n, p)| !blocks.contains(&hugr.single_linked_input(*n, *p).unwrap().0))
+                .collect::<Vec<_>>();
+            let Ok((loop_exit_block, p)) = loop_exits.into_iter().exactly_one() else {
+                // Need to build a single exit that collects all these together, with a sum type or similar
+                // that identifies which exit was taken and where to go next
+                todo!("Multi-exit loops")
+            };
+            let loop_exit_tys = hugr
+                .get_optype(loop_exit_block)
+                .as_dataflow_block()
+                .unwrap()
+                .successor_input(p.index())
+                .unwrap();
+            let loop_in_tys = &hugr
+                .get_optype(self.node)
+                .as_dataflow_block()
+                .unwrap()
+                .inputs;
+            assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
+            todo!("Single-exit loop")
+            // 1. compile the repeat value as the value returned to the header.
+            //   This suggests all backedges should be unified into a single GatingPath
+            // 2. compute the GatingPath of getting to the unique exit edge
+            //   by traversing DomTree from the edge source back up to the header
+            //   and using GatingPath::concat
+            // 3. the loop body outputs are
+            //   1. the predicate, did we get to that exit edge (inverted)
+            //   2. the values, selected (via a UNION of the loop-backedge GatingPath and the exit-edge GatingPath)
+            //      from the usual block_outputs as below
+            // ....all that within a new GraphWithFuncs, that we then insert as a constant and push through a NodeDefinition::Loop
         }
         let Some(bb) = hugr.get_optype(self.node).as_dataflow_block() else {
             assert!(hugr.get_optype(self.node).is_exit_block());
