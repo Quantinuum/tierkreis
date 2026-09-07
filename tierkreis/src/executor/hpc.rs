@@ -4,9 +4,7 @@ pub mod slurm;
 pub mod spec;
 
 use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::{Arc, Mutex},
+    collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::{Arc, Mutex},
 };
 
 use futures::{
@@ -174,7 +172,7 @@ async fn monitor_task(
         outputs,
         job_id,
         output_storage_name,
-        _worker_args,
+        _worker_args: worker_args,
     } = internal_task;
     let mut queued_event_sender = event_sender.clone();
     send_queued(
@@ -207,7 +205,7 @@ async fn monitor_task(
                     loc,
                     outputs,
                     output_storage_name,
-                    _worker_args: _worker_args,
+                    _worker_args: worker_args,
                 },
                 result,
             )
@@ -273,7 +271,7 @@ async fn process_tasks(
 
 /// Event-based executor for subprocess-compatible workers.
 pub struct HpcExecutor {
-    _scheduler: Arc<dyn SchedulerWrapper>,
+    scheduler: Arc<dyn SchedulerWrapper>,
     task_sender: mpsc::Sender<BackgroundTaskPlan>,
     cancel_sender: mpsc::Sender<Key>,
     event_receiver: Mutex<Option<EventReceiver>>,
@@ -325,7 +323,7 @@ impl HpcExecutor {
             Arc::clone(asset_storage_registry),
         ));
         Ok(Self {
-            _scheduler: scheduler,
+            scheduler,
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
@@ -385,8 +383,8 @@ impl HpcExecutor {
     async fn start_single_job(
         &self,
         task: &TaskPlan,
-        worker_args_path: &PathBuf,
-        script_path: &PathBuf,
+        worker_args_path: &Path,
+        script_path: &Path,
     ) -> miette::Result<String> {
         let command = format!(
             "tkr-{} {}",
@@ -408,12 +406,12 @@ impl HpcExecutor {
         opentelemetry::global::get_text_map_propagator(|propagator| {
             propagator.inject_context(&context, &mut EnvironmentCarrier(&mut job_spec.environment));
         });
-        let result = self._scheduler.submit(job_spec, script_path).await?;
+        let result = self.scheduler.submit(job_spec, script_path).await?;
         Ok(result)
     }
 
     async fn is_job_active(&self, job_id: String) -> miette::Result<String> {
-        let _ = self._scheduler.check(job_id.clone()).await?;
+        self.scheduler.check(job_id.clone()).await?;
         Ok(job_id)
     }
 }
@@ -461,7 +459,7 @@ impl Executor for HpcExecutor {
                 // If we were given a handle to a previously submitted  job
                 // and it's still active, reattach to it instead of resubmitting.
                 let job_id = if let Some(job_id) = &task_plan.task_handle {
-                    self.is_job_active(job_id.to_string()).await?
+                    self.is_job_active(job_id.clone()).await?
                 } else {
                     let worker_args = self
                         .build_worker_call_args(&task_plan, output_paths)
@@ -477,7 +475,7 @@ impl Executor for HpcExecutor {
                         attempt: task_plan.attempt,
                         loc: task_plan.loc,
                         job_id,
-                        outputs: outputs,
+                        outputs,
                         output_storage_name: self.output_storage_name.clone(),
                         _worker_args: worker_args_path,
                     })

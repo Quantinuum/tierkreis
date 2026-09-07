@@ -1,7 +1,6 @@
 //! Slurm scheduler adapter.
 
-use std::{path::PathBuf, time::Duration};
-
+use std::{path::PathBuf, path::Path, time::Duration};
 use futures::FutureExt;
 use miette::{Context, IntoDiagnostic, Result, miette};
 use tokio::{process::Command, time::sleep};
@@ -51,10 +50,10 @@ impl SchedulerWrapper for SlurmWrapper {
     fn submit(
         &self,
         spec: JobSpec,
-        script_path: &PathBuf,
+        script_path: &Path,
     ) -> futures::future::BoxFuture<'_, Result<String>> {
         let scheduler = self.clone();
-        let script_path = script_path.clone();
+        let script_path = script_path.to_path_buf();
         async move {
             std::fs::write(&script_path, scheduler.templates.render("slurm", &spec)?)
                 .into_diagnostic()?;
