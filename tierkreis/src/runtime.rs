@@ -24,7 +24,7 @@ use crate::{
     executor::{
         Executor, ExecutorRegistry, HpcExecutor, InMemoryExecutor, SlurmWrapper,
         SubprocessExecutor,
-        hpc::spec::ScriptTemplates,
+        hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
     },
     graph::WorkflowGraph,
@@ -142,6 +142,7 @@ enum ExecutorConfig {
         output_storage_name: String,
         scheduler: HpcSchedulerConfig,
         poll_interval_secs: Option<u64>,
+        resources: HPCResourceSpec,
     },
 }
 
@@ -511,6 +512,7 @@ async fn executor_registry_from_config(
                 output_storage_name,
                 scheduler,
                 poll_interval_secs,
+                resources,
             } => {
                 let scheduler: Arc<dyn crate::executor::SchedulerWrapper> = match scheduler {
                     HpcSchedulerConfig::Slurm => {
@@ -529,6 +531,7 @@ async fn executor_registry_from_config(
                             hpc_storage_name,
                             output_storage_name,
                             scheduler,
+                            resources.clone(),
                         )
                         .await?,
                     ),

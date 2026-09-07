@@ -5,6 +5,13 @@
 # --- Core Job Specifications ---
 #SBATCH --job-name={{ job.name }}
 #SBATCH --time={{ job.walltime }}
+#SBATCH --nodes={{ job.resources.nodes }}
+{% if job.resources.cores_per_node %}#SBATCH --cpus-per-task={{ job.resources.cores_per_node }}
+{% endif %}{% if job.resources.memory_per_node_gb %}#SBATCH --mem={{ job.resources.memory_per_node_gb }}G
+{% endif %}{% if job.resources.gpus_per_node %}#SBATCH --gpus-per-node={{ job.resources.gpus_per_node }}
+{% endif %}{% if job.resources.gres %}#SBATCH --gres={{ job.resources.gres|join(',') }}
+{% endif %}{% if job.resources.qpus %}#SBATCH --qpu={{ job.resources.qpus|join(',') }}
+{% endif %}
 {% if job.queue %}#SBATCH --partition={{ job.queue }}
 {% endif %}
 # --- User Details ---

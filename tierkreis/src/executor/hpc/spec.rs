@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use futures::future::BoxFuture;
 use miette::{IntoDiagnostic, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Scheduler-independent job description.
 /// TODOs: make sure non optional values are not ""
@@ -14,6 +14,8 @@ pub struct JobSpec {
     pub name: String,
     /// Maximum wall-clock time, in `HH:MM:SS` format.
     pub walltime: String,
+    /// Job resources specification.
+    pub resources: HPCResourceSpec,
     /// Scheduler partition or queue.
     pub queue: Option<String>,
     /// Scheduler account or project.
@@ -36,6 +38,49 @@ pub struct JobSpec {
     pub error_path: Option<PathBuf>,
     /// Additional native scheduler options.
     pub extra_scheduler_args: HashMap<String, Option<String>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Default, Deserialize, Serialize)]
+/// [`HPCResourceSpec`] determines what Resources should be available to the
+/// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
+pub struct HPCResourceSpec {
+    nodes: u32,
+    cores_per_node: Option<u32>,
+    memory_per_node_gb: Option<u32>,
+    gpus_per_node: Option<u32>,
+    qpus: Option<Vec<String>>,
+    gres: Option<Vec<String>>,
+}
+
+impl HPCResourceSpec {
+    /// Creates a new [`HPCResourceSpec`] with the given resource specifications.
+    #[must_use]
+    pub fn new(
+        nodes: u32,
+        cores_per_node: Option<u32>,
+        memory_per_node_gb: Option<u32>,
+        gpus_per_node: Option<u32>,
+        qpus: Option<Vec<String>>,
+        gres: Option<Vec<String>>,
+    ) -> Self {
+        Self {
+            nodes,
+            cores_per_node,
+            memory_per_node_gb,
+            gpus_per_node,
+            qpus,
+            gres,
+        }
+    }
+    /// Checks if the current [`HPCResourceSpec`] satisfies the requirements of another [`HPCResourceSpec`].
+    /// TODO: gres and qpus
+    #[must_use]
+    pub fn satisfies(&self, other: &HPCResourceSpec) -> bool {
+        self.nodes >= other.nodes
+            && self.cores_per_node.unwrap_or(0) >= other.cores_per_node.unwrap_or(0)
+            && self.memory_per_node_gb.unwrap_or(0) >= other.memory_per_node_gb.unwrap_or(0)
+            && self.gpus_per_node.unwrap_or(0) >= other.gpus_per_node.unwrap_or(0)
+    }
 }
 
 /// User-specific scheduler settings.

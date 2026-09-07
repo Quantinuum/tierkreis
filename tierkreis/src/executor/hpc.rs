@@ -29,8 +29,10 @@ use crate::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
         send_queued, send_running,
     },
-    executor::hpc::spec::{JobSpec, SchedulerWrapper},
-    executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    executor::{
+        hpc::spec::{HPCResourceSpec, JobSpec, SchedulerWrapper},
+        interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    },
     location::Location,
 };
 
@@ -139,6 +141,8 @@ pub struct HpcExecutor {
     hpc_storage_name: String,
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+    /// Available HPC resources for this executor.
+    pub max_resources: HPCResourceSpec,
 }
 
 impl Drop for HpcExecutor {
@@ -158,6 +162,7 @@ impl HpcExecutor {
         hpc_storage_name: &str,
         output_storage_name: &str,
         scheduler: Arc<dyn SchedulerWrapper>,
+        max_resources: HPCResourceSpec,
     ) -> miette::Result<Self> {
         let storage = registry.read().await;
         if !storage.contains_key(hpc_storage_name) {
@@ -186,6 +191,7 @@ impl HpcExecutor {
             hpc_storage_name: hpc_storage_name.into(),
             output_storage_name: output_storage_name.into(),
             asset_storage_registry: Arc::clone(registry),
+            max_resources,
         })
     }
 
@@ -231,11 +237,14 @@ impl HpcExecutor {
             task.worker_name.replace('_', "-"),
             worker_args.path().display()
         );
-        // TODO: Load Resources or put spec in TaskPlan
+        let hpc_resources = serde_json::from_value(task.resources.into_iter().collect())
+            .into_diagnostic()
+            .wrap_err("Invalid HPC resource specification")?;
         let job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
             walltime: "01:00:00".to_string(),
+            resources: hpc_resources,
             ..Default::default()
         };
         Ok(BackgroundTaskPlan {
