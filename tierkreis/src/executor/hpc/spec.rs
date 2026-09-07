@@ -1,6 +1,10 @@
 //! HPC Scheduler related functionality.
 
-use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use futures::future::BoxFuture;
 use miette::{IntoDiagnostic, Result};
@@ -44,12 +48,18 @@ pub struct JobSpec {
 /// [`HPCResourceSpec`] determines what Resources should be available to the
 /// [`HPCExecutor`] or what is requested as part of a [`TaskPlan`].
 pub struct HPCResourceSpec {
-    nodes: u32,
-    cores_per_node: Option<u32>,
-    memory_per_node_gb: Option<u32>,
-    gpus_per_node: Option<u32>,
-    qpus: Option<Vec<String>>,
-    gres: Option<Vec<String>>,
+    /// Number of compute nodes requested.
+    pub nodes: u32,
+    /// Number of CPU cores requested on each node.
+    pub cores_per_node: Option<u32>,
+    /// Memory requested on each node, in gibibytes.
+    pub memory_per_node_gb: Option<u32>,
+    /// Number of GPUs requested on each node.
+    pub gpus_per_node: Option<u32>,
+    /// Identifiers of QPUs requested for the job.
+    pub qpus: Option<Vec<String>>,
+    /// Scheduler-specific generic resources requested for the job.
+    pub gres: Option<Vec<String>>,
 }
 
 impl HPCResourceSpec {

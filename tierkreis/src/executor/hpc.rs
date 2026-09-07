@@ -4,7 +4,9 @@ pub mod slurm;
 pub mod spec;
 
 use std::{
-    collections::{HashMap, HashSet}, path::{Path, PathBuf}, sync::{Arc, Mutex},
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use futures::{
@@ -270,7 +272,7 @@ async fn process_tasks(
 }
 
 /// Event-based executor for subprocess-compatible workers.
-pub struct HpcExecutor {
+pub struct HPCExecutor {
     scheduler: Arc<dyn SchedulerWrapper>,
     task_sender: mpsc::Sender<BackgroundTaskPlan>,
     cancel_sender: mpsc::Sender<Key>,
@@ -284,13 +286,13 @@ pub struct HpcExecutor {
     // TODO: env
 }
 
-impl Drop for HpcExecutor {
+impl Drop for HPCExecutor {
     fn drop(&mut self) {
         self.background_abort_handle.abort();
     }
 }
 
-impl HpcExecutor {
+impl HPCExecutor {
     /// Create an HPC executor using shared file-backed storage./
     ///
     /// # Errors
@@ -416,7 +418,7 @@ impl HpcExecutor {
     }
 }
 
-impl Executor for HpcExecutor {
+impl Executor for HPCExecutor {
     // TODO: How to make sure this is run on the compute node?
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         async move {

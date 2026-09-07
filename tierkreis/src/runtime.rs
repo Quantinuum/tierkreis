@@ -22,7 +22,7 @@ use crate::{
     },
     event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
-        Executor, ExecutorRegistry, HpcExecutor, InMemoryExecutor, SlurmWrapper,
+        Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, SlurmWrapper,
         SubprocessExecutor,
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
@@ -526,7 +526,7 @@ async fn executor_registry_from_config(
                 executor_registry.insert(
                     executor_name.clone(),
                     Box::new(
-                        HpcExecutor::try_new(
+                        HPCExecutor::try_new(
                             asset_storage_registry,
                             hpc_storage_name,
                             output_storage_name,

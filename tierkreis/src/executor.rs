@@ -8,7 +8,7 @@ pub mod interface;
 pub mod nexus;
 pub mod subprocess;
 
-pub use crate::executor::hpc::HpcExecutor;
+pub use crate::executor::hpc::HPCExecutor;
 pub use crate::executor::hpc::{
     slurm::SlurmWrapper,
     spec::{JobSpec, SchedulerWrapper},

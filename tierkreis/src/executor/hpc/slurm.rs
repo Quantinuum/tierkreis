@@ -1,8 +1,8 @@
 //! Slurm scheduler adapter.
 
-use std::{path::PathBuf, path::Path, time::Duration};
 use futures::FutureExt;
 use miette::{Context, IntoDiagnostic, Result, miette};
+use std::{path::Path, path::PathBuf, time::Duration};
 use tokio::{process::Command, time::sleep};
 
 use crate::executor::hpc::spec::ScriptTemplates;
