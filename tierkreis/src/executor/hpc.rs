@@ -276,45 +276,50 @@ impl Executor for HpcExecutor {
         }
         .boxed()
     }
-    fn execute(&self, tasks: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
+    fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut sender = self.task_sender.clone();
-            for task in tasks {
+            for task_plan in task_plans {
                 sender
-                    .send(self.build_task(task).await?)
+                    .send(self.build_task(task_plan).await?)
                     .await
-                    .into_diagnostic()?;
+                    .into_diagnostic()
+                    .wrap_err("Failed to enqueue background task.")?;
             }
             Ok(())
         }
         .boxed()
     }
     fn listen(&self) -> miette::Result<BoxStream<'static, RuntimeEvent>> {
-        let mut receiver = self
-            .event_receiver
-            .try_lock()
-            .map_err(|error| miette!("Failed to listen: {error}"))?;
-        receiver
-            .take()
-            .map(|receiver| receiver.boxed())
-            .ok_or_else(|| miette!("Executor is already being listened to"))
+        let channel = {
+            let mut receiver = self
+                .event_receiver
+                .try_lock()
+                .map_err(|err| miette!("Failed to listen: {}", err))?;
+
+            receiver.take().ok_or_else(|| {
+                miette!("Failed to listen: HPCExecutor is already being listened to.")
+            })?
+        };
+        Ok(channel.boxed())
     }
     fn cancel(
         &self,
         workflow_run_id: Uuid,
         attempt: u32,
-        locs: Vec<Location>,
+        task_locations: Vec<Location>,
     ) -> BoxFuture<'_, miette::Result<()>> {
-        async move {
-            let mut sender = self.cancel_sender.clone();
-            for loc in locs {
-                sender
-                    .send((workflow_run_id, attempt, loc))
+        let mut cancel_sender = self.cancel_sender.clone();
+        let fut = async move {
+            for task_location in task_locations {
+                cancel_sender
+                    .send((workflow_run_id, attempt, task_location))
                     .await
-                    .into_diagnostic()?;
+                    .into_diagnostic()
+                    .wrap_err("Failed to enqueue background task.")?;
             }
             Ok(())
-        }
-        .boxed()
+        };
+        fut.boxed()
     }
 }
