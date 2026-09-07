@@ -8,14 +8,79 @@ use hugr_core::hugr::internal::PortgraphNodeMap;
 use petgraph::algo::dominators::{self, Dominators};
 use portgraph::NodeIndex;
 
-use super::GraphWithFuncs;
+use super::{GraphWithFuncs, convert_dfg};
+use crate::graph::{NodeDefinition, WorkflowGraph};
 
 struct DomTreeNode<N> {
     node: N,
     // In topsort order (child before any sibling it can reach)
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
+    // TODO should both the following be a single GatingPath each? (Losing the cache)
     exit_edges: Vec<(GatingPath<N>, N)>, // Include cache of target node
-    loop_backedges: Vec<GatingPath<N>>
+    loop_backedges: Vec<GatingPath<N>>,
+}
+
+impl<N: HugrNode> DomTreeNode<N> {
+    fn build_graph(
+        &self,
+        graph: &mut GraphWithFuncs<N>,
+        hugr: &impl HugrView<Node = N>,
+        this_block_inputs: Vec<(NodeIndex, String)>,
+    ) -> miette::Result<(
+        Option<Vec<(NodeIndex, String)>>, // any values delivered to exit node (only if in this DomTreeNode)
+        HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>, // values delivered to exit edges of this DomTreeNode
+    )> {
+        if !self.loop_backedges.is_empty() {
+            todo!("loop")
+        }
+        let Some(bb) = hugr.get_optype(self.node).as_dataflow_block() else {
+            assert!(hugr.get_optype(self.node).is_exit_block());
+            assert!(self.exit_edges.is_empty());
+            assert!(self.children.is_empty());
+            return Ok((Some(this_block_inputs), HashMap::new()));
+        };
+        let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> =
+            HashMap::new();
+        let mut block_preds: HashMap<N, (NodeIndex, String)> = HashMap::new();
+
+        // Compile body. (Easy - the complexity of this function is all about the branches!)
+        let this_block_outs = convert_dfg(hugr, self.node, graph, this_block_inputs)?;
+
+        // Edges from "root"
+        assert_eq!(hugr.node_outputs(self.node).count(), bb.sum_rows.len());
+        // Guppy generates only unit sum branch predicates
+        assert!(bb.sum_rows.iter().all(|row| row.is_empty()));
+        if bb.sum_rows.len() == 1 {
+            block_outputs.insert((self.node, OutgoingPort::from(0)), this_block_outs.clone());
+        } else {
+            // For now we support only two-way branches
+            assert!(bb.sum_rows.len() == 2);
+            block_preds.insert(self.node, this_block_outs[0].clone());
+            for p in hugr.node_outputs(self.node) {
+                block_outputs.insert((self.node, p), this_block_outs[1..].to_vec());
+            }
+        }
+        let mut exit_node_outs = None;
+
+        for (child_path, child) in &self.children {
+            let child_inputs =
+                child_path.build_inputs(&mut graph.graph, &block_outputs, &block_preds);
+            let (exit_block_outs, exit_edge_outs) = child.build_graph(graph, hugr, child_inputs)?;
+            if let Some(exit_block_outs) = exit_block_outs {
+                let prev = exit_node_outs.replace(exit_block_outs);
+                assert!(prev.is_none())
+            }
+            block_outputs.extend(exit_edge_outs);
+        }
+        Ok((
+            exit_node_outs,
+            self.exit_edges
+                .iter()
+                .flat_map(|(gp, _tgt)| gp.leaves())
+                .map(|np| (np, block_outputs.remove(&np).unwrap()))
+                .collect(),
+        ))
+    }
 }
 
 fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
@@ -142,11 +207,9 @@ pub(super) fn convert_cfg<H: HugrView>(
             hugr.get_optype(node)
         ));
     }
-    build_dom_tree(hugr, node);
-    Err(miette::miette!(
-        "CFG conversion not yet implemented for Hugr node {:?}",
-        node
-    ))
+    let tr = build_dom_tree(hugr, node);
+    let (outs, _) = tr.build_graph(graph, hugr, inputs)?;
+    Ok(outs.unwrap())
 }
 
 #[derive(Clone, Debug, Default)]
@@ -167,6 +230,62 @@ impl<N: HugrNode> GatingPath<N> {
         )
     }
 
+    fn build_inputs(
+        &self,
+        graph: &mut WorkflowGraph,
+        block_outputs: &HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
+        block_preds: &HashMap<N, (NodeIndex, String)>,
+    ) -> Vec<(NodeIndex, String)> {
+        match self {
+            GatingPath::Never => panic!("Cannot build inputs for GatingPath::Never"),
+            GatingPath::Always(n, p) => block_outputs.get(&(*n, *p)).unwrap().clone(),
+            GatingPath::Branch(br, opts) => {
+                assert!([1, 2].contains(&opts.len())); // guppy only produces bools
+                if let Ok(path) = opts.values().exactly_one() {
+                    return path.build_inputs(graph, block_outputs, block_preds);
+                }
+                let fal =
+                    opts.get(&0.into())
+                        .unwrap()
+                        .build_inputs(graph, block_outputs, block_preds);
+                let tr =
+                    opts.get(&1.into())
+                        .unwrap()
+                        .build_inputs(graph, block_outputs, block_preds);
+                let pred = block_preds.get(br).unwrap();
+                fal.iter()
+                    .zip_eq(&tr)
+                    .map(|(f, t)| {
+                        if f == t {
+                            t.clone()
+                        } else {
+                            // crate::builder::if_else is test-only, duplicating it here
+                            let node = graph.add_node(
+                                NodeDefinition::IfElse {},
+                                [
+                                    "pred".to_string(),
+                                    "if_true".to_string(),
+                                    "if_false".to_string(),
+                                ],
+                                ["value".to_string()],
+                            );
+                            graph
+                                .link_nodes_by_port_name(pred.0, &pred.1, node, "pred")
+                                .unwrap();
+                            graph
+                                .link_nodes_by_port_name(f.0, &f.1, node, "if_false")
+                                .unwrap();
+                            graph
+                                .link_nodes_by_port_name(t.0, &t.1, node, "if_true")
+                                .unwrap();
+                            (node, "value".into())
+                        }
+                    })
+                    .collect()
+            }
+        }
+    }
+
     fn concat(&self, other: &GatingPath<N>) -> Self {
         match self {
             GatingPath::Never => panic!("Cannot concatenate with Never"), // Or return Never?
@@ -177,6 +296,14 @@ impl<N: HugrNode> GatingPath<N> {
                     .map(|(k, v)| (*k, v.concat(other)))
                     .collect(),
             ),
+        }
+    }
+
+    fn leaves(&self) -> Vec<(N, OutgoingPort)> {
+        match self {
+            GatingPath::Never => vec![],
+            GatingPath::Always(node, port) => vec![(*node, port.clone())],
+            GatingPath::Branch(_, map) => map.values().flat_map(|v| v.leaves()).collect(),
         }
     }
 
