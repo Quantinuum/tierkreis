@@ -39,6 +39,7 @@ impl Default for SlurmWrapper {
 
 impl SlurmWrapper {
     /// Construct a Slurm wrapper using shared submission templates.
+    #[must_use]
     pub fn with_templates(templates: ScriptTemplates) -> Self {
         Self {
             templates,

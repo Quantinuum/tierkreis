@@ -15,7 +15,8 @@ use futures::{
     future::BoxFuture,
     stream::{BoxStream, FuturesUnordered},
 };
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic, miette};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::task::AbortHandle;
@@ -147,7 +148,11 @@ impl Drop for HpcExecutor {
 }
 
 impl HpcExecutor {
-    /// Create an HPC executor using shared file-backed storage.
+    /// Create an HPC executor using shared file-backed storage./
+    ///
+    /// # Errors
+    ///
+    /// If the specified storage names are not present in the registry.
     pub async fn try_new(
         registry: &AssetStorageRegistry,
         hpc_storage_name: &str,
@@ -227,11 +232,11 @@ impl HpcExecutor {
             worker_args.path().display()
         );
         // TODO: Load Resources or put spec in TaskPlan
-        let job_spec  = JobSpec {
-                name: format!("tierkreis-{}", task.workflow_run_id),
-                command,
-                walltime: "01:00:00".to_string(),
-                ..Default::default()
+        let job_spec = JobSpec {
+            name: format!("tierkreis-{}", task.workflow_run_id),
+            command,
+            walltime: "01:00:00".to_string(),
+            ..Default::default()
         };
         Ok(BackgroundTaskPlan {
             workflow_run_id: task.workflow_run_id,
@@ -251,27 +256,23 @@ impl HpcExecutor {
 }
 
 impl Executor for HpcExecutor {
+    // TODO: How to make sure this is run on the compute node?
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
-        // TODO: How to make sure this is run on the compute node?
         async move {
-            let regex = regex::Regex::new(r"tkr-.*-worker").into_diagnostic()?;
-            let paths = tokio::task::spawn_blocking(move || {
-                which_re(&regex)
+            let task = tokio::task::spawn_blocking(|| {
+                let re = Regex::new(r"tkr-.*-worker")
                     .into_diagnostic()
-                    .map(|paths| paths.collect::<Vec<_>>())
-            })
-            .await
-            .into_diagnostic()??;
-            Ok(paths
-                .into_iter()
-                .filter_map(|path| {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| WorkerSpec {
-                            worker_name: name.trim_start_matches("tkr-").replace('-', "_"),
-                        })
-                })
-                .collect())
+                    .wrap_err("Failed to compile Worker name regex")?;
+                let paths = which_re(&re)
+                    .into_diagnostic()
+                    .wrap_err("Failed to search for Worker binaries")?;
+                Ok(paths
+                    .map(|path| WorkerSpec {
+                        worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
+                    })
+                    .collect())
+            });
+            task.await.into_diagnostic()?
         }
         .boxed()
     }

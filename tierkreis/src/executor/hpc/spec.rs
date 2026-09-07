@@ -1,10 +1,6 @@
 //! HPC Scheduler related functionality.
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use futures::future::BoxFuture;
 use miette::{IntoDiagnostic, Result};
@@ -39,7 +35,7 @@ pub struct JobSpec {
     /// Explicit scheduler error path.
     pub error_path: Option<PathBuf>,
     /// Additional native scheduler options.
-    pub extra_scheduler_args: BTreeMap<String, Option<String>>,
+    pub extra_scheduler_args: HashMap<String, Option<String>>,
 }
 
 /// User-specific scheduler settings.
@@ -68,7 +64,7 @@ pub struct ContainerSpec {
     /// Optional container name.
     pub name: Option<String>,
     /// Engine-specific arguments.
-    pub extra_args: BTreeMap<String, Option<String>>,
+    pub extra_args: HashMap<String, Option<String>>,
     /// Optional environment file.
     pub env_file: Option<PathBuf>,
 }
@@ -86,9 +82,6 @@ impl Default for ScriptTemplates {
         environment
             .add_template("slurm", include_str!("slurm.j2"))
             .expect("embedded Slurm template must be valid");
-        environment
-            .add_template("pbs", include_str!("pbs.j2"))
-            .expect("embedded PBS template must be valid");
         Self {
             environment: Arc::new(environment),
         }
@@ -97,6 +90,10 @@ impl Default for ScriptTemplates {
 
 impl ScriptTemplates {
     /// Render a job submission template.
+    ///
+    /// # Errors
+    ///
+    /// If the template cannot be found or rendering fails.
     pub fn render(&self, name: &str, spec: &JobSpec) -> Result<String> {
         self.environment
             .get_template(name)
