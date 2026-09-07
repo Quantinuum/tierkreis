@@ -4,7 +4,6 @@ use std::{path::PathBuf, time::Duration};
 
 use futures::FutureExt;
 use miette::{Context, IntoDiagnostic, Result, miette};
-use tempfile::NamedTempFile;
 use tokio::{process::Command, time::sleep};
 
 use crate::executor::hpc::spec::ScriptTemplates;
@@ -49,15 +48,19 @@ impl SlurmWrapper {
 }
 
 impl SchedulerWrapper for SlurmWrapper {
-    fn submit(&self, spec: JobSpec) -> futures::future::BoxFuture<'_, Result<String>> {
+    fn submit(
+        &self,
+        spec: JobSpec,
+        script_path: &PathBuf,
+    ) -> futures::future::BoxFuture<'_, Result<String>> {
         let scheduler = self.clone();
+        let script_path = script_path.clone();
         async move {
-            let script = NamedTempFile::new().into_diagnostic()?;
-            std::fs::write(script.path(), scheduler.templates.render("slurm", &spec)?)
+            std::fs::write(&script_path, scheduler.templates.render("slurm", &spec)?)
                 .into_diagnostic()?;
             let output = Command::new(&scheduler.sbatch)
                 .args(["--parsable"])
-                .arg(script.path())
+                .arg(&script_path)
                 .output()
                 .await
                 .into_diagnostic()
@@ -75,6 +78,28 @@ impl SchedulerWrapper for SlurmWrapper {
                 .filter(|id| !id.is_empty())
                 .map(str::to_string)
                 .ok_or_else(|| miette!("sbatch returned no job id"))
+        }
+        .boxed()
+    }
+
+    fn check(&self, job_id: String) -> futures::future::BoxFuture<'_, Result<bool>> {
+        let scheduler = self.clone();
+        async move {
+            let output = Command::new(&scheduler.sacct)
+                .args(["-X", "-n", "-P", "-o", "State", "-j", &job_id])
+                .output()
+                .await
+                .into_diagnostic()
+                .wrap_err("Failed to invoke sacct")?;
+            if !output.status.success() {
+                return Err(miette!(
+                    "sacct failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            Ok(String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .any(|line| !line.trim().is_empty()))
         }
         .boxed()
     }

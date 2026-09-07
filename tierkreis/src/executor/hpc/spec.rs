@@ -151,7 +151,9 @@ impl ScriptTemplates {
 /// Scheduler operations required by the event-based executor.
 pub trait SchedulerWrapper: Send + Sync {
     /// Submit a job and return its scheduler job ID.
-    fn submit(&self, spec: JobSpec) -> BoxFuture<'_, Result<String>>;
+    fn submit(&self, spec: JobSpec, script_path: &PathBuf) -> BoxFuture<'_, Result<String>>;
+    /// Check whether a scheduler job can still be found.
+    fn check(&self, job_id: String) -> BoxFuture<'_, Result<bool>>;
     /// Wait for a submitted job to finish.
     fn wait(&self, job_id: String) -> BoxFuture<'_, Result<()>>;
     /// Request cancellation of a job.
