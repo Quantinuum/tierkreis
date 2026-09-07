@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 
@@ -34,14 +34,15 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
         let mut exit_edges = Vec::new();
         let mut loop_backedges = Vec::new();
 
-        let mut child_paths = HashMap::new();
+        let mut child_paths = HashMap::<H::Node, GatingPath<H::Node>>::new();
         // Process edges from this node (perhaps a loop header)
+        let path = hugr
+            .node_outputs(n.into())
+            .exactly_one()
+            .ok()
+            .map(|p| GatingPath::Always(n, p));
         for outport in hugr.node_outputs(n.into()) {
-            let path = if hugr.node_outputs(n.into()).skip(1).next().is_some() {
-                GatingPath::branch(n, outport)
-            } else {
-                GatingPath::Always
-            };
+            let path = path.clone().unwrap_or(GatingPath::branch(n, outport));
             // Çontrol Flow outports should have exactly one outgoing edge
             let (tgt, _) = hugr
                 .linked_inputs(n.into(), outport)
@@ -49,10 +50,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 .ok()
                 .unwrap();
             if children_by_bb.contains_key(&tgt) {
-                child_paths
-                    .entry(tgt)
-                    .or_insert(GatingPath::never(n))
-                    .union(&path);
+                child_paths.entry(tgt).or_default().union(&path);
             } else if tgt == n {
                 loop_backedges.push((path, n, outport));
             } else {
@@ -98,10 +96,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                     )
                 );
                 if children_by_bb.contains_key(dst) {
-                    child_paths
-                        .entry(*dst)
-                        .or_insert(GatingPath::never(n))
-                        .union(&path_to_exit);
+                    child_paths.entry(*dst).or_default().union(&path_to_exit);
                 } else if *dst == n {
                     loop_backedges.push((path_to_exit, *src, *idx));
                 } else {
@@ -154,24 +149,28 @@ pub(super) fn convert_cfg<H: HugrView>(
     ))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 enum GatingPath<N> {
-    Always,
+    // Contains the edge along which control flow will arrive
+    Always(N, OutgoingPort),
+    #[default]
+    Never,
+    // Invariant: HashMap always non-empty
     Branch(N, HashMap<OutgoingPort, GatingPath<N>>),
 }
 
 impl<N: HugrNode> GatingPath<N> {
-    fn never(node: N) -> Self {
-        GatingPath::Branch(node, HashMap::new())
-    }
-
     fn branch(node: N, port: OutgoingPort) -> Self {
-        GatingPath::Branch(node, HashMap::from([(port, GatingPath::Always)]))
+        GatingPath::Branch(
+            node,
+            HashMap::from([(port, GatingPath::Always(node, port))]),
+        )
     }
 
     fn concat(&self, other: &GatingPath<N>) -> Self {
         match self {
-            GatingPath::Always => other.clone(),
+            GatingPath::Never => panic!("Cannot concatenate with Never"), // Or return Never?
+            GatingPath::Always(_, _) => other.clone(),
             GatingPath::Branch(node, map) => GatingPath::Branch(
                 *node,
                 map.into_iter()
@@ -182,22 +181,27 @@ impl<N: HugrNode> GatingPath<N> {
     }
 
     fn union(&mut self, other: &GatingPath<N>) {
-        let GatingPath::Branch(n, map) = self else {
-            panic!("Union of Always with {other:?}");
-        };
-        if let GatingPath::Branch(n2, map2) = other
-            && n == n2
-        {
-            for (k, v) in map2 {
-                match map.entry(*k) {
-                    Entry::Vacant(ve) => {
-                        ve.insert(v.clone());
+        if matches!(other, GatingPath::Never) {
+            return;
+        }
+        match self {
+            GatingPath::Never => {
+                *self = other.clone();
+            }
+            GatingPath::Always(_, _) => {
+                panic!("Union of Always with {other:?}");
+            }
+            GatingPath::Branch(n, map) => {
+                if let GatingPath::Branch(n2, map2) = other
+                    && n == n2
+                {
+                    for (k, v) in map2 {
+                        map.entry(*k).or_default().union(v)
                     }
-                    Entry::Occupied(mut e) => e.get_mut().union(v),
+                } else {
+                    panic!("Cannot union Branch({n:?}) with {other:?}");
                 }
             }
-        } else {
-            panic!("Cannot union Branch({n:?}) with {other:?}");
         }
     }
 }
