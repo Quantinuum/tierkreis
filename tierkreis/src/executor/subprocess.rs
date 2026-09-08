@@ -485,7 +485,7 @@ fn spawn_worker(
 
     command
         .arg(worker_args_path)
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
     let child = command
