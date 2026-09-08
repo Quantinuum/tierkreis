@@ -411,6 +411,39 @@ impl WorkflowGraph {
             port_filter,
         )
     }
+
+    #[allow(unused)]
+    pub(crate) fn print(&self, indent: &str) -> miette::Result<()> {
+        use petgraph::visit as pv;
+        use pv::Walker;
+        let topo = pv::Topo::new(&self.graph);
+        for n in topo.iter(&self.graph) {
+            let (node_def, wg) = match self.node_definition(n).unwrap() {
+                o @ NodeDefinition::Const { value } => {
+                    match serde_json::from_value::<WorkflowGraph>(value.clone()) {
+                        Ok(subgraph) => ("Graph Const".to_string(), Some(subgraph)),
+                        Err(_) => (format!("{o:?}"), None),
+                    }
+                }
+                o => (format!("{o:?}"), None),
+            };
+            println!("{indent}Node {n:?} is {node_def}");
+            if let Some(wg) = wg {
+                wg.print(&format!("{indent}  "))?;
+            }
+            for (tgt, src) in self.input_links(n) {
+                println!(
+                    "{indent}  Incoming edge: {:?}:{} -> {:?}:{}",
+                    self.port_node(src)?,
+                    self.get_port_name(src.port())?,
+                    self.port_node(tgt)?,
+                    self.get_port_name(tgt.port())?
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 type ValueRef = (i32, String);
