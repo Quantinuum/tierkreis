@@ -456,6 +456,28 @@ pub async fn send_error(
         .wrap_err("Failed to send node error event")
 }
 
+/// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Errored`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_workflow_run_errored(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::Errored {},
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send workflow errored event")
+}
+
 /// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Completed`].
 ///
 /// # Errors
@@ -499,6 +521,7 @@ pub async fn send_workflow_run_queued(
         .into_diagnostic()
         .wrap_err("Failed to send workflow queued event")
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
