@@ -60,6 +60,38 @@ def test_doubler_indirect(validate):
 
     write_hugrs(main, "doubler_indirect")
 
+def test_simple_if(validate):
+    @guppy
+    def simple_if(x: int) -> int:
+        if x > 10:
+            return x
+        else:
+            return x * 2
+
+    write_hugrs(simple_if, "simple_if")
+
+
+def test_shortcircuit_if(validate):
+    @guppy
+    def shortcircuit_if(x: int) -> int:
+        if x > 10 and x < 20:
+            return x
+        else:
+            return x * 2
+
+    write_hugrs(shortcircuit_if, "shortcircuit_if")
+
+def test_multi_if(validate):
+    @guppy
+    def multi_if(x: int) -> int:
+        if x > 10:
+            return x
+        elif x > 5:
+            return x * 2
+        else:
+            return x * 3
+
+    write_hugrs(multi_if, "multi_if")
 
 def test_map(validate):
     enable_experimental_features()
@@ -110,5 +142,9 @@ if __name__ == "__main__":
         pass
     test_doubler(validate)
     test_doubler_indirect(validate)
+    test_simple_if(validate)
+    test_shortcircuit_if(validate)
+    test_multi_if(validate)
     test_map(validate)
     test_loop(validate)
+    
