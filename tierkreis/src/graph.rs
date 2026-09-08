@@ -1,7 +1,7 @@
 /*!
 This module defines the Workflow graph representation.
 */
-mod hugr;
+pub(crate) mod hugr;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
