@@ -516,11 +516,7 @@ async fn executor_registry_from_config(
             } => {
                 let scheduler: Arc<dyn crate::executor::SchedulerWrapper> = match scheduler {
                     HpcSchedulerConfig::Slurm => {
-                        let mut scheduler = SlurmWrapper::with_templates(templates.clone());
-                        if let Some(seconds) = poll_interval_secs {
-                            scheduler.poll_interval = std::time::Duration::from_secs(*seconds);
-                        }
-                        Arc::new(scheduler)
+                        Arc::new(SlurmWrapper::with_templates(templates.clone()))
                     }
                 };
                 executor_registry.insert(
@@ -532,6 +528,7 @@ async fn executor_registry_from_config(
                             output_storage_name,
                             scheduler,
                             resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
                         )
                         .await?,
                     ),

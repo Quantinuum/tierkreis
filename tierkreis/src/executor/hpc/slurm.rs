@@ -2,12 +2,41 @@
 
 use futures::FutureExt;
 use miette::{Context, IntoDiagnostic, Result, miette};
-use std::{path::Path, path::PathBuf, time::Duration};
-use tokio::{process::Command, time::sleep};
+use std::{collections::HashMap, path::Path, path::PathBuf};
+use tokio::process::Command;
 
-use crate::executor::hpc::spec::ScriptTemplates;
+use crate::executor::hpc::spec::{SchedulerStatus, ScriptTemplates};
 
 use super::{JobSpec, SchedulerWrapper};
+
+fn parse_job_statuses(output: &[u8]) -> HashMap<String, SchedulerStatus> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let mut fields = line.split('|');
+            let job_id = fields.next()?.trim();
+            let state = fields.next()?.split(['+', ' ']).next().unwrap_or_default();
+            let code = fields
+                .next()
+                .unwrap_or_default()
+                .split(':')
+                .next()
+                .unwrap_or("1");
+            let status = match state {
+                "PENDING" | "CONFIGURING" | "REQUEUED" | "REQUEUE_FED" | "REQUEUE_HOLD"
+                | "RESIZING" => SchedulerStatus::Queued,
+                "RUNNING" | "COMPLETING" | "STAGE_OUT" | "SUSPENDED" => SchedulerStatus::Running,
+                "COMPLETED" if code == "0" => SchedulerStatus::Complete,
+                "CANCELLED" => SchedulerStatus::Cancelled,
+                _ => SchedulerStatus::Error {
+                    message: format!("Slurm job {job_id} failed: state={state}, exit_code={code}"),
+                },
+            };
+            Some((job_id.to_string(), status))
+        })
+        .collect()
+}
 
 /// Slurm scheduler using `sbatch`, `sacct`, and `scancel`.
 #[derive(Clone, Debug)]
@@ -18,8 +47,6 @@ pub struct SlurmWrapper {
     pub sacct: PathBuf,
     /// Cancellation command.
     pub scancel: PathBuf,
-    /// Delay between accounting queries.
-    pub poll_interval: Duration,
     templates: ScriptTemplates,
 }
 
@@ -29,7 +56,6 @@ impl Default for SlurmWrapper {
             sbatch: "sbatch".into(),
             sacct: "sacct".into(),
             scancel: "scancel".into(),
-            poll_interval: Duration::from_secs(1),
             templates: ScriptTemplates::default(),
         }
     }
@@ -94,11 +120,26 @@ impl SchedulerWrapper for SlurmWrapper {
         .boxed()
     }
 
-    fn check(&self, job_id: String) -> futures::future::BoxFuture<'_, Result<bool>> {
+    fn check(
+        &self,
+        job_ids: Vec<String>,
+    ) -> futures::future::BoxFuture<'_, Result<HashMap<String, SchedulerStatus>>> {
         let scheduler = self.clone();
         async move {
+            if job_ids.is_empty() {
+                return Ok(HashMap::new());
+            }
+            let job_ids = job_ids.join(",");
             let output = Command::new(&scheduler.sacct)
-                .args(["-X", "-n", "-P", "-o", "State", "-j", &job_id])
+                .args([
+                    "-X",
+                    "-n",
+                    "-P",
+                    "-o",
+                    "JobIDRaw,State,ExitCode",
+                    "-j",
+                    &job_ids,
+                ])
                 .output()
                 .await
                 .into_diagnostic()
@@ -109,65 +150,7 @@ impl SchedulerWrapper for SlurmWrapper {
                     String::from_utf8_lossy(&output.stderr)
                 ));
             }
-            Ok(String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .any(|line| !line.trim().is_empty()))
-        }
-        .boxed()
-    }
-
-    fn wait(&self, job_id: String) -> futures::future::BoxFuture<'_, Result<()>> {
-        let scheduler = self.clone();
-        async move {
-            loop {
-                let output = Command::new(&scheduler.sacct)
-                    .args(["-X", "-n", "-P", "-o", "State,ExitCode", "-j", &job_id])
-                    .output()
-                    .await
-                    .into_diagnostic()
-                    .wrap_err("Failed to invoke sacct")?;
-                if !output.status.success() {
-                    return Err(miette!(
-                        "sacct failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    ));
-                }
-                if let Some(line) = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .find(|line| !line.trim().is_empty())
-                {
-                    let mut fields = line.split('|');
-                    let state = fields
-                        .next()
-                        .unwrap_or_default()
-                        .split('+')
-                        .next()
-                        .unwrap_or_default();
-                    let code = fields
-                        .next()
-                        .unwrap_or_default()
-                        .split(':')
-                        .next()
-                        .unwrap_or("1");
-                    if matches!(
-                        state,
-                        "COMPLETED"
-                            | "FAILED"
-                            | "CANCELLED"
-                            | "TIMEOUT"
-                            | "OUT_OF_MEMORY"
-                            | "NODE_FAIL"
-                    ) {
-                        if state == "COMPLETED" && code == "0" {
-                            return Ok(());
-                        }
-                        return Err(miette!(
-                            "Slurm job {job_id} failed: state={state}, exit_code={code}"
-                        ));
-                    }
-                }
-                sleep(scheduler.poll_interval).await;
-            }
+            Ok(parse_job_statuses(&output.stdout))
         }
         .boxed()
     }
@@ -186,5 +169,28 @@ impl SchedulerWrapper for SlurmWrapper {
                 .ok_or_else(|| miette!("scancel failed: {status}"))
         }
         .boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_slurm_job_statuses() {
+        let statuses = parse_job_statuses(
+            b"1|PENDING|0:0|\n2|RUNNING|0:0|\n3|COMPLETED|0:0|\n4|CANCELLED by 42|0:15|\n5|TIMEOUT|1:0|\n",
+        );
+
+        assert_eq!(statuses.get("1"), Some(&SchedulerStatus::Queued));
+        assert_eq!(statuses.get("2"), Some(&SchedulerStatus::Running));
+        assert_eq!(statuses.get("3"), Some(&SchedulerStatus::Complete));
+        assert_eq!(statuses.get("4"), Some(&SchedulerStatus::Cancelled));
+        assert_eq!(
+            statuses.get("5"),
+            Some(&SchedulerStatus::Error {
+                message: "Slurm job 5 failed: state=TIMEOUT, exit_code=1".to_string(),
+            })
+        );
     }
 }

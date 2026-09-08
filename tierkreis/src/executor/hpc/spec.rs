@@ -158,14 +158,35 @@ impl ScriptTemplates {
     }
 }
 
+/// Scheduler-independent state of a submitted job.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SchedulerStatus {
+    /// The job is waiting for resources.
+    Queued,
+    /// The job is executing.
+    Running,
+    /// The job completed successfully.
+    Complete,
+    /// The job was cancelled.
+    Cancelled,
+    /// The job failed.
+    Error {
+        /// Scheduler-provided failure details.
+        message: String,
+    },
+}
+
 /// Scheduler operations required by the event-based executor.
 pub trait SchedulerWrapper: Send + Sync {
     /// Submit a job and return its scheduler job ID.
     fn submit(&self, spec: JobSpec, script_path: &Path) -> BoxFuture<'_, Result<String>>;
-    /// Check whether a scheduler job can still be found.
-    fn check(&self, job_id: String) -> BoxFuture<'_, Result<bool>>;
-    /// Wait for a submitted job to finish.
-    fn wait(&self, job_id: String) -> BoxFuture<'_, Result<()>>;
+    /// Check the current states of submitted jobs.
+    ///
+    /// Jobs that cannot be found are omitted from the returned map.
+    fn check(
+        &self,
+        job_ids: Vec<String>,
+    ) -> BoxFuture<'_, Result<HashMap<String, SchedulerStatus>>>;
     /// Request cancellation of a job.
     fn cancel(&self, job_id: String) -> BoxFuture<'_, Result<()>>;
 }

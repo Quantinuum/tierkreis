@@ -4,19 +4,18 @@ pub mod slurm;
 pub mod spec;
 
 use std::{
-    collections::{HashMap, HashSet}, env::home_dir, path::{Path, PathBuf}, sync::{Arc, Mutex},
+    collections::{HashMap, HashSet},
+    env::home_dir,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use futures::{
-    FutureExt, SinkExt, StreamExt,
-    channel::mpsc,
-    future::BoxFuture,
-    stream::{BoxStream, FuturesUnordered},
-};
+use futures::{FutureExt, SinkExt, StreamExt, channel::mpsc, future::BoxFuture, stream::BoxStream};
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use tokio::task::AbortHandle;
+use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use tracing::{instrument, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
@@ -24,9 +23,12 @@ use which::which_re;
 
 use crate::{
     asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets},
-    event::{EventReceiver, EventSender, RuntimeEvent, send_complete, send_error, send_queued},
+    event::{
+        EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
+        send_queued, send_running,
+    },
     executor::{
-        hpc::spec::{HPCResourceSpec, JobSpec, SchedulerWrapper},
+        hpc::spec::{HPCResourceSpec, JobSpec, SchedulerStatus, SchedulerWrapper},
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     },
     location::Location,
@@ -71,15 +73,17 @@ struct BackgroundTask {
 }
 
 enum InternalJobMonitoringStatus {
-    Watching { job_id: String },
+    Watching {
+        job_id: String,
+        task: BackgroundTask,
+        status: Option<SchedulerStatus>,
+    },
     Cancelling,
 }
 
 type Key = (Uuid, u32, Location);
 type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
-type CancelSender = mpsc::Sender<Key>;
 type CancelReceiver = mpsc::Receiver<Key>;
-type RunningFutures = FuturesUnordered<BoxFuture<'static, (BackgroundTask, miette::Result<()>)>>;
 type JobHandles = HashMap<Key, InternalJobMonitoringStatus>;
 type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
 
@@ -96,9 +100,9 @@ async fn process_cancelled_task(
     let handle = job_handles.remove(&key);
     match handle {
         // We know the job id, cancel the job.
-        Some(InternalJobMonitoringStatus::Watching { job_id }) => {
+        Some(InternalJobMonitoringStatus::Watching { job_id, .. }) => {
             tracing::info!("Cancelling job for node: {key:?}");
-            scheduler.cancel(job_id).await?;
+            scheduler.cancel(job_id.clone()).await?;
         }
         // We are already planning to cancel the job if we see this node.
         Some(InternalJobMonitoringStatus::Cancelling) => {}
@@ -117,7 +121,7 @@ async fn process_finished_task(
     job_handles: &mut JobHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
-    result: miette::Result<()>,
+    status: SchedulerStatus,
 ) -> miette::Result<()> {
     let loc = background_task.loc;
     let outputs = background_task.outputs;
@@ -127,9 +131,8 @@ async fn process_finished_task(
 
     job_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
-    // TODO this could have the same states we monitor in the scheduler not a plain result
-    match result {
-        Ok(()) => {
+    match status {
+        SchedulerStatus::Complete => {
             let outputs =
                 transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
             match outputs {
@@ -148,9 +151,20 @@ async fn process_finished_task(
                 }
             }
         }
-        Err(error) => {
-            send_error(event_sender, workflow_run_id, attempt, loc, &error).await?;
+        SchedulerStatus::Cancelled => {
+            send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
         }
+        SchedulerStatus::Error { message } => {
+            send_error(
+                event_sender,
+                workflow_run_id,
+                attempt,
+                loc,
+                &miette!(message),
+            )
+            .await?;
+        }
+        SchedulerStatus::Queued | SchedulerStatus::Running => unreachable!(),
     }
 
     Ok(())
@@ -160,9 +174,7 @@ async fn process_finished_task(
 async fn monitor_task(
     scheduler: Arc<dyn SchedulerWrapper>,
     event_sender: &EventSender,
-    cancel_sender: &mut CancelSender,
     job_handles: &mut JobHandles,
-    running: &mut RunningFutures,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
     let BackgroundTaskPlan {
@@ -185,46 +197,113 @@ async fn monitor_task(
     .await?;
 
     let key = (workflow_run_id, attempt, loc.clone());
-    // If we are meant to cancel this job, signal this to the cancellation routine.
-    if let Some(InternalJobMonitoringStatus::Cancelling) = job_handles.get(&key) {
-        cancel_sender.send(key.clone()).await.into_diagnostic()?;
-    }
+    let should_cancel = matches!(
+        job_handles.get(&key),
+        Some(InternalJobMonitoringStatus::Cancelling)
+    );
     job_handles.insert(
         key,
         InternalJobMonitoringStatus::Watching {
             job_id: job_id.clone(),
+            task: BackgroundTask {
+                workflow_run_id,
+                attempt,
+                loc,
+                outputs,
+                output_storage_name,
+                _worker_args: worker_args,
+            },
+            status: None,
         },
     );
-    running.push(
-        async move {
-            let result = scheduler.wait(job_id).await;
-            (
-                BackgroundTask {
-                    workflow_run_id,
-                    attempt,
-                    loc,
-                    outputs,
-                    output_storage_name,
-                    _worker_args: worker_args,
-                },
-                result,
-            )
+    if should_cancel {
+        scheduler.cancel(job_id).await?;
+    }
+    Ok(())
+}
+
+async fn check_jobs(
+    scheduler: &Arc<dyn SchedulerWrapper>,
+    event_sender: &mut EventSender,
+    job_handles: &mut JobHandles,
+    asset_storage_registry: &AssetStorageRegistry,
+) -> miette::Result<()> {
+    let jobs: Vec<_> = job_handles
+        .iter()
+        .filter_map(|(key, status)| match status {
+            InternalJobMonitoringStatus::Watching { job_id, .. } => {
+                Some((key.clone(), job_id.clone()))
+            }
+            InternalJobMonitoringStatus::Cancelling => None,
+        })
+        .collect();
+    if jobs.is_empty() {
+        return Ok(());
+    }
+
+    let statuses = scheduler
+        .check(jobs.iter().map(|(_, job_id)| job_id.clone()).collect())
+        .await?;
+    for (key, job_id) in jobs {
+        let Some(status) = statuses.get(&job_id).cloned() else {
+            continue;
+        };
+        match status {
+            SchedulerStatus::Queued | SchedulerStatus::Running => {
+                let InternalJobMonitoringStatus::Watching {
+                    task,
+                    status: previous_status,
+                    ..
+                } = job_handles.get_mut(&key).expect("job handle must exist")
+                else {
+                    continue;
+                };
+                if status == SchedulerStatus::Running
+                    && previous_status.as_ref() != Some(&SchedulerStatus::Running)
+                {
+                    send_running(
+                        event_sender,
+                        task.workflow_run_id,
+                        task.attempt,
+                        task.loc.clone(),
+                    )
+                    .await?;
+                }
+                *previous_status = Some(status);
+            }
+            SchedulerStatus::Complete
+            | SchedulerStatus::Cancelled
+            | SchedulerStatus::Error { .. } => {
+                let Some(InternalJobMonitoringStatus::Watching { task, .. }) =
+                    job_handles.remove(&key)
+                else {
+                    continue;
+                };
+                process_finished_task(
+                    event_sender,
+                    job_handles,
+                    asset_storage_registry,
+                    task,
+                    status,
+                )
+                .await?;
+            }
         }
-        .boxed(),
-    );
+    }
     Ok(())
 }
 
 async fn process_tasks(
     scheduler: Arc<dyn SchedulerWrapper>,
     mut task_receiver: TaskReceiver,
-    mut cancel_sender: CancelSender,
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
+    poll_interval: Duration,
 ) {
     let mut job_handles: JobHandles = HashMap::new();
-    let mut running: RunningFutures = FuturesUnordered::new();
+    let mut monitor_interval = tokio::time::interval(poll_interval);
+    monitor_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -234,16 +313,14 @@ async fn process_tasks(
                     .await
                     .expect("Failed to cancel task");
             }
-            // A task has completed
-            Some((task, result)) = running.next() => {
-                if let Err(error) = process_finished_task(
+            _ = monitor_interval.tick() => {
+                if let Err(error) = check_jobs(
+                    &scheduler,
                     &mut event_sender,
                     &mut job_handles,
                     &asset_storage_registry,
-                    task,
-                    result,
                 ).await {
-                    tracing::error!("Failed to process finished task: {error:?}");
+                    tracing::error!("Failed to check HPC jobs: {error:?}");
                 }
             }
             // A task has been submitted
@@ -254,9 +331,7 @@ async fn process_tasks(
                 if let Err(error) = monitor_task(
                     scheduler.clone(),
                     &event_sender,
-                    &mut cancel_sender,
                     &mut job_handles,
-                    &mut running,
                     task,
                 ).await {
                     send_error(&mut event_sender, workflow_run_id, attempt, loc, &error)
@@ -303,6 +378,7 @@ impl HPCExecutor {
         output_storage_name: &str,
         scheduler: Arc<dyn SchedulerWrapper>,
         max_resources: HPCResourceSpec,
+        poll_interval: Duration,
     ) -> miette::Result<Self> {
         let storage = asset_storage_registry.read().await;
         if !storage.contains_key(hpc_storage_name) {
@@ -314,7 +390,14 @@ impl HPCExecutor {
         let tierkreis_dir = home_dir()
             .unwrap_or_else(|| "/tmp".into())
             .join(".tierkreis/tmp");
-        std::fs::create_dir_all(&tierkreis_dir).unwrap_or_else(|_| panic!("Failed to create tierkreis tmp dir at {:?}", tierkreis_dir));
+        std::fs::create_dir_all(&tierkreis_dir)
+            .into_diagnostic()
+            .wrap_err_with(|| {
+                format!(
+                    "Failed to create Tierkreis temporary directory at {}",
+                    tierkreis_dir.display()
+                )
+            })?;
 
         drop(storage);
         let (task_sender, task_receiver) = mpsc::channel(64);
@@ -323,10 +406,10 @@ impl HPCExecutor {
         let background = tokio::spawn(process_tasks(
             scheduler.clone(),
             task_receiver,
-            cancel_sender.clone(),
             cancel_receiver,
             event_sender,
             Arc::clone(asset_storage_registry),
+            poll_interval,
         ));
         Ok(Self {
             scheduler,
@@ -365,10 +448,7 @@ impl HPCExecutor {
             .collect()
     }
 
-    async fn build_outputs(
-        &self,
-        outputs: HashSet<String>,
-    ) -> miette::Result<OutputSpecs> {
+    async fn build_outputs(&self, outputs: HashSet<String>) -> miette::Result<OutputSpecs> {
         let output_specs = reserve_asset_specs(
             &self.asset_storage_registry,
             &self.hpc_storage_name,
@@ -402,8 +482,8 @@ impl HPCExecutor {
             function_name: task.task_name.clone(),
             inputs: input_paths,
             outputs: output_paths,
-            done_path: self.tkr_tmp_dir.join("_done").to_path_buf(),
-            error_path: self.tkr_tmp_dir.join("_error").to_path_buf(),
+            done_path: self.tkr_tmp_dir.join("_done").clone(),
+            error_path: self.tkr_tmp_dir.join("_error").clone(),
             ..Default::default()
         })
     }
@@ -444,8 +524,17 @@ impl HPCExecutor {
     }
 
     async fn is_job_active(&self, job_id: String) -> miette::Result<String> {
-        self.scheduler.check(job_id.clone()).await?;
-        Ok(job_id)
+        match self
+            .scheduler
+            .check(vec![job_id.clone()])
+            .await?
+            .get(&job_id)
+        {
+            Some(
+                SchedulerStatus::Queued | SchedulerStatus::Complete | SchedulerStatus::Running,
+            ) => Ok(job_id),
+            _ => Err(miette!("Job not active")),
+        }
     }
 }
 
@@ -479,11 +568,8 @@ impl Executor for HPCExecutor {
                 let tmp_paths = self.reserve_tmp_paths(2)?;
                 let worker_args_path = &tmp_paths[0];
                 let script_path = &tmp_paths[1];
-                let (outputs, output_paths) = self
-                    .build_outputs(task_plan.outputs.clone())
-                    .await?;
-                let worker_args_file =
-                    std::fs::File::create(worker_args_path).into_diagnostic()?;
+                let (outputs, output_paths) = self.build_outputs(task_plan.outputs.clone()).await?;
+                let worker_args_file = std::fs::File::create(worker_args_path).into_diagnostic()?;
 
                 // If we were given a handle to a previously submitted  job
                 // and it's still active, reattach to it instead of resubmitting.
@@ -608,6 +694,7 @@ mod tests {
             "checkpoints",
             Arc::new(scheduler),
             resources,
+            Duration::from_secs(1),
         )
         .await?
         .with_worker_command("mpiexec --allow-run-as-root uv run /mpi_worker/main.py");
@@ -616,9 +703,9 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(2).collect::<Vec<_>>().await;
+        let events = stream.take(3).collect::<Vec<_>>().await;
         dbg!(&events);
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 3);
         assert!(matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
@@ -629,10 +716,20 @@ mod tests {
                 ..
             }
         ));
+        assert!(matches!(
+            events[1],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Running { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
         assert_registry_contains_values(
             &registry,
             "checkpoints",
-            &events[1].clone().outputs()[0],
+            &events[2].clone().outputs()[0],
             json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
         ).await;
 
