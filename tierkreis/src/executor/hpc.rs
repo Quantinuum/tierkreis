@@ -563,6 +563,7 @@ mod tests {
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
+    #[ignore = "Requires a local SLURM setup"]
     async fn execute_hpc() -> miette::Result<()> {
         // TODO: overwrite test_storage_registry in a way that the file system is the checkpoints dir
         let checkpoints_path = std::env::var_os("HOME")
