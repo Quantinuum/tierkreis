@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle,
-    graph::WorkflowGraph, location::Location, state::queries::WorkflowRunSummary,
+    graph::WorkflowGraph, location::Location,
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
@@ -29,6 +29,32 @@ use crate::{
 pub struct RuntimeWatchState {
     /// The set of runs currently being executed by the runtime.
     pub active_runs: HashSet<(Uuid, u32)>,
+}
+
+/// [`WorkflowRunStateSummary`] is a struct that stores the overall state of the
+/// workflow as a summary.
+#[derive(Debug, Clone)]
+pub struct WorkflowRunStateSummary {
+    /// The run identifier.
+    pub run_id: uuid::Uuid,
+    /// The attempt number.
+    pub attempt: u32,
+    /// The workflow graph identifier.
+    pub workflow_id: uuid::Uuid,
+    /// The name of the workflow.
+    pub name: Option<String>,
+    /// The time that the workflow started.
+    pub started_time: Option<chrono::DateTime<Utc>>,
+    /// The time that the workflow was queued.
+    pub queued_time: Option<chrono::DateTime<Utc>>,
+    /// The time that the workflow completed.
+    pub complete_time: Option<chrono::DateTime<Utc>>,
+    /// The time that the workflow was cancelled.
+    pub cancelled_time: Option<chrono::DateTime<Utc>>,
+    /// The time that the workflow errored.
+    pub error_time: Option<chrono::DateTime<Utc>>,
+    /// Locations of nodes that have errored in this run.
+    pub errored_locations: Vec<Location>,
 }
 
 /// [`NodeState`] is a struct that stores the possible state that a node
@@ -112,8 +138,9 @@ pub trait RuntimeState: Debug + Send + Sync {
     fn listen(&self) -> watch::Receiver<RuntimeWatchState>;
 
     /// List summaries of all workflow runs in the runtime state.
-    fn list_workflow_run_summaries(&self)
-    -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>>;
+    fn list_workflow_run_summaries(
+        &self,
+    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
@@ -124,6 +151,8 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn run_id(&self) -> Uuid;
     /// Retrieve the `attempt` associated with this `WorkflowRunState`.
     fn attempt(&self) -> u32;
+    /// Retrieve the `WorkflowRunStateSummary` at the current point in time for this `WorkflowRunState`.
+    fn summary(&self) -> BoxFuture<'_, miette::Result<WorkflowRunStateSummary>>;
     /// Retrieve the workflow inputs associated with this `WorkflowRunState`.
     fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>>;
     /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].

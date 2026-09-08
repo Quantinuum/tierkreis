@@ -36,7 +36,7 @@ def graph_of_graph(
 
 
 class ApplyTwiceInput(NamedTuple):
-    graph: TKR[Workflow[TKR[int], TKR[int]]]
+    apply: TKR[Workflow[TKR[int], TKR[int]]]
     value: TKR[int]
 
 
@@ -47,7 +47,7 @@ def apply_twice() -> Workflow[ApplyTwiceInput, TKR[int]]:
     That is, `f` and `x` are inputs to the graph, not the worker function building it.
     """
     g = Graph(ApplyTwiceInput, TKR[int])
-    f = TypedGraphRef(g.inputs.graph, TKR[int])
+    f = TypedGraphRef(g.inputs.apply, TKR[int])
     run_once = g.eval(f, g.inputs.value)
     run_twice = g.eval(f, run_once)
     return g.finish_with_outputs(run_twice)

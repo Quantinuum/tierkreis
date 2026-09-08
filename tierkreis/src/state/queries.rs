@@ -20,6 +20,7 @@ use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
+use crate::state::interface::WorkflowRunStateSummary;
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
     UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
@@ -730,25 +731,6 @@ pub async fn read_run_attempt_metadata(
     Ok(metadata)
 }
 
-/// A summarized view of a workflow run for display in the visualizer.
-#[derive(Debug, Clone)]
-pub struct WorkflowRunSummary {
-    /// The run identifier.
-    pub run_id: uuid::Uuid,
-    /// The attempt number.
-    pub attempt: u32,
-    /// The workflow graph identifier.
-    pub workflow_id: uuid::Uuid,
-    /// An optional human-readable name taken from the workflow definition.
-    pub name: Option<String>,
-    /// The time the run was started, if available.
-    pub started_time: Option<chrono::DateTime<chrono::Utc>>,
-    /// The terminal status string stored in the run row.
-    pub status: Option<String>,
-    /// Locations of nodes that have errored in this run.
-    pub errored_locations: Vec<Location>,
-}
-
 /// List all workflow runs with summary information for display in the visualizer.
 ///
 /// # Errors
@@ -756,7 +738,7 @@ pub struct WorkflowRunSummary {
 /// Returns an error when the connection pool cannot be accessed or the queries fail.
 pub async fn list_workflow_run_summaries(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
-) -> miette::Result<Vec<WorkflowRunSummary>> {
+) -> miette::Result<Vec<WorkflowRunStateSummary>> {
     use crate::state::schema::node_states::dsl as ns;
     use crate::state::schema::workflow_run_attempts::dsl as wra;
     use crate::state::schema::workflow_runs::dsl as wr;
@@ -802,26 +784,88 @@ pub async fn list_workflow_run_summaries(
             .into_diagnostic()
             .wrap_err_with(|| miette!("Failed to list errored nodes for run {}", run.id))?;
 
-        summaries.push(WorkflowRunSummary {
+        summaries.push(WorkflowRunStateSummary {
             run_id,
             attempt,
             workflow_id,
             name: workflow_name,
             started_time: run_attempt.started_time.map(utc_timestamp),
-            status: [
-                (run_attempt.complete_time.is_some(), "Completed"),
-                (run_attempt.cancelled_time.is_some(), "Cancelled"),
-                (run_attempt.error_time.is_some(), "Errored"),
-                (run_attempt.started_time.is_some(), "Started"),
-                (run_attempt.queued_time.is_some(), "Queued"),
-            ]
-            .into_iter()
-            .find_map(|(present, status)| present.then(|| status.to_owned())),
+            queued_time: run_attempt.queued_time.map(utc_timestamp),
+            complete_time: run_attempt.complete_time.map(utc_timestamp),
+            cancelled_time: run_attempt.cancelled_time.map(utc_timestamp),
+            error_time: run_attempt.error_time.map(utc_timestamp),
             errored_locations,
         });
     }
 
     Ok(summaries)
+}
+
+/// Retrieve the `WorkflowRunStateSummary` for a particular workflow run attempt.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the queries fail.
+pub async fn get_workflow_run_summary(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+) -> miette::Result<WorkflowRunStateSummary> {
+    use crate::state::schema::node_states::dsl as ns;
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+    use crate::state::schema::workflow_runs::dsl as wr;
+    use crate::state::schema::workflows::dsl as wf;
+
+    let attempt_i32 = i32::try_from(attempt)
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+
+    let run_id_str = run_id.to_string();
+
+    let (run, run_attempt, name): (WorkflowRun, WorkflowRunAttempt, Option<String>) =
+        wr::workflow_runs
+            .inner_join(wra::workflow_run_attempts)
+            .left_join(wf::workflows)
+            .select((
+                WorkflowRun::as_select(),
+                WorkflowRunAttempt::as_select(),
+                wf::name.nullable(),
+            ))
+            .filter(wr::id.eq(&run_id_str))
+            .filter(wra::attempt.eq(attempt_i32))
+            .get_result(conn)
+            .await
+            .into_diagnostic()
+            .wrap_err("Failed to list workflow runs")?;
+
+    let workflow_id: uuid::Uuid = run
+        .workflow_id
+        .parse()
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Invalid workflow UUID: {}", run.workflow_id))?;
+
+    let errored_locations: Vec<Location> = ns::node_states
+        .select(ns::node_location)
+        .filter(ns::run_id.eq(&run_id_str))
+        .filter(ns::attempt.eq(attempt_i32))
+        .filter(ns::error_time.is_not_null())
+        .get_results(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Failed to list errored nodes for run {}", run.id))?;
+
+    Ok(WorkflowRunStateSummary {
+        run_id,
+        attempt,
+        workflow_id,
+        name,
+        started_time: run_attempt.started_time.map(utc_timestamp),
+        queued_time: run_attempt.queued_time.map(utc_timestamp),
+        complete_time: run_attempt.complete_time.map(utc_timestamp),
+        cancelled_time: run_attempt.cancelled_time.map(utc_timestamp),
+        error_time: run_attempt.error_time.map(utc_timestamp),
+        errored_locations,
+    })
 }
 
 /// List all workflow run attempts that have not yet reached a terminal state.

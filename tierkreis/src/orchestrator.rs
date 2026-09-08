@@ -31,7 +31,7 @@ use crate::{
     event::{
         EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
-        send_workflow_run_complete,
+        send_workflow_run_complete, send_workflow_run_errored,
     },
     executor::{
         ExecutorRegistry,
@@ -98,6 +98,8 @@ pub enum ActionKind {
         /// The output values for the node.
         outputs: HashMap<String, AssetSpec>,
     },
+    /// Mark the overall workflow as errored.
+    WorkflowErrored {},
     /// Mark the overall workflow as complete.
     WorkflowFinished {},
 }
@@ -110,6 +112,7 @@ struct ActionPlan {
     mapping: Vec<(Location, usize)>,
     map_elem_complete: HashMap<Location, BitVec<u8>>,
     node_complete: Vec<(Location, HashMap<String, AssetSpec>)>,
+    workflow_error: bool,
     workflow_complete: bool,
 }
 
@@ -242,6 +245,18 @@ impl Orchestrator {
             )
             .collect()
         };
+        // Abort if the workflow is deadlocked.
+        if ready_nodes.is_empty()
+            && node_states
+                .iter()
+                .any(|node_state| node_state.1.error_time.is_some())
+        {
+            return Ok(stream::once(future::ok(Action {
+                loc: context.parent_loc,
+                kind: ActionKind::WorkflowErrored {},
+            }))
+            .boxed());
+        }
         // Mark all ready nodes as scheduled.
         // Self::mark_nodes_scheduled(&context, ready_nodes.iter()).await?;
         context
@@ -1130,6 +1145,9 @@ impl Orchestrator {
                 ActionKind::SetComplete { outputs } => {
                     plan.node_complete.push((loc, outputs));
                 }
+                ActionKind::WorkflowErrored {} => {
+                    plan.workflow_error = true;
+                }
                 ActionKind::WorkflowFinished {} => {
                     plan.workflow_complete = true;
                 }
@@ -1164,6 +1182,9 @@ impl Orchestrator {
             .await
             .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
 
+        if plan.workflow_error {
+            send_workflow_run_errored(&mut event_sender, workflow_run_id, attempt).await?;
+        }
         if plan.workflow_complete {
             send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
         }
