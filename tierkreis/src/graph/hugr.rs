@@ -102,7 +102,7 @@ fn convert_dataflow_op<H: HugrView>(
             let ins = ins
                 .map(|(p, _)| {
                     if p.index() == 0 {
-                        "func".to_string()
+                        "graph".to_string()
                     } else {
                         format!("in{}", p.index() - 1)
                     }
@@ -133,12 +133,12 @@ fn convert_dataflow_op<H: HugrView>(
                 .collect::<Vec<_>>();
             let ni = graph.graph.add_node(
                 NodeDefinition::Eval {},
-                Some("func".to_string()).into_iter().chain(args_in.clone()),
+                Some("graph".to_string()).into_iter().chain(args_in.clone()),
                 outs.clone(),
             );
             graph
                 .graph
-                .link_nodes_by_port_name(func_node, "value", ni, "func")?;
+                .link_nodes_by_port_name(func_node, "value", ni, "graph")?;
             wire_up(&mut graph.graph, inputs, ni, args_in);
             return Ok(outs.into_iter().map(|port| (ni, port)).collect());
         }
