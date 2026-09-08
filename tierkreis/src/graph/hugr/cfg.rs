@@ -94,16 +94,16 @@ impl<N: HugrNode> DomTreeNode<N> {
         assert_eq!(hugr.node_outputs(self.node).count(), bb.sum_rows.len());
         // Guppy generates only unit sum branch predicates
         assert!(bb.sum_rows.iter().all(|row| row.is_empty()));
-        if bb.sum_rows.len() == 1 {
-            block_outputs.insert((self.node, OutgoingPort::from(0)), this_block_outs.clone());
-        } else {
-            // For now we support only two-way branches
-            assert!(bb.sum_rows.len() == 2);
+        assert!([1, 2].contains(&bb.sum_rows.len())); // For now we support only two-way branches
+        if bb.sum_rows.len() == 2 {
             block_preds.insert(self.node, this_block_outs[0].clone());
-            for p in hugr.node_outputs(self.node) {
-                block_outputs.insert((self.node, p), this_block_outs[1..].to_vec());
-            }
         }
+        // Do not include predicate (the first output) in the block outputs - any predicate
+        // necessary will be built by the relevant GatingPath reading from block_preds
+        for p in hugr.node_outputs(self.node) {
+            block_outputs.insert((self.node, p), this_block_outs[1..].to_vec());
+        }
+
         let mut exit_node_outs = None;
 
         for (child_path, child) in &self.children {
