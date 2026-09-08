@@ -12,7 +12,7 @@ use std::{
 use futures::{Stream, StreamExt};
 use miette::{IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    state::{InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState},
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -144,7 +144,7 @@ enum RuntimeStateConfig {
     Sqlite { memory: bool, url: Option<String> },
 }
 
-struct Runtime {
+pub struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
@@ -164,7 +164,7 @@ impl Drop for AbortOnDrop {
 }
 
 impl Runtime {
-    async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
+    pub async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config);
 
         let executor_registry =
@@ -198,7 +198,7 @@ impl Runtime {
         })
     }
 
-    async fn save_workflow(
+    pub async fn save_workflow(
         &self,
         name: Option<String>,
         workflow_graph: WorkflowGraph,
@@ -206,8 +206,8 @@ impl Runtime {
         self.state.save_workflow(name, workflow_graph).await
     }
 
-    async fn start_new_run<S: BuildHasher>(
-        &mut self,
+    pub async fn start_new_run<S: BuildHasher>(
+        &self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
@@ -223,7 +223,11 @@ impl Runtime {
             .await?;
         let attempt = workflow_run_state.attempt();
         let run_id = workflow_run_state.run_id();
-        tracing::info!(workflow_id = %workflow_id.to_string(), run_id = %run_id.to_string(), attempt = attempt, "Starting new run attempt");
+        tracing::info!(
+            workflow_id = %workflow_id.to_string(),
+            run_id = %run_id.to_string(),
+            attempt = attempt, "Starting new run attempt",
+        );
         Ok((run_id, attempt))
     }
 
@@ -335,7 +339,7 @@ impl Runtime {
         Ok(())
     }
 
-    async fn run(&mut self) -> miette::Result<()> {
+    pub async fn run(&self) -> miette::Result<()> {
         let stream = self.orchestrator.listen()?;
         let state = self.state.clone();
         let _task = AbortOnDrop(tokio::spawn(async move {
@@ -425,8 +429,12 @@ impl Runtime {
         Ok(())
     }
 
-    async fn outputs(
-        &mut self,
+    pub fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
+        self.state.listen()
+    }
+
+    pub async fn get_outputs(
+        &self,
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
@@ -532,7 +540,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     runtime.dedicated_run_id = Some(run_id);
     runtime.run().await?;
 
-    let outputs = runtime.outputs(run_id, attempt).await?;
+    let outputs = runtime.get_outputs(run_id, attempt).await?;
 
     flush_logs();
 
@@ -551,7 +559,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 /// Will panic if there is already a tokio runtime active.
 #[tokio::main]
 pub async fn exec() -> miette::Result<()> {
-    let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
+    let runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
     runtime.run().await?;
     Ok(())
 }
@@ -960,7 +968,7 @@ mod tests {
             job_id_before_resume
         );
 
-        let outputs = resumed_runtime.outputs(run_id, attempt).await?;
+        let outputs = resumed_runtime.get_outputs(run_id, attempt).await?;
         assert_eq!(
             outputs.get("result").map(Vec::as_slice),
             Some(

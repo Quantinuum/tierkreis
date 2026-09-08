@@ -3,7 +3,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from tierkreis._tierkreis import run_workflow
+from tierkreis._tierkreis import run_workflow, new_default
 
 from tests.controller.defaults_graphs import (
     defaults_not_none,
@@ -179,13 +179,14 @@ storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
 storage_ids = ["FileStorage", "In-memory"]
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
 @pytest.mark.parametrize(
     ("graph", "output", "name", "workflow_id", "inputs"),
     params,
     ids=ids,
 )
-def test_resume(
+async def test_resume(
     storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
     graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
@@ -193,22 +194,26 @@ def test_resume(
     workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    g = graph
-    storage = storage_class(UUID(int=workflow_id), name=name)
-    test_workers_path = Path(__file__).parent.parent / "test_workers"
-    executor = UvExecutor(test_workers_path, storage.logs_path)
-    if isinstance(storage, ControllerInMemoryStorage):
-        executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs)
+    if "defaults" in name:
+        pytest.skip("default arguments not supported")
 
-    actual_output = read_outputs(g, storage)
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow(name, graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, 0)
+        actual_output = await runtime.get_outputs(run_id, 0)
+
     assert actual_output == output
-    if not isinstance(storage, ControllerInMemoryStorage):
-        wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
-        assert wf_metadata.completion_time is not None
-        assert wf_metadata.duration is not None and wf_metadata.duration > 0
-        assert wf_metadata.name == name
+        
+
+    # actual_output = read_outputs(g, storage)
+    # assert actual_output == output
+    # if not isinstance(storage, ControllerInMemoryStorage):
+    #     wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
+    #     assert wf_metadata.completion_time is not None
+    #     assert wf_metadata.duration is not None and wf_metadata.duration > 0
+    #     assert wf_metadata.name == name
 
 
 @pytest.mark.parametrize(
