@@ -349,7 +349,6 @@ impl HPCExecutor {
     async fn build_outputs(
         &self,
         outputs: HashSet<String>,
-        storage_root: &Path,
     ) -> miette::Result<OutputSpecs> {
         let output_specs = reserve_asset_specs(
             &self.asset_storage_registry,
@@ -362,7 +361,6 @@ impl HPCExecutor {
             .iter()
             .map(|(name, spec)| {
                 let path = spec.path()?;
-                let path = path.strip_prefix(storage_root).into_diagnostic()?;
                 Ok((name.clone(), path.to_path_buf()))
             })
             .collect::<miette::Result<HashMap<_, _>>>()?;
@@ -373,7 +371,6 @@ impl HPCExecutor {
         &self,
         task: &TaskPlan,
         output_paths: HashMap<String, PathBuf>,
-        storage_root: &Path,
     ) -> miette::Result<WorkerCallArgs> {
         let inputs = transfer_assets(
             &self.asset_storage_registry,
@@ -385,7 +382,6 @@ impl HPCExecutor {
             .iter()
             .map(|(name, spec)| {
                 let path = spec.path()?;
-                let path = path.strip_prefix(storage_root).into_diagnostic()?;
                 Ok((name.clone(), path.to_path_buf()))
             })
             .collect::<miette::Result<HashMap<_, _>>>()?;
@@ -472,11 +468,8 @@ impl Executor for HPCExecutor {
                     reserve_asset_specs(&self.asset_storage_registry, &self.hpc_storage_name, 2)
                         .await?;
                 let worker_args_path = tmp_assets[0].path()?;
-                let storage_root = worker_args_path
-                    .parent()
-                    .ok_or_else(|| miette!("Worker arguments path has no parent directory"))?;
                 let (outputs, output_paths) = self
-                    .build_outputs(task_plan.outputs.clone(), storage_root)
+                    .build_outputs(task_plan.outputs.clone())
                     .await?;
                 let worker_args_file =
                     std::fs::File::create(&worker_args_path).into_diagnostic()?;
@@ -488,7 +481,7 @@ impl Executor for HPCExecutor {
                     self.is_job_active(job_id.clone()).await?
                 } else {
                     let worker_args = self
-                        .build_worker_call_args(&task_plan, output_paths, storage_root)
+                        .build_worker_call_args(&task_plan, output_paths)
                         .await?;
                     serde_json::to_writer(worker_args_file, &worker_args).into_diagnostic()?;
                     self.start_single_job(&task_plan, &worker_args_path, &script_path)
@@ -581,8 +574,6 @@ mod tests {
         outputs.insert("value".to_string());
         let mut task_resources = HashMap::new();
         task_resources.insert("nodes".to_string(), 2.into());
-        let mut task_environment = HashMap::new();
-        task_environment.insert("TKR_DIR".to_string(), "/root/.tierkreis/slrm".into());
         let task_plans = vec![TaskPlan {
             loc: Location::default(),
             worker_name: "mpi_worker".to_string(),
@@ -590,7 +581,6 @@ mod tests {
             outputs,
             inputs: input_sets[0].clone(),
             resources: task_resources,
-            environment: task_environment,
             ..Default::default()
         }];
         let resources = HPCResourceSpec {
