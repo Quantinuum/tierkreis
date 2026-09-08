@@ -28,11 +28,12 @@
 {% endif %}{% if job.mpi and job.mpi.max_proc_per_node %}#SBATCH --ntasks-per-node={{ job.mpi.max_proc_per_node }}
 {% endif %}
 # --- User-Specific Arguments ---
-{% for option, value in job.extra_scheduler_args %}#SBATCH {{ option }}{% if value %} {{ value }}{% endif %}
+{% for option, value in job.extra_scheduler_args|items %}#SBATCH {{ option }}{% if value %} {{ value }}{% endif %}
 {% endfor %}
 # --- Environment Setup ---
-{% for name, value in job.environment %}export {{ name }}={{ value }}
+{% for name, value in job.environment|items %}export {{ name }}={{ value }}
 {% endfor %}
+#SBATCH --export=ALL
 # --- Load Modules ---
 {% for module in job.modules %}module load {{ module }}
 {% endfor %}

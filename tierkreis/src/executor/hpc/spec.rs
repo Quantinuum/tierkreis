@@ -94,14 +94,14 @@ impl HPCResourceSpec {
 }
 
 /// User-specific scheduler settings.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct UserSpec {
     /// Email address for scheduler notifications.
     pub mail: Option<String>,
 }
 
 /// MPI resource settings.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MpiSpec {
     /// Total MPI processes.
     pub proc: Option<String>,
@@ -110,7 +110,7 @@ pub struct MpiSpec {
 }
 
 /// Container settings.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ContainerSpec {
     /// Container image.
     pub image: String,

@@ -283,7 +283,7 @@ pub struct HPCExecutor {
     asset_storage_registry: AssetStorageRegistry,
     /// Available HPC resources for this executor.
     pub max_resources: HPCResourceSpec,
-    // TODO: env
+    worker_command: Option<String>,
 }
 
 impl Drop for HPCExecutor {
@@ -334,24 +334,37 @@ impl HPCExecutor {
             output_storage_name: output_storage_name.into(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
             max_resources,
+            worker_command: None,
         })
+    }
+
+    /// Override the command used to invoke workers.
+    #[must_use]
+    #[cfg(test)]
+    pub fn with_worker_command(mut self, worker_command: impl Into<String>) -> Self {
+        self.worker_command = Some(worker_command.into());
+        self
     }
 
     async fn build_outputs(
         &self,
-        output_storage_name: &str,
         outputs: HashSet<String>,
+        storage_root: &Path,
     ) -> miette::Result<OutputSpecs> {
         let output_specs = reserve_asset_specs(
             &self.asset_storage_registry,
-            output_storage_name,
+            &self.hpc_storage_name,
             outputs.len(),
         )
         .await?;
         let outputs: HashMap<_, _> = outputs.into_iter().zip(output_specs).collect();
         let output_paths = outputs
             .iter()
-            .map(|(name, spec)| Ok((name.clone(), spec.path()?)))
+            .map(|(name, spec)| {
+                let path = spec.path()?;
+                let path = path.strip_prefix(storage_root).into_diagnostic()?;
+                Ok((name.clone(), path.to_path_buf()))
+            })
             .collect::<miette::Result<HashMap<_, _>>>()?;
         Ok((outputs, output_paths))
     }
@@ -360,6 +373,7 @@ impl HPCExecutor {
         &self,
         task: &TaskPlan,
         output_paths: HashMap<String, PathBuf>,
+        storage_root: &Path,
     ) -> miette::Result<WorkerCallArgs> {
         let inputs = transfer_assets(
             &self.asset_storage_registry,
@@ -369,7 +383,11 @@ impl HPCExecutor {
         .await?;
         let input_paths = inputs
             .iter()
-            .map(|(name, spec)| Ok((name.clone(), spec.path()?)))
+            .map(|(name, spec)| {
+                let path = spec.path()?;
+                let path = path.strip_prefix(storage_root).into_diagnostic()?;
+                Ok((name.clone(), path.to_path_buf()))
+            })
             .collect::<miette::Result<HashMap<_, _>>>()?;
         // TODO: Get rid of the hardcoded done and error paths
         Ok(WorkerCallArgs {
@@ -388,20 +406,25 @@ impl HPCExecutor {
         worker_args_path: &Path,
         script_path: &Path,
     ) -> miette::Result<String> {
-        let command = format!(
-            "tkr-{} {}",
-            task.worker_name.replace('_', "-"),
-            worker_args_path.display(),
-        );
+        let worker_command = self
+            .worker_command
+            .clone()
+            .unwrap_or_else(|| format!("tkr-{}", task.worker_name.replace('_', "-")));
+        let command = format!("{worker_command} {}", worker_args_path.display());
         let hpc_resources = serde_json::from_value(task.resources.clone().into_iter().collect())
             .into_diagnostic()
             .wrap_err("Invalid HPC resource specification")?;
+        let hpc_environment =
+            serde_json::from_value(task.environment.clone().into_iter().collect())
+                .into_diagnostic()
+                .wrap_err("Invalid HPC environment specification")?;
         // TODO get other JobSpec Related fields from the task.resources
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
             walltime: "01:00:00".to_string(),
             resources: hpc_resources,
+            environment: hpc_environment,
             ..Default::default()
         };
         let context = tracing::Span::current().context();
@@ -445,15 +468,16 @@ impl Executor for HPCExecutor {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
-                let (outputs, output_paths) = self
-                    .build_outputs(&self.output_storage_name, task_plan.outputs.clone())
-                    .await?;
-                // TODO somehow we need to get back the paths after a crash instead of generating new ones
-                // Could use the task handle but seems a bit fragile
-                let tmp_assets: &Vec<AssetSpec> =
-                    &reserve_asset_specs(&self.asset_storage_registry, &self.hpc_storage_name, 2)
+                let tmp_assets =
+                    reserve_asset_specs(&self.asset_storage_registry, &self.hpc_storage_name, 2)
                         .await?;
                 let worker_args_path = tmp_assets[0].path()?;
+                let storage_root = worker_args_path
+                    .parent()
+                    .ok_or_else(|| miette!("Worker arguments path has no parent directory"))?;
+                let (outputs, output_paths) = self
+                    .build_outputs(task_plan.outputs.clone(), storage_root)
+                    .await?;
                 let worker_args_file =
                     std::fs::File::create(&worker_args_path).into_diagnostic()?;
                 let script_path = tmp_assets[1].path()?;
@@ -464,7 +488,7 @@ impl Executor for HPCExecutor {
                     self.is_job_active(job_id.clone()).await?
                 } else {
                     let worker_args = self
-                        .build_worker_call_args(&task_plan, output_paths)
+                        .build_worker_call_args(&task_plan, output_paths, storage_root)
                         .await?;
                     serde_json::to_writer(worker_args_file, &worker_args).into_diagnostic()?;
                     self.start_single_job(&task_plan, &worker_args_path, &script_path)
@@ -521,5 +545,97 @@ impl Executor for HPCExecutor {
             Ok(())
         };
         fut.boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use futures::StreamExt;
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
+        event::{NodeEvent, NodeStatus, WorkflowRunEvent},
+        executor::{HPCExecutor, SlurmWrapper},
+    };
+    // Test that we can launch a task and listen for
+    // errors when they occur
+    #[tokio::test]
+    async fn execute_hpc() -> miette::Result<()> {
+        // TODO: overwrite test_storage_registry in a way that the file system is the checkpoints dir
+        let checkpoints_path = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or_else(|| miette!("HOME is not set"))?
+            .join(".tierkreis/slrm");
+        let file_storage = FileAssetStorage::new(&checkpoints_path);
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
+        registry
+            .write()
+            .await
+            .insert("checkpoints".to_string(), Box::new(file_storage));
+        let mut outputs = HashSet::new();
+        outputs.insert("value".to_string());
+        let mut task_resources = HashMap::new();
+        task_resources.insert("nodes".to_string(), 2.into());
+        let mut task_environment = HashMap::new();
+        task_environment.insert("TKR_DIR".to_string(), "/root/.tierkreis/slrm".into());
+        let task_plans = vec![TaskPlan {
+            loc: Location::default(),
+            worker_name: "mpi_worker".to_string(),
+            task_name: "mpi_rank_info_with_input".to_string(),
+            outputs,
+            inputs: input_sets[0].clone(),
+            resources: task_resources,
+            environment: task_environment,
+            ..Default::default()
+        }];
+        let resources = HPCResourceSpec {
+            nodes: 2,
+            cores_per_node: Some(1),
+            memory_per_node_gb: Some(1),
+            gpus_per_node: Some(0),
+            qpus: None,
+            gres: None,
+        };
+        let scheduler = SlurmWrapper::local();
+
+        let executor = HPCExecutor::try_new(
+            &registry,
+            "checkpoints",
+            "checkpoints",
+            Arc::new(scheduler),
+            resources,
+        )
+        .await?
+        .with_worker_command("mpiexec --allow-run-as-root uv run /mpi_worker/main.py");
+        // TODO: enable mpi environment
+
+        let stream = executor.listen()?;
+        executor.execute(task_plans).await?;
+
+        let events = stream.take(2).collect::<Vec<_>>().await;
+        dbg!(&events);
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            events[0],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Queued { .. },
+                    ..
+                }),
+                ..
+            }
+        ));
+        assert_registry_contains_values(
+            &registry,
+            "checkpoints",
+            &events[1].clone().outputs()[0],
+            json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
+        ).await;
+
+        Ok(())
     }
 }

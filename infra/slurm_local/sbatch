@@ -1,4 +1,9 @@
 #!/bin/bash
+PARSABLE=""
+if [ "$1" = "--parsable" ]; then
+	PARSABLE="--parsable"
+	shift
+fi
 SCRIPT_FILE=$(basename "$1")
 
 # This emulates the sbatch command assuming the checkpoints directory is in $HOME
@@ -6,4 +11,4 @@ SCRIPT_FILE=$(basename "$1")
 # which is where the home directory is mounted in the container
 docker cp "$1" slurmctld:/data/"$SCRIPT_FILE"
 docker exec slurmctld sh -c 'sed -i "s|$2|/root|g" /data/$1 && \
-sbatch /data/$1' sh "$SCRIPT_FILE" "$HOME"
+sbatch $3 /data/$1' sh "$SCRIPT_FILE" "$HOME" "$PARSABLE"

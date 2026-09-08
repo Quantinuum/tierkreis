@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["tierkreis", "mpi4py"]
 # [tool.uv.sources]
-# tierkreis = { path = "../../tierkreis", editable = true }
+# tierkreis = { path = "/tierkreis", editable = true }
 # ///
 import logging
 import socket

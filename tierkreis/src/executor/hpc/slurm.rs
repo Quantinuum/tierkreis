@@ -36,6 +36,19 @@ impl Default for SlurmWrapper {
 }
 
 impl SlurmWrapper {
+    /// Construct a wrapper for the repository's local Slurm Docker shims.
+    #[must_use]
+    #[cfg(test)]
+    pub fn local() -> Self {
+        let binaries = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../infra/slurm_local");
+        Self {
+            sbatch: binaries.join("sbatch"),
+            sacct: binaries.join("sacct"),
+            scancel: binaries.join("scancel"),
+            ..Self::default()
+        }
+    }
+
     /// Construct a Slurm wrapper using shared submission templates.
     #[must_use]
     pub fn with_templates(templates: ScriptTemplates) -> Self {
