@@ -351,7 +351,7 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
         assert_eq!(num_outputs, 1);
         Ok((
             NodeDefinition::Task {
-                worker_name: "inmemory".to_string(),
+                worker_name: "builtins".to_string(),
                 task_name: eop.def().name().to_string(),
             },
             INPUT_PORT_NAMES

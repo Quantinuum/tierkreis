@@ -23,7 +23,7 @@ use crate::{
     state::{RuntimeState, SqliteRuntimeState},
 };
 
-async fn server(
+pub async fn server(
     runtime_state: Arc<SqliteRuntimeState>,
     asset_registry: AssetStorageRegistry,
 ) -> miette::Result<()> {
@@ -55,6 +55,8 @@ async fn server(
     let dist = std::env::current_dir()
         .into_diagnostic()
         .wrap_err("Failed to resolve current working directory")?
+        .parent()
+        .expect("parent doesnt exist")
         .join("tierkreis_visualization/tierkreis_visualization/static/dist"); // TODO: Make this configurable
     if dist.exists() {
         let index = dist.join("index.html");

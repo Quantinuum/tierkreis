@@ -144,7 +144,7 @@ enum RuntimeStateConfig {
     Sqlite { memory: bool, url: Option<String> },
 }
 
-struct Runtime {
+pub struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
@@ -152,7 +152,7 @@ struct Runtime {
 
     // Optional Run ID to execute exclusively. Once this run completes the
     // runtime should end execution.
-    dedicated_run_id: Option<Uuid>,
+    pub dedicated_run_id: Option<Uuid>,
 }
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -164,7 +164,7 @@ impl Drop for AbortOnDrop {
 }
 
 impl Runtime {
-    async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
+    pub async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config);
 
         let executor_registry =
@@ -198,7 +198,7 @@ impl Runtime {
         })
     }
 
-    async fn save_workflow(
+    pub async fn save_workflow(
         &self,
         name: Option<String>,
         workflow_graph: WorkflowGraph,
@@ -206,7 +206,7 @@ impl Runtime {
         self.state.save_workflow(name, workflow_graph).await
     }
 
-    async fn start_new_run<S: BuildHasher>(
+    pub async fn start_new_run<S: BuildHasher>(
         &mut self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
@@ -228,7 +228,7 @@ impl Runtime {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn process_events(
+    pub async fn process_events(
         state: Arc<dyn RuntimeState>,
         mut stream: impl Stream<Item = RuntimeEvent> + Unpin,
     ) -> miette::Result<()> {
@@ -335,7 +335,7 @@ impl Runtime {
         Ok(())
     }
 
-    async fn run(&mut self) -> miette::Result<()> {
+    pub async fn run(&mut self) -> miette::Result<()> {
         let stream = self.orchestrator.listen()?;
         let state = self.state.clone();
         let _task = AbortOnDrop(tokio::spawn(async move {
@@ -425,7 +425,7 @@ impl Runtime {
         Ok(())
     }
 
-    async fn outputs(
+    pub async fn outputs(
         &mut self,
         run_id: Uuid,
         attempt: u32,
@@ -453,7 +453,7 @@ impl Runtime {
     }
 }
 
-async fn executor_registry_from_config(
+pub async fn executor_registry_from_config(
     asset_storage_registry: &AssetStorageRegistry,
     config: &RuntimeConfig,
 ) -> Result<ExecutorRegistry, miette::Error> {
@@ -517,6 +517,48 @@ pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorag
         };
     }
     Arc::new(RwLock::new(asset_storage_registry))
+}
+
+/// For vis only
+#[must_use]
+pub fn vis_config() -> RuntimeConfig {
+    let tierkreis_dir = home_dir()
+        .unwrap_or_else(|| "/tmp".into())
+        .join(".tierkreis");
+    let asset_dir = tierkreis_dir.join("assets");
+    let config = RuntimeConfig {
+        asset_storage: [
+            ("memory".to_string(), AssetStorageConfig::Memory {}),
+            ("file".to_string(), AssetStorageConfig::File { asset_dir }),
+        ]
+        .into_iter()
+        .collect(),
+        executors: [
+            (
+                "memory".to_string(),
+                ExecutorConfig::Memory {
+                    output_storage_name: "memory".to_string(),
+                },
+            ),
+            (
+                "subprocess".to_string(),
+                ExecutorConfig::Subprocess {
+                    subprocess_storage_name: "file".to_string(),
+                    output_storage_name: "file".to_string(),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        runtime_state: RuntimeStateConfig::Sqlite {
+            memory: false,
+            url: None,
+        },
+        default_storage_name: "file".to_string(),
+        default_executor_name: "memory".to_string(),
+        logging_config: Some(LoggingConfig::default()),
+    };
+    config
 }
 
 #[tokio::main]
