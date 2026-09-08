@@ -411,6 +411,26 @@ impl WorkflowGraph {
             port_filter,
         )
     }
+
+    pub(crate) fn print(&self) -> miette::Result<()> {
+        use petgraph::visit as pv;
+        use pv::Walker;
+        let topo = pv::Topo::new(&self.graph);
+        for n in topo.iter(&self.graph) {
+            println!("Node {:?} is {:?}", n, self.node_definition(n).unwrap());
+            for (tgt, src) in self.input_links(n) {
+                println!(
+                    "  Incoming edge: {:?}:{} -> {:?}:{}",
+                    self.port_node(src)?,
+                    self.get_port_name(src.port())?,
+                    self.port_node(tgt)?,
+                    self.get_port_name(tgt.port())?
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 type ValueRef = (i32, String);

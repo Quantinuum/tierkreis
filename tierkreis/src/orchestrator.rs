@@ -2036,6 +2036,7 @@ mod tests {
 
         let hugr = Hugr::load(BufReader::new(File::open(workflow_graph).unwrap()), None).unwrap();
         let workflow_graph = WorkflowGraph::try_from(hugr).unwrap();
+        workflow_graph.print()?;
         run_workflows(workflow_graph, inputs, expected_outputs).await
     }
 
