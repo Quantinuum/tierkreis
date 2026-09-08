@@ -2023,10 +2023,17 @@ mod tests {
     #[case::doubler_minopt("../doubler_minopt.hugr", json!({"in0": 10, "in1": 2}), json!({"out0": 42}))]
     #[case::doubler_indirect("../doubler_indirect.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 18}))]
     #[case::doubler_indirect_minopt("../doubler_indirect_minopt.hugr", json!({"in0": 20, "in1": 7}), json!({"out0": 67}))]
-    #[case::simple_if1("../simple_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
-    #[case::simple_if2("../simple_if.hugr", json!({"in0": 4}), json!({"out0": 8}))]
+    #[case::simple_if("../simple_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
     // for simple_if, minopt hugr is almost identical
     #[case::simple_if_minopt("../simple_if_minopt.hugr", json!({"in0": 10}), json!({"out0": 20}))]
+    // Similarly multi_if and multi_if_minopt are almost identical -> mixing cases
+    #[case::multi_if1("../multi_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
+    #[case::multi_if_minopt2("../multi_if_minopt.hugr", json!({"in0": 10}), json!({"out0": 20}))]
+    #[case::multi_if2("../multi_if.hugr", json!({"in0": 6}), json!({"out0": 12}))]
+    #[case::multi_if_minopt3("../multi_if_minopt.hugr", json!({"in0": 5}), json!({"out0": 15}))]
+    #[case::shortcircuit_if("../shortcircuit_if.hugr", json!({"in0": 5}), json!({"out0": 10}))]
+    #[case::shortcircuit_if2("../shortcircuit_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
+    #[case::shortcircuit_if3("../shortcircuit_if.hugr", json!({"in0": 20}), json!({"out0": 40}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_hugr(

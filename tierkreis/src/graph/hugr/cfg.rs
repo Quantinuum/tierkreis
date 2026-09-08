@@ -25,6 +25,7 @@ impl<N: HugrNode> DomTreeNode<N> {
         graph: &mut GraphWithFuncs<N>,
         hugr: &impl HugrView<Node = N>,
         this_block_inputs: Vec<(NodeIndex, String)>,
+        block_preds: &mut HashMap<N, (NodeIndex, String)>,
     ) -> miette::Result<(
         Option<Vec<(NodeIndex, String)>>, // any values delivered to exit node (only if in this DomTreeNode)
         HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>, // values delivered to exit edges of this DomTreeNode
@@ -85,7 +86,6 @@ impl<N: HugrNode> DomTreeNode<N> {
         };
         let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> =
             HashMap::new();
-        let mut block_preds: HashMap<N, (NodeIndex, String)> = HashMap::new();
 
         // Compile body. (Easy - the complexity of this function is all about the branches!)
         let this_block_outs = convert_dfg(hugr, self.node, graph, this_block_inputs)?;
@@ -109,7 +109,8 @@ impl<N: HugrNode> DomTreeNode<N> {
         for (child_path, child) in &self.children {
             let child_inputs =
                 child_path.build_inputs(&mut graph.graph, &block_outputs, &block_preds);
-            let (exit_block_outs, exit_edge_outs) = child.build_graph(graph, hugr, child_inputs)?;
+            let (exit_block_outs, exit_edge_outs) =
+                child.build_graph(graph, hugr, child_inputs, block_preds)?;
             if let Some(exit_block_outs) = exit_block_outs {
                 let prev = exit_node_outs.replace(exit_block_outs);
                 assert!(prev.is_none())
@@ -253,7 +254,7 @@ pub(super) fn convert_cfg<H: HugrView>(
         ));
     }
     let tr = build_dom_tree(hugr, node);
-    let (outs, _) = tr.build_graph(graph, hugr, inputs)?;
+    let (outs, _) = tr.build_graph(graph, hugr, inputs, &mut HashMap::new())?;
     Ok(outs.unwrap())
 }
 
