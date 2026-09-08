@@ -338,14 +338,17 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
+    use super::WorkflowGraph;
     use hugr::Hugr;
+    use rstest::fixture;
     use std::fs::File;
     use std::io::BufReader;
-    #[test]
-    fn test_convert_simple_arith() {
+
+    #[fixture]
+    pub(crate) fn simple_arith() -> WorkflowGraph {
         let f = File::open("../simple_arith.hugr").unwrap();
         let hugr = Hugr::load(BufReader::new(f), None).unwrap();
-        super::WorkflowGraph::try_from(hugr).unwrap();
+        WorkflowGraph::try_from(hugr).unwrap()
     }
 }
