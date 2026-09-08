@@ -8,7 +8,20 @@ from guppylang.experimental import (
     enable_experimental_features,
 )
 
+def write_hugrs(func, file_prefix: str, pdfs:bool = False):
+    pkg = func.with_minimal_opt().compile_function()
+    with (Path(__file__).parent / f"{file_prefix}_minopt.hugr").open("wb") as f:
+        f.write(pkg.to_bytes())
+    if pdfs:
+        with (Path(__file__).parent / f"{file_prefix}_minopt.pdf").open("wb") as f:
+            f.write(pkg.modules[0].render_dot().pipe("pdf"))
 
+    pkg = func.compile_function()
+    with (Path(__file__).parent / f"{file_prefix}.hugr").open("wb") as f:
+        f.write(pkg.to_bytes())
+    if pdfs:
+        with (Path(__file__).parent / f"{file_prefix}.pdf").open("wb") as f:
+            f.write(pkg.modules[0].render_dot().pipe("pdf"))
 
 def test_doubler(validate):
     @guppy
@@ -23,15 +36,7 @@ def test_doubler(validate):
     def main(a: int, b: int) -> int:
         return typed_doubler_plus(a, b) + typed_doubler(a)
 
-    pkg = main.with_minimal_opt().compile_function()
-    validate(pkg.modules[0])
-    with Path("doubler_minopt.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
-
-    pkg = main.compile_function()
-    validate(pkg.modules[0])
-    with Path("doubler.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
+    write_hugrs(main, "doubler")
 
 
 def test_doubler_indirect(validate):
@@ -53,14 +58,7 @@ def test_doubler_indirect(validate):
     def main(a: int, b: int) -> int:
         return indirect_call(typed_doubler_plus_multi, a, b)
 
-    pkg = main.with_minimal_opt().compile_function()
-    validate(pkg.modules[0])
-    with Path("doubler_indirect_minopt.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
-    
-    pkg = main.compile_function()
-    with Path("doubler_indirect.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
+    write_hugrs(main, "doubler_indirect")
 
 
 def test_map(validate):
@@ -78,15 +76,7 @@ def test_map(validate):
     def invoke_map() -> list[int]:
         return apply_map(map_doubler)
 
-    pkg = invoke_map.with_minimal_opt().compile_function()
-    validate(pkg.modules[0])
-    with Path("tierkreis_map_minopt.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
-    
-    pkg = invoke_map.compile_function()
-    validate(pkg.modules[0])
-    with Path("tierkreis_map.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
+    write_hugrs(invoke_map, "tierkreis_map")
         
     disable_experimental_features()
 
@@ -112,15 +102,8 @@ def test_loop(validate):
                 break
         return LoopMultipleAccOut(acc1, acc2, acc3)
 
-    pkg = loop_multiple_acc.with_minimal_opt().compile_function()
-    validate(pkg.modules[0])
-    with Path("tierkreis_loop_minopt.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
-    
-    pkg = loop_multiple_acc.compile_function()
-    validate(pkg.modules[0])
-    with Path("tierkreis_loop.hugr").open("wb") as f:
-        f.write(pkg.to_bytes())
+    write_hugrs(loop_multiple_acc, "tierkreis_loop")
+
 
 if __name__ == "__main__":
     def validate(module):
