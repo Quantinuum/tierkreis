@@ -93,6 +93,15 @@ def test_multi_if(validate):
 
     write_hugrs(multi_if, "multi_if")
 
+# This one needs https://github.com/Quantinuum/guppylang/pull/2311
+def test_if(validate):
+    @guppy
+    def main(x: int, y: int) -> int:
+        (a, b) = (x, y) if x<y else (y, x)
+        return (b - a) * (3 if 5 < x + y < 10 and x < 20 else 7)
+
+    write_hugrs(main, "tierkreis_if")
+
 def test_map(validate):
     enable_experimental_features()
     @guppy
@@ -145,6 +154,7 @@ if __name__ == "__main__":
     test_simple_if(validate)
     test_shortcircuit_if(validate)
     test_multi_if(validate)
+    test_if(validate)
     test_map(validate)
     test_loop(validate)
     
