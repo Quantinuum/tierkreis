@@ -1,15 +1,18 @@
+//! Functions for converting a [Hugr] into a [WorkflowGraph]
 use std::collections::HashMap;
 
 use super::NodeDefinition;
 use super::WorkflowGraph;
 use hugr::core::HugrNode;
-use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType};
-use hugr::types::Signature;
+use hugr::extension::prelude::ConstUsize;
+use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Value, constant::Sum};
+use hugr::std_extensions::arithmetic::{float_types::ConstF64, int_types::ConstInt};
+use hugr::types::{Signature, SumType};
 use hugr::{Hugr, HugrView, PortIndex as _};
-use miette::IntoDiagnostic;
-use miette::Report;
+use miette::{IntoDiagnostic, Report};
 use petgraph::visit::{Topo, Walker};
 use portgraph::NodeIndex;
+use serde_json::Number;
 
 mod cfg;
 use cfg::convert_cfg;
@@ -64,6 +67,29 @@ fn convert_dataflow_op<H: HugrView>(
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node, graph, inputs),
         OpType::CFG(_) => convert_cfg(hugr, node, graph, inputs),
+        OpType::Const(_) => Ok(vec![]), // Ignore on its own, will be converted as part of any LoadConstant
+        OpType::LoadConstant(_) => {
+            let cst = hugr.static_source(node).ok_or_else(|| {
+                miette::miette!("LoadConstant node {node} has no attached constant")
+            })?;
+            let cst = match hugr.get_optype(cst) {
+                OpType::Const(val) => val,
+                _ => {
+                    return Err(miette::miette!(
+                        "Expected constant node for LoadConstant source"
+                    ));
+                }
+            };
+            let value = const_val(&cst.value)?;
+            Ok(vec![(
+                graph.graph.add_node(
+                    NodeDefinition::Const { value },
+                    vec![],
+                    vec!["value".to_string()],
+                ),
+                "value".to_string(),
+            )])
+        }
         OpType::ExtensionOp(eop) => convert_ext_op(eop, &mut graph.graph, inputs),
         OpType::CallIndirect(_) => {
             let mut ins = hugr.in_value_types(node);
@@ -121,6 +147,47 @@ fn convert_dataflow_op<H: HugrView>(
             return Ok(vec![(func_node, "value".to_string())]);
         }
         other => todo!("{other:?}"),
+    }
+}
+
+fn const_val(value: &Value) -> miette::Result<serde_json::Value> {
+    match value {
+        Value::Sum(Sum {
+            tag,
+            values,
+            sum_type,
+        }) => {
+            if sum_type == &SumType::new_unary(2) {
+                return Ok(serde_json::Value::Bool(*tag == 1));
+            }
+            if sum_type.num_variants() != 1 {
+                return Err(miette::miette!(
+                    "Constant value has Sum type with multiple variants: {sum_type:?}"
+                ));
+            }
+            Ok(serde_json::json!([values
+                .iter()
+                .map(const_val)
+                .collect::<Result<Vec<_>, _>>()?]))
+        }
+        Value::Extension { e } => {
+            let v = e.value();
+            if let Some(c) = v.downcast_ref::<ConstUsize>() {
+                return Ok(serde_json::Value::Number(Number::from(c.value())));
+            }
+            if let Some(c) = v.downcast_ref::<ConstInt>() {
+                // No way to tell from the constant, only the operations...
+                // (Doesn't fit well with Tierkreis' arbitrary precision model?!)
+                return Ok(serde_json::Value::Number(Number::from(c.value_s())));
+            }
+            if let Some(c) = v.downcast_ref::<ConstF64>() {
+                let num = Number::from_f64(c.value()).ok_or_else(|| {
+                    miette::miette!("Serde does not support non-finite floats {}", c.value())
+                })?;
+                return Ok(serde_json::Value::Number(num));
+            }
+            Err(miette::miette!("Unsupported constant value type"))
+        }
     }
 }
 
