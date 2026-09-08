@@ -412,6 +412,7 @@ impl WorkflowGraph {
         )
     }
 
+    #[allow(unused)]
     pub(crate) fn print(&self) -> miette::Result<()> {
         use petgraph::visit as pv;
         use pv::Walker;

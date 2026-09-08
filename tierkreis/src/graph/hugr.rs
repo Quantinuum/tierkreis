@@ -38,14 +38,11 @@ impl<N: HugrNode> GraphWithFuncs<N> {
         let wg = graph_from_hugr(hugr, node)?;
         let new_node = self.graph.add_node(
             NodeDefinition::Const {
-                value: serde_json::to_value(wg.clone()).into_diagnostic()?,
+                value: serde_json::to_value(wg).into_diagnostic()?,
             },
             vec![],
             vec!["value".to_string()],
         );
-        println!("CREATING GRAPH CONSTANT at index {new_node:?}");
-        wg.print()?;
-        println!("CREATED GRAPH CONSTANT at index {new_node:?}");
         self.funcs.insert(node, new_node);
         Ok(new_node)
     }
