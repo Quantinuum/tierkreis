@@ -2018,6 +2018,7 @@ mod tests {
         Ok(())
     }
 
+    use crate::graph::hugr::test as hugr_tests;
     #[rstest]
     #[case::one_input_one_output_3(one_input_one_output(), json!({"a": 3}), json!({"out": 3}))]
     #[case::one_input_one_output_6(one_input_one_output(), json!({"a": 6}), json!({"out": 6}))]
@@ -2031,6 +2032,7 @@ mod tests {
     #[case::simple_if_else_false(simple_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
+    #[case::alan(hugr_tests::simple_arith(), json!({"in0": 5, "in1": 3}), json!({"out0": 45}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_workflows(
