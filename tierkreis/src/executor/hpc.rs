@@ -4,9 +4,7 @@ pub mod slurm;
 pub mod spec;
 
 use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    collections::{HashMap, HashSet}, env::home_dir, path::{Path, PathBuf}, sync::{Arc, Mutex},
 };
 
 use futures::{
@@ -284,6 +282,7 @@ pub struct HPCExecutor {
     /// Available HPC resources for this executor.
     pub max_resources: HPCResourceSpec,
     worker_command: Option<String>,
+    tkr_tmp_dir: PathBuf,
 }
 
 impl Drop for HPCExecutor {
@@ -312,6 +311,11 @@ impl HPCExecutor {
         if !storage.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
+        let tierkreis_dir = home_dir()
+            .unwrap_or_else(|| "/tmp".into())
+            .join(".tierkreis/tmp");
+        std::fs::create_dir_all(&tierkreis_dir).unwrap_or_else(|_| panic!("Failed to create tierkreis tmp dir at {:?}", tierkreis_dir));
+
         drop(storage);
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
@@ -335,6 +339,7 @@ impl HPCExecutor {
             asset_storage_registry: Arc::clone(asset_storage_registry),
             max_resources,
             worker_command: None,
+            tkr_tmp_dir: tierkreis_dir,
         })
     }
 
@@ -344,6 +349,20 @@ impl HPCExecutor {
     pub fn with_worker_command(mut self, worker_command: impl Into<String>) -> Self {
         self.worker_command = Some(worker_command.into());
         self
+    }
+
+    fn reserve_tmp_paths(&self, count: usize) -> miette::Result<Vec<PathBuf>> {
+        (0..count)
+            .map(|_| {
+                tempfile::Builder::new()
+                    .prefix("tkr-")
+                    .tempfile_in(&self.tkr_tmp_dir)
+                    .into_diagnostic()?
+                    .keep()
+                    .into_diagnostic()
+                    .map(|(_, path)| path)
+            })
+            .collect()
     }
 
     async fn build_outputs(
@@ -359,10 +378,7 @@ impl HPCExecutor {
         let outputs: HashMap<_, _> = outputs.into_iter().zip(output_specs).collect();
         let output_paths = outputs
             .iter()
-            .map(|(name, spec)| {
-                let path = spec.path()?;
-                Ok((name.clone(), path.to_path_buf()))
-            })
+            .map(|(name, spec)| Ok((name.clone(), spec.path()?)))
             .collect::<miette::Result<HashMap<_, _>>>()?;
         Ok((outputs, output_paths))
     }
@@ -380,18 +396,14 @@ impl HPCExecutor {
         .await?;
         let input_paths = inputs
             .iter()
-            .map(|(name, spec)| {
-                let path = spec.path()?;
-                Ok((name.clone(), path.to_path_buf()))
-            })
+            .map(|(name, spec)| Ok((name.clone(), spec.path()?)))
             .collect::<miette::Result<HashMap<_, _>>>()?;
-        // TODO: Get rid of the hardcoded done and error paths
         Ok(WorkerCallArgs {
             function_name: task.task_name.clone(),
             inputs: input_paths,
             outputs: output_paths,
-            done_path: std::path::Path::new("_done").to_path_buf(),
-            error_path: std::path::Path::new("_error").to_path_buf(),
+            done_path: self.tkr_tmp_dir.join("_done").to_path_buf(),
+            error_path: self.tkr_tmp_dir.join("_error").to_path_buf(),
             ..Default::default()
         })
     }
@@ -464,16 +476,14 @@ impl Executor for HPCExecutor {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
-                let tmp_assets =
-                    reserve_asset_specs(&self.asset_storage_registry, &self.hpc_storage_name, 2)
-                        .await?;
-                let worker_args_path = tmp_assets[0].path()?;
+                let tmp_paths = self.reserve_tmp_paths(2)?;
+                let worker_args_path = &tmp_paths[0];
+                let script_path = &tmp_paths[1];
                 let (outputs, output_paths) = self
                     .build_outputs(task_plan.outputs.clone())
                     .await?;
                 let worker_args_file =
-                    std::fs::File::create(&worker_args_path).into_diagnostic()?;
-                let script_path = tmp_assets[1].path()?;
+                    std::fs::File::create(worker_args_path).into_diagnostic()?;
 
                 // If we were given a handle to a previously submitted  job
                 // and it's still active, reattach to it instead of resubmitting.
@@ -484,7 +494,7 @@ impl Executor for HPCExecutor {
                         .build_worker_call_args(&task_plan, output_paths)
                         .await?;
                     serde_json::to_writer(worker_args_file, &worker_args).into_diagnostic()?;
-                    self.start_single_job(&task_plan, &worker_args_path, &script_path)
+                    self.start_single_job(&task_plan, worker_args_path, script_path)
                         .await?
                 };
 
@@ -496,7 +506,7 @@ impl Executor for HPCExecutor {
                         job_id,
                         outputs,
                         output_storage_name: self.output_storage_name.clone(),
-                        _worker_args: worker_args_path,
+                        _worker_args: worker_args_path.clone(),
                     })
                     .await
                     .into_diagnostic()?;
@@ -558,7 +568,6 @@ mod tests {
     #[tokio::test]
     #[ignore = "Requires a local SLURM setup"]
     async fn execute_hpc() -> miette::Result<()> {
-        // TODO: overwrite test_storage_registry in a way that the file system is the checkpoints dir
         let checkpoints_path = std::env::var_os("HOME")
             .map(PathBuf::from)
             .ok_or_else(|| miette!("HOME is not set"))?

@@ -47,7 +47,7 @@ services:
       - var_log_slurm:/var/log/slurm
       - ../../tierkreis:/tierkreis
       - data:/data
-      - ${HOME}/.tierkreis/slrm:${HOME}/.tierkreis/slrm
+      - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
     expose:
       - "6817"
     depends_on:
@@ -68,7 +68,7 @@ services:
       - var_log_slurm:/var/log/slurm
       - ../../tierkreis:/tierkreis
       - data:/data
-      - ${HOME}/.tierkreis/slrm:${HOME}/.tierkreis/slrm
+      - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
     expose:
       - "6818"
     depends_on:
@@ -89,7 +89,7 @@ services:
       - var_log_slurm:/var/log/slurm
       - ../../tierkreis:/tierkreis
       - data:/data
-      - ${HOME}/.tierkreis/slrm:${HOME}/.tierkreis/slrm
+      - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
     expose:
       - "6818"
     depends_on:
