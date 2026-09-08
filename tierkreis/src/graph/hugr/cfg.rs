@@ -198,11 +198,12 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             for (path_from_child_to_exit, dst) in &child_dtn.exit_edges {
                 let path_to_exit = path_to_child.concat(path_from_child_to_exit);
                 assert!(
-                    doms.dominators(ni).unwrap().contains(
-                        &doms
-                            .immediate_dominator(node_map.to_portgraph(*dst))
-                            .unwrap()
-                    )
+                    // if dst has no dominator, dst is the entry node
+                    doms.immediate_dominator(node_map.to_portgraph(*dst))
+                        .is_none_or(|tgt_dom|
+                        //otherwise, tgt_dom must be ni or some dominator thereof
+                        // (i.e. tgt is a sibling of an nonstrict-ancestor of ni).
+                    doms.dominators(ni).unwrap().contains(&tgt_dom))
                 );
                 if children_by_bb.contains_key(dst) {
                     child_paths.entry(*dst).or_default().union(&path_to_exit);
