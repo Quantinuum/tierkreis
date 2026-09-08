@@ -5,8 +5,11 @@ use super::NodeDefinition;
 use super::WorkflowGraph;
 use hugr::core::HugrNode;
 use hugr::extension::prelude::ConstUsize;
+use hugr::extension::prelude::TupleOpDef;
+use hugr::ops::Tag;
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Value, constant::Sum};
 use hugr::std_extensions::arithmetic::{float_types::ConstF64, int_types::ConstInt};
+use hugr::std_extensions::collections::list::ListValue;
 use hugr::types::{Signature, SumType};
 use hugr::{Hugr, HugrView, PortIndex as _};
 use miette::{IntoDiagnostic, Report};
@@ -146,7 +149,55 @@ fn convert_dataflow_op<H: HugrView>(
             let func_node = graph.get_func_const(hugr, func)?;
             return Ok(vec![(func_node, "value".to_string())]);
         }
+        OpType::Tag(Tag { tag, variants, .. }) => {
+            if variants.len() == 1 && variants[0].is_empty() {
+                let node = graph
+                    .graph
+                    .add_node(unit_const(), vec![], vec!["value".to_string()]);
+                return Ok(vec![(node, "value".to_string())]);
+            }
+            if variants.len() == 1 && variants[0].len() == 2 {
+                // make a tuple - we only support pairs in Tierkreis.
+                assert!(inputs.len() == 2);
+                let node = graph.graph.add_node(
+                    NodeDefinition::Task {
+                        worker_name: "builtins".to_string(),
+                        task_name: "tuple".to_string(),
+                    },
+                    vec![],
+                    vec!["value".to_string()],
+                );
+                wire_up(
+                    &mut graph.graph,
+                    inputs,
+                    node,
+                    vec!["a".to_string(), "b".to_string()],
+                );
+                return Ok(vec![(node, "value".to_string())]);
+            }
+            if variants.len() == 2 && variants[0].is_empty() && variants[1].is_empty() {
+                // boolean type represented as two empty variants
+                let node = graph.graph.add_node(
+                    NodeDefinition::Const {
+                        value: serde_json::Value::Bool(*tag == 1),
+                    },
+                    vec![],
+                    vec!["value".to_string()],
+                );
+                return Ok(vec![(node, "value".to_string())]);
+            }
+            Err(miette::miette!(
+                "Unsupported tag variant structure: {variants:?}"
+            ))
+        }
         other => todo!("{other:?}"),
+    }
+}
+
+fn unit_const() -> NodeDefinition {
+    // unit type, no data. Could represent as empty list?
+    NodeDefinition::Const {
+        value: serde_json::Value::Null,
     }
 }
 
@@ -186,7 +237,15 @@ fn const_val(value: &Value) -> miette::Result<serde_json::Value> {
                 })?;
                 return Ok(serde_json::Value::Number(num));
             }
-            Err(miette::miette!("Unsupported constant value type"))
+            if let Some(c) = v.downcast_ref::<ListValue>() {
+                return Ok(serde_json::Value::Array(
+                    c.get_contents()
+                        .iter()
+                        .map(const_val)
+                        .collect::<Result<Vec<_>, _>>()?,
+                ));
+            }
+            Err(miette::miette!("Unsupported constant value type {v:?}"))
         }
     }
 }
@@ -249,6 +308,35 @@ fn convert_ext_op(
 fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<String>, Vec<String>)> {
     let num_inputs = eop.signature().input().len();
     let num_outputs = eop.signature().output().len();
+    use hugr::extension::simple_op::MakeOpDef as _;
+    if let Ok(top) = TupleOpDef::from_op(eop) {
+        return match top {
+            TupleOpDef::MakeTuple if num_inputs == 0 => {
+                Ok((unit_const(), vec![], vec!["value".to_string()]))
+            }
+            TupleOpDef::MakeTuple if num_inputs == 2 => Ok((
+                NodeDefinition::Task {
+                    worker_name: "builtins".to_string(),
+                    task_name: "tuple".to_string(),
+                },
+                vec!["a".to_string(), "b".to_string()],
+                vec!["value".to_string()],
+            )),
+            TupleOpDef::UnpackTuple if num_outputs == 2 => Ok((
+                NodeDefinition::Task {
+                    worker_name: "builtins".to_string(),
+                    task_name: "untuple".to_string(),
+                },
+                vec!["value".to_string()],
+                vec!["a".to_string(), "b".to_string()],
+            )),
+            _ => Err(miette::miette!(
+                "Unsupported tuple op with {} inputs and {} outputs",
+                num_inputs,
+                num_outputs
+            )),
+        };
+    }
     if [
         hugr::std_extensions::arithmetic::int_ops::EXTENSION_ID,
         hugr::std_extensions::arithmetic::float_ops::EXTENSION_ID,
@@ -310,7 +398,7 @@ impl TryFrom<Hugr> for WorkflowGraph {
 }
 
 fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<WorkflowGraph> {
-    let (graph, outputs) = match hugr.entrypoint_optype() {
+    let (graph, outputs) = match hugr.get_optype(parent) {
         OpType::FuncDefn(fd) => {
             // Not supported by convert_dataflow_op as not a DataflowOp!
             let (mut graph, inputs) = wrapper_graph(fd.signature().body());
@@ -341,14 +429,34 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
 pub(crate) mod test {
     use super::WorkflowGraph;
     use hugr::Hugr;
-    use rstest::fixture;
     use std::fs::File;
     use std::io::BufReader;
 
-    #[fixture]
-    pub(crate) fn simple_arith() -> WorkflowGraph {
-        let f = File::open("../simple_arith.hugr").unwrap();
+    #[test]
+    fn convert_map() {
+        let f = File::open("../tierkreis_map.hugr").unwrap();
         let hugr = Hugr::load(BufReader::new(f), None).unwrap();
-        WorkflowGraph::try_from(hugr).unwrap()
+        WorkflowGraph::try_from(hugr).unwrap();
+    }
+
+    #[test]
+    fn convert_map_minopt() {
+        let f = File::open("../tierkreis_map_minopt.hugr").unwrap();
+        let hugr = Hugr::load(BufReader::new(f), None).unwrap();
+        WorkflowGraph::try_from(hugr).unwrap();
+    }
+
+    #[test]
+    fn convert_loop() {
+        let f = File::open("../tierkreis_loop.hugr").unwrap();
+        let hugr = Hugr::load(BufReader::new(f), None).unwrap();
+        WorkflowGraph::try_from(hugr).unwrap();
+    }
+
+    #[test]
+    fn convert_loop_minopt() {
+        let f = File::open("../tierkreis_loop_minopt.hugr").unwrap();
+        let hugr = Hugr::load(BufReader::new(f), None).unwrap();
+        WorkflowGraph::try_from(hugr).unwrap();
     }
 }

@@ -2018,7 +2018,28 @@ mod tests {
         Ok(())
     }
 
-    use crate::graph::hugr::test as hugr_tests;
+    #[rstest]
+    #[case::simple_arith("../simple_arith.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 45}))]
+    #[case::doubler("../doubler.hugr", json!({"in0": 5, "in1": 7}), json!({"out0": 27}))]
+    #[case::doubler_minopt("../doubler_minopt.hugr", json!({"in0": 10, "in1": 2}), json!({"out0": 42}))]
+    #[case::doubler_indirect("../doubler_indirect.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 18}))]
+    #[case::doubler_indirect_minopt("../doubler_indirect_minopt.hugr", json!({"in0": 20, "in1": 7}), json!({"out0": 67}))]
+    #[tokio::test]
+    #[test_log::test]
+    async fn run_hugr(
+        #[case] workflow_graph: String,
+        #[case] inputs: serde_json::Value,
+        #[case] expected_outputs: serde_json::Value,
+    ) -> miette::Result<()> {
+        use hugr::Hugr;
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let hugr = Hugr::load(BufReader::new(File::open(workflow_graph).unwrap()), None).unwrap();
+        let workflow_graph = WorkflowGraph::try_from(hugr).unwrap();
+        run_workflows(workflow_graph, inputs, expected_outputs).await
+    }
+
     #[rstest]
     #[case::one_input_one_output_3(one_input_one_output(), json!({"a": 3}), json!({"out": 3}))]
     #[case::one_input_one_output_6(one_input_one_output(), json!({"a": 6}), json!({"out": 6}))]
@@ -2032,7 +2053,6 @@ mod tests {
     #[case::simple_if_else_false(simple_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
-    #[case::alan(hugr_tests::simple_arith(), json!({"in0": 5, "in1": 3}), json!({"out0": 45}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_workflows(
