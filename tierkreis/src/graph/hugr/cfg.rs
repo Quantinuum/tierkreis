@@ -173,7 +173,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             child: N,
             remaining_children: &mut HashMap<N, &DomTreeNode<N>>,
         ) {
-            let Some(dtn) = remaining_children.get(&child) else {
+            let Some(dtn) = remaining_children.remove(&child) else {
                 return;
             };
             // Targets of exit edges pushed onto <ordered> first
