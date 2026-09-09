@@ -196,32 +196,34 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
         ordered_children.reverse();
 
         // Now process children in the determined order
-        let mut children = Vec::new();
         let mut children_by_bb = children_by_bb;
-        for child in ordered_children {
-            let path_to_child = child_paths.remove(&child).unwrap();
-            let child_dtn = children_by_bb.remove(&child).unwrap();
-            for lp in child_dtn.exit_edges.leaves(hugr) {
-                let path_from_child_to_exit = lp.clone().into();
-                let path_to_exit = path_to_child.concat(&path_from_child_to_exit);
-                assert!(
-                    // if dst has no dominator, dst is the entry node
-                    doms.immediate_dominator(node_map.to_portgraph(lp.tgt))
-                        .is_none_or(|tgt_dom|
+        let children = ordered_children
+            .into_iter()
+            .map(|child| {
+                let path_to_child = child_paths.remove(&child).unwrap();
+                let child_dtn = children_by_bb.remove(&child).unwrap();
+                for lp in child_dtn.exit_edges.leaves(hugr) {
+                    let path_from_child_to_exit = lp.clone().into();
+                    let path_to_exit = path_to_child.concat(&path_from_child_to_exit);
+                    assert!(
+                        // if dst has no dominator, dst is the entry node
+                        doms.immediate_dominator(node_map.to_portgraph(lp.tgt))
+                            .is_none_or(|tgt_dom|
                         //otherwise, tgt_dom must be ni or some dominator thereof
                         // (i.e. tgt is a sibling of an nonstrict-ancestor of ni).
                     doms.dominators(ni).unwrap().contains(&tgt_dom))
-                );
-                if children_by_bb.contains_key(&lp.tgt) {
-                    child_paths.entry(lp.tgt).or_default().union(&path_to_exit);
-                } else if lp.tgt == n {
-                    loop_backedges.union(&path_to_exit);
-                } else {
-                    exit_edges.union(&path_to_exit);
+                    );
+                    if children_by_bb.contains_key(&lp.tgt) {
+                        child_paths.entry(lp.tgt).or_default().union(&path_to_exit);
+                    } else if lp.tgt == n {
+                        loop_backedges.union(&path_to_exit);
+                    } else {
+                        exit_edges.union(&path_to_exit);
+                    }
                 }
-            }
-            children.push((path_to_child, child_dtn))
-        }
+                (path_to_child, child_dtn)
+            })
+            .collect();
         DomTreeNode {
             node: n,
             children,
