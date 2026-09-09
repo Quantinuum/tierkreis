@@ -1,8 +1,6 @@
 //! Functions for converting a [Hugr] into a [WorkflowGraph]
 use std::collections::HashMap;
 
-use crate::builder::if_else;
-
 use super::NodeDefinition;
 use super::WorkflowGraph;
 use hugr::core::HugrNode;
@@ -12,10 +10,8 @@ use hugr::ops::Tag;
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Value, constant::Sum};
 use hugr::std_extensions::arithmetic::{float_types::ConstF64, int_types::ConstInt};
 use hugr::std_extensions::collections::list::ListValue;
-use hugr::type_row;
 use hugr::types::{Signature, SumType};
 use hugr::{Hugr, HugrView, PortIndex as _};
-use itertools::Itertools;
 use miette::{IntoDiagnostic, Report};
 use petgraph::visit::{Topo, Walker};
 use portgraph::NodeIndex;
@@ -74,31 +70,6 @@ fn convert_dataflow_op<H: HugrView>(
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node, graph, inputs),
         OpType::CFG(_) => convert_cfg(hugr, node, graph, inputs),
-        OpType::Conditional(cond) => {
-            if cond.sum_rows != vec![type_row![]; 2] {
-                return Err(miette::miette!(
-                    "Can only convert 2-way Conditionals on bool, not {:?}",
-                    cond.sum_rows
-                ));
-            }
-            let [f, t] = hugr.children(node).collect::<Vec<_>>().try_into().unwrap();
-            let pred = inputs[0].clone();
-            let f_outs = convert_dfg(hugr, f, graph, inputs[1..].to_vec())?;
-            let t_outs = convert_dfg(hugr, t, graph, inputs[1..].to_vec())?;
-            let g = &mut graph.graph;
-            Ok(t_outs
-                .into_iter()
-                .zip_eq(f_outs)
-                .map(|(t, f)| {
-                    let c = if_else(g);
-                    g.link_nodes_by_port_name(t.0, &t.1, c, "if_true").unwrap();
-                    g.link_nodes_by_port_name(f.0, &f.1, c, "if_false").unwrap();
-                    g.link_nodes_by_port_name(pred.0, &pred.1, c, "pred")
-                        .unwrap();
-                    (c, "value".into())
-                })
-                .collect())
-        }
         OpType::Const(_) => Ok(vec![]), // Ignore on its own, will be converted as part of any LoadConstant
         OpType::LoadConstant(_) => {
             let cst = hugr.static_source(node).ok_or_else(|| {
