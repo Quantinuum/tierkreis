@@ -129,6 +129,16 @@ mod tierkreis {
     }
 
     #[pyfunction]
+    async fn new_in_memory() -> PyResult<PyRuntime> {
+        new_from_config(PyRuntimeConfig(RuntimeConfig::memory())).await
+    }
+
+    #[pyfunction]
+    async fn new_sqlite_memory() -> PyResult<PyRuntime> {
+        new_from_config(PyRuntimeConfig(RuntimeConfig::sqlite_memory())).await
+    }
+
+    #[pyfunction]
     async fn new_from_config(config: PyRuntimeConfig) -> PyResult<PyRuntime> {
         let res = get_runtime()
             .spawn(async move { crate::runtime::Runtime::from_config(&config.0).await })
@@ -216,10 +226,10 @@ mod tierkreis {
             }
         }
 
-        fn __enter__(&mut self) -> PyResult<()> {
+        fn __enter__(&mut self) {
             // We are already running a background runtime. Do nothing.
             if self.cancel.is_some() {
-                return Ok(());
+                return;
             }
 
             let (send, recv) = oneshot::channel::<()>();
@@ -235,12 +245,10 @@ mod tierkreis {
                         }
                         else => {},
                     }
-                })
+                });
             });
 
             self.cancel = Some(send);
-
-            Ok(())
         }
 
         fn __exit__(

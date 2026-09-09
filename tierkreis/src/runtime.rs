@@ -45,7 +45,10 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    fn memory() -> Self {
+    /// Construct a pre-defined config that keeps state in memory and can only
+    /// run built-in tasks that also run in memory.
+    #[must_use]
+    pub fn memory() -> Self {
         RuntimeConfig {
             asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
                 .into_iter()
@@ -65,7 +68,10 @@ impl RuntimeConfig {
         }
     }
 
-    fn sqlite_memory() -> Self {
+    /// Construct a pre-defined config that keeps state in an sqlite database
+    /// in memory and can only run built-in tasks that also run in memory.
+    #[must_use]
+    pub fn sqlite_memory() -> Self {
         let mut config = Self::memory();
         config.runtime_state = RuntimeStateConfig::Sqlite {
             memory: true,
@@ -144,6 +150,8 @@ enum RuntimeStateConfig {
     Sqlite { memory: bool, url: Option<String> },
 }
 
+/// The [`Runtime`] struct encapsulates the [`Orchestrator`] and [`RuntimeState`]
+/// such that the workflow system can be run from a single object.
 pub struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
@@ -164,13 +172,18 @@ impl Drop for AbortOnDrop {
 }
 
 impl Runtime {
+    /// Create a new Runtime instance from a configuration.
+    ///
+    /// # Errors
+    ///
+    /// Will
     pub async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config);
 
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
 
-        init_logging_and_tracing(config.logging_config.clone());
+        init_logging_and_tracing(&config.logging_config);
         let orchestrator = Orchestrator::try_new(
             &asset_storage_registry,
             &executor_registry,
@@ -198,6 +211,11 @@ impl Runtime {
         })
     }
 
+    /// Save a workflow to the runtime state with an option name.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the runtime state cannot be written to.
     pub async fn save_workflow(
         &self,
         name: Option<String>,
@@ -206,6 +224,12 @@ impl Runtime {
         self.state.save_workflow(name, workflow_graph).await
     }
 
+    /// Start a new workflow run of a specific workflow with some inputs.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the input assets cannot be written or if
+    /// the runtime state cannot be written to.
     pub async fn start_new_run<S: BuildHasher>(
         &self,
         workflow_id: Uuid,
@@ -339,6 +363,11 @@ impl Runtime {
         Ok(())
     }
 
+    /// Allow the runtime to run all available workflow run attempts.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the [`Runtime`] fails to process a workflow run attempt.
     pub async fn run(&self) -> miette::Result<()> {
         let stream = self.orchestrator.listen()?;
         let state = self.state.clone();
@@ -429,10 +458,17 @@ impl Runtime {
         Ok(())
     }
 
+    /// Obtain a watch receiver for the runtime.
     pub fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
         self.state.listen()
     }
 
+    /// Fetch the outputs of a workflow run attempt.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run attempt does not exist, the state cannot
+    /// be accessed or if the output node has no output values.
     pub async fn get_outputs(
         &self,
         run_id: Uuid,
