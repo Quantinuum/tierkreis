@@ -8,7 +8,8 @@ use petgraph::algo::dominators::{self, Dominators};
 use portgraph::NodeIndex;
 
 use super::{GraphWithFuncs, convert_dfg};
-use crate::graph::{NodeDefinition, WorkflowGraph};
+use crate::builder::if_else;
+use crate::graph::WorkflowGraph;
 
 struct DomTreeNode<N> {
     node: N,
@@ -305,16 +306,7 @@ impl<N: HugrNode> GatingPath<N> {
                         if f == t {
                             t.clone()
                         } else {
-                            // crate::builder::if_else is test-only, duplicating it here
-                            let node = graph.add_node(
-                                NodeDefinition::IfElse {},
-                                [
-                                    "pred".to_string(),
-                                    "if_true".to_string(),
-                                    "if_false".to_string(),
-                                ],
-                                ["value".to_string()],
-                            );
+                            let node = if_else(graph);
                             graph
                                 .link_nodes_by_port_name(pred.0, &pred.1, node, "pred")
                                 .unwrap();

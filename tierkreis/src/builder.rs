@@ -1,6 +1,7 @@
-/*! This is a graph builder utility module that is currently just used for
-building test workflow graphs internally.
+/*! This is a graph builder utility module, used for
+building test workflow graphs and converting Hugrs
 */
+#![allow(dead_code)]
 use miette::IntoDiagnostic;
 use portgraph::NodeIndex;
 use serde::Serialize;
