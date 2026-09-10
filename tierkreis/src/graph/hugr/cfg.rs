@@ -99,9 +99,12 @@ impl<N: HugrNode> DomTreeNode<N> {
                 .unwrap()
                 .inputs;
             assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
-            let does_loop_repeat = self
-                .loop_backedges
-                .build_predicate(&mut graph.graph, &block_preds);
+            let does_loop_repeat = self.loop_backedges.build_predicate(
+                &mut graph.graph,
+                &block_preds,
+                &mut None, // search for existing in WorkflowGraph??
+                &mut None,
+            );
             let mut loop_exit_path = GatingPath::from(loop_exit_path.clone());
             loop_exit_path.union(&self.loop_backedges);
             let rep_val =
@@ -354,20 +357,38 @@ impl<N: HugrNode> GatingPath<N> {
         &self,
         graph: &mut WorkflowGraph,
         block_preds: &HashMap<N, (NodeIndex, String)>,
+        const_true: &mut Option<(NodeIndex, String)>,
+        const_false: &mut Option<(NodeIndex, String)>,
     ) -> (NodeIndex, String) {
         match self {
-            GatingPath::Never => graph.const_false(),
-            GatingPath::Always(_, _) => graph.const_true(),
+            GatingPath::Never => const_false
+                .get_or_insert_with(|| (graph.add_node(
+                    NodeDefinition::Const {
+                        value: false.into(),
+                    },
+                    [],
+                    ["value".to_string()],
+                ), "value".to_string()))
+                .clone(),
+            GatingPath::Always(_, _) => const_true
+                .get_or_insert_with(|| (graph.add_node(
+                    NodeDefinition::Const {
+                        value: true.into(),
+                    },
+                    [],
+                    ["value".to_string()],
+                ), "value".to_string()))
+                .clone(),
             GatingPath::Branch(br, opts) => {
                 assert!([1, 2].contains(&opts.len())); // guppy only produces bools
                 let fal = opts
                     .get(&0.into())
                     .unwrap_or(&GatingPath::Never)
-                    .build_predicate(graph, block_preds);
+                    .build_predicate(graph, block_preds, const_true, const_false);
                 let tr = opts
                     .get(&1.into())
                     .unwrap_or(&GatingPath::Never)
-                    .build_predicate(graph, block_preds);
+                    .build_predicate(graph, block_preds, const_true, const_false);
                 let pred = block_preds.get(br).unwrap();
                 let node = graph.add_node(
                     NodeDefinition::IfElse {},
