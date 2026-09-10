@@ -15,9 +15,9 @@ struct DomTreeNode<N> {
     node: N,
     // In topsort order (child before any sibling it can reach)
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
-    exit_edges: GatingPath<N>,
-    loop_backedges: GatingPath<N>,
-    // Set if loop_backedges is not Never. TODO: make into LeafPath??
+    exit_edges: Option<GatingPath<N>>,
+    loop_backedges: Option<GatingPath<N>>,
+    // Set if loop_backedges is Some. TODO: make into LeafPath??
     loop_exit: Option<(GatingPath<N>, Box<DomTreeNode<N>>)>,
 }
 
@@ -29,7 +29,7 @@ impl<N: HugrNode> DomTreeNode<N> {
                     return self.children.remove(child_idx);
                 }
                 let (ep, dtn) = child.disconnect(&doms[1..]);
-                return (child_path.clone().concat(&ep), dtn);
+                return (child_path.concat(&ep), dtn);
             }
         }
         panic!("Node not found in children");
@@ -46,7 +46,7 @@ impl<N: HugrNode> DomTreeNode<N> {
     )> {
         let Some(bb) = hugr.get_optype(self.node).as_dataflow_block() else {
             assert!(hugr.get_optype(self.node).is_exit_block());
-            assert!(matches!(self.exit_edges, GatingPath::Never));
+            assert!(self.exit_edges.is_none());
             assert!(self.children.is_empty());
             return Ok((Some(this_block_inputs), HashMap::new()));
         };
@@ -99,14 +99,18 @@ impl<N: HugrNode> DomTreeNode<N> {
                 .unwrap()
                 .inputs;
             assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
-            let does_loop_repeat = self.loop_backedges.build_predicate(
+            let loop_backedges = self
+                .loop_backedges
+                .as_ref()
+                .expect("loop_exit implies loop_backedges is Some");
+            let does_loop_repeat = loop_backedges.build_predicate(
                 &mut graph.graph,
                 &block_preds,
                 &mut None, // search for existing in WorkflowGraph??
                 &mut None,
             );
-            let mut loop_exit_path = GatingPath::from(loop_exit_path.clone());
-            loop_exit_path.union(&self.loop_backedges);
+            let mut loop_exit_path = loop_exit_path.clone();
+            loop_exit_path.union(loop_backedges);
             let rep_val =
                 loop_exit_path.build_inputs(&mut graph.graph, &block_outputs, &block_preds);
             assert_eq!(rep_val.len(), loop_in_tys.len());
@@ -125,8 +129,7 @@ impl<N: HugrNode> DomTreeNode<N> {
 
         Ok((
             exit_node_outs,
-            self.exit_edges
-                .leaves(hugr)
+            leaves(&self.exit_edges, hugr)
                 .into_iter()
                 .map(|lp| (lp.src, block_outputs.remove(&lp.src).unwrap()))
                 .collect(),
@@ -173,8 +176,8 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             .map(|c| build(hugr, doms, node_map.from_portgraph(c), node_map))
             .map(|c| (c.node, c))
             .collect::<HashMap<_, _>>();
-        let mut exit_edges = GatingPath::default();
-        let mut loop_backedges = GatingPath::default();
+        let mut exit_edges: Option<GatingPath<H::Node>> = None;
+        let mut loop_backedges: Option<GatingPath<H::Node>> = None;
 
         let mut child_paths = HashMap::<H::Node, GatingPath<H::Node>>::new();
         // Process edges from this node (perhaps a loop header)
@@ -195,11 +198,14 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 .ok()
                 .unwrap();
             if children_by_bb.contains_key(&tgt) {
-                child_paths.entry(tgt).or_default().union(&path);
+                child_paths
+                    .entry(tgt)
+                    .and_modify(|p| p.union(&path))
+                    .or_insert_with(|| path.clone());
             } else if tgt == n {
-                loop_backedges.union(&path);
+                union_opt(&mut loop_backedges, &path);
             } else {
-                exit_edges.union(&path)
+                union_opt(&mut exit_edges, &path)
             }
         }
         // We want to process children in reverse topsort order: any child C1 with an exit edge to C2, must be processed *before* C2.
@@ -214,7 +220,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 return;
             };
             // Targets of exit edges pushed onto <ordered> first
-            for lp in &dtn.exit_edges.leaves(hugr) {
+            for lp in leaves(&dtn.exit_edges, hugr) {
                 rev_sort(hugr, ordered, lp.tgt, remaining_children);
             }
             ordered.push(child);
@@ -238,8 +244,9 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             .map(|child| {
                 let path_to_child = child_paths.remove(&child).unwrap();
                 let child_dtn = children_by_bb.remove(&child).unwrap();
-                for lp in child_dtn.exit_edges.leaves(hugr) {
-                    let path_from_child_to_exit = lp.clone().into();
+                let child_exit_leaves = leaves(&child_dtn.exit_edges, hugr);
+                for lp in child_exit_leaves {
+                    let path_from_child_to_exit: GatingPath<H::Node> = lp.clone().into();
                     let path_to_exit = path_to_child.concat(&path_from_child_to_exit);
                     assert!(
                         // if dst has no dominator, dst is the entry node
@@ -250,11 +257,14 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                     doms.dominators(ni).unwrap().contains(&tgt_dom))
                     );
                     if children_by_bb.contains_key(&lp.tgt) {
-                        child_paths.entry(lp.tgt).or_default().union(&path_to_exit);
+                        child_paths
+                            .entry(lp.tgt)
+                            .and_modify(|p| p.union(&path_to_exit))
+                            .or_insert_with(|| path_to_exit.clone());
                     } else if lp.tgt == n {
-                        loop_backedges.union(&path_to_exit);
+                        union_opt(&mut loop_backedges, &path_to_exit);
                     } else {
-                        exit_edges.union(&path_to_exit);
+                        union_opt(&mut exit_edges, &path_to_exit);
                     }
                 }
                 (path_to_child, child_dtn)
@@ -268,8 +278,8 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             loop_backedges,
             loop_exit: None,
         };
-        if !matches!(&d.loop_backedges, GatingPath::Never) {
-            let (loop_exit_block, outport) = find_single_loop_exit(hugr, n, &d.loop_backedges);
+        if let Some(path_back_to_header) = d.loop_backedges.as_ref() {
+            let (loop_exit_block, outport) = find_single_loop_exit(hugr, n, path_back_to_header);
             let doms = iter::successors(Some(loop_exit_block), |b| {
                 Some(node_map.from_portgraph(doms.immediate_dominator(node_map.to_portgraph(*b))?))
             })
@@ -316,14 +326,13 @@ pub(super) fn convert_cfg<H: HugrView>(
 }
 
 /// A collection (0 or more) paths from some given CFG node, within that node's dominator tree.
-#[derive(Clone, Debug, Default)]
+/// `None` (rather than a `GatingPath`) represents the empty collection (no paths).
+#[derive(Clone, Debug)]
 enum GatingPath<N> {
     // Source of an edge leaving the dom tree
     Always(N, OutgoingPort),
-    #[default]
-    Never,
-    // One element for each outgoing port of the branch node
-    Branch(N, Vec<GatingPath<N>>),
+    // One element (None if no path via that port) for each outgoing port of the branch node
+    Branch(N, Vec<Option<GatingPath<N>>>),
 }
 
 /// A single path from some given CFG node, stopping at the boundary of its dominator tree.
@@ -342,18 +351,26 @@ impl<N> From<LeafPath<N>> for GatingPath<N> {
     fn from(leaf: LeafPath<N>) -> Self {
         let mut path = GatingPath::Always(leaf.src.0, leaf.src.1);
         for (node, port, len) in leaf.branches.into_iter().rev() {
-            let mut branches = Vec::from_iter(iter::repeat_with(|| GatingPath::Never).take(len));
-            branches[port.index()] = path;
+            let mut branches = Vec::from_iter(iter::repeat_with(|| None).take(len));
+            branches[port.index()] = Some(path);
             path = GatingPath::Branch(node, branches);
         }
         path
     }
 }
 
+/// Merges `other` into the accumulated path `acc`, which may not have any path yet.
+fn union_opt<N: HugrNode>(acc: &mut Option<GatingPath<N>>, other: &GatingPath<N>) {
+    match acc {
+        Some(existing) => existing.union(other),
+        None => *acc = Some(other.clone()),
+    }
+}
+
 impl<N: HugrNode> GatingPath<N> {
     fn branch(node: N, port: OutgoingPort, num_ports: usize) -> Self {
-        let mut branches = vec![GatingPath::Never; num_ports];
-        branches[port.index()] = GatingPath::Always(node, port);
+        let mut branches = vec![None; num_ports];
+        branches[port.index()] = Some(GatingPath::Always(node, port));
         GatingPath::Branch(node, branches)
     }
 
@@ -365,20 +382,6 @@ impl<N: HugrNode> GatingPath<N> {
         const_false: &mut Option<(NodeIndex, String)>,
     ) -> (NodeIndex, String) {
         match self {
-            GatingPath::Never => const_false
-                .get_or_insert_with(|| {
-                    (
-                        graph.add_node(
-                            NodeDefinition::Const {
-                                value: false.into(),
-                            },
-                            [],
-                            ["value".to_string()],
-                        ),
-                        "value".to_string(),
-                    )
-                })
-                .clone(),
             GatingPath::Always(_, _) => const_true
                 .get_or_insert_with(|| {
                     (
@@ -392,9 +395,26 @@ impl<N: HugrNode> GatingPath<N> {
                 })
                 .clone(),
             GatingPath::Branch(br, opts) => {
-                assert!([1, 2].contains(&opts.len())); // guppy only produces bools
-                let fal = opts[0].build_predicate(graph, block_preds, const_true, const_false);
-                let tr = opts[1].build_predicate(graph, block_preds, const_true, const_false);
+                let [fal, tru] = &opts[..] else {
+                    panic!("Branches should have two options, guppy only branches on bools")
+                };
+                let [fal, tru] = [fal, tru].map(|path| match path {
+                    None => const_false
+                        .get_or_insert_with(|| {
+                            (
+                                graph.add_node(
+                                    NodeDefinition::Const {
+                                        value: false.into(),
+                                    },
+                                    [],
+                                    ["value".to_string()],
+                                ),
+                                "value".to_string(),
+                            )
+                        })
+                        .clone(),
+                    Some(gp) => gp.build_predicate(graph, block_preds, const_true, const_false),
+                });
                 let pred = block_preds.get(br).unwrap();
                 let node = graph.add_node(
                     NodeDefinition::IfElse {},
@@ -412,7 +432,7 @@ impl<N: HugrNode> GatingPath<N> {
                     .link_nodes_by_port_name(fal.0, &fal.1, node, "if_false")
                     .unwrap();
                 graph
-                    .link_nodes_by_port_name(tr.0, &tr.1, node, "if_true")
+                    .link_nodes_by_port_name(tru.0, &tru.1, node, "if_true")
                     .unwrap();
                 (node, "value".into())
             }
@@ -426,22 +446,17 @@ impl<N: HugrNode> GatingPath<N> {
         block_preds: &HashMap<N, (NodeIndex, String)>,
     ) -> Vec<(NodeIndex, String)> {
         match self {
-            GatingPath::Never => panic!("Cannot build inputs for GatingPath::Never"),
             GatingPath::Always(n, p) => block_outputs.get(&(*n, *p)).unwrap().clone(),
             GatingPath::Branch(br, opts) => {
                 assert_eq!(opts.len(), 2); // guppy only produces bools
-                if let Ok(path) = opts
-                    .iter()
-                    .filter(|p| !matches!(p, GatingPath::Never))
-                    .exactly_one()
-                {
+                if let Ok(path) = opts.iter().flatten().exactly_one() {
                     return path.build_inputs(graph, block_outputs, block_preds);
                 }
-                assert!(
-                    !matches!(opts[0], GatingPath::Never) && !matches!(opts[1], GatingPath::Never)
-                );
-                let fal = opts[0].build_inputs(graph, block_outputs, block_preds);
-                let tr = opts[1].build_inputs(graph, block_outputs, block_preds);
+                let (Some(fal), Some(tr)) = (&opts[0], &opts[1]) else {
+                    panic!("Some branch must be present")
+                };
+                let fal = fal.build_inputs(graph, block_outputs, block_preds);
+                let tr = tr.build_inputs(graph, block_outputs, block_preds);
                 let pred = block_preds.get(br).unwrap();
                 fal.iter()
                     .zip_eq(&tr)
@@ -477,25 +492,21 @@ impl<N: HugrNode> GatingPath<N> {
     }
 
     fn concat(&self, other: &GatingPath<N>) -> Self {
-        fn has_nevers<N>(gp: &GatingPath<N>) -> bool {
+        fn has_none<N>(gp: &Option<GatingPath<N>>) -> bool {
             match gp {
-                GatingPath::Never => true,
-                GatingPath::Always(_, _) => false,
-                GatingPath::Branch(_, opts) => opts.iter().any(|v| has_nevers(v)),
+                None => true,
+                Some(GatingPath::Always(_, _)) => false,
+                Some(GatingPath::Branch(_, opts)) => opts.iter().any(has_none),
             }
         }
         match self {
-            GatingPath::Never => panic!("Cannot concatenate with Never"), // Or return Never?
             GatingPath::Always(_, _) => other.clone(),
             GatingPath::Branch(node, opts) => {
-                if has_nevers(self) {
+                if opts.iter().any(has_none) {
                     GatingPath::Branch(
                         *node,
-                        opts.into_iter()
-                            .map(|v| match v {
-                                GatingPath::Never => GatingPath::Never,
-                                v => v.concat(other),
-                            })
+                        opts.iter()
+                            .map(|v| v.as_ref().map(|v| v.concat(other)))
                             .collect(),
                     )
                 } else {
@@ -512,7 +523,6 @@ impl<N: HugrNode> GatingPath<N> {
             path_to_here: &mut Vec<(H::Node, OutgoingPort, usize)>,
         ) -> Vec<LeafPath<H::Node>> {
             match gp {
-                GatingPath::Never => vec![],
                 GatingPath::Always(node, port) => {
                     let (tgt, _) = hugr.single_linked_input(*node, *port).unwrap();
                     vec![LeafPath {
@@ -526,7 +536,10 @@ impl<N: HugrNode> GatingPath<N> {
                     .enumerate()
                     .flat_map(|(i, gp)| {
                         path_to_here.push((*br, i.into(), opts.len()));
-                        let leaves = traverse(hugr, gp, path_to_here);
+                        let leaves = gp
+                            .as_ref()
+                            .map(|gp| traverse(hugr, gp, path_to_here))
+                            .unwrap_or_default();
                         path_to_here.pop();
                         leaves
                     })
@@ -537,13 +550,7 @@ impl<N: HugrNode> GatingPath<N> {
     }
 
     fn union(&mut self, other: &GatingPath<N>) {
-        if matches!(other, GatingPath::Never) {
-            return;
-        }
         match self {
-            GatingPath::Never => {
-                *self = other.clone();
-            }
             GatingPath::Always(_, _) => {
                 panic!("Union of Always with {other:?}");
             }
@@ -552,12 +559,23 @@ impl<N: HugrNode> GatingPath<N> {
                     && n == n2
                 {
                     for (this, other) in opts.iter_mut().zip_eq(opts2.iter()) {
-                        this.union(other);
+                        let Some(other) = other else { continue };
+                        match this {
+                            None => *this = Some(other.clone()),
+                            Some(this) => this.union(other),
+                        }
                     }
                 } else {
                     panic!("Cannot union Branch({n:?}) with {other:?}");
                 }
             }
         }
+    }
+}
+
+fn leaves<H: HugrView>(gp: &Option<GatingPath<H::Node>>, hugr: &H) -> Vec<LeafPath<H::Node>> {
+    match gp {
+        Some(gp) => gp.leaves(hugr),
+        None => Vec::new(),
     }
 }
