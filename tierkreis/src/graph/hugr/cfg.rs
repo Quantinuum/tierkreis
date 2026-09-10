@@ -17,21 +17,19 @@ struct DomTreeNode<N> {
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
     exit_edges: GatingPath<N>,
     loop_backedges: GatingPath<N>,
-    // Set if loop_backedges is not Never. TODO: make into GatingPath??
-    loop_exit: Option<(LeafPath<N>, Box<DomTreeNode<N>>)>,
+    // Set if loop_backedges is not Never. TODO: make into LeafPath??
+    loop_exit: Option<(GatingPath<N>, Box<DomTreeNode<N>>)>,
 }
 
 impl<N: HugrNode> DomTreeNode<N> {
-    fn disconnect(&mut self, doms: &[N]) -> (LeafPath<N>, DomTreeNode<N>) {
-        for (child_path, child) in &mut self.children {
+    fn disconnect(&mut self, doms: &[N]) -> (GatingPath<N>, DomTreeNode<N>) {
+        for (child_idx,(child_path, child)) in self.children.iter_mut().enumerate() {
             if child.node == doms[0] {
                 if doms.len() == 1 {
-                    self.children.retain(|(_, c)| c.node != doms[0]);
-                    return (child_path, child);
+                    return self.children.remove(child_idx);
                 }
-                let (lp, dtn) = child.disconnect(&doms[1..]);
-                lp.branches.insert(0, child_path); // ?!
-                return (lp, dtn);
+                let (ep, dtn) = child.disconnect(&doms[1..]);
+                return (child_path.clone().concat(&ep), dtn);
             }
         }
         panic!("Node not found in children");
@@ -88,11 +86,12 @@ impl<N: HugrNode> DomTreeNode<N> {
 
         if let Some((loop_exit_path, post_loop_dtn)) = self.loop_exit.as_ref() {
             // TODO At this point we need to have built all the child nodes *in* the loop, into a different WorkflowGraph...
+            let [loop_exit_edge] = loop_exit_path.leaves(hugr).try_into().unwrap();
             let loop_exit_tys = hugr
-                .get_optype(loop_exit_path.src.0)
+                .get_optype(loop_exit_edge.src.0)
                 .as_dataflow_block()
                 .unwrap()
-                .successor_input(loop_exit_path.src.1.index())
+                .successor_input(loop_exit_edge.src.1.index())
                 .unwrap();
             let loop_in_tys = &hugr
                 .get_optype(self.node)
