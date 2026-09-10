@@ -477,18 +477,31 @@ impl<N: HugrNode> GatingPath<N> {
     }
 
     fn concat(&self, other: &GatingPath<N>) -> Self {
+        fn has_nevers<N>(gp: &GatingPath<N>) -> bool {
+            match gp {
+                GatingPath::Never => true,
+                GatingPath::Always(_, _) => false,
+                GatingPath::Branch(_, opts) => opts.iter().any(|v| has_nevers(v)),
+            }
+        }
         match self {
             GatingPath::Never => panic!("Cannot concatenate with Never"), // Or return Never?
             GatingPath::Always(_, _) => other.clone(),
-            GatingPath::Branch(node, opts) => GatingPath::Branch(
-                *node,
-                opts.into_iter()
-                    .map(|v| match v {
-                        GatingPath::Never => GatingPath::Never,
-                        v => v.concat(other),
-                    })
-                    .collect(),
-            ),
+            GatingPath::Branch(node, opts) => {
+                if has_nevers(self) {
+                    GatingPath::Branch(
+                        *node,
+                        opts.into_iter()
+                            .map(|v| match v {
+                                GatingPath::Never => GatingPath::Never,
+                                v => v.concat(other),
+                            })
+                            .collect(),
+                    )
+                } else {
+                    other.clone()
+                }
+            }
         }
     }
 
