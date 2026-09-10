@@ -4018,14 +4018,14 @@ name = "tkr-aer-worker-impl"
 version = "0.2.1"
 source = { editable = "tierkreis_workers/aer_worker" }
 dependencies = [
-    { name = "pytket-qiskit" },
+    { name = "pytket-qiskit", extra = ["aer"] },
     { name = "tierkreis" },
     { name = "tkr-aer-worker" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "pytket-qiskit" },
+    { name = "pytket-qiskit", extras = ["aer"] },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-aer-worker", editable = "tierkreis_workers/aer_worker/api" },
 ]
@@ -4173,7 +4173,7 @@ version = "0.2.1"
 source = { editable = "tierkreis_workers/ibmq_worker" }
 dependencies = [
     { name = "pytket" },
-    { name = "pytket-qiskit", extra = ["aer"] },
+    { name = "pytket-qiskit" },
     { name = "tierkreis" },
     { name = "tkr-ibmq-worker" },
 ]
@@ -4181,7 +4181,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pytket" },
-    { name = "pytket-qiskit", extras = ["aer"] },
+    { name = "pytket-qiskit" },
     { name = "tierkreis", editable = "tierkreis" },
     { name = "tkr-ibmq-worker", editable = "tierkreis_workers/ibmq_worker/api" },
 ]
