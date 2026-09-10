@@ -12,6 +12,7 @@ use hugr::std_extensions::arithmetic::{float_types::ConstF64, int_types::ConstIn
 use hugr::std_extensions::collections::list::ListValue;
 use hugr::types::{Signature, SumType};
 use hugr::{Hugr, HugrView, PortIndex as _};
+use itertools::Itertools as _;
 use miette::{IntoDiagnostic, Report};
 use petgraph::visit::{Topo, Walker};
 use portgraph::NodeIndex;
@@ -48,15 +49,15 @@ impl<N: HugrNode> GraphWithFuncs<N> {
     }
 }
 
-fn wire_up(
-    graph: &mut WorkflowGraph,
-    inputs: Vec<(NodeIndex, String)>,
+fn wire_up<'a, T: AsRef<str> + 'a + ?Sized>(
+    graph: &'a mut WorkflowGraph,
+    inputs: impl IntoIterator<Item = &'a (NodeIndex, String)>,
     tgt_node: NodeIndex,
-    tgt_ports: impl IntoIterator<Item = String>,
+    tgt_ports: impl IntoIterator<Item = &'a T>,
 ) {
-    for ((src_node, src_port), tgt_port) in inputs.into_iter().zip(tgt_ports) {
+    for ((src_node, src_port), tgt_port) in inputs.into_iter().zip_eq(tgt_ports) {
         graph
-            .link_nodes_by_port_name(src_node, &src_port, tgt_node, &tgt_port)
+            .link_nodes_by_port_name(*src_node, src_port, tgt_node, tgt_port.as_ref())
             .unwrap();
     }
 }
@@ -115,7 +116,7 @@ fn convert_dataflow_op<H: HugrView>(
             let ni = graph
                 .graph
                 .add_node(NodeDefinition::Eval {}, ins.clone(), outs.clone());
-            wire_up(&mut graph.graph, inputs, ni, ins);
+            wire_up(&mut graph.graph, &inputs, ni, &ins);
             return Ok(outs.into_iter().map(|port| (ni, port)).collect());
         }
         OpType::Call(_) => {
@@ -139,7 +140,7 @@ fn convert_dataflow_op<H: HugrView>(
             graph
                 .graph
                 .link_nodes_by_port_name(func_node, "value", ni, "graph")?;
-            wire_up(&mut graph.graph, inputs, ni, args_in);
+            wire_up(&mut graph.graph, &inputs, ni, &args_in);
             return Ok(outs.into_iter().map(|port| (ni, port)).collect());
         }
         OpType::LoadFunction(_) => {
@@ -167,12 +168,7 @@ fn convert_dataflow_op<H: HugrView>(
                     vec![],
                     vec!["value".to_string()],
                 );
-                wire_up(
-                    &mut graph.graph,
-                    inputs,
-                    node,
-                    vec!["a".to_string(), "b".to_string()],
-                );
+                wire_up(&mut graph.graph, &inputs, node, ["a", "b"]);
                 return Ok(vec![(node, "value".to_string())]);
             }
             if variants.len() == 2 && variants[0].is_empty() && variants[1].is_empty() {
@@ -300,7 +296,7 @@ fn convert_ext_op(
     let new_node = graph.add_node(node_def, inports.clone(), outports.clone());
 
     assert_eq!(inputs.len(), inports.len());
-    wire_up(graph, inputs, new_node, inports);
+    wire_up(graph, &inputs, new_node, &inports);
 
     Ok(outports.into_iter().map(|port| (new_node, port)).collect())
 }
@@ -421,7 +417,7 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
         .cloned()
         .collect::<Vec<_>>();
     let o = graph.output_node;
-    wire_up(&mut graph, outputs, o, output_names);
+    wire_up(&mut graph, &outputs, o, &output_names);
     Ok(graph)
 }
 
