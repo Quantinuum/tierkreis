@@ -9,6 +9,7 @@ use petgraph::algo::dominators::{self, Dominators};
 use portgraph::NodeIndex;
 
 use super::{GraphWithFuncs, convert_dfg};
+use crate::graph::hugr::wire_up;
 use crate::graph::{NodeDefinition, WorkflowGraph};
 
 struct DomTreeNode<N> {
@@ -425,15 +426,12 @@ impl<N: HugrNode> GatingPath<N> {
                     ],
                     ["value".to_string()],
                 );
-                graph
-                    .link_nodes_by_port_name(pred.0, &pred.1, node, "pred")
-                    .unwrap();
-                graph
-                    .link_nodes_by_port_name(fal.0, &fal.1, node, "if_false")
-                    .unwrap();
-                graph
-                    .link_nodes_by_port_name(tru.0, &tru.1, node, "if_true")
-                    .unwrap();
+                wire_up(
+                    graph,
+                    [pred, &fal, &tru],
+                    node,
+                    ["pred", "if_false", "if_true"],
+                );
                 (node, "value".into())
             }
         }
@@ -474,15 +472,12 @@ impl<N: HugrNode> GatingPath<N> {
                                 ],
                                 ["value".to_string()],
                             );
-                            graph
-                                .link_nodes_by_port_name(pred.0, &pred.1, node, "pred")
-                                .unwrap();
-                            graph
-                                .link_nodes_by_port_name(f.0, &f.1, node, "if_false")
-                                .unwrap();
-                            graph
-                                .link_nodes_by_port_name(t.0, &t.1, node, "if_true")
-                                .unwrap();
+                            wire_up(
+                                graph,
+                                [pred, f, t],
+                                node,
+                                vec!["pred", "if_false", "if_true"],
+                            );
                             (node, "value".into())
                         }
                     })
