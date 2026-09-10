@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter;
 
 use hugr::core::HugrNode;
 use hugr::{HugrView, OutgoingPort, PortIndex as _};
@@ -16,9 +17,25 @@ struct DomTreeNode<N> {
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
     exit_edges: GatingPath<N>,
     loop_backedges: GatingPath<N>,
+    // Set if loop_backedges is not Never. TODO: make into GatingPath??
+    loop_exit: Option<(LeafPath<N>, Box<DomTreeNode<N>>)>,
 }
 
 impl<N: HugrNode> DomTreeNode<N> {
+    fn disconnect(&mut self, doms: &[N]) -> (LeafPath<N>, DomTreeNode<N>) {
+        for (child_path, child) in &mut self.children {
+            if child.node == doms[0] {
+                if doms.len() == 1 {
+                    self.children.retain(|(_, c)| c.node != doms[0]);
+                    return (child_path, child);
+                }
+                let (lp, dtn) = child.disconnect(&doms[1..]);
+                lp.branches.insert(0, child_path); // ?!
+                return (lp, dtn);
+            }
+        }
+        panic!("Node not found in children");
+    }
     fn build_graph(
         &self,
         graph: &mut GraphWithFuncs<N>,
@@ -29,54 +46,6 @@ impl<N: HugrNode> DomTreeNode<N> {
         Option<Vec<(NodeIndex, String)>>, // any values delivered to exit node (only if in this DomTreeNode)
         HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>, // values delivered to exit edges of this DomTreeNode
     )> {
-        if !matches!(self.loop_backedges, GatingPath::Never) {
-            let mut blocks = HashSet::new();
-            let mut queue = VecDeque::from_iter(
-                self.loop_backedges
-                    .leaves(hugr)
-                    .into_iter()
-                    .map(|lp| lp.src.0),
-            );
-            while let Some(n) = queue.pop_front() {
-                if n == self.node || !blocks.insert(n) {
-                    continue;
-                }
-                queue.extend(hugr.input_neighbours(n));
-            }
-            let loop_exits = blocks
-                .iter()
-                .flat_map(|&n| hugr.node_outputs(n).map(move |p| (n, p)))
-                .filter(|(n, p)| !blocks.contains(&hugr.single_linked_input(*n, *p).unwrap().0))
-                .collect::<Vec<_>>();
-            let Ok((loop_exit_block, p)) = loop_exits.into_iter().exactly_one() else {
-                // Need to build a single exit that collects all these together, with a sum type or similar
-                // that identifies which exit was taken and where to go next
-                todo!("Multi-exit loops")
-            };
-            let loop_exit_tys = hugr
-                .get_optype(loop_exit_block)
-                .as_dataflow_block()
-                .unwrap()
-                .successor_input(p.index())
-                .unwrap();
-            let loop_in_tys = &hugr
-                .get_optype(self.node)
-                .as_dataflow_block()
-                .unwrap()
-                .inputs;
-            assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
-            todo!("Single-exit loop")
-            // 1. compile the repeat value as the value returned to the header.
-            //   This suggests all backedges should be unified into a single GatingPath
-            // 2. compute the GatingPath of getting to the unique exit edge
-            //   by traversing DomTree from the edge source back up to the header
-            //   and using GatingPath::concat
-            // 3. the loop body outputs are
-            //   1. the predicate, did we get to that exit edge (inverted)
-            //   2. the values, selected (via a UNION of the loop-backedge GatingPath and the exit-edge GatingPath)
-            //      from the usual block_outputs as below
-            // ....all that within a new GraphWithFuncs, that we then insert as a constant and push through a NodeDefinition::Loop
-        }
         let Some(bb) = hugr.get_optype(self.node).as_dataflow_block() else {
             assert!(hugr.get_optype(self.node).is_exit_block());
             assert!(matches!(self.exit_edges, GatingPath::Never));
@@ -116,6 +85,42 @@ impl<N: HugrNode> DomTreeNode<N> {
             }
             block_outputs.extend(exit_edge_outs);
         }
+
+        if let Some((loop_exit_path, post_loop_dtn)) = self.loop_exit.as_ref() {
+            // TODO At this point we need to have built all the child nodes *in* the loop, into a different WorkflowGraph...
+            let loop_exit_tys = hugr
+                .get_optype(loop_exit_path.src.0)
+                .as_dataflow_block()
+                .unwrap()
+                .successor_input(loop_exit_path.src.1.index())
+                .unwrap();
+            let loop_in_tys = &hugr
+                .get_optype(self.node)
+                .as_dataflow_block()
+                .unwrap()
+                .inputs;
+            assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
+            let does_loop_repeat = self
+                .loop_backedges
+                .build_predicate(&mut graph.graph, &block_preds);
+            let mut loop_exit_path = GatingPath::from(loop_exit_path.clone());
+            loop_exit_path.union(&self.loop_backedges);
+            let rep_val =
+                loop_exit_path.build_inputs(&mut graph.graph, &block_outputs, &block_preds);
+            assert_eq!(rep_val.len(), loop_in_tys.len());
+
+            // 1. compile the repeat value as the value returned to the header.
+            //   This suggests all backedges should be unified into a single GatingPath
+            // 2. compute the GatingPath of getting to the unique exit edge
+            //   by traversing DomTree from the edge source back up to the header
+            //   and using GatingPath::concat
+            // 3. the loop body outputs are
+            //   1. the predicate, did we get to that exit edge (inverted)
+            //   2. the values, selected (via a UNION of the loop-backedge GatingPath and the exit-edge GatingPath)
+            //      from the usual block_outputs as below
+            // ....all that within a new GraphWithFuncs, that we then insert as a constant and push through a NodeDefinition::Loop
+        }
+
         Ok((
             exit_node_outs,
             self.exit_edges
@@ -125,6 +130,32 @@ impl<N: HugrNode> DomTreeNode<N> {
                 .collect(),
         ))
     }
+}
+
+fn find_single_loop_exit<H: HugrView>(
+    hugr: &H,
+    loop_header: H::Node,
+    backedges: &GatingPath<H::Node>,
+) -> (H::Node, OutgoingPort) {
+    let mut blocks = HashSet::new();
+    let mut queue = VecDeque::from_iter(backedges.leaves(hugr).into_iter().map(|lp| lp.src.0));
+    while let Some(n) = queue.pop_front() {
+        if n == loop_header || !blocks.insert(n) {
+            continue;
+        }
+        queue.extend(hugr.input_neighbours(n));
+    }
+    let loop_exits = blocks
+        .iter()
+        .flat_map(|&n| hugr.node_outputs(n).map(move |p| (n, p)))
+        .filter(|(n, p)| !blocks.contains(&hugr.single_linked_input(*n, *p).unwrap().0))
+        .collect::<Vec<_>>();
+    let Ok(res) = loop_exits.into_iter().exactly_one() else {
+        // Need to build a single exit that collects all these together, with a sum type or similar
+        // that identifies which exit was taken and where to go next
+        todo!("Multi-exit loops")
+    };
+    res
 }
 
 fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
@@ -224,12 +255,25 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 (path_to_child, child_dtn)
             })
             .collect();
-        DomTreeNode {
+
+        let mut d = DomTreeNode {
             node: n,
             children,
             exit_edges,
             loop_backedges,
+            loop_exit: None,
+        };
+        if !matches!(&d.loop_backedges, GatingPath::Never) {
+            let (loop_exit_block, outport) = find_single_loop_exit(hugr, n, &d.loop_backedges);
+            let doms = iter::successors(Some(loop_exit_block), |b| {
+                Some(node_map.from_portgraph(doms.immediate_dominator(node_map.to_portgraph(*b))?))
+            })
+            .take_while(|dom| dom != &n)
+            .collect::<Vec<_>>();
+            let (loop_exit_path, post_loop_dtn) = d.disconnect(&doms);
+            d.loop_exit = Some((loop_exit_path, Box::new(post_loop_dtn)));
         }
+        d
     }
 
     let (doms, node_map) = compute_dominators(hugr, cfg);
@@ -305,6 +349,48 @@ impl<N: HugrNode> GatingPath<N> {
             node,
             HashMap::from([(port, GatingPath::Always(node, port))]),
         )
+    }
+
+    fn build_predicate(
+        &self,
+        graph: &mut WorkflowGraph,
+        block_preds: &HashMap<N, (NodeIndex, String)>,
+    ) -> (NodeIndex, String) {
+        match self {
+            GatingPath::Never => graph.const_false(),
+            GatingPath::Always(_, _) => graph.const_true(),
+            GatingPath::Branch(br, opts) => {
+                assert!([1, 2].contains(&opts.len())); // guppy only produces bools
+                let fal = opts
+                    .get(&0.into())
+                    .unwrap_or(&GatingPath::Never)
+                    .build_predicate(graph, block_preds);
+                let tr = opts
+                    .get(&1.into())
+                    .unwrap_or(&GatingPath::Never)
+                    .build_predicate(graph, block_preds);
+                let pred = block_preds.get(br).unwrap();
+                let node = graph.add_node(
+                    NodeDefinition::IfElse {},
+                    [
+                        "pred".to_string(),
+                        "if_true".to_string(),
+                        "if_false".to_string(),
+                    ],
+                    ["value".to_string()],
+                );
+                graph
+                    .link_nodes_by_port_name(pred.0, &pred.1, node, "pred")
+                    .unwrap();
+                graph
+                    .link_nodes_by_port_name(fal.0, &fal.1, node, "if_false")
+                    .unwrap();
+                graph
+                    .link_nodes_by_port_name(tr.0, &tr.1, node, "if_true")
+                    .unwrap();
+                (node, "value".into())
+            }
+        }
     }
 
     fn build_inputs(
