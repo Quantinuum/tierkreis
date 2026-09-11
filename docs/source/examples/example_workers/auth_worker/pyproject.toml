@@ -3,7 +3,7 @@ name = "tkr-auth-worker-impl"
 version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = [
-    "cryptography>=45.0.7",
+    "cryptography>=50.0.1",
     "pydantic>=2.11.7",
     "pyscrypt>=1.6.2",
     "tierkreis",
