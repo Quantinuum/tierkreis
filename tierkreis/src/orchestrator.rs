@@ -1240,6 +1240,7 @@ fn build_task_action(
             inputs,
             outputs,
             task_handle,
+            // TODO: Populate actual resources here.
             resources: HashMap::new(),
         },
     })

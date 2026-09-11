@@ -132,12 +132,12 @@ impl SchedulerWrapper for SlurmWrapper {
             let job_ids = job_ids.join(",");
             let output = Command::new(&scheduler.sacct)
                 .args([
-                    "-X",
-                    "-n",
-                    "-P",
-                    "-o",
-                    "JobIDRaw,State,ExitCode",
-                    "-j",
+                    "-X", // Only show statistics relevant to the job allocation itself, not taking steps into consideration.
+                    "-n", // --no-header
+                    "-P", // --parsable2 | separated without | at the end
+                    "-o", // --format (which field to display)
+                    "JobIDRaw,State,ExitCode", // the fields
+                    "-j", // --jobs (specify job IDs)
                     &job_ids,
                 ])
                 .output()
@@ -179,7 +179,11 @@ mod tests {
     #[test]
     fn parses_slurm_job_statuses() {
         let statuses = parse_job_statuses(
-            b"1|PENDING|0:0|\n2|RUNNING|0:0|\n3|COMPLETED|0:0|\n4|CANCELLED by 42|0:15|\n5|TIMEOUT|1:0|\n",
+            b"1|PENDING|0:0
+2|RUNNING|0:0
+3|COMPLETED|0:0
+4|CANCELLED by 42|0:15
+5|TIMEOUT|1:0",
         );
 
         assert_eq!(statuses.get("1"), Some(&SchedulerStatus::Queued));
