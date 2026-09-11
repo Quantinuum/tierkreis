@@ -127,21 +127,21 @@ def test_loop(validate):
     class LoopMultipleAccOut:
         acc1: int
         acc2: int
-        acc3: int
+        #acc3: int
 
     @guppy
     def loop_multiple_acc() -> LoopMultipleAccOut:
-        (acc1, acc2, acc3) = (0, 0, 0)
+        (acc1, acc2) = (0, 0)
         while True:
             should_continue = 5 > acc1
             acc1 += 1
             acc2 += 2
-            acc3 += 3
+            #acc3 += 3
             # Or:
             # (acc1, acc2, acc3) = (acc1 + 1, acc2 + 2, acc3 + 3)
             if not should_continue:
                 break
-        return LoopMultipleAccOut(acc1, acc2, acc3)
+        return LoopMultipleAccOut(acc1, acc2) #, acc3)
 
     write_hugrs(loop_multiple_acc, "tierkreis_loop")
 

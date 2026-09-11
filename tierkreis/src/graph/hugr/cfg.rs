@@ -235,7 +235,7 @@ fn find_single_loop_exit<H: HugrView>(
     let mut blocks = HashSet::new();
     let mut queue = VecDeque::from_iter(backedges.leaves(hugr).into_iter().map(|lp| lp.src.0));
     while let Some(n) = queue.pop_front() {
-        if n == loop_header || !blocks.insert(n) {
+        if !blocks.insert(n) || n == loop_header {
             continue;
         }
         queue.extend(hugr.input_neighbours(n));
@@ -372,7 +372,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             let doms = iter::successors(Some(loop_exit_block), |b| {
                 Some(node_map.from_portgraph(doms.immediate_dominator(node_map.to_portgraph(*b))?))
             })
-            .take_while(|dom| dom != &n)
+            .take_while_inclusive(|dom| dom != &n)
             .collect::<Vec<_>>();
             let (loop_exit_path, post_loop_dtn) = d.disconnect(&doms);
             d.loop_exit = Some(LoopExit {
