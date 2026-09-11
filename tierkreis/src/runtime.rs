@@ -22,7 +22,9 @@ use crate::{
     },
     event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
-        Executor, ExecutorRegistry, InMemoryExecutor, SubprocessExecutor,
+        Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, SlurmWrapper,
+        SubprocessExecutor,
+        hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
     },
     graph::WorkflowGraph,
@@ -135,6 +137,19 @@ enum ExecutorConfig {
         client_config: NexusClientConfig,
         output_storage_name: String,
     },
+    Hpc {
+        hpc_storage_name: String,
+        output_storage_name: String,
+        scheduler: HpcSchedulerConfig,
+        poll_interval_secs: Option<u64>,
+        resources: HPCResourceSpec,
+    },
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HpcSchedulerConfig {
+    Slurm,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -458,6 +473,7 @@ async fn executor_registry_from_config(
     config: &RuntimeConfig,
 ) -> Result<ExecutorRegistry, miette::Error> {
     let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
+    let templates = ScriptTemplates::default();
     for (executor_name, executor_config) in &config.executors {
         match executor_config {
             ExecutorConfig::Memory {
@@ -496,6 +512,33 @@ async fn executor_registry_from_config(
                     .await?,
                 ),
             ),
+            ExecutorConfig::Hpc {
+                hpc_storage_name,
+                output_storage_name,
+                scheduler,
+                poll_interval_secs,
+                resources,
+            } => {
+                match scheduler {
+                    HpcSchedulerConfig::Slurm => {
+                        let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
+                        executor_registry.insert(
+                            executor_name.clone(),
+                            Box::new(
+                                HPCExecutor::try_new(
+                                    asset_storage_registry,
+                                    hpc_storage_name,
+                                    output_storage_name,
+                                    scheduler,
+                                    resources.clone(),
+                                    std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                                )
+                                .await?,
+                            ),
+                        )
+                    }
+                }
+            }
         };
     }
     let executor_registry = Arc::new(executor_registry);

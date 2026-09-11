@@ -27,6 +27,7 @@ diesel-async = { version = "0.8.0", features = ["deadpool", "migrations", "sqlit
 diesel_migrations = "2.3.2"
 futures = "0.3.32"
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
+minijinja = "2.12.0"
 num-complex = { version = "0.4", features = ["serde"] }
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "gzip-tonic", "metrics"] }
