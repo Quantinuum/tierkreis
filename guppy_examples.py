@@ -123,25 +123,19 @@ def test_map(validate):
 
 
 def test_loop(validate):
-    @guppy.struct
-    class LoopMultipleAccOut:
-        acc1: int
-        acc2: int
-        #acc3: int
-
     @guppy
-    def loop_multiple_acc() -> LoopMultipleAccOut:
-        (acc1, acc2) = (0, 0)
+    def loop_multiple_acc(acc1: int, acc2: int) -> tuple[int, int]:
+        acc3 = 0
         while True:
             should_continue = 5 > acc1
             acc1 += 1
             acc2 += 2
-            #acc3 += 3
+            acc3 += 3
             # Or:
             # (acc1, acc2, acc3) = (acc1 + 1, acc2 + 2, acc3 + 3)
             if not should_continue:
                 break
-        return LoopMultipleAccOut(acc1, acc2) #, acc3)
+        return (acc2, acc3)
 
     write_hugrs(loop_multiple_acc, "tierkreis_loop")
 
