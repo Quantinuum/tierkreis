@@ -28,10 +28,6 @@ struct LoopExit<N> {
 
 impl<N: HugrNode> DomTreeNode<N> {
     fn disconnect(&mut self, doms: &[N], outer: bool) -> (GatingPath<N>, DomTreeNode<N>) {
-        /*eprintln!(
-            "Disconnecting from node {:?} with doms {:?}, current exit_edges {:?}",
-            self.node, doms, self.exit_edges
-        );*/
         for (child_idx, (child_path, child)) in self.children.iter_mut().enumerate() {
             if child.node == doms[0] {
                 let (ep, dtn) = if doms.len() == 1 {
@@ -48,7 +44,6 @@ impl<N: HugrNode> DomTreeNode<N> {
                     }
                     union_opt(&mut self.exit_edges, &ep);
                 }
-                //eprintln!("Disconnected from node {:?}, new exit_edges {:?}", self.node, self.exit_edges);
                 return (ep, dtn);
             }
         }
@@ -68,6 +63,7 @@ impl<N: HugrNode> DomTreeNode<N> {
         }
         panic!("Node not found in children");
     }
+
     fn build_graph(
         &self,
         graph: &mut GraphWithFuncs<N>,
@@ -85,7 +81,15 @@ impl<N: HugrNode> DomTreeNode<N> {
             return Ok((Some(this_block_inputs), HashMap::new()));
         };
         let Some(loop_exit) = self.loop_exit.as_ref() else {
-            return self.build_nonloop(graph, hugr, bb, this_block_inputs, block_preds);
+            let (exit_node_vals, mut block_outputs) =
+                self.build_nonloop(graph, hugr, bb, this_block_inputs, block_preds)?;
+            return Ok((
+                exit_node_vals,
+                leaves(&self.exit_edges, hugr)
+                    .into_iter()
+                    .map(|lp| (lp.src, block_outputs.remove(&lp.src).unwrap()))
+                    .collect(),
+            ));
         };
         let outer_graph = graph; // Rename to disambiguate.
 
@@ -94,8 +98,6 @@ impl<N: HugrNode> DomTreeNode<N> {
             .as_dataflow_block()
             .unwrap()
             .inputs;
-        let mut loop_end_ports = vec!["should_continue".to_string()];
-        loop_end_ports.extend((0..loop_in_tys.len()).map(|i| format!("out{i}")));
         let (mut body_graph, inputs) = GraphWithFuncs::new(
             loop_in_tys.len(),
             Some("should_continue".to_string()),
@@ -103,11 +105,11 @@ impl<N: HugrNode> DomTreeNode<N> {
         );
         // Replace block_preds: body of loop does not contain any branch from a BB outside it
         let mut body_preds = HashMap::new();
-        let (exit_val, block_outputs) =
+        let (exit_val, mut block_outputs) =
             self.build_nonloop(&mut body_graph, hugr, bb, inputs.clone(), &mut body_preds)?;
         assert!(exit_val.is_none()); // Exit block is not in the loop, so even if it was in `children`
         // it will have been moved out of `children` into `loop_exit`
-        let (input_port_names, output_names) = build_loop_repeat_val(
+        let (mut input_port_names, output_names) = build_loop_repeat_val(
             hugr,
             loop_exit,
             bb,
@@ -116,13 +118,14 @@ impl<N: HugrNode> DomTreeNode<N> {
             body_preds,
             inputs,
         );
+        input_port_names.insert(0, "graph".to_string());
         let graph_const_node = outer_graph.graph.add_node(
             graph_const(body_graph.graph)?,
             vec![],
             vec!["value".to_string()],
         );
         let eval_node = outer_graph.graph.add_node(
-            NodeDefinition::Eval {},
+            NodeDefinition::Loop {  },
             input_port_names.clone(),
             output_names.clone(),
         );
@@ -130,7 +133,7 @@ impl<N: HugrNode> DomTreeNode<N> {
             &mut outer_graph.graph,
             iter::once(&(graph_const_node, "value".to_string())).chain(&this_block_inputs),
             eval_node,
-            iter::once(&"graph".to_string()).chain(&input_port_names),
+            &input_port_names,
         );
         match loop_exit.post_loop.as_ref() {
             Some(dtn) => dtn.build_graph(
@@ -139,7 +142,13 @@ impl<N: HugrNode> DomTreeNode<N> {
                 output_names.into_iter().map(|p| (eval_node, p)).collect(),
                 block_preds,
             ),
-            None => Ok((None, block_outputs)),
+            None => Ok((
+                None,
+                leaves(&self.exit_edges, hugr)
+                    .into_iter()
+                    .map(|lp| (lp.src, block_outputs.remove(&lp.src).unwrap()))
+                    .collect(),
+            )),
         }
     }
 
@@ -152,14 +161,13 @@ impl<N: HugrNode> DomTreeNode<N> {
         block_preds: &mut HashMap<N, (NodeIndex, String)>,
     ) -> miette::Result<(
         Option<Vec<(NodeIndex, String)>>, // any values delivered to exit node (only if in this DomTreeNode)
-        HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>, // values delivered to exit edges of this DomTreeNode
+        HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>, // values delivered to control-flow outports of various descendants
     )> {
         let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> =
             HashMap::new();
 
         // Compile body. (Easy - the complexity of this function is all about the branches!)
         let this_block_outs = convert_dfg(hugr, self.node, graph, inputs.clone())?;
-
         // Edges from "root"
         assert_eq!(hugr.node_outputs(self.node).count(), bb.sum_rows.len());
         // Guppy generates only unit sum branch predicates
@@ -188,13 +196,7 @@ impl<N: HugrNode> DomTreeNode<N> {
             block_outputs.extend(exit_edge_outs);
         }
 
-        Ok((
-            exit_node_outs,
-            leaves(&self.exit_edges, hugr)
-                .into_iter()
-                .map(|lp| (lp.src, block_outputs.remove(&lp.src).unwrap()))
-                .collect(),
-        ))
+        Ok((exit_node_outs, block_outputs))
     }
 }
 
@@ -241,13 +243,12 @@ fn build_loop_repeat_val<N: HugrNode>(
         output_node,
         &output_names,
     );
-    let mut input_port_names = vec!["graph".to_string()];
-    for (node, port) in inputs {
+    let input_port_names = inputs.into_iter().map(|(node, port)|{
         assert!(
             matches!(body_graph.graph.node_definition(node), Some(NodeDefinition::Input { name }) if *name == port)
         );
-        input_port_names.push(port);
-    }
+        port
+    }).collect();
     (input_port_names, output_names)
 }
 
