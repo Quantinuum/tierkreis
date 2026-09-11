@@ -22,13 +22,17 @@ use uuid::Uuid;
 use which::which_re;
 
 use crate::{
-    asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets}, event::{
+    asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets},
+    event::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
         send_queued, send_running,
-    }, executor::{
+    },
+    executor::{
         hpc::spec::{HPCResourceSpec, JobSpec, SchedulerStatus, SchedulerWrapper},
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
-    }, location::Location, monitoring::{EnvironmentCarrier, inject_trace_context},
+    },
+    location::Location,
+    monitoring::{EnvironmentCarrier, inject_trace_context},
 };
 
 #[derive(Serialize, Deserialize, Default)]
@@ -41,7 +45,6 @@ struct WorkerCallArgs {
     error_path: PathBuf,
     logs_path: Option<PathBuf>,
 }
-
 
 struct BackgroundTaskPlan {
     workflow_run_id: Uuid,
@@ -521,6 +524,8 @@ impl HPCExecutor {
             Some(
                 SchedulerStatus::Queued | SchedulerStatus::Complete | SchedulerStatus::Running,
             ) => Ok(job_id),
+            Some(SchedulerStatus::Cancelled) => Err(miette!("Job was cancelled")),
+            Some(SchedulerStatus::Error { message }) => Err(miette!("Job errored: {}", message)),
             _ => Err(miette!("Job not active")),
         }
     }
@@ -537,11 +542,22 @@ impl Executor for HPCExecutor {
                 let paths = which_re(&re)
                     .into_diagnostic()
                     .wrap_err("Failed to search for Worker binaries")?;
-                Ok(paths
-                    .map(|path| WorkerSpec {
-                        worker_name: path.file_name().unwrap().to_str().unwrap().to_string(),
+                paths
+                    .map(|path| {
+                        let worker_name = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .ok_or_else(|| {
+                                miette!(
+                                    "Worker binary path has no valid UTF-8 file name: {}",
+                                    path.display()
+                                )
+                            })?;
+                        Ok(WorkerSpec {
+                            worker_name: worker_name.to_owned(),
+                        })
                     })
-                    .collect())
+                    .collect::<miette::Result<Vec<_>>>()
             });
             task.await.into_diagnostic()?
         }
@@ -604,6 +620,7 @@ impl Executor for HPCExecutor {
         };
         Ok(channel.boxed())
     }
+
     fn cancel(
         &self,
         workflow_run_id: Uuid,
@@ -628,6 +645,8 @@ impl Executor for HPCExecutor {
 #[cfg(test)]
 mod tests {
 
+    use std::assert_matches;
+
     use futures::StreamExt;
     use serde_json::json;
 
@@ -640,12 +659,12 @@ mod tests {
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]
-    #[ignore = "Requires a local SLURM setup"]
+    #[ignore = "Requires a local SLURM setup. To run the test, ensure the you have infra/local_slurm running. Then run the test from outside the Docker container."]
     async fn execute_hpc() -> miette::Result<()> {
         let checkpoints_path = std::env::var_os("HOME")
             .map(PathBuf::from)
             .ok_or_else(|| miette!("HOME is not set"))?
-            .join(".tierkreis/slrm");
+            .join(".tierkreis/slrm"); // Mimic scratch on a cluster
         let file_storage = FileAssetStorage::new(&checkpoints_path);
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
@@ -694,7 +713,7 @@ mod tests {
         let events = stream.take(3).collect::<Vec<_>>().await;
         dbg!(&events);
         assert_eq!(events.len(), 3);
-        assert!(matches!(
+        assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -703,8 +722,8 @@ mod tests {
                 }),
                 ..
             }
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
@@ -713,7 +732,7 @@ mod tests {
                 }),
                 ..
             }
-        ));
+        );
         assert_registry_contains_values(
             &registry,
             "checkpoints",

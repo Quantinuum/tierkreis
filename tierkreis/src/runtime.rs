@@ -514,25 +514,25 @@ async fn executor_registry_from_config(
                 poll_interval_secs,
                 resources,
             } => {
-                let scheduler: Arc<dyn crate::executor::SchedulerWrapper> = match scheduler {
+                match scheduler {
                     HpcSchedulerConfig::Slurm => {
-                        Arc::new(SlurmWrapper::with_templates(templates.clone()))
-                    }
-                };
-                executor_registry.insert(
-                    executor_name.clone(),
-                    Box::new(
-                        HPCExecutor::try_new(
-                            asset_storage_registry,
-                            hpc_storage_name,
-                            output_storage_name,
-                            scheduler,
-                            resources.clone(),
-                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
+                        executor_registry.insert(
+                            executor_name.clone(),
+                            Box::new(
+                                HPCExecutor::try_new(
+                                    asset_storage_registry,
+                                    hpc_storage_name,
+                                    output_storage_name,
+                                    scheduler,
+                                    resources.clone(),
+                                    std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                                )
+                                .await?,
+                            ),
                         )
-                        .await?,
-                    ),
-                )
+                    }
+                }
             }
         };
     }

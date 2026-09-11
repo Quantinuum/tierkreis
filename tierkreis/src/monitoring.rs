@@ -9,13 +9,13 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use serde::{Deserialize, Serialize};
-use tokio::process::Command;
 use std::collections::HashMap;
 use std::{
     env::home_dir,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
+use tokio::process::Command;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
 use tracing_subscriber::EnvFilter;
@@ -240,7 +240,6 @@ pub fn init_logging(logging_config: Option<LoggingConfig>) {
 pub fn init_logging_and_tracing(logging_config: Option<LoggingConfig>) {
     init(&logging_config.unwrap_or_default(), true);
 }
-
 
 fn normalize_otel_env_key(key: &str) -> String {
     key.to_uppercase().replace('-', "_")
