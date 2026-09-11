@@ -7,7 +7,7 @@ from tierkreis.controller.data.types import Workflow
 
 
 class ApplyTwiceInput(NamedTuple):
-    graph: TKR[Workflow[TKR[int], TKR[int]]]
+    apply: TKR[Workflow[TKR[int], TKR[int]]]
     value: TKR[int]
 
 

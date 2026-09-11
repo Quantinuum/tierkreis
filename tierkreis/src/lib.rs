@@ -23,7 +23,7 @@ pub mod state;
 mod tierkreis {
     use std::{collections::HashMap, sync::Arc};
 
-    use miette::{Diagnostic, IntoDiagnostic};
+    use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
     use pyo3::{
         Borrowed, FromPyObject, PyErr, PyResult, Python, exceptions::PyValueError, prelude::*,
@@ -38,6 +38,7 @@ mod tierkreis {
 
     use crate::{
         graph::{LegacyWorkflowGraph, WorkflowGraph},
+        location::Location,
         runtime::{self, RuntimeConfig},
     };
 
@@ -64,11 +65,15 @@ mod tierkreis {
             py_err.set_cause(py, Some(convert_stderr(py, source)));
         }
         if let Some(help) = err.help() {
-            py_err.add_note(py, format!("\thelp: {help}")).unwrap();
+            py_err
+                .add_note(py, format!("\thelp: {help}"))
+                .expect("Failed to add help annotation to exception");
         }
         if let Some(related) = err.related() {
             for related in related {
-                py_err.add_note(py, format!("related: {related}")).unwrap();
+                py_err
+                    .add_note(py, format!("related: {related}"))
+                    .expect("Failed to add related note to exception");
             }
         }
         py_err
@@ -117,6 +122,43 @@ mod tierkreis {
         Dict(HashMap<String, Value>),
     }
 
+    #[pyclass(name = "NodeState")]
+    struct PyNodeState {
+        #[pyo3(get)]
+        pub status: String,
+    }
+
+    #[pyclass]
+    enum NodeStatus {
+        Complete,
+        Cancelled,
+        Error,
+        Running,
+        Queued,
+        Scheduled,
+    }
+
+    impl From<crate::state::interface::NodeState> for PyNodeState {
+        fn from(node_state: crate::state::interface::NodeState) -> Self {
+            let status = if node_state.complete_time.is_some() {
+                "Complete".to_string()
+            } else if node_state.cancelled_time.is_some() {
+                "Cancelled".to_string()
+            } else if node_state.error_time.is_some() {
+                "Error".to_string()
+            } else if node_state.running_time.is_some() {
+                "Running".to_string()
+            } else if node_state.queued_time.is_some() {
+                "Queued".to_string()
+            } else if node_state.scheduled_time.is_some() {
+                "Scheduled".to_string()
+            } else {
+                "Unknown".to_string()
+            };
+            Self { status }
+        }
+    }
+
     #[pyclass(name = "Runtime")]
     struct PyRuntime {
         inner: Arc<crate::runtime::Runtime>,
@@ -143,7 +185,9 @@ mod tierkreis {
         let res = get_runtime()
             .spawn(async move { crate::runtime::Runtime::from_config(&config.0).await })
             .await
-            .unwrap();
+            .map_err(|err| {
+                Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+            })?;
 
         match res {
             Ok(runtime) => Ok(PyRuntime {
@@ -165,7 +209,9 @@ mod tierkreis {
             let res = get_runtime()
                 .spawn(async move { inner.save_workflow(name, workflow.0).await })
                 .await
-                .unwrap();
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
 
             match res {
                 Ok(id) => Ok(id),
@@ -182,7 +228,9 @@ mod tierkreis {
             let res = get_runtime()
                 .spawn(async move { inner.start_new_run(workflow_id, inputs.0).await })
                 .await
-                .unwrap();
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
 
             match res {
                 Ok((id, _attempt)) => Ok(id),
@@ -190,25 +238,15 @@ mod tierkreis {
             }
         }
 
-        async fn wait_for(&self, workflow_id: Uuid, attempt: u32) -> PyResult<()> {
+        async fn wait_for(&self, run_id: Uuid, attempt: u32) -> PyResult<()> {
             let inner = self.inner.clone();
             get_runtime()
-                .spawn(async move {
-                    let mut state_recv = inner.listen();
-                    loop {
-                        {
-                            let updated = state_recv.borrow_and_update();
-                            if !updated.active_runs.contains(&(workflow_id, attempt)) {
-                                return Ok::<_, miette::Report>(());
-                            }
-                        }
-
-                        state_recv.changed().await.into_diagnostic()?;
-                    }
-                })
+                .spawn(async move { inner.wait_for(run_id, attempt).await })
                 .await
-                .unwrap()
-                .unwrap();
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
 
             Ok(())
         }
@@ -218,10 +256,45 @@ mod tierkreis {
             let res = get_runtime()
                 .spawn(async move { inner.get_outputs(run_id, attempt).await })
                 .await
-                .unwrap();
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
 
             match res {
                 Ok(outputs) => Python::attach(|py| convert_outputs(py, outputs)),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        async fn debug_read_node_states(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            locations: Vec<String>,
+        ) -> PyResult<HashMap<String, PyNodeState>> {
+            let inner = self.inner.clone();
+            let locations = locations
+                .iter()
+                .map(|s| Location::new(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            let res = get_runtime()
+                .spawn(async move {
+                    inner
+                        .read_node_states(run_id, attempt, locations.into_iter())
+                        .await
+                })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(states) => Ok(states
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.into()))
+                    .collect()),
                 Err(err) => Python::attach(|py| Err(convert_err(py, err))),
             }
         }
@@ -258,7 +331,9 @@ mod tierkreis {
             _traceback: &Bound<'_, PyAny>,
         ) {
             if let Some(cancel) = self.cancel.take() {
-                cancel.send(()).unwrap();
+                cancel
+                    .send(())
+                    .expect("Failed to send background task cancellation");
             }
         }
     }
@@ -266,7 +341,9 @@ mod tierkreis {
     impl Drop for PyRuntime {
         fn drop(&mut self) {
             if let Some(cancel) = self.cancel.take() {
-                cancel.send(()).unwrap();
+                cancel
+                    .send(())
+                    .expect("Failed to send background task cancellation");
             }
         }
     }

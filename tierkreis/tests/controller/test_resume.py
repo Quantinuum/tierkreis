@@ -1,7 +1,8 @@
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import pytest
-from tierkreis._tierkreis import new_default, new_in_memory, new_sqlite_memory, Runtime
+from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
 from tests.controller.defaults_graphs import (
     defaults_not_none,
@@ -168,6 +169,7 @@ ids = [
 runtime_fns = [new_default, new_in_memory, new_sqlite_memory]
 runtime_fn_ids = ["default", "in_memory", "sqlite_memory"]
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("runtime_fn", runtime_fns, ids=runtime_fn_ids)
 @pytest.mark.parametrize(
@@ -230,7 +232,6 @@ with_worker_ids = [
 ]
 
 
-@pytest.mark.skip("currently stalls")
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("graph", "output", "name", "workflow_id", "inputs"),
