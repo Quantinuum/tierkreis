@@ -27,7 +27,7 @@ dev = [
 ]
 lint = [
     "isort>=6.0.1",
-    "ruff>=0.16.2",
+    "ruff>=0.16.6",
     "pyright>=1.1.411",
 ]
 test = [
