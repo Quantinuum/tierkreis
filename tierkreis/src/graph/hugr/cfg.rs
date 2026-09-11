@@ -17,9 +17,14 @@ struct DomTreeNode<N> {
     // In topsort order (child before any sibling it can reach)
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
     exit_edges: Option<GatingPath<N>>,
-    loop_backedges: Option<GatingPath<N>>,
-    // Set if loop_backedges is Some. TODO: make into LeafPath??
-    loop_exit: Option<(GatingPath<N>, Box<DomTreeNode<N>>)>,
+    loop_exit: Option<LoopExit<N>>,
+}
+
+// TODO: make loop_exit_path into LeafPath??
+struct LoopExit<N> {
+    repeat_path: GatingPath<N>,
+    exit_path: GatingPath<N>,
+    post_loop: Box<DomTreeNode<N>>,
 }
 
 impl<N: HugrNode> DomTreeNode<N> {
@@ -85,9 +90,9 @@ impl<N: HugrNode> DomTreeNode<N> {
             block_outputs.extend(exit_edge_outs);
         }
 
-        if let Some((loop_exit_path, post_loop_dtn)) = self.loop_exit.as_ref() {
+        if let Some(loop_exit) = self.loop_exit.as_ref() {
             // TODO At this point we need to have built all the child nodes *in* the loop, into a different WorkflowGraph...
-            let [loop_exit_edge] = loop_exit_path.leaves(hugr).try_into().unwrap();
+            let [loop_exit_edge] = loop_exit.exit_path.leaves(hugr).try_into().unwrap();
             let loop_exit_tys = hugr
                 .get_optype(loop_exit_edge.src.0)
                 .as_dataflow_block()
@@ -100,18 +105,14 @@ impl<N: HugrNode> DomTreeNode<N> {
                 .unwrap()
                 .inputs;
             assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
-            let loop_backedges = self
-                .loop_backedges
-                .as_ref()
-                .expect("loop_exit implies loop_backedges is Some");
-            let does_loop_repeat = loop_backedges.build_predicate(
+            let does_loop_repeat = loop_exit.repeat_path.build_predicate(
                 &mut graph.graph,
                 &block_preds,
                 &mut None, // search for existing in WorkflowGraph??
                 &mut None,
             );
-            let mut loop_exit_path = loop_exit_path.clone();
-            loop_exit_path.union(loop_backedges);
+            let mut loop_exit_path = loop_exit.exit_path.clone();
+            loop_exit_path.union(&loop_exit.repeat_path);
             let rep_val =
                 loop_exit_path.build_inputs(&mut graph.graph, &block_outputs, &block_preds);
             assert_eq!(rep_val.len(), loop_in_tys.len());
@@ -276,18 +277,21 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             node: n,
             children,
             exit_edges,
-            loop_backedges,
             loop_exit: None,
         };
-        if let Some(path_back_to_header) = d.loop_backedges.as_ref() {
-            let (loop_exit_block, outport) = find_single_loop_exit(hugr, n, path_back_to_header);
+        if let Some(path_back_to_header) = loop_backedges {
+            let (loop_exit_block, outport) = find_single_loop_exit(hugr, n, &path_back_to_header);
             let doms = iter::successors(Some(loop_exit_block), |b| {
                 Some(node_map.from_portgraph(doms.immediate_dominator(node_map.to_portgraph(*b))?))
             })
             .take_while(|dom| dom != &n)
             .collect::<Vec<_>>();
             let (loop_exit_path, post_loop_dtn) = d.disconnect(&doms);
-            d.loop_exit = Some((loop_exit_path, Box::new(post_loop_dtn)));
+            d.loop_exit = Some(LoopExit {
+                repeat_path: path_back_to_header,
+                exit_path: loop_exit_path,
+                post_loop: Box::new(post_loop_dtn),
+            });
         }
         d
     }
