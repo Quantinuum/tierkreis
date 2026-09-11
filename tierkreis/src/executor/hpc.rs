@@ -22,16 +22,13 @@ use uuid::Uuid;
 use which::which_re;
 
 use crate::{
-    asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets},
-    event::{
+    asset_storage::{AssetSpec, AssetStorageRegistry, reserve_asset_specs, transfer_assets}, event::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
         send_queued, send_running,
-    },
-    executor::{
+    }, executor::{
         hpc::spec::{HPCResourceSpec, JobSpec, SchedulerStatus, SchedulerWrapper},
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
-    },
-    location::Location,
+    }, location::Location, monitoring::{EnvironmentCarrier, inject_trace_context},
 };
 
 #[derive(Serialize, Deserialize, Default)]
@@ -45,13 +42,6 @@ struct WorkerCallArgs {
     logs_path: Option<PathBuf>,
 }
 
-struct EnvironmentCarrier<'a>(&'a mut HashMap<String, String>);
-
-impl opentelemetry::propagation::Injector for EnvironmentCarrier<'_> {
-    fn set(&mut self, key: &str, value: String) {
-        self.0.insert(key.to_uppercase().replace('-', "_"), value);
-    }
-}
 
 struct BackgroundTaskPlan {
     workflow_run_id: Uuid,
@@ -516,9 +506,7 @@ impl HPCExecutor {
             ..Default::default()
         };
         let context = tracing::Span::current().context();
-        opentelemetry::global::get_text_map_propagator(|propagator| {
-            propagator.inject_context(&context, &mut EnvironmentCarrier(&mut job_spec.environment));
-        });
+        inject_trace_context(&context, &mut EnvironmentCarrier(&mut job_spec.environment));
         let result = self.scheduler.submit(job_spec, script_path).await?;
         Ok(result)
     }
