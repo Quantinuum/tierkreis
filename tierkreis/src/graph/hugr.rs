@@ -27,6 +27,36 @@ struct GraphWithFuncs<N: HugrNode> {
 }
 
 impl<N: HugrNode> GraphWithFuncs<N> {
+    fn new(
+        num_inputs: usize,
+        first_output: Option<String>,
+        num_outputs: usize,
+    ) -> (Self, Vec<(NodeIndex, String)>) {
+        let output_names: Vec<String> = first_output
+            .into_iter()
+            .chain((0..num_outputs).map(|i| format!("out{i}")))
+            .collect();
+        let mut graph = WorkflowGraph::new(output_names);
+        let input_results = (0..num_inputs)
+            .map(|i| {
+                let name = format!("in{i}");
+                let n = graph.add_node(
+                    NodeDefinition::Input { name: name.clone() },
+                    vec![],
+                    vec![name.clone()],
+                );
+                (n, name)
+            })
+            .collect::<Vec<_>>();
+        (
+            Self {
+                graph,
+                funcs: HashMap::new(),
+            },
+            input_results,
+        )
+    }
+
     fn get_func_const(
         &mut self,
         hugr: &impl HugrView<Node = N>,
@@ -37,16 +67,17 @@ impl<N: HugrNode> GraphWithFuncs<N> {
         }
         hugr.get_optype(node).as_func_defn().unwrap();
         let wg = graph_from_hugr(hugr, node)?;
-        let new_node = self.graph.add_node(
-            NodeDefinition::Const {
-                value: serde_json::to_value(wg).into_diagnostic()?,
-            },
-            vec![],
-            vec!["value".to_string()],
-        );
+        let new_node = self
+            .graph
+            .add_node(graph_const(wg)?, vec![], vec!["value".to_string()]);
         self.funcs.insert(node, new_node);
         Ok(new_node)
     }
+}
+fn graph_const(graph: WorkflowGraph) -> miette::Result<NodeDefinition> {
+    Ok(NodeDefinition::Const {
+        value: serde_json::to_value(graph).into_diagnostic()?,
+    })
 }
 
 fn wire_up<'a, T: AsRef<str> + 'a + ?Sized>(
@@ -367,22 +398,7 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
 }
 
 fn wrapper_graph<N: HugrNode>(sig: &Signature) -> (GraphWithFuncs<N>, Vec<(NodeIndex, String)>) {
-    let mut graph = GraphWithFuncs {
-        graph: WorkflowGraph::new((0..sig.output_count()).map(|i| format!("out{i}"))),
-        funcs: HashMap::new(),
-    };
-    let input_results = (0..sig.input_count())
-        .map(|i| {
-            let name = format!("in{i}");
-            let n = graph.graph.add_node(
-                NodeDefinition::Input { name: name.clone() },
-                vec![],
-                vec![name.clone()],
-            );
-            (n, name)
-        })
-        .collect::<Vec<_>>();
-    (graph, input_results)
+    GraphWithFuncs::new(sig.input_count(), None, sig.output_count())
 }
 
 impl TryFrom<Hugr> for WorkflowGraph {
