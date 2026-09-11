@@ -131,14 +131,11 @@ fn convert_dataflow_op<H: HugrView>(
             let (port, ty) = ins.next().unwrap();
             debug_assert!(port.index() == 0 && matches!(*ty, hugr::types::Term::FunctionType(_)));
 
-            let ins = ins
-                .map(|(p, _)| {
-                    if p.index() == 0 {
-                        "graph".to_string()
-                    } else {
-                        format!("in{}", p.index() - 1)
-                    }
-                })
+            let ins = std::iter::once("graph".to_string())
+                .chain(ins.map(|(p, _)| {
+                    debug_assert!(p.index() > 0);
+                    format!("in{}", p.index() - 1)
+                }))
                 .collect::<Vec<_>>();
             let outs = hugr
                 .out_value_types(node)
