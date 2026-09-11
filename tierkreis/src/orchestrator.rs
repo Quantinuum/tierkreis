@@ -2035,7 +2035,7 @@ mod tests {
     // As are shortcircuit_if(,_minopt)
     #[case::shortcircuit_if("../shortcircuit_if.hugr", json!({"in0": 5}), json!({"out0": 10}))]
     #[case::shortcircuit_if2("../shortcircuit_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
-    #[case::shortcircuit_if3("../shortcircuit_if_minopt.hugr", json!({"in0": 20}), json!({"out0": 40}))]
+    #[case::shortcircuit_if_minopt("../shortcircuit_if_minopt.hugr", json!({"in0": 20}), json!({"out0": 40}))]
     #[case::tierkreis_if("../tierkreis_if.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 6}))]
     #[case::tierkreis_if_minopt("../tierkreis_if_minopt.hugr", json!({"in0": 2, "in1": 3}), json!({"out0": 7}))]
     #[case::tierkreis_if("../tierkreis_if.hugr", json!({"in0": 20, "in1": -15}), json!({"out0": 7*35}))]
