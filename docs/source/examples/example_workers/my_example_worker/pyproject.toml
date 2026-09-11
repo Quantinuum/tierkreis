@@ -3,7 +3,7 @@ name = "tkr-my-example-worker-impl"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic>=2.11.7",
+    "pydantic>=2.13.5",
     "pytket>=2.9.3",
     "tierkreis",
     "ruff",

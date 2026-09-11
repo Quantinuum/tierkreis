@@ -4,7 +4,7 @@ version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = [
     "cryptography>=45.0.7",
-    "pydantic>=2.11.7",
+    "pydantic>=2.13.5",
     "pyscrypt>=1.6.2",
     "tierkreis",
     "tkr-auth-worker",
