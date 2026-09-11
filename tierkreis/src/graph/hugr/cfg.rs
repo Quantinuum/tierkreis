@@ -23,28 +23,48 @@ struct DomTreeNode<N> {
 struct LoopExit<N> {
     repeat_path: GatingPath<N>,
     exit_path: GatingPath<N>,
-    post_loop: Box<DomTreeNode<N>>,
+    post_loop: Option<Box<DomTreeNode<N>>>,
 }
 
 impl<N: HugrNode> DomTreeNode<N> {
-    fn disconnect(&mut self, doms: &[N]) -> (GatingPath<N>, DomTreeNode<N>) {
+    fn disconnect(&mut self, doms: &[N], outer: bool) -> (GatingPath<N>, DomTreeNode<N>) {
+        /*eprintln!(
+            "Disconnecting from node {:?} with doms {:?}, current exit_edges {:?}",
+            self.node, doms, self.exit_edges
+        );*/
         for (child_idx, (child_path, child)) in self.children.iter_mut().enumerate() {
             if child.node == doms[0] {
-                if doms.len() == 1 {
-                    return self.children.remove(child_idx);
+                let (ep, dtn) = if doms.len() == 1 {
+                    self.children.remove(child_idx)
+                    // Note ep *is* child_path
+                } else {
+                    let (ep, dtn) = child.disconnect(&doms[1..], false);
+                    (child_path.concat(&ep), dtn)
+                };
+                if !outer {
+                    // Remove paths to leaves of the removed subtree, add a path to the root thereof
+                    if let Some(ees) = dtn.exit_edges.as_ref() {
+                        remove_opt(&mut self.exit_edges, &ep.clone().concat(ees));
+                    }
+                    union_opt(&mut self.exit_edges, &ep);
                 }
-                let (ep, dtn) = child.disconnect(&doms[1..]);
-                return (child_path.concat(&ep), dtn);
+                //eprintln!("Disconnected from node {:?}, new exit_edges {:?}", self.node, self.exit_edges);
+                return (ep, dtn);
             }
         }
         if let Some(loop_exit) = self.loop_exit.as_mut()
-            && loop_exit.post_loop.node == doms[0]
+            && let Some(post_loop) = loop_exit.post_loop.as_mut()
+            && post_loop.node == doms[0]
         {
-            assert!(doms.len() > 1, "TODO: need to be able to remove post_loop?");
-            let (_ep, _dtn) = loop_exit.post_loop.disconnect(&doms[1..]);
-            let _some_path: GatingPath<N> = todo!();
-            #[expect(unreachable_code)]
-            return (_some_path.concat(&_ep), _dtn);
+            panic!("Nested loop!"); // Just poison, don't think we're hitting this yet
+            if doms.len() == 1 {
+                return (
+                    loop_exit.exit_path.clone(),
+                    *loop_exit.post_loop.take().unwrap(),
+                );
+            }
+            let (ep, dtn) = post_loop.disconnect(&doms[1..], false);
+            return (loop_exit.exit_path.concat(&ep), dtn);
         }
         panic!("Node not found in children");
     }
@@ -85,13 +105,14 @@ impl<N: HugrNode> DomTreeNode<N> {
         let mut body_preds = HashMap::new();
         let (exit_val, block_outputs) =
             self.build_nonloop(&mut body_graph, hugr, bb, inputs.clone(), &mut body_preds)?;
-        assert!(exit_val.is_none());
+        assert!(exit_val.is_none()); // Exit block is not in the loop, so even if it was in `children`
+        // it will have been moved out of `children` into `loop_exit`
         let (input_port_names, output_names) = build_loop_repeat_val(
             hugr,
             loop_exit,
             bb,
             &mut body_graph,
-            block_outputs,
+            &block_outputs,
             body_preds,
             inputs,
         );
@@ -111,12 +132,15 @@ impl<N: HugrNode> DomTreeNode<N> {
             eval_node,
             iter::once(&"graph".to_string()).chain(&input_port_names),
         );
-        loop_exit.post_loop.build_graph(
-            outer_graph,
-            hugr,
-            output_names.into_iter().map(|p| (eval_node, p)).collect(),
-            block_preds,
-        )
+        match loop_exit.post_loop.as_ref() {
+            Some(dtn) => dtn.build_graph(
+                outer_graph,
+                hugr,
+                output_names.into_iter().map(|p| (eval_node, p)).collect(),
+                block_preds,
+            ),
+            None => Ok((None, block_outputs)),
+        }
     }
 
     fn build_nonloop(
@@ -181,7 +205,7 @@ fn build_loop_repeat_val<N: HugrNode>(
     loop_exit: &LoopExit<N>,
     bb: &hugr::ops::DataflowBlock,
     body_graph: &mut GraphWithFuncs<N>,
-    block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
+    block_outputs: &HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
     body_preds: HashMap<N, (NodeIndex, String)>,
     inputs: Vec<(NodeIndex, String)>,
 ) -> (Vec<String>, Vec<String>) {
@@ -336,8 +360,6 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                 let child_dtn = children_by_bb.remove(&child).unwrap();
                 let child_exit_leaves = leaves(&child_dtn.exit_edges, hugr);
                 for lp in child_exit_leaves {
-                    let path_from_child_to_exit: GatingPath<H::Node> = lp.clone().into();
-                    let path_to_exit = path_to_child.concat(&path_from_child_to_exit);
                     assert!(
                         // if dst has no dominator, dst is the entry node
                         doms.immediate_dominator(node_map.to_portgraph(lp.tgt))
@@ -346,6 +368,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                         // (i.e. tgt is a sibling of an nonstrict-ancestor of ni).
                     doms.dominators(ni).unwrap().contains(&tgt_dom))
                     );
+                    let path_to_exit = path_to_child.concat(&lp.clone().into());
                     if children_by_bb.contains_key(&lp.tgt) {
                         child_paths
                             .entry(lp.tgt)
@@ -368,17 +391,48 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             loop_exit: None,
         };
         if let Some(path_back_to_header) = loop_backedges {
+            // This node is a loop header. It dominates the entire loop body, so any edge
+            // exitting the DomTree exits the loop.
+            // The header but may also dominate some bits not in the loop (i.e. from which
+            // control cannot flow back to the header - at least not without exitting the
+            // DomTree and going round an *outer* loop to this one.)
             let (loop_exit_block, outport) = find_single_loop_exit(hugr, n, &path_back_to_header);
-            let doms = iter::successors(Some(loop_exit_block), |b| {
-                Some(node_map.from_portgraph(doms.immediate_dominator(node_map.to_portgraph(*b))?))
-            })
-            .take_while_inclusive(|dom| dom != &n)
-            .collect::<Vec<_>>();
-            let (loop_exit_path, post_loop_dtn) = d.disconnect(&doms);
+            let (post_loop, _) = hugr.single_linked_input(loop_exit_block, outport).unwrap();
+            let mut post_loop_doms = Vec::new();
+            let mut dom = post_loop;
+            let (loop_exit_path, post_loop_dtn) = loop {
+                post_loop_doms.push(dom);
+                match doms.immediate_dominator(node_map.to_portgraph(dom)) {
+                    Some(ni) => {
+                        dom = node_map.from_portgraph(ni);
+                        if dom == n {
+                            // Unique loop_exit block is dominated by header.
+                            // Any edge exiting the DomTree exits the loop; so must come from that post-loop block.
+                            for exit_edge in leaves(&d.exit_edges, hugr) {
+                                assert!(
+                                    doms.dominators(node_map.to_portgraph(exit_edge.src.0))
+                                        .unwrap()
+                                        .contains(&node_map.to_portgraph(post_loop))
+                                );
+                            }
+                            post_loop_doms.reverse();
+                            let (ep, subtree) = d.disconnect(&post_loop_doms, true);
+                            break (ep, Some(subtree));
+                        }
+                    }
+                    None => {
+                        // loop_exit edge leaves the subtree
+                        let [tree_exit_edge] = leaves(&d.exit_edges, hugr).try_into().unwrap();
+                        assert_eq!(tree_exit_edge.src, (loop_exit_block, outport));
+                        d.exit_edges = None;
+                        break (tree_exit_edge.into(), None);
+                    }
+                }
+            };
             d.loop_exit = Some(LoopExit {
                 repeat_path: path_back_to_header,
                 exit_path: loop_exit_path,
-                post_loop: Box::new(post_loop_dtn),
+                post_loop: post_loop_dtn.map(Box::new),
             });
         }
         d
@@ -458,6 +512,14 @@ fn union_opt<N: HugrNode>(acc: &mut Option<GatingPath<N>>, other: &GatingPath<N>
         Some(existing) => existing.union(other),
         None => *acc = Some(other.clone()),
     }
+}
+
+/// Removes `to_remove` from `from`, panicking if `from` is `None` or does not contain `to_remove`.
+fn remove_opt<N: HugrNode>(from: &mut Option<GatingPath<N>>, to_remove: &GatingPath<N>) {
+    *from = from
+        .take()
+        .expect("Cannot remove from None")
+        .remove(to_remove);
 }
 
 impl<N: HugrNode> GatingPath<N> {
@@ -657,6 +719,28 @@ impl<N: HugrNode> GatingPath<N> {
                 }
             }
         }
+    }
+
+    fn remove(mut self, other: &GatingPath<N>) -> Option<GatingPath<N>> {
+        match &mut self {
+            GatingPath::Always(n, p) => {
+                if matches!(other, GatingPath::Always(n2, p2) if n==n2 && p==p2) {
+                    return None;
+                }
+            }
+            GatingPath::Branch(n, opts) => {
+                if let GatingPath::Branch(n2, opts2) = other
+                    && n == n2
+                {
+                    for (this, other) in opts.iter_mut().zip_eq(opts2.iter()) {
+                        let Some(other) = other else { continue };
+                        remove_opt(this, other);
+                    }
+                    return Some(self);
+                }
+            }
+        }
+        panic!("Can't remove {other:?} from {self:?}");
     }
 }
 
