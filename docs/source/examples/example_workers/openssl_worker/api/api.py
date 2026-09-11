@@ -6,17 +6,17 @@ from tierkreis.controller.data.models import TKR
 
 
 class Outputs(NamedTuple):
-    private_key: TKR[bytes]  # fmt: skip
-    public_key: TKR[bytes]  # fmt: skip
+    private_key: TKR[bytes]
+    public_key: TKR[bytes]
 
 
 class genrsa(NamedTuple):
-    numbits: TKR[int]  # fmt: skip
-    passphrase: TKR[bytes]  # fmt: skip
+    numbits: TKR[int]
+    passphrase: TKR[bytes]
 
     @staticmethod
-    def out() -> type[Outputs]:  # fmt: skip
-        return Outputs  # fmt: skip
+    def out() -> type[Outputs]:
+        return Outputs
 
     @property
     def namespace(self) -> str:

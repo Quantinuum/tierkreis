@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "tierkreis",
-    "pytket-qiskit",
+    "pytket-qiskit[aer]",
     "tkr-aer-worker"
 ]
 

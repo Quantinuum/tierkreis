@@ -31,7 +31,7 @@ runs:
 
     - name: Set up just
       if: inputs.include_just == 'yes'
-      uses: extractions/setup-just@v3
+      uses: extractions/setup-just@v4
 
     - name: Set up pnpm
       if: inputs.include_node == 'yes'
