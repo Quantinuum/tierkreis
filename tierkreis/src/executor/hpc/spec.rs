@@ -36,9 +36,9 @@ pub struct JobSpec {
     pub environment: HashMap<String, String>,
     /// Modules loaded before the command.
     pub modules: Vec<String>,
-    /// Explicit scheduler output path.
+    /// Explicit job output path handed to the scheduler.
     pub output_path: Option<PathBuf>,
-    /// Explicit scheduler error path.
+    /// Explicit job error path handed to the.
     pub error_path: Option<PathBuf>,
     /// Additional native scheduler options.
     pub extra_scheduler_args: HashMap<String, Option<String>>,
@@ -179,14 +179,14 @@ pub enum SchedulerStatus {
 /// Scheduler operations required by the event-based executor.
 pub trait SchedulerWrapper: Send + Sync {
     /// Submit a job and return its scheduler job ID.
-    fn submit(&self, spec: JobSpec, script_path: &Path) -> BoxFuture<'_, Result<String>>;
+    fn submit(&self, spec: JobSpec, script_path: &Path) -> impl Future<Output = Result<String>> + Send;
     /// Check the current states of submitted jobs.
     ///
     /// Jobs that cannot be found are omitted from the returned map.
     fn check(
         &self,
         job_ids: Vec<String>,
-    ) -> BoxFuture<'_, Result<HashMap<String, SchedulerStatus>>>;
+    ) ->  impl Future<Output = Result<HashMap<String, SchedulerStatus>>> + Send;
     /// Request cancellation of a job.
-    fn cancel(&self, job_id: String) -> BoxFuture<'_, Result<()>>;
+    fn cancel(&self, job_id: String) -> impl Future<Output = Result<()>> + Send;
 }

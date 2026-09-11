@@ -86,89 +86,81 @@ impl SlurmWrapper {
 }
 
 impl SchedulerWrapper for SlurmWrapper {
-    fn submit(
+    async fn submit(
         &self,
         spec: JobSpec,
         script_path: &Path,
-    ) -> futures::future::BoxFuture<'_, Result<String>> {
+    ) -> Result<String> {
         let scheduler = self.clone();
         let script_path = script_path.to_path_buf();
-        async move {
-            std::fs::write(&script_path, scheduler.templates.render("slurm", &spec)?)
-                .into_diagnostic()?;
-            let output = Command::new(&scheduler.sbatch)
-                .args(["--parsable"])
-                .arg(&script_path)
-                .output()
-                .await
-                .into_diagnostic()
-                .wrap_err("Failed to invoke sbatch")?;
-            if !output.status.success() {
-                return Err(miette!(
-                    "sbatch failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
-            }
-            String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .split(';')
-                .next()
-                .filter(|id| !id.is_empty())
-                .map(str::to_string)
-                .ok_or_else(|| miette!("sbatch returned no job id"))
+        std::fs::write(&script_path, scheduler.templates.render("slurm", &spec)?)
+            .into_diagnostic()?;
+        let output = Command::new(&scheduler.sbatch)
+            .args(["--parsable"])
+            .arg(&script_path)
+            .output()
+            .await
+            .into_diagnostic()
+            .wrap_err("Failed to invoke sbatch")?;
+        if !output.status.success() {
+            return Err(miette!(
+                "sbatch failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
-        .boxed()
+        String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .split(';')
+            .next()
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| miette!("sbatch returned no job id"))
     }
 
-    fn check(
+    async fn check(
         &self,
         job_ids: Vec<String>,
-    ) -> futures::future::BoxFuture<'_, Result<HashMap<String, SchedulerStatus>>> {
+    ) -> Result<HashMap<String, SchedulerStatus>> {
         let scheduler = self.clone();
-        async move {
-            if job_ids.is_empty() {
-                return Ok(HashMap::new());
-            }
-            let job_ids = job_ids.join(",");
-            let output = Command::new(&scheduler.sacct)
-                .args([
-                    "-X", // Only show statistics relevant to the job allocation itself, not taking steps into consideration.
-                    "-n", // --no-header
-                    "-P", // --parsable2 | separated without | at the end
-                    "-o", // --format (which field to display)
-                    "JobIDRaw,State,ExitCode", // the fields
-                    "-j", // --jobs (specify job IDs)
-                    &job_ids,
-                ])
-                .output()
-                .await
-                .into_diagnostic()
-                .wrap_err("Failed to invoke sacct")?;
-            if !output.status.success() {
-                return Err(miette!(
-                    "sacct failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
-            }
-            Ok(parse_job_statuses(&output.stdout))
+        if job_ids.is_empty() {
+            return Ok(HashMap::new());
         }
-        .boxed()
+        let job_ids = job_ids.join(",");
+        let output = Command::new(&scheduler.sacct)
+            .args([
+                "-X", // Only show statistics relevant to the job allocation itself, not taking steps into consideration.
+                "-n", // --no-header
+                "-P", // --parsable2 | separated without | at the end
+                "-o", // --format (which field to display)
+                "JobIDRaw,State,ExitCode", // the fields
+                "-j", // --jobs (specify job IDs)
+                &job_ids,
+            ])
+            .output()
+            .await
+            .into_diagnostic()
+            .wrap_err("Failed to invoke sacct")?;
+        if !output.status.success() {
+            return Err(miette!(
+                "sacct failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(parse_job_statuses(&output.stdout))
+
     }
 
-    fn cancel(&self, job_id: String) -> futures::future::BoxFuture<'_, Result<()>> {
+    async fn cancel(&self, job_id: String) -> Result<()> {
         let scheduler = self.clone();
-        async move {
-            let status = Command::new(&scheduler.scancel)
-                .arg(job_id)
-                .status()
-                .await
-                .into_diagnostic()?;
-            status
-                .success()
-                .then_some(())
-                .ok_or_else(|| miette!("scancel failed: {status}"))
-        }
-        .boxed()
+        let status = Command::new(&scheduler.scancel)
+            .arg(job_id)
+            .status()
+            .await
+            .into_diagnostic()?;
+        status
+            .success()
+            .then_some(())
+            .ok_or_else(|| miette!("scancel failed: {status}"))
     }
 }
 

@@ -82,8 +82,8 @@ type OutputSpecs = (HashMap<String, AssetSpec>, HashMap<String, PathBuf>);
 
 // Identical to nexus
 #[instrument(skip_all, err)]
-async fn process_cancelled_task(
-    scheduler: Arc<dyn SchedulerWrapper>,
+async fn process_cancelled_task<T: SchedulerWrapper>(
+    scheduler: Arc<T>,
     job_handles: &mut JobHandles,
     workflow_run_id: Uuid,
     attempt: u32,
@@ -164,8 +164,8 @@ async fn process_finished_task(
 }
 
 #[instrument(skip_all, err)]
-async fn monitor_task(
-    scheduler: Arc<dyn SchedulerWrapper>,
+async fn monitor_task<T: SchedulerWrapper>(
+    scheduler: Arc<T>,
     event_sender: &EventSender,
     job_handles: &mut JobHandles,
     internal_task: BackgroundTaskPlan,
@@ -215,8 +215,8 @@ async fn monitor_task(
     Ok(())
 }
 
-async fn check_jobs(
-    scheduler: &Arc<dyn SchedulerWrapper>,
+async fn check_jobs<T: SchedulerWrapper>(
+    scheduler: &Arc<T>,
     event_sender: &mut EventSender,
     job_handles: &mut JobHandles,
     asset_storage_registry: &AssetStorageRegistry,
@@ -286,8 +286,8 @@ async fn check_jobs(
     Ok(())
 }
 
-async fn process_tasks(
-    scheduler: Arc<dyn SchedulerWrapper>,
+async fn process_tasks<T: SchedulerWrapper>(
+    scheduler: Arc<T>,
     mut task_receiver: TaskReceiver,
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
@@ -338,8 +338,8 @@ async fn process_tasks(
 }
 
 /// Event-based executor for subprocess-compatible workers.
-pub struct HPCExecutor {
-    scheduler: Arc<dyn SchedulerWrapper>,
+pub struct HPCExecutor<T: SchedulerWrapper> {
+    scheduler: Arc<T>,
     task_sender: mpsc::Sender<BackgroundTaskPlan>,
     cancel_sender: mpsc::Sender<Key>,
     event_receiver: Mutex<Option<EventReceiver>>,
@@ -353,13 +353,13 @@ pub struct HPCExecutor {
     tkr_tmp_dir: PathBuf,
 }
 
-impl Drop for HPCExecutor {
+impl<T: SchedulerWrapper> Drop for HPCExecutor<T> {
     fn drop(&mut self) {
         self.background_abort_handle.abort();
     }
 }
 
-impl HPCExecutor {
+impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
     /// Create an HPC executor using shared file-backed storage./
     ///
     /// # Errors
@@ -369,7 +369,7 @@ impl HPCExecutor {
         asset_storage_registry: &AssetStorageRegistry,
         hpc_storage_name: &str,
         output_storage_name: &str,
-        scheduler: Arc<dyn SchedulerWrapper>,
+        scheduler: Arc<T>,
         max_resources: HPCResourceSpec,
         poll_interval: Duration,
     ) -> miette::Result<Self> {
@@ -514,16 +514,16 @@ impl HPCExecutor {
         Ok(result)
     }
 
-    async fn is_job_active(&self, job_id: String) -> miette::Result<String> {
+    async fn is_job_active(&self, job_id: &str) -> miette::Result<String> {
         match self
             .scheduler
-            .check(vec![job_id.clone()])
+            .check(vec![job_id.to_string()])
             .await?
-            .get(&job_id)
+            .get(job_id)
         {
             Some(
                 SchedulerStatus::Queued | SchedulerStatus::Complete | SchedulerStatus::Running,
-            ) => Ok(job_id),
+            ) => Ok(job_id.to_string()),
             Some(SchedulerStatus::Cancelled) => Err(miette!("Job was cancelled")),
             Some(SchedulerStatus::Error { message }) => Err(miette!("Job errored: {}", message)),
             _ => Err(miette!("Job not active")),
@@ -531,7 +531,7 @@ impl HPCExecutor {
     }
 }
 
-impl Executor for HPCExecutor {
+impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
     // TODO: How to make sure this is run on the compute node?
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         async move {
@@ -577,8 +577,9 @@ impl Executor for HPCExecutor {
 
                 // If we were given a handle to a previously submitted  job
                 // and it's still active, reattach to it instead of resubmitting.
+                // TODO: make the retry logic more explicit
                 let job_id = if let Some(job_id) = &task_plan.task_handle {
-                    self.is_job_active(job_id.clone()).await?
+                    self.is_job_active(job_id).await?
                 } else {
                     let worker_args = self
                         .build_worker_call_args(&task_plan, output_paths)
