@@ -16,11 +16,12 @@ struct DomTreeNode<N> {
     // In topsort order (child before any sibling it can reach)
     children: Vec<(GatingPath<N>, DomTreeNode<N>)>,
     exit_edges: Option<GatingPath<N>>,
-    loop_exit: Option<LoopExit<N>>,
+    loop_: Option<Loop<N>>,
 }
 
-// TODO: make loop_exit_path into LeafPath??
-struct LoopExit<N> {
+// TODO: make exit_path into LeafPath, and put inside the Option (if None,
+// the exit_path is the unique exit edge of the parent DomTreeNode).
+struct Loop<N> {
     repeat_path: GatingPath<N>,
     exit_path: GatingPath<N>,
     post_loop: Option<Box<DomTreeNode<N>>>,
@@ -47,19 +48,16 @@ impl<N: HugrNode> DomTreeNode<N> {
                 return (ep, dtn);
             }
         }
-        if let Some(loop_exit) = self.loop_exit.as_mut()
-            && let Some(post_loop) = loop_exit.post_loop.as_mut()
+        if let Some(loop_) = self.loop_.as_mut()
+            && let Some(post_loop) = loop_.post_loop.as_mut()
             && post_loop.node == doms[0]
         {
             panic!("Nested loop!"); // Just poison, don't think we're hitting this yet
             if doms.len() == 1 {
-                return (
-                    loop_exit.exit_path.clone(),
-                    *loop_exit.post_loop.take().unwrap(),
-                );
+                return (loop_.exit_path.clone(), *loop_.post_loop.take().unwrap());
             }
             let (ep, dtn) = post_loop.disconnect(&doms[1..], false);
-            return (loop_exit.exit_path.concat(&ep), dtn);
+            return (loop_.exit_path.concat(&ep), dtn);
         }
         panic!("Node not found in children");
     }
@@ -80,7 +78,7 @@ impl<N: HugrNode> DomTreeNode<N> {
             assert!(self.children.is_empty());
             return Ok((Some(this_block_inputs), HashMap::new()));
         };
-        let Some(loop_exit) = self.loop_exit.as_ref() else {
+        let Some(loop_) = self.loop_.as_ref() else {
             let (exit_node_vals, mut block_outputs) =
                 self.build_nonloop(graph, hugr, bb, this_block_inputs, block_preds)?;
             return Ok((
@@ -108,10 +106,10 @@ impl<N: HugrNode> DomTreeNode<N> {
         let (exit_val, mut block_outputs) =
             self.build_nonloop(&mut body_graph, hugr, bb, inputs.clone(), &mut body_preds)?;
         assert!(exit_val.is_none()); // Exit block is not in the loop, so even if it was in `children`
-        // it will have been moved out of `children` into `loop_exit`
+        // it will have been moved out of `children` into `loop_.post_loop`
         let (mut input_port_names, output_names) = build_loop_repeat_val(
             hugr,
-            loop_exit,
+            loop_,
             bb,
             &mut body_graph,
             &block_outputs,
@@ -125,7 +123,7 @@ impl<N: HugrNode> DomTreeNode<N> {
             vec!["value".to_string()],
         );
         let eval_node = outer_graph.graph.add_node(
-            NodeDefinition::Loop {  },
+            NodeDefinition::Loop {},
             input_port_names.clone(),
             output_names.clone(),
         );
@@ -135,7 +133,7 @@ impl<N: HugrNode> DomTreeNode<N> {
             eval_node,
             &input_port_names,
         );
-        match loop_exit.post_loop.as_ref() {
+        match loop_.post_loop.as_ref() {
             Some(dtn) => dtn.build_graph(
                 outer_graph,
                 hugr,
@@ -204,7 +202,7 @@ impl<N: HugrNode> DomTreeNode<N> {
 // returns the (graph-const eval) input port names and the loop body's output port names.
 fn build_loop_repeat_val<N: HugrNode>(
     hugr: &impl HugrView<Node = N>,
-    loop_exit: &LoopExit<N>,
+    loop_: &Loop<N>,
     bb: &hugr::ops::DataflowBlock,
     body_graph: &mut GraphWithFuncs<N>,
     block_outputs: &HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
@@ -212,7 +210,7 @@ fn build_loop_repeat_val<N: HugrNode>(
     inputs: Vec<(NodeIndex, String)>,
 ) -> (Vec<String>, Vec<String>) {
     let loop_in_tys = &bb.inputs;
-    let [loop_exit_edge] = loop_exit.exit_path.leaves(hugr).try_into().unwrap();
+    let [loop_exit_edge] = loop_.exit_path.leaves(hugr).try_into().unwrap();
     let loop_exit_tys = hugr
         .get_optype(loop_exit_edge.src.0)
         .as_dataflow_block()
@@ -220,14 +218,14 @@ fn build_loop_repeat_val<N: HugrNode>(
         .successor_input(loop_exit_edge.src.1.index())
         .unwrap();
     assert_eq!(&loop_exit_tys, loop_in_tys); // TODO: allow exitting with only a subset? But, how to identify?
-    let does_loop_repeat = loop_exit.repeat_path.build_predicate(
+    let does_loop_repeat = loop_.repeat_path.build_predicate(
         &mut body_graph.graph,
         &body_preds,
         &mut None, // search for existing in WorkflowGraph??
         &mut None, // probably not worth it, graph only contains this loop body
     );
-    let mut loop_exit_path = loop_exit.exit_path.clone();
-    loop_exit_path.union(&loop_exit.repeat_path);
+    let mut loop_exit_path = loop_.exit_path.clone();
+    loop_exit_path.union(&loop_.repeat_path);
     let rep_val = loop_exit_path.build_inputs(&mut body_graph.graph, &block_outputs, &body_preds);
     assert_eq!(rep_val.len(), loop_in_tys.len());
     let output_node = body_graph.graph.output_node;
@@ -389,7 +387,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
             node: n,
             children,
             exit_edges,
-            loop_exit: None,
+            loop_: None,
         };
         if let Some(path_back_to_header) = loop_backedges {
             // This node is a loop header. It dominates the entire loop body, so any edge
@@ -407,7 +405,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                     Some(ni) => {
                         dom = node_map.from_portgraph(ni);
                         if dom == n {
-                            // Unique loop_exit block is dominated by header.
+                            // Unique loop_ block is dominated by header.
                             // Any edge exiting the DomTree exits the loop; so must come from that post-loop block.
                             for exit_edge in leaves(&d.exit_edges, hugr) {
                                 assert!(
@@ -422,7 +420,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                         }
                     }
                     None => {
-                        // loop_exit edge leaves the subtree
+                        // loop_ edge leaves the subtree
                         let [tree_exit_edge] = leaves(&d.exit_edges, hugr).try_into().unwrap();
                         assert_eq!(tree_exit_edge.src, (loop_exit_block, outport));
                         d.exit_edges = None;
@@ -430,7 +428,7 @@ fn build_dom_tree<H: HugrView>(hugr: &H, cfg: H::Node) -> DomTreeNode<H::Node> {
                     }
                 }
             };
-            d.loop_exit = Some(LoopExit {
+            d.loop_ = Some(Loop {
                 repeat_path: path_back_to_header,
                 exit_path: loop_exit_path,
                 post_loop: post_loop_dtn.map(Box::new),
