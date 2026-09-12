@@ -2039,6 +2039,10 @@ mod tests {
     #[case::tierkreis_if("../tierkreis_if.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 6}))]
     #[case::tierkreis_if_minopt("../tierkreis_if_minopt.hugr", json!({"in0": 2, "in1": 3}), json!({"out0": 7}))]
     #[case::tierkreis_if("../tierkreis_if.hugr", json!({"in0": 20, "in1": -15}), json!({"out0": 7*35}))]
+    #[case::loop1("../tierkreis_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
+    #[case::loop_minopt1("../tierkreis_loop_minopt.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
+    #[case::loop2("../tierkreis_loop.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
+    #[case::loop_minopt2("../tierkreis_loop_minopt.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_hugr(
