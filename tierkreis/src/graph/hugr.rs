@@ -27,19 +27,21 @@ struct GraphWithFuncs<N: HugrNode> {
 }
 
 impl<N: HugrNode> GraphWithFuncs<N> {
-    fn new(
-        num_inputs: usize,
-        first_output: Option<String>,
-        num_outputs: usize,
+    fn new(num_inputs: usize, num_outputs: usize) -> (Self, Vec<(NodeIndex, String)>) {
+        Self::new_with_names(
+            (0..num_inputs).map(|i| format!("in{i}")),
+            (0..num_outputs).map(|i| format!("out{i}")),
+        )
+    }
+
+    fn new_with_names(
+        input_names: impl IntoIterator<Item = String>,
+        output_names: impl IntoIterator<Item = String>,
     ) -> (Self, Vec<(NodeIndex, String)>) {
-        let output_names: Vec<String> = first_output
-            .into_iter()
-            .chain((0..num_outputs).map(|i| format!("out{i}")))
-            .collect();
         let mut graph = WorkflowGraph::new(output_names);
-        let input_results = (0..num_inputs)
-            .map(|i| {
-                let name = format!("in{i}");
+        let input_results = input_names
+            .into_iter()
+            .map(|name| {
                 let n = graph.add_node(
                     NodeDefinition::Input { name: name.clone() },
                     vec![],
@@ -395,7 +397,7 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
 }
 
 fn wrapper_graph<N: HugrNode>(sig: &Signature) -> (GraphWithFuncs<N>, Vec<(NodeIndex, String)>) {
-    GraphWithFuncs::new(sig.input_count(), None, sig.output_count())
+    GraphWithFuncs::new(sig.input_count(), sig.output_count())
 }
 
 impl TryFrom<Hugr> for WorkflowGraph {
