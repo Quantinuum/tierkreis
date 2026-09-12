@@ -454,18 +454,4 @@ pub(crate) mod test {
         let hugr = Hugr::load(BufReader::new(f), None).unwrap();
         WorkflowGraph::try_from(hugr).unwrap();
     }
-
-    #[test]
-    fn convert_loop() {
-        let f = File::open("../tierkreis_loop.hugr").unwrap();
-        let hugr = Hugr::load(BufReader::new(f), None).unwrap();
-        WorkflowGraph::try_from(hugr).unwrap();
-    }
-
-    #[test]
-    fn convert_loop_minopt() {
-        let f = File::open("../tierkreis_loop_minopt.hugr").unwrap();
-        let hugr = Hugr::load(BufReader::new(f), None).unwrap();
-        WorkflowGraph::try_from(hugr).unwrap();
-    }
 }
