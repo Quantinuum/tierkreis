@@ -96,27 +96,34 @@ impl<N: HugrNode> DomTreeNode<N> {
             .as_dataflow_block()
             .unwrap()
             .inputs;
-        let (mut body_graph, inputs) = GraphWithFuncs::new(
-            loop_in_tys.len(),
-            Some("should_continue".to_string()),
-            loop_in_tys.len(),
-        );
+        let loop_val_names = (0..loop_in_tys.len())
+            .map(|i| format!("var{i}"))
+            .collect::<Vec<_>>();
+
+        let body_outputs = iter::once("should_continue".to_string())
+            .chain(loop_val_names.iter().cloned())
+            .collect::<Vec<_>>();
+        let (mut body_graph, inputs) =
+            GraphWithFuncs::new_with_names(loop_val_names.clone(), body_outputs.clone());
         // Replace block_preds: body of loop does not contain any branch from a BB outside it
         let mut body_preds = HashMap::new();
         let (exit_val, mut block_outputs) =
             self.build_nonloop(&mut body_graph, hugr, bb, inputs.clone(), &mut body_preds)?;
         assert!(exit_val.is_none()); // Exit block is not in the loop, so even if it was in `children`
         // it will have been moved out of `children` into `loop_.post_loop`
-        let (mut input_port_names, output_names) = build_loop_repeat_val(
+        build_loop_repeat_val(
             hugr,
             loop_,
             bb,
             &mut body_graph,
+            &body_outputs,
             &block_outputs,
             body_preds,
             inputs,
         );
-        input_port_names.insert(0, "graph".to_string());
+        let input_port_names = iter::once("graph".to_string())
+            .chain(loop_val_names.iter().cloned())
+            .collect::<Vec<_>>();
         let graph_const_node = outer_graph.graph.add_node(
             graph_const(body_graph.graph)?,
             vec![],
@@ -125,7 +132,7 @@ impl<N: HugrNode> DomTreeNode<N> {
         let eval_node = outer_graph.graph.add_node(
             NodeDefinition::Loop {},
             input_port_names.clone(),
-            output_names.clone(),
+            loop_val_names.clone(),
         );
         wire_up(
             &mut outer_graph.graph,
@@ -137,16 +144,21 @@ impl<N: HugrNode> DomTreeNode<N> {
             Some(dtn) => dtn.build_graph(
                 outer_graph,
                 hugr,
-                output_names.into_iter().map(|p| (eval_node, p)).collect(),
+                loop_val_names.into_iter().map(|p| (eval_node, p)).collect(),
                 block_preds,
             ),
-            None => Ok((
-                None,
-                leaves(&self.exit_edges, hugr)
-                    .into_iter()
-                    .map(|lp| (lp.src, block_outputs.remove(&lp.src).unwrap()))
-                    .collect(),
-            )),
+            None => {
+                panic!(
+                    "TODO Hmmmm, we need to put the Loop node outputs into block_outputs somewhere."
+                );
+                Ok((
+                    None,
+                    leaves(&self.exit_edges, hugr)
+                        .into_iter()
+                        .map(|lp| (lp.src, block_outputs.remove(&lp.src).unwrap()))
+                        .collect(),
+                ))
+            }
         }
     }
 
@@ -198,17 +210,17 @@ impl<N: HugrNode> DomTreeNode<N> {
     }
 }
 
-// Builds, in `body_graph`, the predicate and repeat-inputs wired to the loop body's output;
-// returns the (graph-const eval) input port names and the loop body's output port names.
+// Builds, in `body_graph`, the predicate and repeat-inputs wired to the loop body's output
 fn build_loop_repeat_val<N: HugrNode>(
     hugr: &impl HugrView<Node = N>,
     loop_: &Loop<N>,
     bb: &hugr::ops::DataflowBlock,
     body_graph: &mut GraphWithFuncs<N>,
+    body_outputs: &Vec<String>,
     block_outputs: &HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
     body_preds: HashMap<N, (NodeIndex, String)>,
     inputs: Vec<(NodeIndex, String)>,
-) -> (Vec<String>, Vec<String>) {
+) {
     let loop_in_tys = &bb.inputs;
     let [loop_exit_edge] = loop_.exit_path.leaves(hugr).try_into().unwrap();
     let loop_exit_tys = hugr
@@ -229,25 +241,13 @@ fn build_loop_repeat_val<N: HugrNode>(
     let rep_val = loop_exit_path.build_inputs(&mut body_graph.graph, &block_outputs, &body_preds);
     assert_eq!(rep_val.len(), loop_in_tys.len());
     let output_node = body_graph.graph.output_node;
-    let output_names: Vec<String> = body_graph
-        .graph
-        .input_names(body_graph.graph.output_node)
-        .unwrap()
-        .cloned()
-        .collect();
+
     wire_up(
         &mut body_graph.graph,
         iter::once(&does_loop_repeat).chain(&rep_val),
         output_node,
-        &output_names,
+        body_outputs,
     );
-    let input_port_names = inputs.into_iter().map(|(node, port)|{
-        assert!(
-            matches!(body_graph.graph.node_definition(node), Some(NodeDefinition::Input { name }) if *name == port)
-        );
-        port
-    }).collect();
-    (input_port_names, output_names)
 }
 
 fn find_single_loop_exit<H: HugrView>(
