@@ -45,26 +45,32 @@ The second part of Tierkreis is the execution model.
 It is responsible for the orchestration and the proper execution of the tasks specified in a workflow.
 The goal is to distribute tasks over the available resources, based on the capabilities of each resource.
 
-### Controller
+### Runtime
 
-The controller is responsible for the execution of the entire workflow, maintaining the global state and checking the progress.
+The Rust-backed runtime is responsible for the execution of the entire workflow, maintaining global state and checking progress.
 It checks the state of the individual tasks and decides what to run next based on the given data availability.
-In case of an error, the controller interrupts the progress such that a user can interfere.
-Further, the controller interacts with all the other components of the system:
+It combines orchestration, state storage, asset storage, and executors behind a single interface.
 
-- It assigns executors to workers according to their requirements
-- It dispatches workers once their inputs are ready
-- It interfaces with the storage layer
+```python
+from tierkreis import new_default
 
-A resulting feature is that computation can be interrupted and resumed at any point, without losing significant progress.
-The controller also validates the workflow to ensure each node can be implemented by a combination of worker and executor.
+runtime = await new_default()
+with runtime:
+    workflow_id = await runtime.save_workflow("example", workflow)
+    run_id = await runtime.start_new_run(workflow_id, inputs)
+    await runtime.wait_for(run_id, 0)
+    outputs = await runtime.get_outputs(run_id, 0)
+```
+
+`new_default()` adds file-backed assets and finds installed `tkr-*-worker`
+commands on `PATH`. `new_in_memory()` is suitable for workflows limited to the
+smaller native in-memory task set.
 
 ### Storage
 
-The storage layer is an abstraction of the state of the computation.
-It stores the information of individual tasks such as their definition, their inputs (dependencies), and their status.
-The actual implementation can be a file system, a database or cloud storage.
-The storage base class is defined in [](#tierkreis.controller.storage.protocol).
+The runtime stores workflow and run state separately from input and output assets.
+The predefined constructors select in-memory or file-backed components; custom
+configurations can be supplied through `new_from_config()`.
 
 ### Worker
 
@@ -77,8 +83,13 @@ Tierkreis can automatically generate type stubs for python workers.
 
 ### Executor
 
-An executor is responsible for running assigned worker tasks.
-It possesses the knowledge about its environment and how to run programs there in a specific way.
-For example, the [UvExecutor](#tierkreis.controller.executor.uv_executor.UvExecutor) can run python programs locally by building them as a packaged executable.
-Multiple executors could handle the same worker in different environments, the choice is then up to the controller.
-The executor protocol is defined in [](#tierkreis.controller.executor.protocol).
+An executor is responsible for running worker tasks. The default runtime uses a
+subprocess executor and discovers worker commands on `PATH`; the in-memory
+runtime can execute built-in tasks only. The Rust runtime also contains a Nexus
+executor, configurable through `new_from_config()`.
+
+```{warning}
+The executor reference describes the legacy Python controller. HPC schedulers,
+per-task routing, and combined executors are not exposed by the Rust runtime
+binding yet.
+```

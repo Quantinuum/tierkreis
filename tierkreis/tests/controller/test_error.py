@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import pytest
-from tierkreis._tierkreis import new_default
 
 from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
+from tierkreis import new_default
 from tierkreis.builder import Graph
 from tierkreis.controller.data.core import EmptyModel
 from tierkreis.models import TKR, Workflow

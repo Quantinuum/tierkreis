@@ -2,7 +2,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
 from tests.controller.defaults_graphs import (
     defaults_not_none,
@@ -38,6 +37,7 @@ from tests.controller.typed_graphdata import (
     typed_map,
     typed_map_simple,
 )
+from tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.models import Workflow

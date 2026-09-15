@@ -1,5 +1,11 @@
 # Visualization
 
+```{warning}
+The visualizer currently reads checkpoint directories created by the legacy
+Python controller. Rust runtime state is not exposed to the visualizer yet.
+Graph visualization before execution remains available.
+```
+
 To aid development, `tierkreis` provides an visualizer.
 It can be installed with
 

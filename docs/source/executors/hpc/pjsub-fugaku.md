@@ -6,6 +6,11 @@ kernelspec:
 
 # Fugaku: pjsub
 
+```{warning}
+This example uses the legacy Python controller. PJSUB execution and per-worker
+executor routing are not exposed by the Rust runtime binding yet.
+```
+
 We see how to run a worker using `pjsub` on Fugaku.
 In particular we do not focus on the exact structure of our Tierkreis graph.
 For a full working example please see the HPC graph in the [HPC example](../../examples/hpc.ipynb).

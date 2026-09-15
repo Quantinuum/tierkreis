@@ -6,6 +6,12 @@ kernelspec:
 
 # Shell Executors
 
+```{warning}
+This page documents the legacy Python controller API. The default Rust runtime
+uses its own subprocess executor and discovers installed `tkr-*-worker`
+commands on `PATH`.
+```
+
 Shell Executors allow Tierkreis to dispatch almost any unix compatible program in a shell environment.
 Currently, there are two ways to run the shell that differ in how you provide the arguments and. how the outputs are read.
 

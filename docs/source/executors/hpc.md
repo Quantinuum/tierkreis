@@ -1,5 +1,10 @@
 # Tierkreis for HPC
 
+```{warning}
+HPC scheduler executors are not exposed by the Rust runtime binding yet. This
+section documents the legacy Python controller API.
+```
+
 If an HPC cluster provides a job submission system and a shared filesystem then we can use Tierkreis in the following way.
 
 To take advantage of the HPC job submission system we use a specific implementation of the Tierkreis executor interface tailored to the system used in the cluster.
