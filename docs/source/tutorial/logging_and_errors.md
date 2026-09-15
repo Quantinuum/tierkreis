@@ -55,97 +55,54 @@ The most common types of errors are:
 - Unhandled exceptions (python workers)
 - Non-zero exit codes (external workers)
 
-In both cases, the controller will stop the execution, raising a `TierkreisError`.
+In both cases, `Runtime.wait_for()` raises `ValueError` after the run enters an
+error state.
 
 #### Accessing error information
 
-Error information is available in two places.
-When running [`run_graph`](#tierkreis.controller.run_graph) or [`run_workflow`](#tierkreis.cli.run_workflow.run_workflow), error information including a stack trace will be printed to `stdout`.
-For example running the [Errors and Debugging](../examples/errors_and_debugging.ipynb) example will produce the following output
+The raised exception has the message `Workflow failed`. Related diagnostic
+notes identify failed node locations and include worker error details. Selected
+node locations can also be inspected after the run:
 
+```python
+try:
+    await runtime.wait_for(run_id, 0)
+except ValueError as error:
+    print(error)
+
+states = await runtime.debug_read_node_states(run_id, 0, ["N0"])
+print(states["N0"].status)  # Error
 ```
-Graph finished with errors.
-
-<stack_trace for node N0>
-
-Node: -.N0 encountered an error
-Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/logs
-I refuse!
-
---- Tierkreis graph errors above this line. ---
-```
-
-This tells us the following information:
-
-1. A list of nodes that have encountered an error in this case `-.NO` from `Node: -.N0 encountered an error`
-2. Where to find error information, typically in a file called `errors` in the node: `Stderr information is available at <checkpoints_dir>/<workflow_id>/-.N0/logs`
-3. The reason for the error: `I refuse!` typically this would include a stack trace, but here we just raised a simple python `Exception`
-
-Further information can be found in the workflows log file, typically located at `<checkpoints_dir>/<workflow_id>/logs`.
 
 #### Configuring Logs
 
-By default Tierkreis will not show any logging statements as it just writes a log file instead.
-If you want you can provide your own configuration.
-
-```py
-logging.basicConfig(
-    format="%(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S%z",
-    level=logging.INFO,
-)
-```
-
-For example by uncommenting lines 24-28 in the example and adding `import logging`.
+Runtime logging is configured when constructing a custom runtime with
+`new_from_config()`. The predefined constructors use the default logging
+configuration. Pass the complete runtime configuration dictionary, including
+its logging settings, to `new_from_config()`.
 
 #### Resume a Workflow
 
-Currently, workflows will immediately terminate on an error.
-Tasks running in the background might still complete.
-Once the error has been analyzed and resolved, you should delete the temporary data e.g. in the example above `rm -rf <checkpoints_dir>/<workflow_id>/-.N0/ ` or use the [`clean_graph_files`](#tierkreis.controller.storage.protocol.ControllerStorage.clean_graph_files) function before rerunning the graph.
+Workflows terminate after an error. Starting a new run of the saved workflow
+creates an independent run ID. Restarting selected nodes and resuming an
+existing run are not exposed by the Rust runtime binding yet.
 
 ## Debug execution information
 
-Currently there is only a limited amount of debugging information available.
-It is stored under `<checkpoints_dir>/<workflow_id>/debug/executors` in json format.
-The file contains json data mapping node locations (of task nodes) to data concerning their Tierkreis executor.
-The data contains the following information:
-
-- The executor class string(s) (nested executors are separated by `:`)
-- The command used to launch the task
-- `job_id` a field for submission system. Only used in HPC executors.
-- `env` the current user environment when launching the task.
-- `packages` a list of installed python packages. Only used for the [`UvExecutor`](#tierkreis.controller.executor.uv_executor.UvExecutor)
+`debug_read_node_states()` returns the status of requested node locations. The
+current binding exposes `Complete`, `Cancelled`, `Error`, `Running`, `Queued`,
+and `Scheduled` statuses.
 
 ### Breakpoints
 
-All nodes can be declared ar breakpoints by adding `NodeMetaData` as follows:
-```python
-from tierkreis.controller.data.graph import NodeMetaData
-
-g.task(..., NodeMetaData(has_breakpoint=True))
-```
-By default the controller will ignore this information unless you set `enable_breakpoints=True` in `run_graph`. 
-When running with breakpoints the graph execution will stop as soon as it hits a breakpoint node e.g. after running:
-```python
-run_graph(storage, executor, graph, None, enable_breakpoints=enable_breakpoints)
-```
-you can examine the storage and current values of all previous nodes.
-Afterward you can resume the execution with
-```python
-resume_graph(storage, executor)
-```
+Interactive breakpoints are not exposed by the Rust runtime binding yet.
 
 ### Debug Mode
 
-If you want to debug a graph with a python debugger you can use [](#tierkreis.controller.storgare.debug_graph.debug_graph).
-It acts similar to `run_workflow` with some defaults enabled:
-- Enables all set breakpoints
-- Sets up logging
-- Adds a specific storage and executor to enable python debugging
-```{important}
-This will only work with python based workers.
-All workers need to be installed locally.
+```{warning}
+The legacy Python controller still contains breakpoint, resume, stored executor
+diagnostic, and in-process Python debugging APIs. These do not apply to the
+Rust-backed `Runtime` examples.
 ```
 
 

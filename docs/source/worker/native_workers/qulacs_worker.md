@@ -39,26 +39,24 @@ It can be included within a custom graph using `Graph.eval` or run as a standalo
 An example use is in `docs/source/examples/parallelism.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis), which looks like:
 
 ```python
+from tierkreis import new_default
+
 simulator_name = "qulacs"
 circuits = ...your circuits here...
 
 g = compile_simulate()
-storage = FileStorage(UUID(int=107), do_cleanup=True)
-executor = UvExecutor(PACKAGE_PATH / ".." / "tierkreis_workers", storage.logs_path)
-
-run_graph(
-    storage,
-    executor,
-    g,
-    {
-        "circuits": circuits,
-        "n_shots": [30] * len(circuits),
-        "config": config,
-        "compilation_optimisation_level": 2,
-    },
-    polling_interval_seconds=0.1,
-)
-res = read_outputs(g, storage)
+runtime = await new_default()
+inputs = {
+    "circuits": [circuit.to_dict() for circuit in circuits],
+    "n_shots": [30] * len(circuits),
+    "config": config,
+    "compilation_optimisation_level": 2,
+}
+with runtime:
+    workflow_id = await runtime.save_workflow("qulacs simulation", g)
+    run_id = await runtime.start_new_run(workflow_id, inputs)
+    await runtime.wait_for(run_id, 0)
+    res = await runtime.get_outputs(run_id, 0)
 print(len(res))
 
 ```
