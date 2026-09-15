@@ -42,6 +42,7 @@ ENV PATH /usr/lib64/openmpi/bin:$PATH
 
 RUN alternatives --set python /usr/bin/python3.12
 
+ENV UV_INSTALL_DIR=/usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 RUN pip3 install Cython pytest

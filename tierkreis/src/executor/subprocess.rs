@@ -40,6 +40,7 @@ use crate::{
     },
     executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     location::Location,
+    monitoring::{CommandEnvCarrier, inject_trace_context},
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -465,13 +466,6 @@ impl SubprocessExecutor {
     }
 }
 
-struct CommandEnvCarrier<'a>(&'a mut Command);
-impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
-    fn set(&mut self, key: &str, value: String) {
-        self.0.env(key.to_uppercase().replace('_', "-"), value);
-    }
-}
-
 fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
@@ -479,9 +473,7 @@ fn spawn_worker(
     let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
     let mut command = Command::new(&cmd);
     let cx = tracing::Span::current().context();
-    opentelemetry::global::get_text_map_propagator(|p| {
-        p.inject_context(&cx, &mut CommandEnvCarrier(&mut command));
-    });
+    inject_trace_context(&cx, &mut CommandEnvCarrier(&mut command));
 
     command
         .arg(worker_args_path)

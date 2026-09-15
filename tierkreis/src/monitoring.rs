@@ -9,11 +9,13 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::{
     env::home_dir,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
+use tokio::process::Command;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
 use tracing_subscriber::EnvFilter;
@@ -237,4 +239,35 @@ pub fn init_logging(logging_config: Option<LoggingConfig>) {
 /// Initialize the runtime subscriber with logging and OpenTelemetry.
 pub fn init_logging_and_tracing(logging_config: Option<LoggingConfig>) {
     init(&logging_config.unwrap_or_default(), true);
+}
+
+fn normalize_otel_env_key(key: &str) -> String {
+    key.to_uppercase().replace('-', "_")
+}
+
+/// A carrier for injecting OpenTelemetry context into environment variables hash map.
+pub struct EnvironmentCarrier<'a>(pub &'a mut HashMap<String, String>);
+
+impl opentelemetry::propagation::Injector for EnvironmentCarrier<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.insert(normalize_otel_env_key(key), value);
+    }
+}
+
+/// A carrier for injecting OpenTelemetry context into a `Command`'s environment.
+pub struct CommandEnvCarrier<'a>(pub &'a mut Command);
+impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.env(normalize_otel_env_key(key), value);
+    }
+}
+
+/// Inject the OpenTelemetry trace context into the given carrier.
+pub fn inject_trace_context<T>(context: &opentelemetry::Context, carrier: &mut T)
+where
+    T: opentelemetry::propagation::Injector,
+{
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.inject_context(context, carrier);
+    });
 }

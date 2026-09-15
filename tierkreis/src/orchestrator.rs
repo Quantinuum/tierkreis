@@ -18,6 +18,7 @@ use futures::{
 };
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
+use serde_json::Value;
 use tokio::sync::RwLock;
 use tracing::{debug, instrument};
 use uuid::Uuid;
@@ -67,6 +68,8 @@ pub enum ActionKind {
         /// A persisted handle used to reattach to a Task that was already
         /// dispatched to an Executor before a crash/restart, if any.
         task_handle: Option<TaskHandle>,
+        /// Arbitrary resource requirements used for executor selection.
+        resources: HashMap<String, Value>,
     },
     /// Mark the node as switching with a particular value.
     SetSwitching {
@@ -1094,6 +1097,7 @@ impl Orchestrator {
                     inputs,
                     outputs,
                     task_handle,
+                    resources,
                 } => plan.tasks.push(TaskPlan {
                     workflow_run_id,
                     attempt,
@@ -1103,6 +1107,7 @@ impl Orchestrator {
                     inputs,
                     outputs,
                     output_storage_name: Some(self.default_storage_name.clone()),
+                    resources,
                     task_handle,
                     ..Default::default()
                 }),
@@ -1235,6 +1240,8 @@ fn build_task_action(
             inputs,
             outputs,
             task_handle,
+            // TODO: Populate actual resources here.
+            resources: HashMap::new(),
         },
     })
 }
