@@ -74,32 +74,24 @@ def graph():
 
 ## Running the graph
 
-In order to run a graph we need to choose a storage backend and executor.
-In this example we choose a simple filestorage backend and the UV executor.
-For the UV executor the registry path should be a folder containing all the workers we use.
-
-Then we pass the storage, executor and graph into the `run_graph` function.
-At this point we have the option to pass additional graph inputs.
+The default runtime executes installed worker commands as subprocesses. The
+`tkr-auth-worker` implementation must be installed and available on `PATH`.
 
 ```{code-cell}
 
-import json
-from pathlib import Path
 import time
-from uuid import UUID
-from tierkreis import run_graph
-from tierkreis.executor import UvExecutor
-from tierkreis.storage import FileStorage, read_outputs
+from tierkreis import new_default
 
-storage = FileStorage(UUID(int=2048), "auth_graph", do_cleanup=True)
-executor = UvExecutor(
-    registry_path=Path("../examples/example_workers"), logs_path=storage.logs_path
-)
+workflow = graph()
+runtime = await new_default()
 start = time.time()
-run_graph(storage, executor, graph(), {})
+with runtime:
+    workflow_id = await runtime.save_workflow("auth_graph", workflow)
+    run_id = await runtime.start_new_run(workflow_id, {})
+    await runtime.wait_for(run_id, 0)
+    outputs = await runtime.get_outputs(run_id, 0)
 total_time = time.time() - start
 
-outputs = read_outputs(graph(), storage)
 av = outputs["average_time_taken"]
 ciphertexts = outputs["ciphertexts"]
 print(f"Encrypted 20 plaintexts in {total_time:1g}s with mean encryption time {av:1g}")

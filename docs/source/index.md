@@ -25,11 +25,15 @@ workflow = g.finish_with_outputs(y)
 and run them on different execution platforms
 
 ```python
-storage = FileStorage(workflow_id=UUID(int=12345), name="Hello World Graph")
-executor = ShellExecutor(registry_path=None, workflow_dir=storage.workflow_dir)
+from tierkreis import new_default
+
+runtime = await new_default()
 inputs = InParams(0, 0.25, 0.5)._asdict()
-run_graph(storage, executor, workflow, inputs)
-result = read_outputs(workflow, storage)
+with runtime:
+    workflow_id = await runtime.save_workflow("Hello World Graph", workflow)
+    run_id = await runtime.start_new_run(workflow_id, inputs)
+    await runtime.wait_for(run_id, 0)
+    result = await runtime.get_outputs(run_id, 0)
 ```
 
 ## Quick Start

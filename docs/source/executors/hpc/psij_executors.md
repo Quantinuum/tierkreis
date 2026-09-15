@@ -1,5 +1,10 @@
 # PSI/J Executors
 
+```{warning}
+This page documents the legacy Python controller. PSI/J and PBS executors are
+not exposed by the Rust runtime binding yet.
+```
+
 [PSI/J](https://exaworks.org/psij-python/) is a unified submission interface for many schedulers.
 Tierkreis is largely compatible with the `psij` python package.
 It follows a similar design philosophy:
@@ -88,4 +93,3 @@ The main difference is:
 - `psij` doesn't support containerizaiton
 - `psij`uses `mpirun` as a launcher and automatically adds placement; Tierkreis uses `mpiexec` users need to add placement as an additional argument
 - `extra_scheduler_args` are mostly incompatible with `psij.JobAttributes.custom_args`. Conversion will do a best effor job but can't account for renaming.
-

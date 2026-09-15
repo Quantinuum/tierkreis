@@ -133,29 +133,26 @@ g = Graph(MultiPortInputData, TKR[str])
 
 ## Execution
 
-Since we still only use built-in functions, we execute the graph in the same way as before.
-For the examples with graph inputs, we provide the input in the third argument of `run_graph`.
+The default runtime discovers the installed `tkr-builtins` worker. Inputs are
+passed to `start_new_run`.
 
 ```{code-cell} ipython3
-from uuid import UUID
-from pathlib import Path
+from tierkreis import new_default
 
-from tierkreis import run_graph
-from tierkreis.storage import FileStorage, read_outputs
-from tierkreis.executor import ShellExecutor
+runtime = await new_default()
+with runtime:
+    f_id = await runtime.save_workflow("Factorial", f)
+    run_id = await runtime.start_new_run(f_id, 10)
+    await runtime.wait_for(run_id, 0)
+    print(await runtime.get_outputs(run_id, 0))
 
-storage = FileStorage(UUID(int=99), name="Graph inputs and outputs")
-executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
+    init_id = await runtime.save_workflow("Initial values", init_workflow)
+    run_id = await runtime.start_new_run(init_id, {})
+    await runtime.wait_for(run_id, 0)
+    print(await runtime.get_outputs(run_id, 0))
 
-storage.clean_graph_files()
-run_graph(storage, executor, f, 10)
-print(read_outputs(f, storage))
-
-storage.clean_graph_files()
-run_graph(storage, executor, init_workflow, {})
-print(read_outputs(init_workflow, storage))
-
-storage.clean_graph_files()
-run_graph(storage, executor, fib_step, {'a': 0, 'b': 1})
-print(read_outputs(fib_step, storage))
+    fib_id = await runtime.save_workflow("Fibonacci step", fib_step)
+    run_id = await runtime.start_new_run(fib_id, {"a": 0, "b": 1})
+    await runtime.wait_for(run_id, 0)
+    print(await runtime.get_outputs(run_id, 0))
 ```
