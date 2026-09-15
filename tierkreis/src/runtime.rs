@@ -185,7 +185,7 @@ impl Runtime {
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
 
-        init_logging_and_tracing(config.logging_config.clone());
+        init_logging_and_tracing(&config.logging_config);
         let orchestrator = Orchestrator::try_new(
             &asset_storage_registry,
             &executor_registry,
