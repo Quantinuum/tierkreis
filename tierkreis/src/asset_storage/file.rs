@@ -67,7 +67,7 @@ impl AssetStorage for FileAssetStorage {
                 .await
                 .into_diagnostic()
                 .wrap_err_with(|| {
-                    miette!("Cannot find file at location: {}", location.display())
+                    miette!("Cannot save file at location: {}", location.display())
                 })?;
 
             file.write_all(&value).await.into_diagnostic()?;
