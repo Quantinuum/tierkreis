@@ -1,7 +1,7 @@
 /*!
 This module defines the queries for reading the workflow state from the `SQlite` database.
 */
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
 
 use bitvec::vec::BitVec;
@@ -425,6 +425,9 @@ pub async fn read_node_state(
     }
 }
 
+// Leave room for run/attempt parameters below SQLite's bind limit.
+const READ_BATCH_SIZE: usize = 500;
+
 /// Read the persisted node state for a workflow run at multiple locations.
 ///
 /// # Errors
@@ -443,16 +446,24 @@ pub async fn read_node_states(
     let attempt_i32 = i32::try_from(attempt)
         .into_diagnostic()
         .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
-    let db_nodes = ns::node_states
-        .filter(ns::run_id.eq(run_id.to_string()))
-        .filter(ns::attempt.eq(attempt_i32))
-        .filter(ns::node_location.eq_any(locations))
-        .get_results::<NodeState>(conn)
-        .await
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            miette!("Failed to query node state for run {run_id} attempt {attempt}")
-        })?;
+    let locations: Vec<_> = locations.collect::<HashSet<_>>().into_iter().collect();
+    let mut db_nodes = Vec::new();
+    for locations in locations.chunks(READ_BATCH_SIZE) {
+        db_nodes.extend(
+            ns::node_states
+                .filter(ns::run_id.eq(run_id.to_string()))
+                .filter(ns::attempt.eq(attempt_i32))
+                .filter(ns::node_location.eq_any(locations))
+                .get_results::<NodeState>(conn)
+                .await
+                .into_diagnostic()
+                .wrap_err_with(|| {
+                    miette!("Failed to query node state for run {run_id} attempt {attempt}")
+                })?,
+        );
+    }
+
+    let mut outputs_by_node = read_outputs_many(conn, &db_nodes).await?;
 
     for db_node in db_nodes {
         let loop_index = db_node
@@ -481,7 +492,9 @@ pub async fn read_node_states(
             })
             .transpose()?;
 
-        let outputs = read_outputs(conn, &db_node).await?;
+        let outputs = db_node
+            .complete_time
+            .map(|_| outputs_by_node.remove(&db_node.id).unwrap_or_default());
         let handle = db_node.handle.clone();
 
         states.insert(
@@ -606,6 +619,41 @@ async fn insert_outputs(
         }
     }
     Ok(())
+}
+
+async fn read_outputs_many(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    db_nodes: &[NodeState],
+) -> miette::Result<HashMap<i32, HashMap<String, AssetSpec>>> {
+    use crate::state::schema::node_outputs::dsl as no;
+
+    let completed_ids: Vec<_> = db_nodes
+        .iter()
+        .filter(|node| node.complete_time.is_some())
+        .map(|node| node.id)
+        .collect();
+    let mut outputs_by_node: HashMap<i32, HashMap<String, AssetSpec>> = HashMap::new();
+    for ids in completed_ids.chunks(READ_BATCH_SIZE) {
+        let outputs = no::node_outputs
+            .filter(no::node_state_id.eq_any(ids))
+            .get_results::<NodeOutput>(conn)
+            .await
+            .into_diagnostic()?;
+        for output in outputs {
+            outputs_by_node
+                .entry(output.node_state_id)
+                .or_default()
+                .insert(
+                    output.name,
+                    AssetSpec {
+                        kind: output.asset_kind.parse()?,
+                        storage_name: output.storage_name,
+                        asset_key: output.asset_key.parse().into_diagnostic()?,
+                    },
+                );
+        }
+    }
+    Ok(outputs_by_node)
 }
 
 async fn read_outputs(
