@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import pytest
 
 
@@ -24,3 +27,9 @@ def pytest_collection_modifyitems(
     for item in items:
         if "optional" in item.keywords:
             item.add_marker(skip_slow)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_worker_path():
+    workers_dir = Path(__file__).parent / "workers"
+    os.environ["PATH"] += ":" + str(workers_dir)
