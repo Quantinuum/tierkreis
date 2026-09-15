@@ -17,7 +17,7 @@ use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::state::queries::WorkflowRunSummary;
+use crate::state::interface::WorkflowRunStateSummary;
 use crate::{
     asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
     state::interface::RuntimeWatchState,
@@ -167,8 +167,41 @@ impl RuntimeState for InMemoryRuntimeState {
 
     fn list_workflow_run_summaries(
         &self,
-    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
-        unimplemented!()
+    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>> {
+        async move {
+            let mut summaries = Vec::new();
+            for item in &self.inner.runs {
+                let ((run_id, attempt), run_state) = item.pair();
+                let name = self
+                    .inner
+                    .workflows
+                    .get(&run_state.workflow_id)
+                    .and_then(|item| item.value().0.clone());
+
+                summaries.push(WorkflowRunStateSummary {
+                    run_id: *run_id,
+                    attempt: *attempt,
+                    workflow_id: run_state.workflow_id,
+                    name,
+                    started_time: run_state.started_time,
+                    queued_time: run_state.queued_time,
+                    complete_time: run_state.complete_time,
+                    cancelled_time: run_state.cancelled_time,
+                    error_time: run_state.error_time,
+                    errored_locations: run_state
+                        .nodes
+                        .iter()
+                        // Collect all locations that have an error time.
+                        .filter_map(|(loc, node_state)| node_state.error_time.map(|_| loc.clone()))
+                        .collect(),
+                });
+            }
+
+            summaries.sort_by_key(|k| k.started_time);
+
+            Ok(summaries)
+        }
+        .boxed()
     }
 }
 
@@ -228,6 +261,41 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
 
     fn attempt(&self) -> u32 {
         self.attempt
+    }
+
+    fn summary(&self) -> BoxFuture<'_, miette::Result<WorkflowRunStateSummary>> {
+        async move {
+            let run = self
+                .global_state
+                .runs
+                .get(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+
+            let name = self
+                .global_state
+                .workflows
+                .get(&self.workflow_id)
+                .and_then(|item| item.value().0.clone());
+
+            Ok(WorkflowRunStateSummary {
+                run_id: self.run_id,
+                attempt: self.attempt,
+                workflow_id: self.workflow_id,
+                name,
+                started_time: run.started_time,
+                queued_time: run.queued_time,
+                complete_time: run.complete_time,
+                cancelled_time: run.cancelled_time,
+                error_time: run.error_time,
+                errored_locations: run
+                    .nodes
+                    .iter()
+                    // Collect all locations that have an error time.
+                    .filter_map(|(loc, node_state)| node_state.error_time.map(|_| loc.clone()))
+                    .collect(),
+            })
+        }
+        .boxed()
     }
 
     fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>> {

@@ -1,16 +1,11 @@
 from pathlib import Path
-from uuid import UUID
 
 import pytest
+from tierkreis._tierkreis import new_default
 
 from tests.workers.failing_worker.stubs import exit_code_1, fail, wont_fail
 from tierkreis.builder import Graph
-from tierkreis.controller import run_graph
 from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.executor.uv_executor import UvExecutor
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.exceptions import TierkreisError
 from tierkreis.models import TKR, Workflow
 
 WORKER_PATH = Path(__file__).parent.parent / "workers"
@@ -36,40 +31,58 @@ def non_zero_exit_code() -> Workflow[EmptyModel, TKR[int]]:
     return graph.finish_with_outputs(graph.task(exit_code_1()))
 
 
-def test_raise_error() -> None:
-    g = will_fail_graph()
-    storage = ControllerFileStorage(UUID(int=42), name="will_fail")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.data, {}, n_iterations=1000)
-    assert storage.node_has_error(Loc("-.N0"))
+@pytest.mark.asyncio
+async def test_raise_error() -> None:
+    graph = will_fail_graph()
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("will_fail", graph)
+        run_id = await runtime.start_new_run(workflow_id, {})
+        with pytest.raises(ValueError) as raises:
+            await runtime.wait_for(run_id, 0)
+
+        assert str(raises.value) == "Workflow failed"
+
+    states = await runtime.debug_read_node_states(run_id, 0, ["N0"])
+    assert states["N0"].status == "Error"
 
 
-def test_raises_no_error() -> None:
-    g = wont_fail_graph()
-    storage = ControllerFileStorage(UUID(int=43), name="wont_fail")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g.data, {}, n_iterations=100)
-    assert not storage.node_has_error(Loc("-.N0"))
+@pytest.mark.asyncio
+async def test_raises_no_error() -> None:
+    graph = wont_fail_graph()
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("wont_fail", graph)
+        run_id = await runtime.start_new_run(workflow_id, {})
+        await runtime.wait_for(run_id, 0)
+
+    states = await runtime.debug_read_node_states(run_id, 0, ["N0"])
+    assert states["N0"].status == "Complete"
 
 
-def test_nested_error() -> None:
-    g = fail_in_eval()
-    storage = ControllerFileStorage(UUID(int=44), name="eval_will_fail")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.data, {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/_error").exists()
+@pytest.mark.asyncio
+async def test_nested_error() -> None:
+    graph = fail_in_eval()
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("eval_will_fail", graph)
+        run_id = await runtime.start_new_run(workflow_id, {})
+        with pytest.raises(ValueError):
+            await runtime.wait_for(run_id, 0)
+
+    states = await runtime.debug_read_node_states(run_id, 0, ["N1.N0"])
+    assert states["N1.N0"].status == "Error"
 
 
-def test_non_zero_exit_code() -> None:
-    g = non_zero_exit_code()
-    storage = ControllerFileStorage(UUID(int=46), name="non_zero_exit_code")
-    executor = UvExecutor(WORKER_PATH, logs_path=storage.logs_path)
-    storage.clean_graph_files()
-    with pytest.raises(TierkreisError):
-        run_graph(storage, executor, g.data, {}, n_iterations=1000)
-    assert (storage.logs_path.parent / "-/_error").exists()
+@pytest.mark.asyncio
+async def test_non_zero_exit_code() -> None:
+    graph = non_zero_exit_code()
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("non_zero_exit_code", graph)
+        run_id = await runtime.start_new_run(workflow_id, {})
+        with pytest.raises(ValueError):
+            await runtime.wait_for(run_id, 0)
+
+    states = await runtime.debug_read_node_states(run_id, 0, ["N0"])
+    assert states["N0"].status == "Error"

@@ -158,7 +158,7 @@ def eval_body_is_from_worker() -> Workflow[TKR[int], TKR[int]]:
 def eval_from_worker_with_graph_from_worker() -> Workflow[TKR[int], TKR[int]]:
     g = Graph(TKR[int], TKR[int])
     graph = g.task(doubler_plus_graph())
-    inputs = ApplyTwiceInput(graph=graph, value=g.inputs)
+    inputs = ApplyTwiceInput(apply=graph, value=g.inputs)
 
     ap2 = TypedGraphRef(g.task(apply_twice()), TKR[int])
     out = g.eval(ap2, inputs)

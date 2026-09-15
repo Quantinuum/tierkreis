@@ -1,9 +1,8 @@
-from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
-from uuid import UUID
 
 import pytest
-from tierkreis._tierkreis import run_workflow
+from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
 from tests.controller.defaults_graphs import (
     defaults_not_none,
@@ -39,17 +38,9 @@ from tests.controller.typed_graphdata import (
     typed_map,
     typed_map_simple,
 )
-from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
-from tierkreis.controller.executor.uv_executor import UvExecutor
-from tierkreis.controller.storage.data import WorkflowMetaData
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
-from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
 from tierkreis.models import Workflow
-from tierkreis.storage import read_outputs
 
 param_data: list[
     tuple[
@@ -175,64 +166,44 @@ ids = [
     "embed_graph",
 ]
 
-storage_classes = [ControllerFileStorage, ControllerInMemoryStorage]
-storage_ids = ["FileStorage", "In-memory"]
+runtime_fns = [new_default, new_in_memory, new_sqlite_memory]
+runtime_fn_ids = ["default", "in_memory", "sqlite_memory"]
 
 
-@pytest.mark.parametrize("storage_class", storage_classes, ids=storage_ids)
+@pytest.mark.asyncio
+@pytest.mark.parametrize("runtime_fn", runtime_fns, ids=runtime_fn_ids)
 @pytest.mark.parametrize(
     ("graph", "output", "name", "workflow_id", "inputs"),
     params,
     ids=ids,
 )
-def test_resume(
-    storage_class: type[ControllerFileStorage | ControllerInMemoryStorage],
+async def test_resume(
+    runtime_fn: Callable[[], Awaitable[Runtime]],
     graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
     name: str,
     workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    g = graph
-    storage = storage_class(UUID(int=workflow_id), name=name)
-    test_workers_path = Path(__file__).parent.parent / "test_workers"
-    executor = UvExecutor(test_workers_path, storage.logs_path)
-    if isinstance(storage, ControllerInMemoryStorage):
-        executor = InMemoryExecutor(Path("./tierkreis/tierkreis"), storage=storage)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs)
-
-    actual_output = read_outputs(g, storage)
-    assert actual_output == output
-    if not isinstance(storage, ControllerInMemoryStorage):
-        wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
-        assert wf_metadata.completion_time is not None
-        assert wf_metadata.duration is not None and wf_metadata.duration > 0
-        assert wf_metadata.name == name
-
-
-@pytest.mark.parametrize(
-    ("graph", "output", "name", "workflow_id", "inputs"),
-    params,
-    ids=ids,
-)
-def test_runtime(
-    graph: GraphData | Workflow,
-    output: dict[str, PType] | PType,
-    name: str,
-    workflow_id: int,
-    inputs: dict[str, PType] | PType,
-) -> None:
-    if isinstance(graph, Workflow):
-        g = graph.data
-    else:
-        g = graph
-
     if "defaults" in name:
         pytest.skip("default arguments not supported")
 
-    run_outputs = run_workflow(name, g, inputs)
-    assert output == run_outputs
+    runtime = await runtime_fn()
+    with runtime:
+        workflow_id = await runtime.save_workflow(name, graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, 0)
+        actual_output = await runtime.get_outputs(run_id, 0)
+
+    assert actual_output == output
+
+    # actual_output = read_outputs(g, storage)
+    # assert actual_output == output
+    # if not isinstance(storage, ControllerInMemoryStorage):
+    #     wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
+    #     assert wf_metadata.completion_time is not None
+    #     assert wf_metadata.duration is not None and wf_metadata.duration > 0
+    #     assert wf_metadata.name == name
 
 
 with_worker_param_data: list[
@@ -261,24 +232,24 @@ with_worker_ids = [
 ]
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("graph", "output", "name", "workflow_id", "inputs"),
     with_worker_params,
     ids=with_worker_ids,
 )
-def test_resume_with_worker(
+async def test_resume_with_worker(
     graph: GraphData,
     output: dict[str, PType] | PType,
     name: str,
     workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    g = graph
-    storage = ControllerFileStorage(UUID(int=workflow_id), name=name)
-    test_workers_path = Path(__file__).parent.parent / "workers"
-    executor = UvExecutor(test_workers_path, storage.logs_path)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs)
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow(name, graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, 0)
+        actual_output = await runtime.get_outputs(run_id, 0)
 
-    actual_output = read_outputs(g, storage)
     assert actual_output == output

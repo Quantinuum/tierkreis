@@ -2565,9 +2565,9 @@ checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
 name = "portgraph"
-version = "0.16.1"
+version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a1395575e261a0c0dd2d360ac4e3b14a4c9f68647ee12e59d96af959e4c0f79"
+checksum = "e762fc26f3f5fb04f00bfc24158edc4c0ee46836683f70e4ad2db62574bd48c6"
 dependencies = [
  "bitvec",
  "delegate",
@@ -2703,6 +2703,21 @@ dependencies = [
  "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
+ "uuid",
+]
+
+[[package]]
+name = "pyo3-async-runtimes"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3ef68daa7316a3fac65e5e18b2203f010346de1c1c53456811a2624673ab046"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "once_cell",
+ "pin-project-lite",
+ "pyo3",
+ "tokio",
 ]
 
 [[package]]
@@ -2746,6 +2761,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "pythonize"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ec376e1216e0c929a74964ce2020012a1a39f32d80e78aa688721219ea7fb89"
+dependencies = [
+ "pyo3",
+ "serde",
 ]
 
 [[package]]
@@ -3973,6 +3998,8 @@ dependencies = [
  "opentelemetry_sdk",
  "portgraph",
  "pyo3",
+ "pyo3-async-runtimes",
+ "pythonize",
  "rand 0.10.2",
  "regex",
  "reqwest",
