@@ -513,27 +513,25 @@ async fn executor_registry_from_config(
                 scheduler,
                 poll_interval_secs,
                 resources,
-            } => {
-                match scheduler {
-                    HpcSchedulerConfig::Slurm => {
-                        let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
-                        executor_registry.insert(
-                            executor_name.clone(),
-                            Box::new(
-                                HPCExecutor::try_new(
-                                    asset_storage_registry,
-                                    hpc_storage_name,
-                                    output_storage_name,
-                                    scheduler,
-                                    resources.clone(),
-                                    std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                                )
-                                .await?,
-                            ),
-                        )
-                    }
+            } => match scheduler {
+                HpcSchedulerConfig::Slurm => {
+                    let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
+                    executor_registry.insert(
+                        executor_name.clone(),
+                        Box::new(
+                            HPCExecutor::try_new(
+                                asset_storage_registry,
+                                hpc_storage_name,
+                                output_storage_name,
+                                scheduler,
+                                resources.clone(),
+                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                            )
+                            .await?,
+                        ),
+                    )
                 }
-            }
+            },
         };
     }
     let executor_registry = Arc::new(executor_registry);

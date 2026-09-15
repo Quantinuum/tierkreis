@@ -6,7 +6,6 @@ use std::{
     sync::Arc,
 };
 
-use futures::future::BoxFuture;
 use miette::{IntoDiagnostic, Result};
 use serde::{Deserialize, Serialize};
 
@@ -179,14 +178,18 @@ pub enum SchedulerStatus {
 /// Scheduler operations required by the event-based executor.
 pub trait SchedulerWrapper: Send + Sync {
     /// Submit a job and return its scheduler job ID.
-    fn submit(&self, spec: JobSpec, script_path: &Path) -> impl Future<Output = Result<String>> + Send;
+    fn submit(
+        &self,
+        spec: JobSpec,
+        script_path: &Path,
+    ) -> impl Future<Output = Result<String>> + Send;
     /// Check the current states of submitted jobs.
     ///
     /// Jobs that cannot be found are omitted from the returned map.
     fn check(
         &self,
         job_ids: Vec<String>,
-    ) ->  impl Future<Output = Result<HashMap<String, SchedulerStatus>>> + Send;
+    ) -> impl Future<Output = Result<HashMap<String, SchedulerStatus>>> + Send;
     /// Request cancellation of a job.
     fn cancel(&self, job_id: String) -> impl Future<Output = Result<()>> + Send;
 }

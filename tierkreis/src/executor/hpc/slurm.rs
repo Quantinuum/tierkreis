@@ -1,6 +1,5 @@
 //! Slurm scheduler adapter.
 
-use futures::FutureExt;
 use miette::{Context, IntoDiagnostic, Result, miette};
 use std::{collections::HashMap, path::Path, path::PathBuf};
 use tokio::process::Command;
@@ -86,11 +85,7 @@ impl SlurmWrapper {
 }
 
 impl SchedulerWrapper for SlurmWrapper {
-    async fn submit(
-        &self,
-        spec: JobSpec,
-        script_path: &Path,
-    ) -> Result<String> {
+    async fn submit(&self, spec: JobSpec, script_path: &Path) -> Result<String> {
         let scheduler = self.clone();
         let script_path = script_path.to_path_buf();
         std::fs::write(&script_path, scheduler.templates.render("slurm", &spec)?)
@@ -117,10 +112,7 @@ impl SchedulerWrapper for SlurmWrapper {
             .ok_or_else(|| miette!("sbatch returned no job id"))
     }
 
-    async fn check(
-        &self,
-        job_ids: Vec<String>,
-    ) -> Result<HashMap<String, SchedulerStatus>> {
+    async fn check(&self, job_ids: Vec<String>) -> Result<HashMap<String, SchedulerStatus>> {
         let scheduler = self.clone();
         if job_ids.is_empty() {
             return Ok(HashMap::new());
@@ -147,7 +139,6 @@ impl SchedulerWrapper for SlurmWrapper {
             ));
         }
         Ok(parse_job_statuses(&output.stdout))
-
     }
 
     async fn cancel(&self, job_id: String) -> Result<()> {
