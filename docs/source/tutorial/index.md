@@ -47,7 +47,7 @@ uv run tkr init project
 This will set up the basic project, described below.  From here you
 can run an example graph as test, using the CLI:
 ```bash
-uv run tkr run -o
+uv run tkr run --python ./tkr/graphs/main.py:workflow -o
 > value: 1
 ```
 

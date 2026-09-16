@@ -5,7 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     env::home_dir,
     hash::BuildHasher,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -47,6 +47,55 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Create a persistent configuration whose files live under a project root.
+    #[must_use]
+    pub fn for_project(project_root: &Path) -> Self {
+        let tierkreis_dir = project_root.join(".tierkreis");
+        let mut config = Self::default();
+        config.asset_storage.insert(
+            "file".to_string(),
+            AssetStorageConfig::File {
+                asset_dir: tierkreis_dir.join("assets"),
+            },
+        );
+        config.runtime_state = RuntimeStateConfig::Sqlite {
+            memory: false,
+            url: Some(
+                tierkreis_dir
+                    .join("tierkreis.sqlite")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        };
+        config.logging_config = Some(LoggingConfig::for_file(tierkreis_dir.join("tierkreis.log")));
+        config
+    }
+
+    /// Initialize logging and tracing using this runtime configuration.
+    pub fn init_logging(&self) {
+        init_logging_and_tracing(&self.logging_config);
+    }
+
+    /// Construct the configured `SQLite` runtime state for API consumers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured database cannot be opened. A non-SQL
+    /// runtime configuration falls back to the standard persistent database used
+    /// by the server.
+    pub async fn sqlite_runtime_state(&self) -> miette::Result<SqliteRuntimeState> {
+        match &self.runtime_state {
+            RuntimeStateConfig::Sqlite { memory: true, .. } => {
+                SqliteRuntimeState::try_new_in_memory().await
+            }
+            RuntimeStateConfig::Sqlite { memory: false, url } => match url.as_deref() {
+                Some(url) => SqliteRuntimeState::try_new_with_url(url).await,
+                None => SqliteRuntimeState::try_new().await,
+            },
+            RuntimeStateConfig::Memory {} => SqliteRuntimeState::try_new().await,
+        }
+    }
+
     fn memory() -> Self {
         RuntimeConfig {
             asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
@@ -580,6 +629,48 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
     Ok(outputs)
 }
 
+/// The identifiers and outputs produced by a completed one-shot workflow run.
+#[derive(Debug)]
+pub struct WorkflowRunResult {
+    /// Identifier of the stored workflow definition.
+    pub workflow_id: Uuid,
+    /// Identifier of this workflow run.
+    pub run_id: Uuid,
+    /// JSON-encoded values from the top-level output node.
+    pub outputs: HashMap<String, Vec<u8>>,
+}
+
+/// Run one workflow using an explicit runtime configuration and wait for completion.
+///
+/// # Errors
+///
+/// Returns an error if the runtime cannot be constructed, the workflow cannot be
+/// stored or started, execution fails, or outputs cannot be loaded.
+///
+/// # Panics
+///
+/// Panics if called from an existing Tokio runtime.
+#[tokio::main]
+pub async fn run_workflow_once<S: BuildHasher>(
+    config: &RuntimeConfig,
+    name: Option<String>,
+    workflow_graph: WorkflowGraph,
+    inputs: HashMap<String, Vec<u8>, S>,
+) -> miette::Result<WorkflowRunResult> {
+    let mut runtime = Runtime::from_config(config).await?;
+    let workflow_id = runtime.save_workflow(name, workflow_graph).await?;
+    let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
+    runtime.dedicated_run_id = Some(run_id);
+    runtime.run().await?;
+    let outputs = runtime.outputs(run_id, attempt).await?;
+    flush_logs();
+    Ok(WorkflowRunResult {
+        workflow_id,
+        run_id,
+        outputs,
+    })
+}
+
 /// Start the runtime until cancelled.
 ///
 /// # Errors
@@ -590,9 +681,24 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 /// # Panics
 ///
 /// Will panic if there is already a tokio runtime active.
+pub fn exec() -> miette::Result<()> {
+    let config = RuntimeConfig::load()?;
+    exec_with_config(&config)
+}
+
+/// Start the runtime with an explicit configuration until cancelled.
+///
+/// # Errors
+///
+/// Will return an error if the runtime cannot be configured or an unrecoverable
+/// execution error occurs.
+///
+/// # Panics
+///
+/// Panics if called from an existing Tokio runtime.
 #[tokio::main]
-pub async fn exec() -> miette::Result<()> {
-    let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
+pub async fn exec_with_config(config: &RuntimeConfig) -> miette::Result<()> {
+    let mut runtime = Runtime::from_config(config).await?;
     runtime.run().await?;
     Ok(())
 }

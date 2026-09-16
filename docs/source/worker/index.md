@@ -78,7 +78,7 @@ Instead you need to provide the so-called function **stubs** to the task definit
 You can generate the stubs from the cli:
 
 ```bash
-tkr init stubs
+tkr generate stubs
 ```
 
 or running

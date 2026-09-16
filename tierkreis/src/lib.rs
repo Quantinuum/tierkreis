@@ -7,6 +7,7 @@ Workflow Management system.
 pub mod asset_storage;
 #[cfg(test)]
 pub mod builder;
+pub mod cli;
 pub mod config;
 pub mod event;
 pub mod executor;
@@ -23,6 +24,7 @@ pub mod state;
 mod tierkreis {
     use std::collections::HashMap;
 
+    use clap::Parser;
     use miette::{Diagnostic, IntoDiagnostic};
     use num_complex::Complex64;
     use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*, types::PyBytes};
@@ -67,6 +69,15 @@ mod tierkreis {
             py_err.set_cause(py, Some(convert_stderr(py, source)));
         }
         py_err
+    }
+
+    #[pyfunction]
+    fn run_cli(py: Python<'_>, args: Vec<String>) -> PyResult<()> {
+        miette::set_panic_hook();
+        let cli = crate::cli::Cli::parse_from(std::iter::once("tkr".to_string()).chain(args));
+        let result = cli.execute().map_err(|err| convert_err(py, err));
+        crate::monitoring::flush_logs();
+        result
     }
 
     #[derive(Debug, FromPyObject, IntoPyObject)]

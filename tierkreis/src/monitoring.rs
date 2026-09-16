@@ -65,6 +65,17 @@ impl Default for LoggingConfig {
     }
 }
 
+impl LoggingConfig {
+    /// Create the default logging configuration with an explicit log file.
+    #[must_use]
+    pub fn for_file(log_file: PathBuf) -> Self {
+        Self {
+            log_file: Some(log_file),
+            ..Self::default()
+        }
+    }
+}
+
 static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 static TRACER_PROVIDER: Mutex<Option<SdkTracerProvider>> = Mutex::new(None);

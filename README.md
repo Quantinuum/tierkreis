@@ -74,19 +74,15 @@ To run the hello world example in this repository from the cli
 
 ```bash
 uv run tkr run \
-  -g docs/source/examples/hello_world.py:graph \
-  -i docs/source/examples/data/world.json \
-  --uv \
-  --registry-path docs/source/examples/example_workers/ \
+  --python docs/source/examples/hello_world.py:graph \
+  --inputs docs/source/examples/data/world.json \
   -o
 ```
 
 Explanation:
 
-- `-g` specifies the graph to run by specifying the location and function to run.
-- `-i` specifies the input for the graph function. In this case it loads a json file with the contents `{"value": "World!"}`
-- `--uv` enables the use of the UV executor.
-- `--registry-path` specifies the location of the registry to use for the UV executor.
+- `--python` specifies the transitional Python graph adapter and graph factory.
+- `--inputs` loads a JSON object containing the workflow inputs.
 - `-o` enables output printing.
 
 ## Development
