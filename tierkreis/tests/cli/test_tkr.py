@@ -1,8 +1,6 @@
-import json
 import sys
 from pathlib import Path
 from unittest import mock
-from uuid import UUID
 
 import pytest
 
@@ -77,60 +75,26 @@ def test_load_inputs_invalid() -> None:
         _load_inputs(["wrong_format"])
 
 
-default_args = [
-    "tkr",
-    "run",
-    "--run-id",
-    "1860",
-    "-v",
-    "-o",
-    "-n",
-    "500",
-    "-p",
-    "0.02",
-    "-r",
-    "--name",
-    "test_name",
-    "--uv",
-    "--registry-path",
-    "tests/controller/sample_graphdata",
-]
-
-cli_params = [
-    (
-        [*default_args, "-f", "tierkreis/tests/cli/data/sample_graph", "-i", "None"],
-        {"simple_eval_output": 12},
-    ),
-    (
-        [
-            *default_args,
-            "-g",
-            "tests.controller.sample_graphdata:factorial",
-            "-i",
-            "n:tierkreis/tests/cli/data/n",
-            "factorial:tierkreis/tests/cli/data/factorial",
-        ],
-        {"factorial_output": 120},
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    ("args", "result"),
-    cli_params,
-    ids=["simple_eval_cli", "factorial_cli"],
-)
-def test_end_to_end(args: list[str], result: dict[str, bytes]) -> None:
-    with mock.patch.object(sys, "argv", args):
+def test_rust_cli_end_to_end(tmp_path: Path, capfd: pytest.CaptureFixture[str]) -> None:
+    project_args = ["tkr", "init", "project", str(tmp_path)]
+    with mock.patch.object(sys, "argv", project_args):
         main()
-    for key, value in result.items():
-        with Path.open(
-            Path.home()
-            / ".tierkreis"
-            / "checkpoints"
-            / str(UUID(int=1860))
-            / f"-/outputs/{key}",
-            "rb",
-        ) as fh:
-            c = json.loads(fh.read())
-        assert c == value
+
+    inputs = tmp_path / "empty_inputs.json"
+    inputs.write_text("{}", encoding="utf-8")
+    run_args = [
+        "tkr",
+        "run",
+        "tierkreis/tests/cli/data/sample_graph",
+        "--inputs",
+        str(inputs),
+        "--config",
+        str(tmp_path / "tierkreis.toml"),
+        "--print-output",
+    ]
+    with mock.patch.object(sys, "argv", run_args):
+        main()
+
+    stdout, _ = capfd.readouterr()
+    assert '"simple_eval_output": 12' in stdout
+    assert (tmp_path / "tkr/workers/example_worker/api/api.py").is_file()

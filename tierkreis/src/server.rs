@@ -9,8 +9,11 @@ pub mod nodes;
 pub mod routes;
 
 use axum::http::StatusCode;
-use miette::{IntoDiagnostic, WrapErr};
-use std::sync::Arc;
+use miette::IntoDiagnostic;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tower_http::services::ServeFile;
 use tower_http::set_status::SetStatus;
 use utoipa::openapi::OpenApi;
@@ -26,6 +29,7 @@ use crate::{
 async fn server(
     runtime_state: Arc<SqliteRuntimeState>,
     asset_registry: AssetStorageRegistry,
+    frontend_dist: Option<PathBuf>,
 ) -> miette::Result<()> {
     let update_receiver = runtime_state.listen();
 
@@ -52,11 +56,7 @@ async fn server(
         api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
 
     // SPA
-    let dist = std::env::current_dir()
-        .into_diagnostic()
-        .wrap_err("Failed to resolve current working directory")?
-        .join("tierkreis_visualization/tierkreis_visualization/static/dist"); // TODO: Make this configurable
-    if dist.exists() {
+    if let Some(dist) = frontend_dist {
         let index = dist.join("index.html");
         let assets_dir = dist.join("assets");
         if !index.exists() {
@@ -76,10 +76,7 @@ async fn server(
         }
         tracing::info!("Serving frontend SPA from {}", dist.display());
     } else {
-        return Err(miette::miette!(
-            "Static frontend directory not found: {}",
-            dist.display()
-        ));
+        tracing::info!("No visualization frontend configured; serving the API and Swagger UI only");
     }
 
     let router = router.with_state(app_state);
@@ -102,10 +99,48 @@ async fn server(
 ///
 /// # Panics
 ///
-/// Panics if the static frontend files are not found in the expected location.
+/// Panics if called from an existing Tokio runtime.
+pub fn serve() -> miette::Result<()> {
+    serve_with_assets(None)
+}
+
+/// Server entry point with an optional built visualization frontend directory.
+///
+/// # Errors
+///
+/// Returns an error if configuration or frontend assets are invalid, or if the
+/// HTTP server cannot start.
+///
+/// # Panics
+///
+/// Panics if called from an existing Tokio runtime.
+pub fn serve_with_assets(frontend_dist: Option<&Path>) -> miette::Result<()> {
+    let config = RuntimeConfig::load()?;
+    serve_with_config(&config, frontend_dist)
+}
+
+/// Server entry point with explicit runtime configuration and optional frontend.
+///
+/// # Errors
+///
+/// Returns an error if configuration or frontend assets are invalid, or if the
+/// HTTP server cannot start.
+///
+/// # Panics
+///
+/// Panics if called from an existing Tokio runtime.
 #[tokio::main]
-pub async fn serve() -> miette::Result<()> {
-    let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
-    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default());
-    server(runtime_state, asset_registry).await
+pub async fn serve_with_config(
+    config: &RuntimeConfig,
+    frontend_dist: Option<&Path>,
+) -> miette::Result<()> {
+    config.init_logging();
+    let runtime_state = Arc::new(config.sqlite_runtime_state().await?);
+    let asset_registry = asset_storage_registry_from_config(config);
+    server(
+        runtime_state,
+        asset_registry,
+        frontend_dist.map(Path::to_path_buf),
+    )
+    .await
 }

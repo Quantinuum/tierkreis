@@ -1,298 +1,107 @@
-# TKR: Tierkreis CLI Tool
+# TKR: Tierkreis CLI
 
-Tierkreis includes a comprehensive command-line interface to manage workflows, workers, and other aspects of your project. 
-This document provides a complete reference for all available commands and options.
+`tkr` is the Rust command-line interface for creating projects and workers,
+generating worker APIs, running workflows, and operating the Tierkreis runtime.
 
-## Overview
+Use `tkr --help` or `tkr <command> --help` for the complete command reference.
 
-The main `tkr` command has three primary subcommands:
-
-- **`init`** — Initialize and manage Tierkreis project resources
-- **`run`** — Execute workflow graphs
-- **`vis`** — Visualize and inspect graphs
-
-Use `--help` on any of the commands for a quick overview, or consult the sections below for detailed information about each command.
-
----
-
-## tkr init
-
-Initialize and manage Tierkreis project resources. The `init` command has three subcommands: `project`, `worker`, and `stubs`.
-
-### tkr init project
-
-Sets up a new Tierkreis project and manages project-wide options. Make sure to set up a Python project first using `uv init`.
-
-**Usage:**
-```bash
-uv run tkr init project [OPTIONS]
-```
-
-**Description:**
-This command initializes the directory structure for a Tierkreis project, including directories for graphs and workers. You can customize the default locations for these resources.
-
-**Options:**
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--project-directory` | PATH | `.` (current directory) | Root directory for the project |
-| `--graphs-directory` | PATH | `./tkr/graphs` | Location where workflow graphs are stored |
-| `--worker-directory` | PATH | `./tkr/workers` | Location where worker implementations are stored |
-| `--default-checkpoint-directory` | PATH | `~/.tierkreis/checkpoints` | Where workflow checkpoints are saved. Also sets the `TKR_DIR` environment variable for the current shell |
-
-**Examples:**
+## Create a project
 
 ```bash
-# Initialize with default directories
-uv run tkr init project
-
-# Use custom directories
-uv run tkr init project \
-  --project-directory ./my-project \
-  --graphs-directory ./my-graphs \
-  --worker-directory ./my-workers
-
-# Set a custom checkpoint directory
-uv run tkr init project \
-  --default-checkpoint-directory /data/checkpoints
-
-# Persist checkpoint directory (add to shell config file, e.g., ~/.bashrc or ~/.zshrc)
-export TKR_DIR=/data/checkpoints
+tkr init project [DIRECTORY]
 ```
 
-### tkr init worker
+The command creates:
 
-Generate a new worker template. 
-Workers are independent units that provide tasks to graphs.
+- `tierkreis.toml`, containing project-local runtime, storage, and logging paths;
+- `tkr/graphs/main.py`, an example workflow;
+- `tkr/workers/example_worker`, an example Python worker and API package;
+- `workflow_inputs.json`; and
+- a minimal `pyproject.toml` when the directory does not already have one.
 
-**Usage:**
-```bash
-uv run tkr init worker -n WORKER_NAME [OPTIONS]
-```
+Initialization never overwrites existing generated paths. If a `pyproject.toml`
+already exists it is left unchanged, so ensure it depends on `tierkreis`, then run
+`uv sync`.
 
-**Description:**
-Creates a new worker with boilerplate code.
-By default, it generates a Python worker with a fixed project structure. 
-Use `--external` to generate an example typespec file instead for non-Python workers.
+The old `--default-checkpoint-directory`, `--graphs-directory`, and
+`--worker-directory` project options have been removed. Runtime paths belong in
+`tierkreis.toml`, and initialized projects use the standard `tkr/` layout.
 
-**Options:**
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `-n, --worker-name` | STRING | — | Name of the worker to create |
-| `--worker-directory` | PATH | `./tkr/workers` | Override the default worker directory |
-| `--external` | FLAG | False | Generate an external (non-Python) worker with IDL file |
-
-**Examples:**
+## Create workers
 
 ```bash
-# Create a Python worker
-uv run tkr init worker -n my-worker
+# Discover tkr/workers from the nearest tierkreis.toml
+tkr init worker my-worker
 
-# Create with custom directory
-uv run tkr init worker -n alternative-worker --worker-directory ./custom_workers
+# Use an explicit worker collection
+tkr init worker my-worker --directory ./custom-workers
 
-# Create an external (non-Python) worker
-uv run tkr init worker -n external-worker --external
+# Create a non-Python worker schema and Python API package
+tkr init worker external-worker --external
 ```
 
-### tkr init stubs
+Worker names may contain ASCII letters, digits, hyphens, and underscores and must
+start with a letter. Python modules use underscores while distribution names use
+hyphens.
 
-Generate the API files for workers using `uv`.
-The APIs provide the task names during graph construction 
-
-**Usage:**
-```bash
-uv run tkr init stubs [OPTIONS]
-```
-
-**Description:**
-Scans the worker directory and generates python stub files (`api.py`) for type hints and IDE autocomplete.
-This is **required** after creating or modifying worker interfaces.
-
-**Options:**
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `--worker-directory` | PATH | `./tkr/workers` | Directory to search for workers |
-| `--api-file-name` | PATH | `./api/api.py` | Output location for generated API stubs (relative to worker directory) |
-
-```{warning}
-Changing the api file name might break your worker.
-Use only when appropriate.
-```
-
-**Examples:**
+## Generate worker APIs
 
 ```bash
-# Generate stubs with defaults
-uv run tkr init stubs
-
-
-# Generate stubs for workers in custom directory
-uv run tkr init stubs --worker-directory ./custom_workers
-```
----
-
-## tkr run
-
-Execute a workflow graph with specified inputs and configuration.
-
-**Usage:**
-```bash
-uv run tkr run [OPTIONS]
+tkr generate stubs
+tkr generate stubs --workers-directory ./custom-workers
+tkr generate stubs --output api/api.py
 ```
 
-**Description:**
-Runs a Tierkreis workflow graph. By default, it loads the graph from `./tkr/graphs/main.py:workflow` and reads inputs from `workflow_inputs.json`.
-You can specify a different graph location or load from a JSON file, and provide inputs either as a JSON file or as binary files with key-value pairs.
+The Rust CLI discovers and orders workers, then invokes the Python worker or the
+private TypeSpec adapter needed to inspect its interface. `uv` must be installed,
+and child-process failures stop generation with a non-zero exit status.
 
-**Graph Specification:**
+## Run a workflow
 
-You can specify the graph in two ways:
-
-1. **Module path (default):** `module.path:function_name`
-   - Example: `examples.hello_world:hello_graph`
-   - Example: `./my_graphs/workflow.py:my_workflow`
-
-2. **JSON file:** Use `-f/--from-file` to load a serialized graph
-
-**Input Specification:**
-
-You can provide inputs in two ways:
-
-1. **JSON file (default):** A single `.json` file containing input values
-  - Example: `workflow_inputs.json` e.g.
-  ```
-  { "value": 1 }
-  ```
-
-2. **Binary files:** Key-value pairs where `key` is the input port name and `path` is a file containing binary data
-  - Example: `port1:input1 port2:input2` e.g. `input1` contains
-  ```
-  b"1"
-  ```
-
-**Options:**
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `-g, --graph-location` | STRING | `./tkr/graphs/main.py:workflow` | Load graph from Python module or file |
-| `-f, --from-file` | PATH | `workflow_inputs.json` | Load a serialized graph from a `.json` file |
-| `-i, --input-files` | LIST | - | Input sources: `key:path` pairs |
-| `-o, --print-output` | FLAG | False | Print the outputs of the top-level graph node |
-| `--name` | STRING | — | Workflow name (for identification in logs) |
-| `--run-id` | INT | — | Numeric run ID for tracking |
-| `-n, --n-iterations` | INT | — | Maximum number of iterations for the workflow |
-| `-p, --polling-interval-seconds` | FLOAT | — | Controller polling interval (tick rate) |
-| `-r, --do-clean-restart` | FLAG | False | Clear all graph files before running |
-| `--uv` | FLAG | False | Use `uv` as the executor |
-| `--registry-path` | PATH | None | Location of executable tasks/binaries |
-| `-l, --loglevel` | {CRITICAL, FATAL, ERROR, WARN, WARNING, INFO, DEBUG, NOTSET} | WARNING | Set logging level |
-| `-v, --verbose` | FLAG | False | Enable verbose output |
-
-
-```{note}
-The `--registry-path` resolve the namespace for workers automatically.
-For example, if you have custom task `my_task` from an external worker `my_worker`, Tierkreis will invoke
-`<registry_path>/my_task/main.sh`. See more [here](../worker/index.md)
-```
-
-**Examples:**
+Run a serialized current or legacy workflow graph with JSON inputs:
 
 ```bash
-# Run with all defaults
-uv run tkr run
-# Loads from ./tkr/graphs/main.py:workflow and workflow_inputs.json
-
-# Print outputs to console
-uv run tkr run -o
-# Same as above but displays the workflow outputs
-
-# Run a specific graph
-uv run tkr run -g my_module.workflows:main_workflow
-
-# Load graph from file
-uv run tkr run -f my_graph.json
-
-# Provide custom inputs as files containing binary values e.g. b"5"
-uv run tkr run -i value:input count:count
-
-# Run with custom configuration
-uv run tkr run \
-  -g examples.quantum:circuit \
-  -i inputs.json \
-  --name "quantum-run-001" \
-  -o -v
-
-# Clean restart and run with custom tick rate
-uv run tkr run -r -p 0.5 --uv
-
-# Set logging level and run ID
-uv run tkr run \
-  -l DEBUG \
-  --run-id 42 \
-  --n-iterations 100
-
-# Use custom registry path
-uv run tkr run --registry-path ./path/to/custom_workers
+tkr run workflow.json --inputs inputs.json --print-output
 ```
 
-**What happens:**
-1. The graph is loaded from the specified location
-2. Inputs are loaded from the specified files
-3. The workflow is executed by the Tierkreis controller
-4. If `-o` is specified, outputs are printed to console
-5. Checkpoints are saved to `TKR_DIR` (default: `~/.tierkreis/checkpoints`)
-
----
-
-## tkr vis
-
-Visualize and interact with Tierkreis graphs.
-
-**Usage:**
-```bash
-uv run tkr vis [OPTIONS]
-```
-
-**Description:**
-Launches the Tierkreis visualizer, which provides an interactive web interface for viewing and debugging graphs.
- This is useful for understanding workflow structure, inspecting node connections, and debugging execution flow.
-
-**Modes:**
-
-The visualization tool has t main modes:
-
-1. **Default Mode:** Start the visualization server showing all workflows run in the past.
-w. **Graph Mode:** Visualize a specific graph object that has was not run.
-
-**Options:**
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `--dev` | FLAG | Run in development mode with hot reload on code changes |
-| `--graph` | STRING | Visualize a specific graph: `<path_to_python_file>:<variable_name>` similar to `tkr run --g` |
-| `-h, --help` | FLAG | Show help message |
-
-**Examples:**
+During the migration, Python graph factories are supported through an explicit
+adapter:
 
 ```bash
-# Start the visualization server (interactive web UI)
-uv run tkr vis
-
-# Start in development mode (with hot reload)
-uv run tkr vis --dev
-
-# Visualize a specific graph
-uv run tkr vis --graph ./my_graphs/workflow.py:main_workflow
-
-# Visualize a graph from a module
-uv run tkr vis --graph my_module.graphs:visualization_graph
+tkr run --python package.workflows:main --inputs inputs.json
+tkr run --python ./graphs/main.py:workflow --inputs inputs.json
 ```
 
-**Access the UI:**
+Options include:
 
-After running `uv run tkr vis`, the server starts at `http://localhost:8000` .
-Open this URL in your web browser to access the visualization.
-More info on the [visualizer](visualization.md) page.
+| Option | Description |
+|---|---|
+| `-i, --inputs PATH` | JSON object of workflow inputs; defaults to `workflow_inputs.json` |
+| `--name NAME` | Human-readable workflow name |
+| `-o, --print-output` | Print top-level outputs as formatted JSON |
+| `--config PATH` | Use an explicit `tierkreis.toml` |
+| `--python GRAPH` | Load a Python `module:function` or `path.py:function` |
+
+The CLI prints generated workflow and run UUIDs. Executor, state, storage, logging,
+and scheduler choices are configured in `tierkreis.toml`; legacy controller flags
+such as `--uv`, `--registry-path`, iteration limits, and polling intervals are no
+longer command-line options.
+
+## Operate services
+
+```bash
+# Run the workflow runtime until interrupted
+tkr exec [--config ./tierkreis.toml]
+
+# Serve the API and Swagger UI
+tkr serve [--config ./tierkreis.toml]
+
+# Also serve an explicitly built visualization frontend
+tkr serve --assets ./tierkreis_visualization/tierkreis_visualization/static/dist
+```
+
+Both commands discover `tierkreis.toml` in the current directory or an ancestor,
+then fall back to `TIERKREIS_CONFIG` and the user-level configuration. The server
+always exposes its API and Swagger UI; the browser frontend is enabled when
+`--assets` points to a built frontend. Hot reload remains a separate visualization
+development workflow.

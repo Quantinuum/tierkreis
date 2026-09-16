@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Implement the Rust `tkr` CLI for safe project and worker initialization, worker API generation, and one-shot workflow execution
+
 ### Changed
+- Load runtime configuration for `tkr exec` and `tkr serve`, and isolate Python-only CLI operations behind compatibility adapters
 - Auto-correct typos from git history
 - Add Changelog generation from git history
 - Upgrade devenv by @johnchildren in [#607](https://github.com/Quantinuum/tierkreis/pull/607)
