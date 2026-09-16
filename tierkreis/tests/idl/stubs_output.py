@@ -1,6 +1,5 @@
 """Code generated from TestNamespace namespace. Please do not edit."""
 
-# ruff: noqa: F821
 from typing import NamedTuple, Protocol
 
 from tierkreis.controller.data.models import TKR

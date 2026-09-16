@@ -409,24 +409,20 @@ mod tierkreis {
             _exc_value: &Bound<'_, PyAny>,
             _traceback: &Bound<'_, PyAny>,
         ) {
-            if let Some(cancel) = self.cancel.take() {
-                if let Err(_) = cancel.send(()) {
-                    warn!(
-                        "Failed to cancel background Runtime thread, it may have already terminated"
-                    );
-                }
+            if let Some(cancel) = self.cancel.take()
+                && cancel.send(()).is_err()
+            {
+                warn!("Failed to cancel background Runtime thread, it may have already terminated");
             }
         }
     }
 
     impl Drop for PyRuntime {
         fn drop(&mut self) {
-            if let Some(cancel) = self.cancel.take() {
-                if let Err(_) = cancel.send(()) {
-                    warn!(
-                        "Failed to cancel background Runtime thread, it may have already terminated"
-                    );
-                }
+            if let Some(cancel) = self.cancel.take()
+                && cancel.send(()).is_err()
+            {
+                warn!("Failed to cancel background Runtime thread, it may have already terminated");
             }
         }
     }
