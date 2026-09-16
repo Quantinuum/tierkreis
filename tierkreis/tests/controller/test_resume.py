@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -197,13 +198,11 @@ async def test_resume(
 
     assert actual_output == output
 
-    # actual_output = read_outputs(g, storage)
-    # assert actual_output == output
-    # if not isinstance(storage, ControllerInMemoryStorage):
-    #     wf_metadata = WorkflowMetaData(**storage.read_metadata(Loc()))
-    #     assert wf_metadata.completion_time is not None
-    #     assert wf_metadata.duration is not None and wf_metadata.duration > 0
-    #     assert wf_metadata.name == name
+    summary = await runtime.get_summary(run_id)
+    assert summary.started_time is not None
+    assert summary.complete_time is not None
+    assert summary.duration is not None and summary.duration > timedelta(0)
+    assert summary.name == name
 
 
 with_worker_param_data: list[

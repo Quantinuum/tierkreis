@@ -666,7 +666,7 @@ mod tests {
             .map(PathBuf::from)
             .ok_or_else(|| miette!("HOME is not set"))?
             .join(".tierkreis/slrm"); // Mimic scratch on a cluster
-        let file_storage = FileAssetStorage::new(&checkpoints_path);
+        let file_storage = FileAssetStorage::try_new(&checkpoints_path)?;
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
         registry

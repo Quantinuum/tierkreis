@@ -217,7 +217,7 @@ impl Runtime {
     ///
     /// Will
     pub async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
-        let asset_storage_registry = asset_storage_registry_from_config(config);
+        let asset_storage_registry = asset_storage_registry_from_config(config)?;
 
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
@@ -683,8 +683,13 @@ async fn executor_registry_from_config(
 }
 
 /// Create an [`AssetStorageRegistry`] from the given [`RuntimeConfig`].
-#[must_use]
-pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageRegistry {
+///
+/// # Errors
+///
+/// Will return Err if the configured AssetStorage instances cannot be created.
+pub fn asset_storage_registry_from_config(
+    config: &RuntimeConfig,
+) -> miette::Result<AssetStorageRegistry> {
     let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
     for (asset_storage_name, asset_storage_config) in &config.asset_storage {
         match asset_storage_config {
@@ -692,11 +697,11 @@ pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorag
                 .insert(asset_storage_name.clone(), Box::new(InMemoryStorage::new())),
             AssetStorageConfig::File { asset_dir: parent } => asset_storage_registry.insert(
                 asset_storage_name.clone(),
-                Box::new(FileAssetStorage::new(parent)),
+                Box::new(FileAssetStorage::try_new(parent)?),
             ),
         };
     }
-    Arc::new(RwLock::new(asset_storage_registry))
+    Ok(Arc::new(RwLock::new(asset_storage_registry)))
 }
 
 async fn run_until_finished(

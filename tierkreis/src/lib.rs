@@ -23,6 +23,7 @@ pub mod state;
 mod tierkreis {
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
+    use chrono::{TimeDelta, Utc};
     use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
     use pyo3::{
@@ -123,9 +124,37 @@ mod tierkreis {
     }
 
     #[pyclass(name = "NodeState")]
+    #[derive(Debug)]
     struct PyNodeState {
         #[pyo3(get)]
         pub status: String,
+    }
+
+    #[pyclass(name = "NodeState")]
+    #[derive(Debug)]
+    pub struct PyWorkflowRunStateSummary {
+        #[pyo3(get)]
+        pub name: Option<String>,
+        #[pyo3(get)]
+        pub duration: Option<TimeDelta>,
+        /// The time that the workflow started.
+        #[pyo3(get)]
+        pub started_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow was queued.
+        #[pyo3(get)]
+        pub queued_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow completed.
+        #[pyo3(get)]
+        pub complete_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow was cancelled.
+        #[pyo3(get)]
+        pub cancelled_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow errored.
+        #[pyo3(get)]
+        pub error_time: Option<chrono::DateTime<Utc>>,
+        /// Locations of nodes that have errored in this run.
+        #[pyo3(get)]
+        pub errored_locations: Vec<String>,
     }
 
     #[pyclass]
@@ -238,7 +267,7 @@ mod tierkreis {
             }
         }
 
-        #[pyo3(signature = (run_id, attempt=0, /, timeout=604800))]
+        #[pyo3(signature = (run_id, attempt=0, /, timeout=604_800))]
         async fn wait_for(&self, run_id: Uuid, attempt: u32, timeout: u64) -> PyResult<()> {
             let inner = self.inner.clone();
             get_runtime()
@@ -256,6 +285,48 @@ mod tierkreis {
                 .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
 
             Ok(())
+        }
+
+        #[pyo3(signature = (run_id, attempt=0, /))]
+        async fn get_summary(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+        ) -> PyResult<PyWorkflowRunStateSummary> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.read_workflow_run_summary(run_id, attempt).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(summary) => {
+                    let duration = summary.started_time.and_then(|started_time| {
+                        let finished_time = summary
+                            .complete_time
+                            .or(summary.error_time)
+                            .or(summary.cancelled_time);
+                        finished_time.map(|finished_time| finished_time - started_time)
+                    });
+                    Ok(PyWorkflowRunStateSummary {
+                        name: summary.name,
+                        duration,
+                        started_time: summary.started_time,
+                        queued_time: summary.queued_time,
+                        complete_time: summary.complete_time,
+                        cancelled_time: summary.cancelled_time,
+                        error_time: summary.error_time,
+                        errored_locations: summary
+                            .errored_locations
+                            .into_iter()
+                            .map(|loc| loc.to_string())
+                            .collect(),
+                    })
+                }
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
         }
 
         #[pyo3(signature = (run_id, attempt=0, /))]

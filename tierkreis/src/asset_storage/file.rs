@@ -4,6 +4,7 @@ by storing files in a single directory.
 */
 
 use std::{
+    fs::create_dir_all,
     ops::Not,
     path::{Path, PathBuf},
 };
@@ -14,6 +15,7 @@ use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWriteExt},
 };
+use tracing::warn;
 
 use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
 
@@ -26,11 +28,22 @@ pub struct FileAssetStorage {
 
 impl FileAssetStorage {
     /// Create a new [`FileAssetStorage`] backed by a folder define by `path`.
-    #[must_use]
-    pub fn new(path: &Path) -> Self {
-        Self {
-            base_dir: path.to_path_buf(),
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the specified path does not exist and it cannot be
+    /// created.
+    pub fn try_new(path: &Path) -> miette::Result<Self> {
+        if !path.exists() {
+            warn!(
+                "FileAssetStorage path not found at {}, creating directories",
+                path.display()
+            );
+            create_dir_all(path).into_diagnostic()?;
         }
+        Ok(Self {
+            base_dir: path.to_path_buf(),
+        })
     }
 
     fn location(&self, key: &AssetKey) -> PathBuf {
