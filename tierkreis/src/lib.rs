@@ -34,7 +34,7 @@ mod tierkreis {
     use pythonize::depythonize;
     use serde::{Deserialize, Serialize};
     use tokio::{runtime::Builder, sync::oneshot};
-    use tracing::info;
+    use tracing::{info, warn};
     use uuid::Uuid;
 
     use crate::{
@@ -410,9 +410,11 @@ mod tierkreis {
             _traceback: &Bound<'_, PyAny>,
         ) {
             if let Some(cancel) = self.cancel.take() {
-                cancel
-                    .send(())
-                    .expect("Failed to send background task cancellation");
+                if let Err(_) = cancel.send(()) {
+                    warn!(
+                        "Failed to cancel background Runtime thread, it may have already terminated"
+                    );
+                }
             }
         }
     }
@@ -420,9 +422,11 @@ mod tierkreis {
     impl Drop for PyRuntime {
         fn drop(&mut self) {
             if let Some(cancel) = self.cancel.take() {
-                cancel
-                    .send(())
-                    .expect("Failed to send background task cancellation");
+                if let Err(_) = cancel.send(()) {
+                    warn!(
+                        "Failed to cancel background Runtime thread, it may have already terminated"
+                    );
+                }
             }
         }
     }

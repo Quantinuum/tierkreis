@@ -686,7 +686,7 @@ async fn executor_registry_from_config(
 ///
 /// # Errors
 ///
-/// Will return Err if the configured AssetStorage instances cannot be created.
+/// Will return Err if the configured `AssetStorage` instances cannot be created.
 pub fn asset_storage_registry_from_config(
     config: &RuntimeConfig,
 ) -> miette::Result<AssetStorageRegistry> {
