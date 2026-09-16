@@ -39,7 +39,7 @@ async def test_raise_error() -> None:
         workflow_id = await runtime.save_workflow("will_fail", graph)
         run_id = await runtime.start_new_run(workflow_id, {})
         with pytest.raises(ValueError) as raises:
-            await runtime.wait_for(run_id, 0)
+            await runtime.wait_for(run_id, timeout=5)
 
         assert str(raises.value) == "Workflow failed"
 
@@ -54,7 +54,7 @@ async def test_raises_no_error() -> None:
     with runtime:
         workflow_id = await runtime.save_workflow("wont_fail", graph)
         run_id = await runtime.start_new_run(workflow_id, {})
-        await runtime.wait_for(run_id, 0)
+        await runtime.wait_for(run_id, timeout=5)
 
     states = await runtime.debug_read_node_states(run_id, 0, ["N0"])
     assert states["N0"].status == "Complete"
@@ -68,7 +68,7 @@ async def test_nested_error() -> None:
         workflow_id = await runtime.save_workflow("eval_will_fail", graph)
         run_id = await runtime.start_new_run(workflow_id, {})
         with pytest.raises(ValueError):
-            await runtime.wait_for(run_id, 0)
+            await runtime.wait_for(run_id, timeout=5)
 
     states = await runtime.debug_read_node_states(run_id, 0, ["N1.N0"])
     assert states["N1.N0"].status == "Error"
@@ -82,7 +82,7 @@ async def test_non_zero_exit_code() -> None:
         workflow_id = await runtime.save_workflow("non_zero_exit_code", graph)
         run_id = await runtime.start_new_run(workflow_id, {})
         with pytest.raises(ValueError):
-            await runtime.wait_for(run_id, 0)
+            await runtime.wait_for(run_id, timeout=5)
 
     states = await runtime.debug_read_node_states(run_id, 0, ["N0"])
     assert states["N0"].status == "Error"

@@ -34,8 +34,8 @@ async def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -
     with runtime:
         workflow_id = await runtime.save_workflow("eagerifelse_long_running", graph)
         run_id = await runtime.start_new_run(workflow_id, inputs)
-        await runtime.wait_for(run_id, 0)
-        actual_output = await runtime.get_outputs(run_id, 0)
+        await runtime.wait_for(run_id, timeout=20)
+        actual_output = await runtime.get_outputs(run_id)
 
     assert actual_output == {"simple_eagerifelse_output": output}
 
@@ -47,7 +47,7 @@ async def test_eagerifelse_nodes() -> None:
     with runtime:
         workflow_id = await runtime.save_workflow("simple_eagerifelse", graph)
         run_id = await runtime.start_new_run(workflow_id, {"pred": b"true"})
-        await runtime.wait_for(run_id, 0)
+        await runtime.wait_for(run_id, timeout=5)
 
     states = await runtime.debug_read_node_states(run_id, 0, ["N3", "N4"])
     assert states["N3"].status == "Complete"
@@ -61,7 +61,7 @@ async def test_ifelse_nodes() -> None:
     with runtime:
         workflow_id = await runtime.save_workflow("simple_ifelse", graph)
         run_id = await runtime.start_new_run(workflow_id, {"pred": b"true"})
-        await runtime.wait_for(run_id, 0)
+        await runtime.wait_for(run_id, timeout=5)
 
     states = await runtime.debug_read_node_states(run_id, 0, ["N1", "N2"])
     assert states["N1"].status == "Complete"

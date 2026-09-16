@@ -21,7 +21,7 @@ pub mod state;
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
-    use std::{collections::HashMap, sync::Arc};
+    use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
@@ -238,10 +238,17 @@ mod tierkreis {
             }
         }
 
-        async fn wait_for(&self, run_id: Uuid, attempt: u32) -> PyResult<()> {
+        #[pyo3(signature = (run_id, attempt=0, /, timeout=604800))]
+        async fn wait_for(&self, run_id: Uuid, attempt: u32, timeout: u64) -> PyResult<()> {
             let inner = self.inner.clone();
             get_runtime()
-                .spawn(async move { inner.wait_for(run_id, attempt).await })
+                .spawn(async move {
+                    let fut = inner.wait_for(run_id, attempt);
+                    tokio::time::timeout(Duration::from_secs(timeout), fut)
+                        .await
+                        .into_diagnostic()??;
+                    Ok(())
+                })
                 .await
                 .map_err(|err| {
                     Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
@@ -251,6 +258,7 @@ mod tierkreis {
             Ok(())
         }
 
+        #[pyo3(signature = (run_id, attempt=0, /))]
         async fn get_outputs(&self, run_id: Uuid, attempt: u32) -> PyResult<ValueOrMapping> {
             let inner = self.inner.clone();
             let res = get_runtime()

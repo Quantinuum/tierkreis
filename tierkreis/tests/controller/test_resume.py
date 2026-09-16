@@ -192,8 +192,8 @@ async def test_resume(
     with runtime:
         workflow_id = await runtime.save_workflow(name, graph)
         run_id = await runtime.start_new_run(workflow_id, inputs)
-        await runtime.wait_for(run_id, 0)
-        actual_output = await runtime.get_outputs(run_id, 0)
+        await runtime.wait_for(run_id, timeout=30)
+        actual_output = await runtime.get_outputs(run_id)
 
     assert actual_output == output
 
@@ -249,7 +249,7 @@ async def test_resume_with_worker(
     with runtime:
         workflow_id = await runtime.save_workflow(name, graph)
         run_id = await runtime.start_new_run(workflow_id, inputs)
-        await runtime.wait_for(run_id, 0)
-        actual_output = await runtime.get_outputs(run_id, 0)
+        await runtime.wait_for(run_id, timeout=30)
+        actual_output = await runtime.get_outputs(run_id)
 
     assert actual_output == output
