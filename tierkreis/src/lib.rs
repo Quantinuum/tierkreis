@@ -130,7 +130,7 @@ mod tierkreis {
         pub status: String,
     }
 
-    #[pyclass(name = "NodeState")]
+    #[pyclass(name = "WorkflowSummary")]
     #[derive(Debug)]
     pub struct PyWorkflowRunStateSummary {
         #[pyo3(get)]
