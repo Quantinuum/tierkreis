@@ -9,10 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use futures::{
-    Stream, StreamExt,
-    stream::{AbortHandle, Abortable},
-};
+use futures::{Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, watch};
@@ -252,12 +249,12 @@ impl Runtime {
             background_task: None,
         };
 
-        runtime.start().await?;
+        runtime.start()?;
         Ok(runtime)
     }
 
     // Start processing events from the orchestrator in the background.
-    async fn start(&mut self) -> miette::Result<()> {
+    fn start(&mut self) -> miette::Result<()> {
         if self.background_task.is_some() {
             return Ok(());
         }
@@ -722,47 +719,6 @@ pub fn asset_storage_registry_from_config(
     Ok(Arc::new(RwLock::new(asset_storage_registry)))
 }
 
-async fn run_until_finished(
-    runtime: &Arc<Runtime>,
-    run_id: Uuid,
-    attempt: u32,
-) -> miette::Result<()> {
-    let (handle, registration) = AbortHandle::new_pair();
-    let run_task = Abortable::new(runtime.run(), registration);
-
-    let background_runtime = Arc::clone(runtime);
-    let background_task = tokio::spawn(async move {
-        background_runtime.wait_for(run_id, attempt).await?;
-        handle.abort();
-        Ok::<_, miette::Report>(())
-    });
-    run_task
-        .await
-        .expect_err("Task was not aborted as expected");
-    background_task.await.expect("Failed to join wait task")?;
-
-    Ok(())
-}
-
-#[tokio::main]
-pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
-    workflow_graph: WorkflowGraph,
-    inputs: HashMap<String, Vec<u8>, S>,
-) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory()).await?;
-    let runtime = Arc::new(runtime);
-
-    let workflow_id = runtime.save_workflow(None, workflow_graph).await?;
-    let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
-
-    run_until_finished(&runtime, run_id, attempt).await?;
-
-    let outputs = runtime.get_outputs(run_id, attempt).await?;
-    flush_logs();
-
-    Ok(outputs)
-}
-
 /// Start the runtime until cancelled.
 ///
 /// # Errors
@@ -792,6 +748,28 @@ mod tests {
     use futures::future::{AbortHandle, Abortable};
     use tempfile::NamedTempFile;
     use url::Url;
+
+    async fn run_until_finished(
+        runtime: &Arc<Runtime>,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<()> {
+        let (handle, registration) = AbortHandle::new_pair();
+        let run_task = Abortable::new(runtime.run(), registration);
+
+        let background_runtime = Arc::clone(runtime);
+        let background_task = tokio::spawn(async move {
+            background_runtime.wait_for(run_id, attempt).await?;
+            handle.abort();
+            Ok::<_, miette::Report>(())
+        });
+        run_task
+            .await
+            .expect_err("Task was not aborted as expected");
+        background_task.await.expect("Failed to join wait task")?;
+
+        Ok(())
+    }
 
     async fn test_persistent_runtime(database_filepath: &Path) -> miette::Result<Runtime> {
         let database_url = database_filepath.to_string_lossy().into_owned();

@@ -34,13 +34,13 @@ mod tierkreis {
     use pythonize::depythonize;
     use serde::{Deserialize, Serialize};
     use tokio::{runtime::Builder, sync::oneshot};
-    use tracing::{info, warn};
+    use tracing::warn;
     use uuid::Uuid;
 
     use crate::{
         graph::{LegacyWorkflowGraph, WorkflowGraph},
         location::Location,
-        runtime::{self, RuntimeConfig},
+        runtime::RuntimeConfig,
     };
 
     #[allow(clippy::unnecessary_wraps)]
@@ -530,20 +530,5 @@ mod tierkreis {
         } else {
             Ok(ValueOrMapping::Mapping(outputs))
         }
-    }
-
-    #[pyfunction]
-    fn run_workflow(
-        py: Python<'_>,
-        name: &str,
-        workflow: PyWorkflowGraph,
-        inputs: PyWorkflowInputs,
-    ) -> PyResult<ValueOrMapping> {
-        info!("starting workflow: '{name}'");
-        let outputs = runtime::run_workflow_in_memory(workflow.0, inputs.0)
-            .map_err(|err| convert_err(py, err))?;
-
-        info!("workflow finished: '{name}'");
-        convert_outputs(py, outputs)
     }
 }
