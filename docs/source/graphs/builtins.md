@@ -62,47 +62,23 @@ workflow = g.finish_with_outputs(three)
 
 ## Running the graph
 
-To run a general Tierkreis graph (`Workflow`) we need to set up:
-
-- a way to store and share inputs and outputs (the 'storage' interface)
-- a way to run tasks (the 'executor' interface)
-
-For this example we use the `FileStorage` that is provided by the Tierkreis library itself.
-The inputs and outputs will be stored in a directory on disk.
-(By default the files are stored in `~/.tierkreis/checkpoints/<WORKFLOW_ID>`, where `<WORKFLOW_ID>` is a `UUID` identifying the workflow.)
+The Rust-backed runtime owns workflow state, assets, and task execution. The
+default runtime discovers the installed `tkr-builtins` worker on `PATH`.
 
 ```{code-cell} ipython3
-from uuid import UUID
-from tierkreis.storage import FileStorage
+from tierkreis import new_default
 
-storage = FileStorage(UUID(int=99), name="My first graph")
+runtime = await new_default()
 ```
 
-If we have already run this example then there will already be files at this directory in the storage.
-If we want to reuse the directory then run
+Save the workflow, start a run, wait for attempt `0`, and fetch the outputs:
 
 ```{code-cell} ipython3
-storage.clean_graph_files()
-```
+with runtime:
+    workflow_id = await runtime.save_workflow("My first graph", workflow)
+    run_id = await runtime.start_new_run(workflow_id, {})
+    await runtime.wait_for(run_id, 0)
+    outputs = await runtime.get_outputs(run_id, 0)
 
-to get a fresh area to work in.
-
-Since we are just using the Tierkreis built-in tasks the executor will not actually be called.
-As a placeholder we create a simple `ShellExecutor`, also provided by the Tierkreis library, which can run bash scripts in a specified directory.
-
-```{code-cell} ipython3
-from pathlib import Path
-from tierkreis.executor import ShellExecutor
-
-executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
-```
-
-With the storage and executor specified we can now run a graph using `run_graph`:
-
-```{code-cell} ipython3
-from tierkreis import run_graph
-from tierkreis.storage import read_outputs
-
-run_graph(storage, executor, workflow, {})
-print(read_outputs(workflow, storage))
+print(outputs)
 ```

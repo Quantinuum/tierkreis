@@ -62,9 +62,11 @@ Trying to use a non-serializable pass will result in an error.
 
 An example use is in `docs/source/examples/hamiltonian.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis).
 A shorter example which runs on a named IBM backend, e.g. `"ibm_torino"` is given here
-For debugging purposes this also showcases how to use the `InMemoryExecutor` which only works in conjunction with the `InMemoryStorage`.
+The installed worker implementation is executed by the default subprocess runtime.
 
 ```python
+from tierkreis import new_default
+
 class IBMInput(NamedTuple):
     circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821
     n_shots: TKR[int]
@@ -88,21 +90,17 @@ def compile_run_single():
 
 circuit = ...your circuit here...
 
-storage = InMemoryStorage(UUID(int=109))
-executor = InMemoryExecutor(
-    Path(__file__).parent.parent / "tierkreis_workers", storage
-)
 n_shots = 30
-run_graph(
-    storage,
-    executor,
-    g,
-    {
-        "circuit": circuit,
-        "n_shots": n_shots,
-        "backend": "<ibm_backend>", # e.g. ibm_torino
-    },
-)
-res = read_outputs(g, storage)
+runtime = await new_default()
+inputs = {
+    "circuit": circuit.to_dict(),
+    "n_shots": n_shots,
+    "backend": "<ibm_backend>",  # e.g. ibm_torino
+}
+with runtime:
+    workflow_id = await runtime.save_workflow("pytket run", g)
+    run_id = await runtime.start_new_run(workflow_id, inputs)
+    await runtime.wait_for(run_id, 0)
+    res = await runtime.get_outputs(run_id, 0)
 print(res)
 ```

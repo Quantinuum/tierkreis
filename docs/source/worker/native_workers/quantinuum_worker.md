@@ -43,6 +43,8 @@ The full api is available in the {py:mod}`API Docs <quantinuum_worker>`.
 ## Example
 
 ```python
+from tierkreis import new_default
+
 class QuantinuumInput(NamedTuple):
     circuit: TKR[OpaqueType["pytket._tket.circuit.Circuit"]]  # noqa: F821
     n_shots: TKR[int]
@@ -66,21 +68,17 @@ def compile_run_single():
 
 circuit = ...your circuit here...
 
-storage = InMemoryStorage(UUID(int=109))
-executor = InMemoryExecutor(
-    Path(__file__).parent.parent / "tierkreis_workers", storage
-)
 n_shots = 30
-run_graph(
-    storage,
-    executor,
-    g,
-    {
-        "circuit": circuit,
-        "n_shots": n_shots,
-        "backend": "<ibmq_backend>", # e.g. ibm_pittsburgh
-    },
-)
-res = read_outputs(g, storage)
+runtime = await new_default()
+inputs = {
+    "circuit": circuit.to_dict(),
+    "n_shots": n_shots,
+    "backend": "<quantinuum_backend>",  # e.g. H2-1E
+}
+with runtime:
+    workflow_id = await runtime.save_workflow("quantinuum run", g)
+    run_id = await runtime.start_new_run(workflow_id, inputs)
+    await runtime.wait_for(run_id, 0)
+    res = await runtime.get_outputs(run_id, 0)
 print(res)
 ```

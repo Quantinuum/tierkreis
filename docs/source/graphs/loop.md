@@ -131,22 +131,22 @@ rus_workflow = g.finish_with_outputs(loop_output.i)
 Since we still only use built-in functions, we execute the graph in the same way as before.
 
 ```{code-cell} ipython3
-from uuid import UUID
-from pathlib import Path
+from tierkreis import new_default
 
-from tierkreis import run_graph
-from tierkreis.storage import FileStorage, read_outputs, read_loop_trace
-from tierkreis.executor import ShellExecutor
+runtime = await new_default()
+with runtime:
+    workflow_id = await runtime.save_workflow("Loop", workflow)
+    run_id = await runtime.start_new_run(workflow_id, {})
+    await runtime.wait_for(run_id, 0)
+    print(await runtime.get_outputs(run_id, 0))
 
-storage = FileStorage(UUID(int=99), name="Nested graphs using Eval")
-executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
+    rus_id = await runtime.save_workflow("Repeat until success", rus_workflow)
+    run_id = await runtime.start_new_run(rus_id, {})
+    await runtime.wait_for(run_id, 0)
+    print(await runtime.get_outputs(run_id, 0))
+```
 
-storage.clean_graph_files()
-run_graph(storage, executor, workflow, {})
-print(read_outputs(workflow, storage))
-print(read_loop_trace(workflow, storage, "my_loop"))
-
-storage.clean_graph_files()
-run_graph(storage, executor, rus_workflow, {})
-print(read_outputs(rus_workflow, storage))
+```{warning}
+Reading the values from every loop iteration is not exposed by the Rust runtime
+binding yet. The legacy controller provides this through `read_loop_trace`.
 ```

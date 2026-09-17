@@ -1,5 +1,12 @@
 # Executors
 
+```{warning}
+This section documents the legacy Python controller executor API. The public
+Rust runtime currently exposes in-memory, subprocess, and Nexus executors
+through runtime constructors and configuration. HPC schedulers, registry-path
+lookup, combined executors, and task-level routing are not exposed yet.
+```
+
 Executors are fundamental in running graph nodes in different environments.
 They also ensure that the workers can fulfill their contracts by preparing inputs and outputs.
 
