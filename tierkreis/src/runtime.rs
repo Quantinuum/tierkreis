@@ -200,6 +200,8 @@ pub struct Runtime {
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
     default_storage_name: String,
+
+    background_task: Option<AbortOnDrop>,
 }
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -215,7 +217,7 @@ impl Runtime {
     ///
     /// # Errors
     ///
-    /// Will
+    /// Will return err if constructing any of the Runtime components fails.
     pub async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
         let asset_storage_registry = asset_storage_registry_from_config(config)?;
 
@@ -241,12 +243,58 @@ impl Runtime {
             },
         };
         tracing::info!("Starting Tierkreis runtime");
-        Ok(Self {
+
+        let mut runtime = Self {
             orchestrator,
             state: runtime_state,
             asset_storage_registry,
             default_storage_name: config.default_storage_name.clone(),
-        })
+            background_task: None,
+        };
+
+        runtime.start().await?;
+        Ok(runtime)
+    }
+
+    // Start processing events from the orchestrator in the background.
+    async fn start(&mut self) -> miette::Result<()> {
+        if self.background_task.is_some() {
+            return Ok(());
+        }
+
+        let stream = self.orchestrator.listen()?;
+        let state = self.state.clone();
+        let task = AbortOnDrop(tokio::spawn(async move {
+            tokio::select! {
+                sig = tokio::signal::ctrl_c() => {
+                    match sig {
+                        Ok(()) => {
+                            tracing::info!("Received ctrl-c signal, shutting down runtime");
+                            flush_logs();
+                            std::process::exit(130)},
+                        Err(err) => {
+                            tracing::error!("Error while waiting for ctrl-c signal: {err}");
+                            flush_logs();
+                            eprintln!("{err}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                res = Self::process_events(state, stream) => {
+                    match res {
+                        Ok(()) => {},
+                        Err(err) => {
+                            tracing::error!("Error while processing events: {err}");
+                            eprintln!("{err}");
+                        }
+                    }
+                }
+            }
+        }));
+
+        self.background_task = Some(task);
+
+        Ok(())
     }
 
     /// Save a workflow to the runtime state with an option name.
@@ -407,36 +455,6 @@ impl Runtime {
     ///
     /// Will return Err if the [`Runtime`] fails to process a workflow run attempt.
     pub async fn run(&self) -> miette::Result<()> {
-        let stream = self.orchestrator.listen()?;
-        let state = self.state.clone();
-        let _task = AbortOnDrop(tokio::spawn(async move {
-            tokio::select! {
-                sig = tokio::signal::ctrl_c() => {
-                    match sig {
-                        Ok(()) => {
-                            tracing::info!("Received ctrl-c signal, shutting down runtime");
-                            flush_logs();
-                            std::process::exit(130)},
-                        Err(err) => {
-                            tracing::error!("Error while waiting for ctrl-c signal: {err}");
-                            flush_logs();
-                            eprintln!("{err}");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                res = Self::process_events(state, stream) => {
-                    match res {
-                        Ok(()) => {},
-                        Err(err) => {
-                            tracing::error!("Error while processing events: {err}");
-                            eprintln!("{err}");
-                        }
-                    }
-                }
-            }
-        }));
-
         let mut state_recv = self.state.listen();
         // TODO: this should probably be part of the runtime state
         let mut contexts: HashMap<(Uuid, u32), OrchestrationContext> = HashMap::new();
