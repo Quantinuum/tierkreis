@@ -399,7 +399,7 @@ pub struct LegacyWorkflowGraph {
 }
 
 impl LegacyWorkflowGraph {
-    /// Convert the `LegacyWorkflowGraph` into a `WorkflowGraph` that can be run by the Orchestrator.
+    /// Convert the `LegacyWorkflowGraph` into a `WorkflowGraph` that can be run by the action planner.
     ///
     /// # Errors
     ///
