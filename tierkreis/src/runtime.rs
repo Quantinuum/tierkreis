@@ -30,7 +30,7 @@ use crate::{
     graph::WorkflowGraph,
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
-    orchestrator::{OrchestrationContext, Orchestrator},
+    orchestrator::{ActionAggregator, ActionPlanner, ActionRunner, OrchestrationContext},
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 
@@ -160,7 +160,9 @@ enum RuntimeStateConfig {
 }
 
 struct Runtime {
-    orchestrator: Orchestrator,
+    action_planner: ActionPlanner,
+    action_aggregator: ActionAggregator,
+    action_runner: ActionRunner,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
     default_storage_name: String,
@@ -186,13 +188,13 @@ impl Runtime {
             executor_registry_from_config(&asset_storage_registry, config).await?;
 
         init_logging_and_tracing(&config.logging_config);
-        let orchestrator = Orchestrator::try_new(
-            &asset_storage_registry,
+        let action_planner =
+            ActionPlanner::try_new(&asset_storage_registry, &config.default_storage_name).await?;
+        let action_runner = ActionRunner::try_new(
             &executor_registry,
             &config.default_storage_name,
             &config.default_executor_name,
-        )
-        .await?;
+        )?;
         let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
             RuntimeStateConfig::Sqlite { memory: true, .. } => {
@@ -205,7 +207,9 @@ impl Runtime {
         };
         tracing::info!("Starting Tierkreis runtime");
         Ok(Self {
-            orchestrator,
+            action_planner,
+            action_aggregator: ActionAggregator,
+            action_runner,
             state: runtime_state,
             asset_storage_registry,
             default_storage_name: config.default_storage_name.clone(),
@@ -351,7 +355,7 @@ impl Runtime {
     }
 
     async fn run(&mut self) -> miette::Result<()> {
-        let stream = self.orchestrator.listen()?;
+        let stream = self.action_runner.listen()?;
         let state = self.state.clone();
         let _task = AbortOnDrop(tokio::spawn(async move {
             tokio::select! {
@@ -426,11 +430,12 @@ impl Runtime {
                 };
 
                 let actions = self
-                    .orchestrator
+                    .action_planner
                     .build_actions(context, workflow_graph)
                     .await?;
-                self.orchestrator
-                    .perform_actions(run_id, attempt, actions)
+                let plan = self.action_aggregator.aggregate(actions).await?;
+                self.action_runner
+                    .perform_plan(run_id, attempt, plan)
                     .await?;
             }
             state_recv.changed().await.into_diagnostic()?;

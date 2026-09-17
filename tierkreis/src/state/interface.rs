@@ -64,17 +64,17 @@ pub struct WorkflowRunStateSummary {
 /// by the [`WorkflowRunState`] interface.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NodeState {
-    /// The time at which the node was scheduled by the [`Orchestrator`] if any.
+    /// The time at which the node was scheduled by the action planner if any.
     pub scheduled_time: Option<DateTime<Utc>>,
     /// The time at which the node was queued by an [`Executor`] if any.
     pub queued_time: Option<DateTime<Utc>>,
     /// The time at which the node started running by an [`Executor`] if any.
     pub running_time: Option<DateTime<Utc>>,
-    /// The time at which the node was completed by the [`Orchestrator`] or an [`Executor`] if any.
+    /// The time at which the node was completed by the action runner or an [`Executor`] if any.
     pub complete_time: Option<DateTime<Utc>>,
     /// The time at which the node was cancelled by the [`Executor`] if any.
     pub cancelled_time: Option<DateTime<Utc>>,
-    /// The time at which the node errored as reported by the [`Orchestrator`] or an [`Executor`] if any.
+    /// The time at which the node errored as reported by the action runner or an [`Executor`] if any.
     pub error_time: Option<DateTime<Utc>>,
 
     /// The outputs of the node and their stored locations if any.

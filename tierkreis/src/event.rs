@@ -1,6 +1,6 @@
 /*!
 This module defines the event format that is emitted by [Executor][crate::executor::Executor] instances
-and the [Orchestrator][crate::orchestrator::Orchestrator] that is used to build up the execution
+and the [`ActionRunner`][crate::orchestrator::ActionRunner] that is used to build up the execution
 state of the Workflow so it can be monitored and restarted.
 */
 use std::{collections::HashMap, hash::RandomState};
@@ -85,7 +85,7 @@ impl WorkflowRunEvent {
 }
 
 /// [`NodeEvent`] messages are emitted from [Executor][crate::executor::Executor] instances and the
-/// [Orchestrator][crate::orchestrator::Orchestrator].
+/// [`ActionRunner`][crate::orchestrator::ActionRunner].
 ///
 /// [`NodeEvent`] messages correspond to an update in the state of a Node during the Workflow
 /// execution.
@@ -153,7 +153,7 @@ pub enum RunningStateUpdate {
 /// [`NodeStatus`] defines the various states that Nodes can be in.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeStatus {
-    /// The node is scheduled to be run by the [Orchestrator].
+    /// The node is scheduled to be run by the [`ActionPlanner`][crate::orchestrator::ActionPlanner].
     Scheduled,
     /// The node is queued to run using an [Executor][crate::executor::Executor].
     Queued {

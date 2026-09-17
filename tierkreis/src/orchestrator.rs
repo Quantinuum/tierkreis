@@ -1,120 +1,41 @@
 /*!
-This module defines the [Orchestrator] struct that combines multiple [Executor][crate::executor::Executor]
-and [`AssetStorage`][crate::asset_storage::AssetStorage] implementations to drive Workflow execution and return a stream
-of [Event]s with updates about each node in the Workflow.
+This module separates workflow graph planning, action aggregation, and action
+execution into independently testable components.
 */
 use std::{
     collections::{HashMap, HashSet},
     iter,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use bitvec::vec::BitVec;
 use futures::{
-    FutureExt, Stream, StreamExt, TryFutureExt,
-    channel::mpsc,
-    future,
-    stream::{self, BoxStream, LocalBoxStream, select_all},
+    FutureExt, StreamExt, TryFutureExt, future,
+    stream::{self, BoxStream, LocalBoxStream},
 };
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
-use serde_json::Value;
 use tokio::sync::RwLock;
-use tracing::{debug, instrument};
-use uuid::Uuid;
+use tracing::instrument;
 
 use crate::{
     asset_storage::{
         AssetStorageRegistry, fold_assets, interface::AssetSpec, load_asset, save_asset,
         unfold_asset,
     },
-    event::{
-        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
-        send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
-        send_workflow_run_complete, send_workflow_run_errored,
-    },
-    executor::{
-        ExecutorRegistry,
-        interface::{TaskHandle, TaskPlan},
-    },
+    event::{NodeEvent, WorkflowRunEvent},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::Location,
     state::{WorkflowRunState, interface::NodeState},
 };
 
-/// `Action` describes an operation the Orchestrator should perform.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Action {
-    /// The node location in the graph where orchestration should occur.
-    pub loc: Location,
-    /// The kind of action to perform.
-    pub kind: ActionKind,
-}
+mod action;
+mod aggregator;
+mod runner;
 
-/// [`ActionKind`] is a placeholder enum for operation the [`Orchestrator`] can perform
-/// when interpreting a [`WorkflowGraph`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ActionKind {
-    /// An operation performed by a Worker.
-    PerformTask {
-        /// The name of the Worker to call.
-        worker_name: String,
-        /// The name of the Task to call.
-        task_name: String,
-        /// The input assets for the Task.
-        inputs: HashMap<String, AssetSpec>,
-        /// The names of the outputs of the Task.
-        outputs: HashSet<String>,
-        /// A persisted handle used to reattach to a Task that was already
-        /// dispatched to an Executor before a crash/restart, if any.
-        task_handle: Option<TaskHandle>,
-        /// Arbitrary resource requirements used for executor selection.
-        resources: HashMap<String, Value>,
-    },
-    /// Mark the node as switching with a particular value.
-    SetSwitching {
-        /// The value to mark the node with.
-        cond: bool,
-    },
-    /// Mark the node as running with a particular loop index.
-    SetRunningLoop {
-        /// The loop index to store in the node state.
-        index: u32,
-    },
-    /// Mark the node as running with a particular map size.
-    SetRunningMap {
-        /// The size of the map to mark.
-        size: usize,
-    },
-    /// Mark the node as partially complete for a particular element.
-    SetMapElemComplete {
-        /// The size of the map.
-        size: usize,
-        /// The map element to mark as complete.
-        index: usize,
-    },
-    /// Mark the node as complete with outputs.
-    SetComplete {
-        /// The output values for the node.
-        outputs: HashMap<String, AssetSpec>,
-    },
-    /// Mark the overall workflow as errored.
-    WorkflowErrored {},
-    /// Mark the overall workflow as complete.
-    WorkflowFinished {},
-}
-
-#[derive(Debug, Clone, Default)]
-struct ActionPlan {
-    tasks: Vec<TaskPlan>,
-    switching: Vec<(Location, bool)>,
-    looping: Vec<(Location, u32)>,
-    mapping: Vec<(Location, usize)>,
-    map_elem_complete: HashMap<Location, BitVec<u8>>,
-    node_complete: Vec<(Location, HashMap<String, AssetSpec>)>,
-    workflow_error: bool,
-    workflow_complete: bool,
-}
+pub use action::{Action, ActionKind, ActionPlan, PlannedTask};
+pub use aggregator::ActionAggregator;
+pub use runner::ActionRunner;
 
 /// The context state for the orchestration
 #[derive(Debug)]
@@ -156,55 +77,29 @@ impl OrchestrationContext {
 type NodeStates = HashMap<Location, NodeState>;
 type ScheduledSet = HashSet<Location>;
 
-/// [Orchestrator] manages the Workflow execution by dispatching [Node]s to the correct
-/// [Executor][crate::executor::Executor] as well as managing a shared [`AssetStorageRegistry`]
-/// for the Workflow.
-pub struct Orchestrator {
-    event_sender: EventSender,
-    event_receiver: Mutex<Option<EventReceiver>>,
-
-    default_executor_name: String,
-    executor_registry: ExecutorRegistry,
-
+/// Plans graph execution as a stream of [`Action`]s.
+pub struct ActionPlanner {
     default_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
 }
 
-impl Orchestrator {
-    /// Try to create a new [Orchestrator] with an [`AssetStorageRegistry`] and an
-    /// [`ExecutorRegistry`], as well as default options for the [`AssetStorage`][crate::asset_storage::AssetStorage]
-    /// and [Executor][crate::executor::Executor] to use for each registry unless specified otherwise
-    /// in the Workflow definition.
+impl ActionPlanner {
+    /// Create a planner backed by the supplied asset storage registry.
     ///
     /// # Errors
     ///
-    /// This function will return Err if the specified `default_storage_name` does not exist
-    /// inside the [`AssetStorageRegistry`] or if the specified `default_executor_name` does
-    /// not exist inside the [`ExecutorRegistry`].
+    /// Returns an error when the configured default storage is not present.
     pub async fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
-        executor_registry: &ExecutorRegistry,
         default_storage_name: &str,
-        default_executor_name: &str,
     ) -> miette::Result<Self> {
-        let (sender, receiver) = mpsc::channel(128);
-
         let asset_storage_registry_lock = asset_storage_registry.read().await;
         if !asset_storage_registry_lock.contains_key(default_storage_name) {
             return Err(miette!("default_storage_name not in registry"));
         }
-
-        if !executor_registry.contains_key(default_executor_name) {
-            return Err(miette!("default_executor_name not in registry"));
-        }
+        drop(asset_storage_registry_lock);
 
         Ok(Self {
-            event_sender: sender,
-            event_receiver: Mutex::new(Some(receiver)),
-
-            default_executor_name: default_executor_name.to_string(),
-            executor_registry: Arc::clone(executor_registry),
-
             default_storage_name: default_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
         })
@@ -1086,145 +981,6 @@ impl Orchestrator {
 
         Ok(Arc::new(subgraph))
     }
-
-    /// Perform a series of actions, dispatching to [`Executor`]s when necessary.
-    ///
-    /// # Errors
-    ///
-    /// Will return Err if a Node cannot be run or dispatched.
-    #[instrument(skip(self, actions), fields(run_id = %workflow_run_id, attempt), err)]
-    pub async fn perform_actions(
-        &self,
-        workflow_run_id: Uuid,
-        attempt: u32,
-        mut actions: impl Stream<Item = miette::Result<Action>> + Unpin,
-    ) -> miette::Result<()> {
-        // Build a list of tasks to dispatch to Executors and immediately
-        // process everything else.
-        let mut plan = ActionPlan::default();
-        let mut event_sender = self.event_sender.clone();
-        while let Some(Action { loc, kind }) = actions.next().await.transpose()? {
-            debug!("Running action at {loc}, kind: {kind:?}");
-            match kind {
-                ActionKind::PerformTask {
-                    worker_name,
-                    task_name,
-                    inputs,
-                    outputs,
-                    task_handle,
-                    resources,
-                } => plan.tasks.push(TaskPlan {
-                    workflow_run_id,
-                    attempt,
-                    loc,
-                    worker_name,
-                    task_name,
-                    inputs,
-                    outputs,
-                    output_storage_name: Some(self.default_storage_name.clone()),
-                    resources,
-                    task_handle,
-                    ..Default::default()
-                }),
-                ActionKind::SetSwitching { cond } => {
-                    plan.switching.push((loc, cond));
-                }
-                ActionKind::SetRunningLoop { index } => {
-                    plan.looping.push((loc, index));
-                }
-                ActionKind::SetRunningMap { size } => {
-                    plan.mapping.push((loc, size));
-                }
-                ActionKind::SetMapElemComplete { index, size } => {
-                    let entry = plan
-                        .map_elem_complete
-                        .entry(loc)
-                        .or_insert_with(|| BitVec::repeat(false, size));
-                    entry.set(index, true);
-                }
-                ActionKind::SetComplete { outputs } => {
-                    plan.node_complete.push((loc, outputs));
-                }
-                ActionKind::WorkflowErrored {} => {
-                    plan.workflow_error = true;
-                }
-                ActionKind::WorkflowFinished {} => {
-                    plan.workflow_complete = true;
-                }
-            }
-        }
-
-        if !plan.node_complete.is_empty() {
-            let (locs, outputs) = plan.node_complete.into_iter().unzip();
-            send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
-        }
-
-        for (loc, size) in plan.mapping {
-            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
-        }
-        for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
-        }
-        for (loc, index) in plan.looping {
-            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
-        }
-        for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
-        }
-
-        let default_executor_name = &self.default_executor_name;
-        let executor = self
-            .executor_registry
-            .get(default_executor_name)
-            .ok_or_else(|| miette!("Could not find a storage with name '{default_executor_name}' in ExecutorRegistry")).wrap_err("Could not run Task Nodes")?;
-        executor
-            .execute(plan.tasks)
-            .await
-            .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
-
-        if plan.workflow_error {
-            send_workflow_run_errored(&mut event_sender, workflow_run_id, attempt).await?;
-        }
-        if plan.workflow_complete {
-            send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Listen to a combined stream events from the Orchestrator and the
-    /// Executors in the registry.
-    ///
-    /// This method should only be called once and the stream will exist
-    /// for the duration of the Workflow execution.
-    ///
-    /// # Errors
-    ///
-    /// Will return Err if the method has already been called.
-    pub fn listen(&self) -> miette::Result<impl Stream<Item = RuntimeEvent> + use<>> {
-        let orchestrator_events = {
-            let mut receiver = self
-                .event_receiver
-                .try_lock()
-                .map_err(|err| miette!("Failed to listen: {}", err))?;
-
-            receiver.take().ok_or_else(|| {
-                miette!("Failed to listen: Orchestrator is already being listened to.")
-            })?
-        };
-
-        let mut streams = self
-            .executor_registry
-            .values()
-            .map(|executor| {
-                let stream = executor.listen()?;
-                Ok(stream)
-            })
-            .collect::<miette::Result<Vec<BoxStream<RuntimeEvent>>>>()?;
-
-        streams.push(orchestrator_events.boxed());
-        Ok(select_all(streams))
-    }
 }
 
 fn stream_action_result<'a>(res: miette::Result<Action>) -> BoxStream<'a, miette::Result<Action>> {
@@ -1324,16 +1080,18 @@ mod tests {
     use std::assert_matches;
     use std::sync::Arc;
 
-    use futures::StreamExt;
+    use futures::{Stream, StreamExt};
     use rstest::{fixture, rstest};
     use serde_json::json;
+    use uuid::Uuid;
 
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
         builder::*,
-        event::{NodeEvent, NodeStatus},
+        event::{NodeEvent, NodeStatus, RuntimeEvent},
         executor::{
-            inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
+            ExecutorRegistry, inmemory::InMemoryExecutor, interface::Executor,
+            subprocess::SubprocessExecutor,
         },
         graph::LegacyWorkflowGraph,
         state::{inmemory::InMemoryWorkflowRunState, interface::NodeState},
@@ -1364,6 +1122,56 @@ mod tests {
         );
 
         Arc::new(executor_registry)
+    }
+
+    struct TestComponents {
+        planner: ActionPlanner,
+        aggregator: ActionAggregator,
+        runner: ActionRunner,
+    }
+
+    impl TestComponents {
+        async fn try_new(
+            asset_storage_registry: &AssetStorageRegistry,
+            executor_registry: &ExecutorRegistry,
+            default_storage_name: &str,
+            default_executor_name: &str,
+        ) -> miette::Result<Self> {
+            Ok(Self {
+                planner: ActionPlanner::try_new(asset_storage_registry, default_storage_name)
+                    .await?,
+                aggregator: ActionAggregator,
+                runner: ActionRunner::try_new(
+                    executor_registry,
+                    default_storage_name,
+                    default_executor_name,
+                )?,
+            })
+        }
+
+        async fn build_actions(
+            &self,
+            context: OrchestrationContext,
+            workflow_graph: Arc<WorkflowGraph>,
+        ) -> miette::Result<LocalBoxStream<'_, miette::Result<Action>>> {
+            self.planner.build_actions(context, workflow_graph).await
+        }
+
+        async fn perform_actions(
+            &self,
+            workflow_run_id: Uuid,
+            attempt: u32,
+            actions: impl Stream<Item = miette::Result<Action>> + Unpin,
+        ) -> miette::Result<()> {
+            let plan = self.aggregator.aggregate(actions).await?;
+            self.runner
+                .perform_plan(workflow_run_id, attempt, plan)
+                .await
+        }
+
+        fn listen(&self) -> miette::Result<impl Stream<Item = RuntimeEvent> + use<>> {
+            self.runner.listen()
+        }
     }
 
     #[fixture]
@@ -1537,7 +1345,7 @@ mod tests {
     }
 
     async fn next_actions(
-        orchestrator: &Orchestrator,
+        orchestrator: &TestComponents,
         workflow_graph: &Arc<WorkflowGraph>,
         workflow_run_state: &Arc<dyn WorkflowRunState>,
         inputs: &HashMap<String, AssetSpec>,
@@ -1572,7 +1380,7 @@ mod tests {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]).await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -1608,7 +1416,7 @@ mod tests {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1})], vec![]).await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -1698,7 +1506,7 @@ mod tests {
         )
         .await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -1847,7 +1655,7 @@ mod tests {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1})], vec![]).await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -1954,7 +1762,7 @@ mod tests {
         )
         .await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -2071,7 +1879,7 @@ mod tests {
 
         let (registry, input_sets, _dir) = test_storage_registry(vec![inputs], vec![]).await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -2132,7 +1940,7 @@ mod tests {
 
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            &orchestrator.planner.default_storage_name,
             &outputs,
             expected_outputs,
         )
@@ -2154,7 +1962,7 @@ mod tests {
 
         let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]).await;
         let executor_registry = test_executor_registry(&registry).await;
-        let orchestrator = Orchestrator::try_new(
+        let orchestrator = TestComponents::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
@@ -2214,7 +2022,7 @@ mod tests {
 
         assert_registry_contains_values(
             &registry,
-            &orchestrator.default_storage_name,
+            &orchestrator.planner.default_storage_name,
             &outputs,
             json!({"simple_eval_output": 12}),
         )
