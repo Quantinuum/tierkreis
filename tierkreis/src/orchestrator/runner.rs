@@ -14,13 +14,12 @@ use crate::{
     executor::{ExecutorRegistry, interface::TaskPlan},
 };
 
-use super::ActionPlan;
+use super::{ActionPlan, WorkflowOutcome};
 
 /// Performs aggregated action plans and owns executor event streams.
 pub struct ActionRunner {
     event_sender: EventSender,
     event_receiver: Mutex<Option<EventReceiver>>,
-    default_executor_name: String,
     executor_registry: ExecutorRegistry,
     default_storage_name: String,
 }
@@ -44,7 +43,6 @@ impl ActionRunner {
         Ok(Self {
             event_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
-            default_executor_name: default_executor_name.to_string(),
             executor_registry: Arc::clone(executor_registry),
             default_storage_name: default_storage_name.to_string(),
         })
@@ -67,62 +65,103 @@ impl ActionRunner {
         plan: ActionPlan,
     ) -> miette::Result<()> {
         let mut event_sender = self.event_sender.clone();
+        let ActionPlan {
+            executor_groups,
+            node_updates,
+            outcome,
+        } = plan;
 
-        if !plan.node_complete.is_empty() {
-            let (locs, outputs) = plan.node_complete.into_iter().unzip();
+        if !node_updates.completions.is_empty() {
+            let (locs, outputs) = node_updates
+                .completions
+                .into_iter()
+                .map(|completion| (completion.location, completion.outputs))
+                .unzip();
             send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
         }
 
-        for (loc, size) in plan.mapping {
-            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, size).await?;
-        }
-        for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
-        }
-        for (loc, index) in plan.looping {
-            send_running_loop(&mut event_sender, workflow_run_id, attempt, loc, index).await?;
-        }
-        for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
-        }
-
-        let default_executor_name = &self.default_executor_name;
-        let executor = self
-            .executor_registry
-            .get(default_executor_name)
-            .ok_or_else(|| {
-                miette!(
-                    "Could not find an executor with name '{default_executor_name}' in ExecutorRegistry"
-                )
-            })
-            .wrap_err("Could not run Task Nodes")?;
-        let task_plans = plan
-            .tasks
-            .into_iter()
-            .map(|task| TaskPlan {
+        for update in node_updates.maps_started {
+            send_running_map(
+                &mut event_sender,
                 workflow_run_id,
                 attempt,
-                loc: task.loc,
-                worker_name: task.worker_name,
-                task_name: task.task_name,
-                inputs: task.inputs,
-                outputs: task.outputs,
-                output_storage_name: Some(self.default_storage_name.clone()),
-                resources: task.resources,
-                task_handle: task.task_handle,
-                ..Default::default()
-            })
-            .collect();
-        executor
-            .execute(task_plans)
-            .await
-            .wrap_err_with(|| miette!("Could not run Task Nodes"))?;
-
-        if plan.workflow_error {
-            send_workflow_run_errored(&mut event_sender, workflow_run_id, attempt).await?;
+                update.location,
+                update.size,
+            )
+            .await?;
         }
-        if plan.workflow_complete {
-            send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
+        for update in node_updates.map_elements_completed {
+            send_map_elem_complete(
+                &mut event_sender,
+                workflow_run_id,
+                attempt,
+                update.location,
+                update.completed,
+            )
+            .await?;
+        }
+        for update in node_updates.loops {
+            send_running_loop(
+                &mut event_sender,
+                workflow_run_id,
+                attempt,
+                update.location,
+                update.index,
+            )
+            .await?;
+        }
+        for update in node_updates.switches {
+            send_running_switching(
+                &mut event_sender,
+                workflow_run_id,
+                attempt,
+                update.location,
+                update.condition,
+            )
+            .await?;
+        }
+
+        for group in executor_groups {
+            let executor_name = group.executor_name;
+            let executor = self
+                .executor_registry
+                .get(&executor_name)
+                .ok_or_else(|| {
+                    miette!(
+                        "Could not find an executor with name '{executor_name}' in ExecutorRegistry"
+                    )
+                })
+                .wrap_err("Could not run Task Nodes")?;
+            let task_plans = group
+                .tasks
+                .into_iter()
+                .map(|task| TaskPlan {
+                    workflow_run_id,
+                    attempt,
+                    loc: task.loc,
+                    worker_name: task.worker_name,
+                    task_name: task.task_name,
+                    inputs: task.inputs,
+                    outputs: task.outputs,
+                    output_storage_name: Some(self.default_storage_name.clone()),
+                    resources: task.resources,
+                    task_handle: task.task_handle,
+                    ..Default::default()
+                })
+                .collect();
+            executor.execute(task_plans).await.wrap_err_with(|| {
+                miette!("Could not run Task Nodes on executor '{executor_name}'")
+            })?;
+        }
+
+        match outcome {
+            Some(WorkflowOutcome::Errored) => {
+                send_workflow_run_errored(&mut event_sender, workflow_run_id, attempt).await?;
+            }
+            Some(WorkflowOutcome::Completed) => {
+                send_workflow_run_complete(&mut event_sender, workflow_run_id, attempt).await?;
+            }
+            None => {}
         }
 
         Ok(())

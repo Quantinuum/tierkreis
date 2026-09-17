@@ -208,7 +208,7 @@ impl Runtime {
         tracing::info!("Starting Tierkreis runtime");
         Ok(Self {
             action_planner,
-            action_aggregator: ActionAggregator,
+            action_aggregator: ActionAggregator::new(&config.default_executor_name),
             action_runner,
             state: runtime_state,
             asset_storage_registry,

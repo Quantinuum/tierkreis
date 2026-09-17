@@ -33,7 +33,11 @@ mod action;
 mod aggregator;
 mod runner;
 
-pub use action::{Action, ActionKind, ActionPlan, PlannedTask};
+pub use action::{
+    Action, ActionKind, ActionPlan, ActionPlanSummary, ExecutorTaskGroup, LoopUpdate,
+    MapElementsCompleted, MapStart, NodeCompletion, NodeUpdatePlan, PlannedTask, SwitchUpdate,
+    WorkflowOutcome,
+};
 pub use aggregator::ActionAggregator;
 pub use runner::ActionRunner;
 
@@ -1140,7 +1144,7 @@ mod tests {
             Ok(Self {
                 planner: ActionPlanner::try_new(asset_storage_registry, default_storage_name)
                     .await?,
-                aggregator: ActionAggregator,
+                aggregator: ActionAggregator::new(default_executor_name),
                 runner: ActionRunner::try_new(
                     executor_registry,
                     default_storage_name,
