@@ -329,7 +329,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.44.0" },
     { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
     { name = "pydantic", specifier = "~=2.5" },
-    { name = "ruff", marker = "extra == 'stubs'", specifier = ">=0.16.2" },
+    { name = "ruff", marker = "extra == 'stubs'", specifier = ">=0.16.7" },
 ]
 provides-extras = ["stubs", "hpc"]
 
