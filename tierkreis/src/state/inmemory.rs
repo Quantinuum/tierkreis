@@ -127,6 +127,7 @@ impl RuntimeState for InMemoryRuntimeState {
         let mut entry = self.inner.runs.entry((run_id, attempt)).or_default();
         entry.workflow_id = workflow_id;
         entry.inputs = inputs;
+        entry.started_time = Some(chrono::Utc::now());
 
         self.update_sender.send_modify(|active_runs| {
             active_runs.active_runs.insert((run_id, attempt));

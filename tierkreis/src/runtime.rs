@@ -10,9 +10,9 @@ use std::{
 };
 
 use futures::{Stream, StreamExt};
-use miette::{IntoDiagnostic, miette};
+use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, watch};
 use uuid::Uuid;
 
 use crate::{
@@ -31,7 +31,10 @@ use crate::{
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    state::{
+        InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
+        interface::{NodeState, WorkflowRunStateSummary},
+    },
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -47,7 +50,10 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    fn memory() -> Self {
+    /// Construct a pre-defined config that keeps state in memory and can only
+    /// run built-in tasks that also run in memory.
+    #[must_use]
+    pub fn memory() -> Self {
         RuntimeConfig {
             asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
                 .into_iter()
@@ -67,7 +73,10 @@ impl RuntimeConfig {
         }
     }
 
-    fn sqlite_memory() -> Self {
+    /// Construct a pre-defined config that keeps state in an sqlite database
+    /// in memory and can only run built-in tasks that also run in memory.
+    #[must_use]
+    pub fn sqlite_memory() -> Self {
         let mut config = Self::memory();
         config.runtime_state = RuntimeStateConfig::Sqlite {
             memory: true,
@@ -159,15 +168,37 @@ enum RuntimeStateConfig {
     Sqlite { memory: bool, url: Option<String> },
 }
 
-struct Runtime {
+/// A user facing error that occurred on a specific Node at a [`Location`].
+///
+/// Used in [`WorkflowRunError`].
+#[derive(Diagnostic, Debug, thiserror::Error)]
+#[error("Node failed at {location}, with error: {message}")]
+#[diagnostic()]
+pub struct NodeError {
+    location: Location,
+    message: String,
+    #[help]
+    detail: Option<String>,
+}
+
+/// A user facing error that occurred while a workflow was running.
+#[derive(Diagnostic, Debug, thiserror::Error)]
+#[error("Workflow failed")]
+#[diagnostic()]
+pub struct WorkflowRunError {
+    #[related]
+    related: Vec<NodeError>,
+}
+
+/// The [`Runtime`] struct encapsulates the [`Orchestrator`] and [`RuntimeState`]
+/// such that the workflow system can be run from a single object.
+pub struct Runtime {
     orchestrator: Orchestrator,
     state: Arc<dyn RuntimeState>,
     asset_storage_registry: AssetStorageRegistry,
     default_storage_name: String,
 
-    // Optional Run ID to execute exclusively. Once this run completes the
-    // runtime should end execution.
-    dedicated_run_id: Option<Uuid>,
+    background_task: Option<AbortOnDrop>,
 }
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -179,8 +210,13 @@ impl Drop for AbortOnDrop {
 }
 
 impl Runtime {
-    async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
-        let asset_storage_registry = asset_storage_registry_from_config(config);
+    /// Create a new Runtime instance from a configuration.
+    ///
+    /// # Errors
+    ///
+    /// Will return err if constructing any of the Runtime components fails.
+    pub async fn from_config(config: &RuntimeConfig) -> miette::Result<Self> {
+        let asset_storage_registry = asset_storage_registry_from_config(config)?;
 
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
@@ -204,16 +240,66 @@ impl Runtime {
             },
         };
         tracing::info!("Starting Tierkreis runtime");
-        Ok(Self {
+
+        let mut runtime = Self {
             orchestrator,
             state: runtime_state,
             asset_storage_registry,
             default_storage_name: config.default_storage_name.clone(),
-            dedicated_run_id: None,
-        })
+            background_task: None,
+        };
+
+        runtime.start()?;
+        Ok(runtime)
     }
 
-    async fn save_workflow(
+    // Start processing events from the orchestrator in the background.
+    fn start(&mut self) -> miette::Result<()> {
+        if self.background_task.is_some() {
+            return Ok(());
+        }
+
+        let stream = self.orchestrator.listen()?;
+        let state = self.state.clone();
+        let task = AbortOnDrop(tokio::spawn(async move {
+            tokio::select! {
+                sig = tokio::signal::ctrl_c() => {
+                    match sig {
+                        Ok(()) => {
+                            tracing::info!("Received ctrl-c signal, shutting down runtime");
+                            flush_logs();
+                            std::process::exit(130)},
+                        Err(err) => {
+                            tracing::error!("Error while waiting for ctrl-c signal: {err}");
+                            flush_logs();
+                            eprintln!("{err}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                res = Self::process_events(state, stream) => {
+                    match res {
+                        Ok(()) => {},
+                        Err(err) => {
+                            tracing::error!("Error while processing events: {err}");
+                            eprintln!("{err}");
+                        }
+                    }
+                }
+            }
+        }));
+
+        self.background_task = Some(task);
+
+        Ok(())
+    }
+
+    /// Save a workflow to the runtime state with an option name.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the runtime state cannot be written to.
+    pub async fn save_workflow(
         &self,
         name: Option<String>,
         workflow_graph: WorkflowGraph,
@@ -221,8 +307,14 @@ impl Runtime {
         self.state.save_workflow(name, workflow_graph).await
     }
 
-    async fn start_new_run<S: BuildHasher>(
-        &mut self,
+    /// Start a new workflow run of a specific workflow with some inputs.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the input assets cannot be written or if
+    /// the runtime state cannot be written to.
+    pub async fn start_new_run<S: BuildHasher>(
+        &self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
     ) -> miette::Result<(Uuid, u32)> {
@@ -238,7 +330,11 @@ impl Runtime {
             .await?;
         let attempt = workflow_run_state.attempt();
         let run_id = workflow_run_state.run_id();
-        tracing::info!(workflow_id = %workflow_id.to_string(), run_id = %run_id.to_string(), attempt = attempt, "Starting new run attempt");
+        tracing::info!(
+            workflow_id = %workflow_id.to_string(),
+            run_id = %run_id.to_string(),
+            attempt = attempt, "Starting new run attempt",
+        );
         Ok((run_id, attempt))
     }
 
@@ -350,61 +446,27 @@ impl Runtime {
         Ok(())
     }
 
-    async fn run(&mut self) -> miette::Result<()> {
-        let stream = self.orchestrator.listen()?;
-        let state = self.state.clone();
-        let _task = AbortOnDrop(tokio::spawn(async move {
-            tokio::select! {
-                sig = tokio::signal::ctrl_c() => {
-                    match sig {
-                        Ok(()) => {
-                            tracing::info!("Received ctrl-c signal, shutting down runtime");
-                            flush_logs();
-                            std::process::exit(130)},
-                        Err(err) => {
-                            tracing::error!("Error while waiting for ctrl-c signal: {err}");
-                            flush_logs();
-                            eprintln!("{err}");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                res = Self::process_events(state, stream) => {
-                    match res {
-                        Ok(()) => {},
-                        Err(err) => {
-                            tracing::error!("Error while processing events: {err}");
-                            eprintln!("{err}");
-                        }
-                    }
-                }
-            }
-        }));
-
+    /// Allow the runtime to run all available workflow run attempts.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the [`Runtime`] fails to process a workflow run attempt.
+    pub async fn run(&self) -> miette::Result<()> {
         let mut state_recv = self.state.listen();
         // TODO: this should probably be part of the runtime state
         let mut contexts: HashMap<(Uuid, u32), OrchestrationContext> = HashMap::new();
 
         loop {
-            let active_runs: Vec<(Uuid, u32)> = {
+            let active_runs: HashSet<(Uuid, u32)> = {
                 // WARNING: It's very important that we drop this `updated` ref
                 // in order for the orchestrator to be able to send updates later on
                 // as this channel uses a RW lock that is held as long as this ref exists.
                 //
                 // See: https://github.com/tokio-rs/tokio/issues/4246
                 let updated = state_recv.borrow_and_update();
-                if let Some(terminate_on_complete) = self.dedicated_run_id {
-                    if updated.active_runs.contains(&(terminate_on_complete, 0)) {
-                        vec![(terminate_on_complete, 0)]
-                    } else {
-                        break;
-                    }
-                } else {
-                    updated.active_runs.iter().copied().collect()
-                }
+                updated.active_runs.iter().copied().collect()
             };
-            let active_run_set: HashSet<(Uuid, u32)> = active_runs.iter().copied().collect();
-            contexts.retain(|key, _| active_run_set.contains(key));
+            contexts.retain(|key, _| active_runs.contains(key));
 
             for (run_id, attempt) in active_runs {
                 let workflow_run_state =
@@ -435,13 +497,68 @@ impl Runtime {
             }
             state_recv.changed().await.into_diagnostic()?;
         }
-        tracing::info!("Runtime exiting, shutting down logging");
-        flush_logs();
-        Ok(())
     }
 
-    async fn outputs(
-        &mut self,
+    /// Wait for a specific workflow run attempt to finish.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the requested run attempt ends in an error state.
+    pub async fn wait_for(&self, run_id: Uuid, attempt: u32) -> miette::Result<()> {
+        let mut state_recv = self.listen();
+        loop {
+            let still_active = {
+                state_recv
+                    .borrow_and_update()
+                    .active_runs
+                    .contains(&(run_id, attempt))
+            };
+
+            if !still_active {
+                let summary = self.read_workflow_run_summary(run_id, attempt).await?;
+                if summary.error_time.is_some() {
+                    let error_node_states = self
+                        .read_node_states(
+                            run_id,
+                            attempt,
+                            summary.errored_locations.iter().cloned(),
+                        )
+                        .await?;
+
+                    let related: Vec<NodeError> = error_node_states
+                        .into_iter()
+                        .map(|(location, error_node_state)| NodeError {
+                            location,
+                            message: error_node_state
+                                .error
+                                .unwrap_or_else(|| "<MISSING ERROR MESSAGE>".to_string()),
+                            detail: error_node_state.error_detail,
+                        })
+                        .collect();
+                    let err = WorkflowRunError { related };
+                    return Err(err.into());
+                }
+
+                return Ok::<_, miette::Report>(());
+            }
+
+            state_recv.changed().await.into_diagnostic()?;
+        }
+    }
+
+    /// Obtain a watch receiver for the runtime.
+    pub fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
+        self.state.listen()
+    }
+
+    /// Fetch the outputs of a workflow run attempt.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run attempt does not exist, the state cannot
+    /// be accessed or if the output node has no output values.
+    pub async fn get_outputs(
+        &self,
         run_id: Uuid,
         attempt: u32,
     ) -> miette::Result<HashMap<String, Vec<u8>>> {
@@ -465,6 +582,43 @@ impl Runtime {
         .await?;
 
         Ok(outputs)
+    }
+
+    /// Read the [`WorkflowRunStateSummary`] for a specific workflow run to get a high
+    /// level overview of the workflow run.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run cannot be found or if the summary cannot
+    /// be constructed.
+    pub async fn read_workflow_run_summary(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<WorkflowRunStateSummary> {
+        let workflow_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let workflow_run_summary = workflow_state.summary().await?;
+        Ok(workflow_run_summary)
+    }
+
+    /// Read the [`NodeState`] for a specific workflow run at the specified locations.
+    ///
+    /// Useful for debugging or visualising workflow runs but should not be typically needed
+    /// by end users.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run cannot be found or if the summary cannot
+    /// be constructed.
+    pub async fn read_node_states(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        mut locations: impl Iterator<Item = Location> + Send,
+    ) -> miette::Result<HashMap<Location, NodeState>> {
+        let workflow_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let node_states = workflow_state.read_many(&mut locations).await?;
+        Ok(node_states)
     }
 }
 
@@ -544,8 +698,13 @@ async fn executor_registry_from_config(
 }
 
 /// Create an [`AssetStorageRegistry`] from the given [`RuntimeConfig`].
-#[must_use]
-pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorageRegistry {
+///
+/// # Errors
+///
+/// Will return Err if the configured `AssetStorage` instances cannot be created.
+pub fn asset_storage_registry_from_config(
+    config: &RuntimeConfig,
+) -> miette::Result<AssetStorageRegistry> {
     let mut asset_storage_registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
     for (asset_storage_name, asset_storage_config) in &config.asset_storage {
         match asset_storage_config {
@@ -553,31 +712,11 @@ pub fn asset_storage_registry_from_config(config: &RuntimeConfig) -> AssetStorag
                 .insert(asset_storage_name.clone(), Box::new(InMemoryStorage::new())),
             AssetStorageConfig::File { asset_dir: parent } => asset_storage_registry.insert(
                 asset_storage_name.clone(),
-                Box::new(FileAssetStorage::new(parent)),
+                Box::new(FileAssetStorage::try_new(parent)?),
             ),
         };
     }
-    Arc::new(RwLock::new(asset_storage_registry))
-}
-
-#[tokio::main]
-pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
-    workflow_graph: WorkflowGraph,
-    inputs: HashMap<String, Vec<u8>, S>,
-) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let mut runtime = Runtime::from_config(&RuntimeConfig::sqlite_memory()).await?;
-
-    let workflow_id = runtime.save_workflow(None, workflow_graph).await?;
-    let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
-
-    runtime.dedicated_run_id = Some(run_id);
-    runtime.run().await?;
-
-    let outputs = runtime.outputs(run_id, attempt).await?;
-
-    flush_logs();
-
-    Ok(outputs)
+    Ok(Arc::new(RwLock::new(asset_storage_registry)))
 }
 
 /// Start the runtime until cancelled.
@@ -592,7 +731,7 @@ pub(crate) async fn run_workflow_in_memory<S: BuildHasher>(
 /// Will panic if there is already a tokio runtime active.
 #[tokio::main]
 pub async fn exec() -> miette::Result<()> {
-    let mut runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
+    let runtime = Runtime::from_config(&RuntimeConfig::default()).await?;
     runtime.run().await?;
     Ok(())
 }
@@ -609,6 +748,28 @@ mod tests {
     use futures::future::{AbortHandle, Abortable};
     use tempfile::NamedTempFile;
     use url::Url;
+
+    async fn run_until_finished(
+        runtime: &Arc<Runtime>,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<()> {
+        let (handle, registration) = AbortHandle::new_pair();
+        let run_task = Abortable::new(runtime.run(), registration);
+
+        let background_runtime = Arc::clone(runtime);
+        let background_task = tokio::spawn(async move {
+            background_runtime.wait_for(run_id, attempt).await?;
+            handle.abort();
+            Ok::<_, miette::Report>(())
+        });
+        run_task
+            .await
+            .expect_err("Task was not aborted as expected");
+        background_task.await.expect("Failed to join wait task")?;
+
+        Ok(())
+    }
 
     async fn test_persistent_runtime(database_filepath: &Path) -> miette::Result<Runtime> {
         let database_url = database_filepath.to_string_lossy().into_owned();
@@ -641,7 +802,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn run_can_resume_after_runtime_is_terminated() -> miette::Result<()> {
         let database_file = NamedTempFile::new().into_diagnostic()?;
-        let mut runtime = test_persistent_runtime(database_file.path()).await?;
+        let runtime = test_persistent_runtime(database_file.path()).await?;
         let (workflow_graph, task_location) = sleep_graph_with_task_location()?;
 
         let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
@@ -650,7 +811,6 @@ mod tests {
             serde_json::to_vec(&1).into_diagnostic()?,
         )]);
         let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
-        runtime.dedicated_run_id = Some(run_id);
         let workflow_run_state = runtime
             .state
             .load_workflow_run_state(run_id, attempt)
@@ -678,9 +838,9 @@ mod tests {
         assert!(task.await.is_err(), "the first runtime was not aborted");
         drop(runtime);
 
-        let mut resumed_runtime = test_persistent_runtime(database_file.path()).await?;
-        resumed_runtime.dedicated_run_id = Some(run_id);
-        resumed_runtime.run().await?;
+        let resumed_runtime = test_persistent_runtime(database_file.path()).await?;
+        let resumed_runtime = Arc::new(resumed_runtime);
+        run_until_finished(&resumed_runtime, run_id, attempt).await?;
 
         let resumed_state = resumed_runtime
             .state
@@ -927,7 +1087,7 @@ mod tests {
 
         let token_dir = crate::executor::nexus::client::tests::setup_temp_tokens().await?;
         let database_file = NamedTempFile::new().into_diagnostic()?;
-        let mut runtime =
+        let runtime =
             test_persistent_runtime_with_nexus(&nexus_url, token_dir.path(), database_file.path())
                 .await?;
 
@@ -936,7 +1096,6 @@ mod tests {
         let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
         let inputs = HashMap::from([("hugr_package".to_string(), hugr_package_bytes()?)]);
         let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
-        runtime.dedicated_run_id = Some(run_id);
         let workflow_run_state = runtime
             .state
             .load_workflow_run_state(run_id, attempt)
@@ -965,9 +1124,10 @@ mod tests {
         assert!(task.await.is_err(), "the first runtime was not aborted");
         drop(runtime); // Dropping the runtime should abort any remaining background tasks.
 
-        let mut resumed_runtime =
+        let resumed_runtime =
             test_persistent_runtime_with_nexus(&nexus_url, token_dir.path(), database_file.path())
                 .await?;
+        let resumed_runtime = Arc::new(resumed_runtime);
         let workflow_run_state = resumed_runtime
             .state
             .load_workflow_run_state(run_id, attempt)
@@ -983,8 +1143,7 @@ mod tests {
         // Let the mock Nexus job complete, as if it finished while the
         // runtime was down.
         release_sender.send(true).into_diagnostic()?;
-        resumed_runtime.dedicated_run_id = Some(run_id);
-        resumed_runtime.run().await?;
+        run_until_finished(&resumed_runtime, run_id, attempt).await?;
 
         // The resumed run must reattach to the same Nexus job rather than
         // resubmitting.
@@ -1001,7 +1160,7 @@ mod tests {
             job_id_before_resume
         );
 
-        let outputs = resumed_runtime.outputs(run_id, attempt).await?;
+        let outputs = resumed_runtime.get_outputs(run_id, attempt).await?;
         assert_eq!(
             outputs.get("result").map(Vec::as_slice),
             Some(

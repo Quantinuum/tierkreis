@@ -381,7 +381,7 @@ pub async fn test_storage_registry(
 
     let temp_dir = TempDir::new().unwrap();
     let file_storage_name = "file".to_string();
-    let file_storage = FileAssetStorage::new(temp_dir.path());
+    let file_storage = FileAssetStorage::try_new(temp_dir.path()).unwrap();
 
     for input_set in assets_for_files {
         let inputs: HashMap<String, serde_json::Value> = serde_json::from_value(input_set).unwrap();

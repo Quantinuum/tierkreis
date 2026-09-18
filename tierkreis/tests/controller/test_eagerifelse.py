@@ -1,20 +1,12 @@
-import json
-from pathlib import Path
-from uuid import UUID
-
 import pytest
+from tierkreis._tierkreis import new_default, new_in_memory
 
 from tests.controller.sample_graphdata import (
     simple_eagerifelse,
     simple_ifelse,
 )
-from tierkreis.controller import run_graph
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.data.types import PType
-from tierkreis.controller.executor.shell_executor import ShellExecutor
-from tierkreis.controller.executor.uv_executor import UvExecutor
-from tierkreis.controller.storage.filestorage import ControllerFileStorage
 
 
 def eagerifelse_long_running() -> GraphData:
@@ -34,35 +26,43 @@ def eagerifelse_long_running() -> GraphData:
 params = [({"pred": True}, 1), ({"pred": False}, 2)]
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(("inputs", "output"), params)
-def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -> None:
-    g = eagerifelse_long_running()
-    storage = ControllerFileStorage(UUID(int=150), name="eagerifelse_long_running")
+async def test_eagerifelse_long_running(inputs: dict[str, PType], output: int) -> None:
+    graph = eagerifelse_long_running()
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("eagerifelse_long_running", graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, timeout=20)
+        actual_output = await runtime.get_outputs(run_id)
 
-    registry_path = Path(__file__).parent.parent / "workers"
-    executor = UvExecutor(registry_path=registry_path, logs_path=storage.logs_path)
-
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, inputs, n_iterations=20000)
-    actual_output = json.loads(storage.read_output(Loc(), "simple_eagerifelse_output"))
-    assert actual_output == output
-
-
-def test_eagerifelse_nodes() -> None:
-    g = simple_eagerifelse()
-    storage = ControllerFileStorage(UUID(int=151), name="simple_if_else")
-    executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, {"pred": b"true"})
-    assert storage.is_node_finished(Loc("-.N3"))
-    assert storage.is_node_finished(Loc("-.N4"))
+    assert actual_output == {"simple_eagerifelse_output": output}
 
 
-def test_ifelse_nodes() -> None:
-    g = simple_ifelse()
-    storage = ControllerFileStorage(UUID(int=152), name="simple_if_else")
-    executor = ShellExecutor(Path("./python/examples/launchers"), storage.workflow_dir)
-    storage.clean_graph_files()
-    run_graph(storage, executor, g, {"pred": b"true"})
-    assert storage.is_node_finished(Loc("-.N1"))
-    assert not storage.is_node_finished(Loc("-.N2"))
+@pytest.mark.asyncio
+async def test_eagerifelse_nodes() -> None:
+    graph = simple_eagerifelse()
+    runtime = await new_in_memory()
+    with runtime:
+        workflow_id = await runtime.save_workflow("simple_eagerifelse", graph)
+        run_id = await runtime.start_new_run(workflow_id, {"pred": b"true"})
+        await runtime.wait_for(run_id, timeout=5)
+
+    states = await runtime.debug_read_node_states(run_id, 0, ["N3", "N4"])
+    assert states["N3"].status == "Complete"
+    assert states["N4"].status == "Complete"
+
+
+@pytest.mark.asyncio
+async def test_ifelse_nodes() -> None:
+    graph = simple_ifelse()
+    runtime = await new_in_memory()
+    with runtime:
+        workflow_id = await runtime.save_workflow("simple_ifelse", graph)
+        run_id = await runtime.start_new_run(workflow_id, {"pred": b"true"})
+        await runtime.wait_for(run_id, timeout=5)
+
+    states = await runtime.debug_read_node_states(run_id, 0, ["N1", "N2"])
+    assert states["N1"].status == "Complete"
+    assert states["N2"].status != "Complete"

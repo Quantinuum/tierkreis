@@ -122,8 +122,15 @@ pub async fn insert_workflow_run(
         .get_result(conn)
         .await?;
 
+    // The current sqlite implementation always adds workflows to
+    // the active set when they inserted into the database, so
+    // set the started time to now.
+    let now = chrono::Utc::now().naive_utc();
     diesel::insert_into(wra::workflow_run_attempts)
-        .values(wra::workflow_run_id.eq(&workflow_run.id))
+        .values((
+            wra::workflow_run_id.eq(&workflow_run.id),
+            wra::started_time.eq(Some(now)),
+        ))
         .execute(conn)
         .await?;
 
