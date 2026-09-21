@@ -497,6 +497,14 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         let hpc_resources = serde_json::from_value(task.resources.clone().into_iter().collect())
             .into_diagnostic()
             .wrap_err("Invalid HPC resource specification")?;
+        let extra_scheduler_args = task
+            .resources
+            .get("extra_scheduler_args")
+            .map(|value| serde_json::from_value(value.clone()))
+            .transpose()
+            .into_diagnostic()
+            .wrap_err("Invalid HPC extra scheduler arguments")?
+            .unwrap_or_default();
         let hpc_environment =
             serde_json::from_value(task.environment.clone().into_iter().collect())
                 .into_diagnostic()
@@ -508,6 +516,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
             walltime: "01:00:00".to_string(),
             resources: hpc_resources,
             environment: hpc_environment,
+            extra_scheduler_args,
             ..Default::default()
         };
         let context = tracing::Span::current().context();
@@ -657,13 +666,14 @@ mod tests {
     use crate::{
         asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
         event::{NodeEvent, NodeStatus, WorkflowRunEvent},
-        executor::{HPCExecutor, SlurmWrapper},
+        executor::{HPCExecutor, PbsWrapper, SlurmWrapper},
     };
-    // Test that we can launch a task and listen for
-    // errors when they occur
-    #[tokio::test]
-    #[ignore = "Requires a local SLURM setup. To run the test, ensure the you have infra/local_slurm running. Then run the test from outside the Docker container."]
-    async fn execute_hpc() -> miette::Result<()> {
+
+    async fn execute_hpc_with_scheduler<T: SchedulerWrapper + 'static>(
+        scheduler: T,
+        extra_scheduler_args: Option<serde_json::Value>,
+        expected_output: serde_json::Value,
+    ) -> miette::Result<()> {
         let checkpoints_path = std::env::var_os("HOME")
             .map(PathBuf::from)
             .ok_or_else(|| miette!("HOME is not set"))?
@@ -679,6 +689,9 @@ mod tests {
         outputs.insert("value".to_string());
         let mut task_resources = HashMap::new();
         task_resources.insert("nodes".to_string(), 2.into());
+        if let Some(extra_scheduler_args) = extra_scheduler_args {
+            task_resources.insert("extra_scheduler_args".to_string(), extra_scheduler_args);
+        }
         let task_plans = vec![TaskPlan {
             loc: Location::default(),
             worker_name: "mpi_worker".to_string(),
@@ -696,8 +709,6 @@ mod tests {
             qpus: None,
             gres: None,
         };
-        let scheduler = SlurmWrapper::local();
-
         let executor = HPCExecutor::try_new(
             &registry,
             "checkpoints",
@@ -708,7 +719,7 @@ mod tests {
         )
         .await?
         .with_worker_command("mpiexec --allow-run-as-root uv run /mpi_worker/main.py");
-        // TODO: enable mpi environment
+        // TODO: enable mpi environment, worker on slurm is still old format
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -740,9 +751,36 @@ mod tests {
             &registry,
             "checkpoints",
             &events[2].clone().outputs()[0],
-            json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
-        ).await;
+            expected_output,
+        )
+        .await;
 
         Ok(())
+    }
+
+    // Test that we can launch a task and listen for
+    // errors when they occur
+    #[tokio::test]
+    #[ignore = "Requires a local SLURM setup. To run the test, ensure infra/slurm_local is running. Then run the test from outside the Docker container."]
+    async fn execute_hpc_slurm() -> miette::Result<()> {
+        execute_hpc_with_scheduler(
+            SlurmWrapper::local(),
+            None,
+            json!({"value": "Rank 0 out of 2 on c1 with value Test.\nRank 1 out of 2 on c2 with value Test."}),
+        )
+        .await
+    }
+
+    // Test that we can launch a task and listen for
+    // errors when they occur
+    #[tokio::test]
+    #[ignore = "Requires a local PBS setup. To run the test, ensure infra/pbs_local is running. Then run the test from outside the Docker container."]
+    async fn execute_hpc_pbs() -> miette::Result<()> {
+        execute_hpc_with_scheduler(
+            PbsWrapper::local(),
+            Some(json!({"-l": "place=scatter"})), // by default PBS reuses the same node
+            json!({"value": "Rank 0 out of 2 on p1 with value Test.\nRank 1 out of 2 on p2 with value Test."}),
+        )
+        .await
     }
 }
