@@ -1,5 +1,7 @@
 //! Event-based execution of subprocess-compatible workers on a batch scheduler.
 
+pub mod pbs;
+pub mod pjsub;
 pub mod slurm;
 pub mod spec;
 

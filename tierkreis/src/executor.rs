@@ -10,6 +10,8 @@ pub mod subprocess;
 
 pub use crate::executor::hpc::HPCExecutor;
 pub use crate::executor::hpc::{
+    pbs::PbsWrapper,
+    pjsub::PjsubWrapper,
     slurm::SlurmWrapper,
     spec::{JobSpec, SchedulerWrapper},
 };

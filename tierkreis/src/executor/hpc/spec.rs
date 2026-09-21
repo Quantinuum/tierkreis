@@ -134,6 +134,12 @@ impl Default for ScriptTemplates {
         let mut environment = minijinja::Environment::new();
         environment.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
         environment
+            .add_template("pbs", include_str!("pbs.j2"))
+            .expect("embedded PBS template must be valid");
+        environment
+            .add_template("pjsub", include_str!("pjsub.j2"))
+            .expect("embedded PJSUB template must be valid");
+        environment
             .add_template("slurm", include_str!("slurm.j2"))
             .expect("embedded Slurm template must be valid");
         Self {
@@ -192,4 +198,50 @@ pub trait SchedulerWrapper: Send + Sync {
     ) -> impl Future<Output = Result<HashMap<String, SchedulerStatus>>> + Send;
     /// Request cancellation of a job.
     fn cancel(&self, job_id: String) -> impl Future<Output = Result<()>> + Send;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_job() -> JobSpec {
+        JobSpec {
+            name: "tierkreis-test".to_string(),
+            walltime: "00:15:00".to_string(),
+            resources: HPCResourceSpec::new(2, Some(4), Some(8), Some(1), None, None),
+            command: "worker args.json".to_string(),
+            mpi: Some(MpiSpec {
+                proc: Some("8".to_string()),
+                max_proc_per_node: Some("4".to_string()),
+            }),
+            queue: Some("debug".to_string()),
+            account: Some("project".to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn renders_pbs_template() {
+        let script = ScriptTemplates::default()
+            .render("pbs", &test_job())
+            .expect("PBS template renders");
+
+        assert!(script.contains("#PBS -N tierkreis-test"));
+        assert!(script.contains("#PBS -l walltime=00:15:00"));
+        assert!(script.contains("#PBS -l select=2:ncpus=4:mem=8gb:ngpus=1:mpiprocs=4"));
+        assert!(script.contains("mpiexec worker args.json"));
+    }
+
+    #[test]
+    fn renders_pjsub_template() {
+        let script = ScriptTemplates::default()
+            .render("pjsub", &test_job())
+            .expect("PJSUB template renders");
+
+        assert!(script.contains("#PJM -N tierkreis-test"));
+        assert!(script.contains("#PJM -L \"elapse=00:15:00\""));
+        assert!(script.contains("#PJM -L \"node=2\""));
+        assert!(script.contains("#PJM --mpi \"max-proc-per-node=4\""));
+        assert!(script.contains("mpiexec worker args.json"));
+    }
 }

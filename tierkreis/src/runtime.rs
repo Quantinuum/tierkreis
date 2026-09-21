@@ -22,8 +22,8 @@ use crate::{
     },
     event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
-        Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, SlurmWrapper,
-        SubprocessExecutor,
+        Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, PbsWrapper, PjsubWrapper,
+        SlurmWrapper, SubprocessExecutor,
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
     },
@@ -158,6 +158,8 @@ enum ExecutorConfig {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum HpcSchedulerConfig {
+    Pbs,
+    Pjsub,
     Slurm,
 }
 
@@ -673,6 +675,40 @@ async fn executor_registry_from_config(
                 poll_interval_secs,
                 resources,
             } => match scheduler {
+                HpcSchedulerConfig::Pbs => {
+                    let scheduler = Arc::new(PbsWrapper::with_templates(templates.clone()));
+                    executor_registry.insert(
+                        executor_name.clone(),
+                        Box::new(
+                            HPCExecutor::try_new(
+                                asset_storage_registry,
+                                hpc_storage_name,
+                                output_storage_name,
+                                scheduler,
+                                resources.clone(),
+                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                            )
+                            .await?,
+                        ),
+                    )
+                }
+                HpcSchedulerConfig::Pjsub => {
+                    let scheduler = Arc::new(PjsubWrapper::with_templates(templates.clone()));
+                    executor_registry.insert(
+                        executor_name.clone(),
+                        Box::new(
+                            HPCExecutor::try_new(
+                                asset_storage_registry,
+                                hpc_storage_name,
+                                output_storage_name,
+                                scheduler,
+                                resources.clone(),
+                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                            )
+                            .await?,
+                        ),
+                    )
+                }
                 HpcSchedulerConfig::Slurm => {
                     let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
