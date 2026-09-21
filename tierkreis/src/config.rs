@@ -17,6 +17,17 @@ use crate::runtime::RuntimeConfig;
 pub const CONFIG_FILE_NAME: &str = "tierkreis.toml";
 /// Fallback env var
 pub const CONFIG_ENV_VAR: &str = "TIERKREIS_CONFIG";
+/// Name of the temporary files directory under the Tierkreis home directory.
+pub const TMP_DIR_NAME: &str = "tmp";
+/// Name of the default file asset storage directory un                                      der the Tierkreis home directory.
+pub const ASSETS_DIR_NAME: &str = "assets";
+
+/// Return the canonical Tierkreis home directory (`~/.tierkreis`), falling back
+/// to `/tmp/.tierkreis` if the user's home directory cannot be determined.
+#[must_use]
+pub fn tierkreis_home_dir() -> PathBuf {
+    home_dir().unwrap_or_else(|| "/tmp".into()).join(".tierkreis")
+}
 
 /// Locate a `RuntimeConfig` TOML file, searching:
 ///
@@ -40,10 +51,7 @@ pub fn discover_config_path() -> Option<PathBuf> {
         }
     }
 
-    let default = home_dir()
-        .unwrap_or_else(|| "/tmp".into())
-        .join(".tierkreis")
-        .join(CONFIG_FILE_NAME);
+    let default = tierkreis_home_dir().join(CONFIG_FILE_NAME);
     default.is_file().then_some(default)
 }
 

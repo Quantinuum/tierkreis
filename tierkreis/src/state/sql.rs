@@ -5,13 +5,7 @@ that can be used by the tierkreis runtime.
 These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
-use std::{
-    collections::HashMap,
-    env::{self, home_dir},
-    fmt::Debug,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, env, fmt::Debug, sync::Arc, time::Duration};
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
@@ -152,9 +146,7 @@ pub async fn build_conn_pool(max_size: Option<usize>) -> miette::Result<ConnPool
 }
 
 fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
-    let fallback = home_dir()
-        .unwrap_or_else(|| "/tmp".into())
-        .join(".tierkreis/tierkreis.sqlite");
+    let fallback = crate::config::tierkreis_home_dir().join("tierkreis.sqlite");
     if let Some(parent) = fallback.parent()
         && !parent.exists()
     {
