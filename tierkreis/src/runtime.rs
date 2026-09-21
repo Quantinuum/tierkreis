@@ -3,7 +3,6 @@ The runtime module defines the entrypoint to running Workflows.
 */
 use std::{
     collections::{HashMap, HashSet},
-    env::home_dir,
     hash::BuildHasher,
     path::PathBuf,
     sync::Arc,
@@ -88,9 +87,7 @@ impl RuntimeConfig {
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
-        let tierkreis_dir = home_dir()
-            .unwrap_or_else(|| "/tmp".into())
-            .join(".tierkreis");
+        let tierkreis_dir = crate::config::tierkreis_home_dir();
 
         let asset_dir = tierkreis_dir.join("assets");
         RuntimeConfig {

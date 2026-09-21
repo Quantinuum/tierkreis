@@ -7,7 +7,7 @@ state is not persisted beyond the lifetime of the process.
 */
 use std::{
     collections::{HashMap, HashSet},
-    env::{self, home_dir},
+    env,
     fmt::Debug,
     sync::Arc,
     time::Duration,
@@ -152,9 +152,7 @@ pub async fn build_conn_pool(max_size: Option<usize>) -> miette::Result<ConnPool
 }
 
 fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
-    let fallback = home_dir()
-        .unwrap_or_else(|| "/tmp".into())
-        .join(".tierkreis/tierkreis.sqlite");
+    let fallback = crate::config::tierkreis_home_dir().join("tierkreis.sqlite");
     if let Some(parent) = fallback.parent()
         && !parent.exists()
     {
