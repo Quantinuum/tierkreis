@@ -50,9 +50,7 @@ fn parse_job_statuses(output: &[u8]) -> HashMap<String, SchedulerStatus> {
                 "F" | "X" => SchedulerStatus::Error {
                     message: format!(
                         "PBS job {job_id} failed: state={state}, exit_status={}",
-                        exit_status
-                            .map(|code| code.to_string())
-                            .unwrap_or_else(|| "unknown".to_string())
+                        exit_status.map_or_else(|| "unknown".to_string(), |code| code.to_string())
                     ),
                 },
                 _ => SchedulerStatus::Error {
@@ -88,7 +86,6 @@ impl Default for PbsWrapper {
 }
 
 impl PbsWrapper {
-
     /// Construct a wrapper for the repository's local PBS Docker shims.
     #[must_use]
     #[cfg(test)]
@@ -142,7 +139,7 @@ impl SchedulerWrapper for PbsWrapper {
             .args([
                 "-x", // Include finished/moved jobs
                 "-f", // Long format
-                "-F", "json" // Output in JSON format
+                "-F", "json", // Output in JSON format
             ])
             .args(&job_ids)
             .output()

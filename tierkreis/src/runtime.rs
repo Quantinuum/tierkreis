@@ -624,6 +624,7 @@ impl Runtime {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn executor_registry_from_config(
     asset_storage_registry: &AssetStorageRegistry,
     config: &RuntimeConfig,

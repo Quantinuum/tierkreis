@@ -12,8 +12,7 @@ use super::{JobSpec, SchedulerWrapper};
 fn parse_job_id(output: &[u8]) -> Option<String> {
     String::from_utf8_lossy(output)
         .split(|c: char| !c.is_ascii_digit())
-        .filter(|field| !field.is_empty())
-        .last()
+        .rfind(|field| !field.is_empty())
         .map(str::to_string)
 }
 
@@ -41,9 +40,7 @@ fn status_from_fields(job_id: &str, state: &str, exit_code: Option<i64>) -> Sche
         "RJT" | "ERR" | "EXT" => SchedulerStatus::Error {
             message: format!(
                 "PJSUB job {job_id} failed: state={state}, exit_code={}",
-                exit_code
-                    .map(|code| code.to_string())
-                    .unwrap_or_else(|| "unknown".to_string())
+                exit_code.map_or_else(|| "unknown".to_string(), |code| code.to_string())
             ),
         },
         _ => SchedulerStatus::Error {
