@@ -10,8 +10,8 @@ use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
 use diesel::sqlite::Sqlite;
 use diesel::upsert::excluded;
 use diesel::{
-    BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
-    SelectableHelper, define_sql_function,
+    BelongingToDsl, EscapeExpressionMethods, ExpressionMethods, NullableExpressionMethods,
+    OptionalExtension, QueryDsl, SelectableHelper, TextExpressionMethods, define_sql_function,
 };
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -510,6 +510,97 @@ pub async fn read_node_states(
                 handle,
             },
         );
+    }
+
+    Ok(states)
+}
+
+/// Read the persisted node state for a workflow run at every [`Location`] matching
+/// a [`LocationPattern`], e.g. every iteration of a Loop or Map node.
+///
+/// Filters SQL --> does exact matching in Rust.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the node state
+/// lookup fails.
+pub async fn read_matching_node_states(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+    pattern: &crate::location::LocationPattern,
+) -> miette::Result<Vec<(Location, crate::state::interface::NodeState)>> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let attempt_i32 = i32::try_from(attempt)
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let like_pattern = pattern.as_sql_like_pattern();
+
+    let db_nodes: Vec<NodeState> = ns::node_states
+        .filter(ns::run_id.eq(run_id.to_string()))
+        .filter(ns::attempt.eq(attempt_i32))
+        .filter(ns::node_location.like(like_pattern).escape('\\'))
+        .get_results::<NodeState>(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!("Failed to query matching node states for run {run_id} attempt {attempt}")
+        })?;
+
+    let mut states = Vec::new();
+    for db_node in db_nodes {
+        if !pattern.matches(&db_node.node_location) {
+            continue;
+        }
+
+        let loop_index = db_node
+            .loop_index
+            .map(|idx| {
+                u32::try_from(idx)
+                    .into_diagnostic()
+                    .wrap_err_with(||miette!(
+                        "Stored loop index {idx} is invalid for run {run_id} attempt {attempt}",
+                    ))
+            })
+            .transpose()?;
+        let map_completed = db_node
+            .map_completed
+            .as_deref()
+            .map(|x| {
+                let mut bits = BitVec::from_slice(x);
+                bits.truncate(
+                    db_node
+                        .map_size
+                        .ok_or_else(|| miette!("Could not get map size from node state"))?
+                        .try_into()
+                        .into_diagnostic()?,
+                );
+                Ok::<_, miette::Report>(bits)
+            })
+            .transpose()?;
+
+        let outputs = read_outputs(conn, &db_node).await?;
+        let handle = db_node.handle.clone();
+
+        states.push((
+            db_node.node_location,
+            crate::state::interface::NodeState {
+                scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                queued_time: db_node.queued_time.map(utc_timestamp),
+                running_time: db_node.running_time.map(utc_timestamp),
+                complete_time: db_node.complete_time.map(utc_timestamp),
+                cancelled_time: db_node.cancelled_time.map(utc_timestamp),
+                error_time: db_node.error_time.map(utc_timestamp),
+                cond: db_node.cond,
+                loop_index,
+                map_completed,
+                error: db_node.error.clone(),
+                error_detail: db_node.error_detail.clone(),
+                outputs,
+                handle,
+            },
+        ));
     }
 
     Ok(states)

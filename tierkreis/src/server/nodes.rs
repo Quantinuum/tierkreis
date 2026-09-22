@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
-use miette::Context;
-
 use crate::asset_storage::{load_asset, load_assets};
-use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
+use crate::graph::{NodeDefinition, WorkflowGraph};
 use crate::location::{Location, LocationComponent};
 use crate::server::AssetStorageRegistry;
 use crate::server::models::{
@@ -391,34 +389,6 @@ pub async fn build_py_graph(
     Ok(PyGraph { nodes, edges })
 }
 
-/// Load a subgraph from a Const node that contains a serialized `WorkflowGraph`.
-fn load_subgraph_from_const_node(
-    workflow_graph: &WorkflowGraph,
-    node_index: portgraph::NodeIndex,
-) -> miette::Result<WorkflowGraph> {
-    tracing::info!("Loading subgraph from Const node {node_index:?}");
-    let (source_node, _source_port) = workflow_graph
-        .connected_input_by_port_name(node_index, "graph")
-        .wrap_err_with(|| {
-            format!("No connected input by port name 'graph' for node {node_index:?}")
-        })?;
-    let source_def = workflow_graph
-        .node_definition(source_node)
-        .ok_or_else(|| miette::miette!("Node definition missing for {source_node:?}"))?;
-    if let NodeDefinition::Const { value } = source_def {
-        if let Ok(val) = serde_json::from_value::<WorkflowGraph>(value.clone()) {
-            tracing::info!("Loaded subgraph from Const node {node_index:?}: {:?}", val);
-            Ok(val)
-        } else {
-            let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone())
-                .map_err(|_| miette::miette!("Fallback Failed"))?;
-            Ok(legacy_val.to_workflow_graph()?)
-        }
-    } else {
-        Err(miette::miette!("Node {node_index:?} is not a Const node"))
-    }
-}
-
 /// Resolve the graph view for a given `location_str`.
 /// # Errors
 ///
@@ -454,18 +424,18 @@ pub async fn load_graph(
                 match def {
                     NodeDefinition::Eval {} => {
                         prefix = node_loc;
-                        current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                        current_graph = current_graph.load_subgraph_from_const_node(*node)?;
                     }
-                    NodeDefinition::Loop {} => {
+                    NodeDefinition::Loop { .. } => {
                         // If the next component is a LoopIndex, descend and continue walking.
                         // Otherwise this is the terminal location: return iteration placeholders.
                         let next_is_loop_index = i + 1 < n
                             && matches!(components[i + 1], LocationComponent::LoopIndex { .. });
                         if next_is_loop_index {
                             prefix = node_loc;
-                            current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            current_graph = current_graph.load_subgraph_from_const_node(*node)?;
                         } else {
-                            let subgraph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            let subgraph = current_graph.load_subgraph_from_const_node(*node)?;
                             return Ok(GraphLoadResult::LoopIterations {
                                 loop_node_location: node_loc,
                                 subgraph,
@@ -479,9 +449,9 @@ pub async fn load_graph(
                             && matches!(components[i + 1], LocationComponent::MapIndex { .. });
                         if next_is_map_index {
                             prefix = node_loc;
-                            current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            current_graph = current_graph.load_subgraph_from_const_node(*node)?;
                         } else {
-                            let subgraph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            let subgraph = current_graph.load_subgraph_from_const_node(*node)?;
                             return Ok(GraphLoadResult::MapIterations {
                                 map_node_location: node_loc,
                                 subgraph,

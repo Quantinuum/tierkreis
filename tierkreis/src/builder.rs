@@ -100,8 +100,19 @@ pub(crate) fn loop_node<'a>(
     inputs: impl IntoIterator<Item = &'a str>,
     outputs: impl IntoIterator<Item = &'a str>,
 ) -> NodeIndex {
+    named_loop_node(graph, inputs, outputs, None)
+}
+
+pub(crate) fn named_loop_node<'a>(
+    graph: &mut WorkflowGraph,
+    inputs: impl IntoIterator<Item = &'a str>,
+    outputs: impl IntoIterator<Item = &'a str>,
+    name: Option<&str>,
+) -> NodeIndex {
     graph.add_node(
-        NodeDefinition::Loop {},
+        NodeDefinition::Loop {
+            name: name.map(ToString::to_string),
+        },
         ["graph".to_string()]
             .into_iter()
             .chain(inputs.into_iter().map(ToString::to_string)),

@@ -15,8 +15,11 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle,
-    graph::WorkflowGraph, location::Location,
+    asset_storage::AssetSpec,
+    event::WorkflowRunEvent,
+    executor::interface::TaskHandle,
+    graph::WorkflowGraph,
+    location::{Location, LocationPattern},
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
@@ -168,6 +171,11 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         &'a self,
         locations: &'a mut (dyn Iterator<Item = Location> + Send),
     ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>>;
+    /// Read the state of every Node whose [`Location`] matches the given [`LocationPattern`].
+    fn read_matching<'a>(
+        &'a self,
+        pattern: &'a LocationPattern,
+    ) -> BoxFuture<'a, miette::Result<Vec<(Location, NodeState)>>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.

@@ -313,7 +313,7 @@ impl Orchestrator {
                         )
                         .try_flatten_stream()
                         .boxed_local(),
-                    NodeDefinition::Loop {} => self
+                    NodeDefinition::Loop { .. } => self
                         .build_loop_actions(
                             workflow_graph.clone(),
                             context.workflow_run_state.clone(),
