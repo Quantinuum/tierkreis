@@ -26,7 +26,9 @@ pub const ASSETS_DIR_NAME: &str = "assets";
 /// to `/tmp/.tierkreis` if the user's home directory cannot be determined.
 #[must_use]
 pub fn tierkreis_home_dir() -> PathBuf {
-    home_dir().unwrap_or_else(|| "/tmp".into()).join(".tierkreis")
+    home_dir()
+        .unwrap_or_else(|| "/tmp".into())
+        .join(".tierkreis")
 }
 
 /// Locate a `RuntimeConfig` TOML file, searching:
