@@ -46,7 +46,10 @@ pub enum NodeDefinition {
     /// A node that defines that a Subgraph needs to be evaluated.
     Eval {},
     /// A node that defines that a Subgraph needs to be evaluated repeatedly until a condition is met.
-    Loop {},
+    Loop {
+        /// An optional name, used to resolve a [`crate::location::LocationPattern`] for tracing.
+        name: Option<String>,
+    },
     /// A node that defines that a Subgraph needs to be evaluated across multiple inputs.
     Map {
         /// The input ports of the Map node that are mapped over.
@@ -363,6 +366,8 @@ enum LegacyNodeDef {
         inputs: HashMap<String, ValueRef>,
         continue_port: String,
         outputs: HashMap<String, Vec<u32>>,
+        #[serde(default)]
+        name: Option<String>,
     },
     #[serde(rename = "map")]
     Map {
@@ -665,8 +670,9 @@ impl ConversionState {
                 continue_port: _continue_port,
                 inputs,
                 outputs,
+                name,
             } => {
-                self.convert_loop(body, inputs, outputs);
+                self.convert_loop(body, inputs, outputs, name);
             }
             LegacyNodeDef::Map {
                 body,
@@ -793,13 +799,14 @@ impl ConversionState {
         graph_source: ValueRef,
         inputs: HashMap<String, ValueRef>,
         outputs: HashMap<String, Vec<u32>>,
+        name: Option<String>,
     ) {
         let incoming = inputs.len();
         let outgoing = outputs.len();
         let node_index = self.graph.add_node(incoming + 1, outgoing);
 
         self.node_definitions
-            .insert(node_index, NodeDefinition::Loop {});
+            .insert(node_index, NodeDefinition::Loop { name });
 
         self.build_inputs(
             [("graph".to_string(), graph_source)]
