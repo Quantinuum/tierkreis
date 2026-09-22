@@ -5,7 +5,6 @@ pub mod spec;
 
 use std::{
     collections::{HashMap, HashSet},
-    env::home_dir,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -380,9 +379,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         if !storage.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
-        let tierkreis_dir = home_dir()
-            .unwrap_or_else(|| "/tmp".into())
-            .join(".tierkreis/tmp");
+        let tierkreis_dir = crate::config::tierkreis_home_dir().join("tmp");
         std::fs::create_dir_all(&tierkreis_dir)
             .into_diagnostic()
             .wrap_err_with(|| {

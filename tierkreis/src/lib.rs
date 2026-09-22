@@ -209,6 +209,51 @@ mod tierkreis {
         new_from_config(PyRuntimeConfig(RuntimeConfig::sqlite_memory())).await
     }
 
+    /// Create the default Tierkreis directories (`~/.tierkreis/tmp` and
+    /// `~/.tierkreis/assets`) if they do not already exist.
+    #[pyfunction]
+    fn create_default_directories(py: Python<'_>) -> PyResult<()> {
+        crate::config::create_default_directories().map_err(|err| convert_err(py, err))
+    }
+
+    /// Write a default `RuntimeConfig` to `~/.tierkreis/tierkreis.toml` if one
+    /// does not already exist there. Returns the path to the config file.
+    #[pyfunction]
+    #[pyo3(signature = (path=None))]
+    fn create_default_config(
+        py: Python<'_>,
+        path: Option<std::path::PathBuf>,
+    ) -> PyResult<std::path::PathBuf> {
+        crate::config::create_default_config(path).map_err(|err| convert_err(py, err))
+    }
+
+    /// Load a runtime config, creating the default config when none exists.
+    #[pyfunction]
+    #[pyo3(signature = (path=None))]
+    fn load_runtime_config(
+        py: Python<'_>,
+        path: Option<std::path::PathBuf>,
+    ) -> PyResult<PyRuntimeConfig> {
+        let config = match path {
+            Some(path) => {
+                if path.is_file() {
+                    RuntimeConfig::from_file(&path)
+                } else {
+                    crate::config::create_default_config(Some(path.clone()))
+                        .and_then(|_| RuntimeConfig::from_file(&path))
+                }
+            }
+            None => match crate::config::discover_config_path() {
+                Some(path) => RuntimeConfig::from_file(&path),
+                None => crate::config::create_default_config(None)
+                    .and_then(|path| RuntimeConfig::from_file(&path)),
+            },
+        };
+        config
+            .map(PyRuntimeConfig)
+            .map_err(|err| convert_err(py, err))
+    }
+
     #[pyfunction]
     async fn new_from_config(config: PyRuntimeConfig) -> PyResult<PyRuntime> {
         let res = get_runtime()
@@ -431,10 +476,21 @@ mod tierkreis {
     #[pyclass(name = "RuntimeConfig")]
     struct PyRuntimeConfig(pub RuntimeConfig);
 
+    #[pymethods]
+    impl PyRuntimeConfig {
+        /// Override the configured logging level.
+        fn set_log_level(&mut self, log_level: String) {
+            self.0.set_log_level(log_level);
+        }
+    }
+
     impl<'a, 'py> FromPyObject<'a, 'py> for PyRuntimeConfig {
         type Error = PyErr;
 
         fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+            if let Ok(config) = obj.extract::<PyRef<'_, PyRuntimeConfig>>() {
+                return Ok(PyRuntimeConfig(config.0.clone()));
+            }
             let config = depythonize(&obj)?;
 
             Ok(PyRuntimeConfig(config))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import logging
@@ -10,10 +11,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from tierkreis._tierkreis import load_runtime_config, new_from_config
 from tierkreis.builder import Graph
-from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import PType, ptype_from_bytes
+from tierkreis.controller.data.types import PType, Workflow, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
 
 if TYPE_CHECKING:
@@ -56,13 +57,13 @@ def load_graph(graph_input: str) -> GraphData:
     graph_name: Any = getattr(module, function_name)
     if isinstance(graph_name, GraphData):
         graph_data = graph_name
-    if isinstance(graph_name, Graph):
+    if isinstance(graph_name, Graph | Workflow):
         graph_data = graph_name.data
     if isinstance(graph_name, Callable):
         graph_object = graph_name()
         if isinstance(graph_object, GraphData):
             graph_data = graph_object
-        if isinstance(graph_object, Graph):
+        if isinstance(graph_object, Graph | Workflow):
             graph_data = graph_object.data
     if graph_data is None:
         logger.error("Could not load object %s as GraphData", graph_data)
@@ -131,13 +132,13 @@ def parse_args(
         " where path is a binary file.",
         default=["workflow_inputs.json"],
     )
-    parser.add_argument(
-        "--run-id",
-        default=None,
-        type=int,
-        help="Set a workflow run id",
-    )
     parser.add_argument("--name", default=None, type=str, help="Set a workflow name")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="Path to the runtime configuration file."
+        " Will use system defaults if not set.",
+    )
     parser.add_argument(
         "-l",
         "--loglevel",
@@ -147,70 +148,35 @@ def parse_args(
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
-        "--registry-path",
-        default=None,
-        type=Path,
-        help="Location of executable tasks.",
-    )
-    parser.add_argument(
         "-o",
         "--print-output",
         action="store_true",
         help="Print the outputs of the top-level node. ",
     )
 
-    # run_graph() arguments
-    parser.add_argument(
-        "-n",
-        "--n-iterations",
-        default=10**5,
-        type=int,
-        help="Set the maximum number of iterations.",
-    )
-    parser.add_argument(
-        "-p",
-        "--polling-interval-seconds",
-        default=0.01,
-        type=float,
-        help="Set the controller tickrate.",
-    )
-    parser.add_argument(
-        "-r",
-        "--do-clean-restart",
-        action="store_true",
-        help="Clear graph files before running",
-    )
-    parser.add_argument("--uv", action="store_true", help="Use uv executor")
-
     return parser
 
 
-def run_workflow_args(args: argparse.Namespace) -> None:
-    """Run a Tierkreis workflow according to the run command.
-
-    :param args: The arguments parsed from tkr run.
-    :type args: argparse.Namespace
-    """
+async def run_workflow_new(args: argparse.Namespace) -> None:
+    """Run a Tierkreis workflow using the new method."""
+    config = load_runtime_config(args.config)
     if args.verbose:
-        args.log_level = logging.DEBUG
+        config.set_log_level("debug")
+
     if ":" in str(args.graph):
         graph = load_graph(str(args.graph))
     else:
         with Path.open(args.graph) as fh:
             graph = ptype_from_bytes(fh.read().encode(), GraphData)
     inputs = _load_inputs(args.input_files) if args.input_files is not None else {}
-    run_workflow(
-        graph,
-        inputs,
-        name=args.name,
-        run_id=args.run_id,
-        log_level=args.loglevel,
-        registry_path=args.registry_path,
-        n_iterations=args.n_iterations,
-        polling_interval_seconds=args.polling_interval_seconds,
-        print_output=args.print_output,
-        use_uv_executor=args.uv,
-    )
+    runtime = await new_from_config(config)
+    with runtime:
+        workflow_id = await runtime.save_workflow(args.name, graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, timeout=30)
+        if args.print_output:
+            actual_output = await runtime.get_outputs(run_id)
+            print(actual_output)
 
 
 class TierkreisRunCli:
@@ -230,4 +196,4 @@ class TierkreisRunCli:
     @staticmethod
     def execute(args: argparse.Namespace) -> None:
         """Execute the run subcommand."""
-        run_workflow_args(args)
+        asyncio.run(run_workflow_new(args))

@@ -11,7 +11,6 @@ use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
-    env::home_dir,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
@@ -48,9 +47,7 @@ pub struct LoggingConfig {
 
 impl Default for LoggingConfig {
     fn default() -> Self {
-        let tierkreis_log = home_dir()
-            .unwrap_or_else(|| "/tmp".into())
-            .join(".tierkreis/tierkreis.log");
+        let tierkreis_log = crate::config::tierkreis_home_dir().join("tierkreis.log");
 
         let otel_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
 
@@ -62,6 +59,13 @@ impl Default for LoggingConfig {
             service_name: Some("tierkreis".to_string()),
             service_namespace: None,
         }
+    }
+}
+
+impl LoggingConfig {
+    /// Override the configured logging level.
+    pub fn set_log_level(&mut self, log_level: impl Into<String>) {
+        self.log_level = Some(log_level.into());
     }
 }
 
