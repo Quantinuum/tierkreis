@@ -19,19 +19,12 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    },
-    event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
-    executor::{
+    }, event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent}, executor::{
         Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, SlurmWrapper,
         SubprocessExecutor,
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
-    },
-    graph::WorkflowGraph,
-    location::Location,
-    monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
-    orchestrator::{OrchestrationContext, Orchestrator},
-    state::{
+    }, graph::{NodeDefinition, WorkflowGraph}, location::{Location, LocationComponent, LocationPattern, PatternComponent}, monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
     },
@@ -620,6 +613,108 @@ impl Runtime {
         let node_states = workflow_state.read_many(&mut locations).await?;
         Ok(node_states)
     }
+
+    /// Read the trace of every output value produced by the [`Location`]s matching
+    /// `pattern`, ordered by the wildcarded Loop/Map iteration index.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run cannot be found, the pattern cannot be
+    /// queried, or the output assets cannot be loaded.
+    pub async fn read_loop_trace(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        pattern: &LocationPattern,
+    ) -> miette::Result<HashMap<String, Vec<Vec<u8>>>> {
+        let workflow_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let workflow_id = workflow_state.workflow_id();
+        let (_workflow_name, workflow_graph) = self.state.load_workflow(workflow_id).await?;
+        let pattern = with_iteration_output_node(&workflow_graph, pattern)?;
+
+        let mut matches = workflow_state.read_matching(&pattern).await?;
+        matches.sort_by_key(|(location, _)| pattern.sort_key(location));
+
+        let mut traces: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        for (_location, node_state) in matches {
+            let Some(outputs) = node_state.outputs else {
+                continue;
+            };
+            for (port, bytes) in load_assets(&self.asset_storage_registry, &outputs).await? {
+                traces.entry(port).or_default().push(bytes);
+            }
+        }
+        Ok(traces)
+    }
+
+    /// Read the trace of a named Loop node, resolving `name` to a [`LocationPattern`]
+    /// from the workflow's own graph definition.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run cannot be found, no Loop node named
+    /// `name` exists in its graph, `output_name` is given but not found in the
+    /// loop's outputs, or the output assets cannot be loaded.
+    pub async fn read_loop_trace_by_name(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        name: &str,
+        output_name: Option<&str>,
+    ) -> miette::Result<HashMap<String, Vec<Vec<u8>>>> {
+        let workflow_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let workflow_id = workflow_state.workflow_id();
+        let (_workflow_name, workflow_graph) = self.state.load_workflow(workflow_id).await?;
+
+        let pattern = workflow_graph
+            .resolve_loop_name(name)?
+            .ok_or_else(|| miette!("No Loop node named {name} found in workflow graph"))?;
+        let mut trace = self.read_loop_trace(run_id, attempt, &pattern).await?;
+
+        if let Some(output_name) = output_name {
+            let values = trace.remove(output_name).ok_or_else(|| {
+                miette!("Output name {output_name} not found in loop node output")
+            })?;
+            return Ok(HashMap::from([(output_name.to_string(), values)]));
+        }
+
+        trace.retain(|port, _| port != "should_continue");
+        Ok(trace)
+    }
+}
+
+/// Appends the output node in case of trailing wild card
+/// E.g. N0.L* -> N0.L*.Noutput, otherwise returns the pattern unchanged.
+fn with_iteration_output_node(
+    workflow_graph: &WorkflowGraph,
+    pattern: &LocationPattern,
+) -> miette::Result<LocationPattern> {
+
+    if !matches!(
+        pattern.components().last(),
+        Some(PatternComponent::AnyLoopIndex | PatternComponent::AnyMapIndex)
+    ) {
+        return Ok(pattern.clone());
+    }
+
+    // Recursively descend into every Eval/Loop/Map node's subgraph along the Loc
+    let mut current_graph = workflow_graph.clone();
+    for component in pattern.components() {
+        if let PatternComponent::Exact(LocationComponent::Node { node }) = component
+            && matches!(
+                current_graph.node_definition(*node),
+                Some(
+                    NodeDefinition::Eval {}
+                        | NodeDefinition::Loop { .. }
+                        | NodeDefinition::Map { .. }
+                )
+            )
+        {
+            current_graph = current_graph.load_subgraph_from_const_node(*node)?;
+        }
+    }
+
+    Ok(pattern.with_node(current_graph.output_idx()))
 }
 
 async fn executor_registry_from_config(

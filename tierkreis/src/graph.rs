@@ -380,7 +380,7 @@ impl WorkflowGraph {
     /// # Errors
     ///
     /// If a nested subgraph referenced by a Loop/Map node cannot be loaded.
-    pub fn resolve_named_loop_pattern(
+    pub fn resolve_loop_name(
         &self,
         name: &str,
     ) -> miette::Result<Option<LocationPattern>> {
@@ -399,7 +399,7 @@ impl WorkflowGraph {
                 }
                 NodeDefinition::Loop { .. } | NodeDefinition::Map { .. } => {
                     let subgraph = self.load_subgraph_from_const_node(node_index)?;
-                    if let Some(inner) = subgraph.resolve_named_loop_pattern(name)? {
+                    if let Some(inner) = subgraph.resolve_loop_name(name)? {
                         let wildcard = if matches!(def, NodeDefinition::Loop { .. }) {
                             "L*"
                         } else { 
@@ -1097,7 +1097,7 @@ mod tests {
         link(&mut graph, (loop_idx, "loop_acc"), out)?;
 
         let pattern = graph
-            .resolve_named_loop_pattern("my_loop")?
+            .resolve_loop_name("my_loop")?
             .expect("expected to find named loop");
         assert_eq!(pattern.to_string(), format!("N{}.L*", loop_idx.index()));
 
@@ -1140,7 +1140,7 @@ mod tests {
         link(&mut graph, (outer_loop_idx, "loop_acc"), out)?;
 
         let pattern = graph
-            .resolve_named_loop_pattern("inner_loop")?
+            .resolve_loop_name("inner_loop")?
             .expect("expected to find nested named loop");
         assert_eq!(
             pattern.to_string(),
@@ -1169,7 +1169,7 @@ mod tests {
 
         assert!(
             graph
-                .resolve_named_loop_pattern("does_not_exist")?
+                .resolve_loop_name("does_not_exist")?
                 .is_none()
         );
 

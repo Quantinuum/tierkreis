@@ -39,7 +39,7 @@ mod tierkreis {
 
     use crate::{
         graph::{LegacyWorkflowGraph, WorkflowGraph},
-        location::Location,
+        location::{Location, LocationPattern},
         runtime::RuntimeConfig,
     };
 
@@ -104,7 +104,39 @@ mod tierkreis {
         Value(Value),
     }
 
-    #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
+    fn convert_loop_trace(
+        py: Python<'_>,
+        trace: HashMap<String, Vec<Vec<u8>>>,
+    ) -> PyResult<HashMap<String, Vec<Option<Value>>>> {
+        trace
+            .into_iter()
+            .map(|(port, values)| {
+                let values = values
+                    .into_iter()
+                    .map(|bytes| serde_json::from_slice(&bytes))
+                    .collect::<serde_json::Result<Vec<Option<Value>>>>()
+                    .map_err(|err| convert_err(py, miette!(err)))?;
+                Ok((port, values))
+            })
+            .collect()
+    }
+
+    fn convert_loop_trace_iterations(
+        py: Python<'_>,
+        trace: HashMap<String, Vec<Vec<u8>>>,
+    ) -> PyResult<Vec<HashMap<String, Option<Value>>>> {
+        let by_port = convert_loop_trace(py, trace)?;
+        let len = by_port.values().map(Vec::len).min().unwrap_or(0);
+        Ok((0..len)
+            .map(|i| {
+                by_port
+                    .iter()
+                    .map(|(port, values)| (port.clone(), values[i].clone()))
+                    .collect()
+            })
+            .collect())
+    }
+    #[derive(Debug, Clone, FromPyObject, IntoPyObject, Serialize, Deserialize)]
     #[serde(untagged)]
     enum Value {
         #[pyo3(transparent, annotation = "bool")]
@@ -374,6 +406,93 @@ mod tierkreis {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.into()))
                     .collect()),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        /// Read the trace of every output produced by the `Location`s matching a
+        /// pattern (e.g. `"N3.L*.N1"`), ordered by iteration.
+        /// This is raw trace data.
+        /// E.g. `{"output1": [[val1, val2], [val3]], "output2": [[val4]]}`
+        async fn get_loop_trace(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            location_pattern: String,
+        ) -> PyResult<HashMap<String, Vec<Vec<u8>>>> {
+            let pattern = LocationPattern::new(&location_pattern)
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.read_loop_trace(run_id, attempt, &pattern).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(trace) => Ok(trace),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        /// Read the trace of a named Loop node, resolving `name` from the workflow's
+        /// If `output_name` is given, only that output port is reported.
+        /// Reports the outputs in the form `{"output1": [val1, val2], "output2": [val3]}`
+        /// where values are deserialized into Python objects.
+        #[pyo3(signature = (run_id, attempt, name, output_name=None))]
+        async fn get_loop_outputs(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            name: String,
+            output_name: Option<String>,
+        ) -> PyResult<HashMap<String, Vec<Option<Value>>>> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move {
+                    inner
+                        .read_loop_trace_by_name(run_id, attempt, &name, output_name.as_deref())
+                        .await
+                })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+            dbg!(&res);
+            match res {
+                Ok(trace) => Python::attach(|py| convert_loop_trace(py, trace)),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        /// Same as `get_loop_trace_by_name`, but shaped as one dict per iteration
+        /// E.g. `[
+        ///     {"output1": val1, "output2": val3},
+        ///     {"output1": val2}
+        /// ]`
+        #[pyo3(signature = (run_id, attempt, name, output_name=None))]
+        async fn get_loop_iterations(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            name: String,
+            output_name: Option<String>,
+        ) -> PyResult<Vec<HashMap<String, Option<Value>>>> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move {
+                    inner
+                        .read_loop_trace_by_name(run_id, attempt, &name, output_name.as_deref())
+                        .await
+                })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(trace) => Python::attach(|py| convert_loop_trace_iterations(py, trace)),
                 Err(err) => Python::attach(|py| Err(convert_err(py, err))),
             }
         }
