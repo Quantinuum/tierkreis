@@ -55,6 +55,47 @@ pub fn discover_config_path() -> Option<PathBuf> {
     default.is_file().then_some(default)
 }
 
+/// Create the default Tierkreis directories (`~/.tierkreis` and its `tmp` and
+/// `assets` subdirectories) if they do not already exist.
+///
+/// # Errors
+///
+/// Returns an error if any of the directories cannot be created.
+pub fn create_default_directories() -> miette::Result<()> {
+    let home = tierkreis_home_dir();
+    for dir in [home.join(TMP_DIR_NAME), home.join(ASSETS_DIR_NAME)] {
+        std::fs::create_dir_all(&dir)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to create directory at {}", dir.display()))?;
+    }
+    Ok(())
+}
+
+/// Write a default [`RuntimeConfig`] to the canonical config file location
+/// (`~/.tierkreis/tierkreis.toml`) if one does not already exist there.
+///
+/// Returns the path to the config file, whether or not it was just created.
+///
+/// # Errors
+///
+/// Returns an error if the directory or file cannot be created, or if the
+/// default config cannot be serialized.
+pub fn create_default_config(config_path: Option<PathBuf>) -> miette::Result<PathBuf> {
+    let path = config_path.unwrap_or_else(|| tierkreis_home_dir().join(CONFIG_FILE_NAME));
+    if !path.is_file() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Failed to create directory at {}", parent.display()))?;
+        }
+        let toml_str = RuntimeConfig::default().to_toml_string()?;
+        std::fs::write(&path, toml_str)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to write default config at {}", path.display()))?;
+    }
+    Ok(path)
+}
+
 /// Walk up from `start`, looking for a file named `name` in each directory.
 fn find_in_ancestors(start: &Path, name: &str) -> Option<PathBuf> {
     let mut dir = Some(start);

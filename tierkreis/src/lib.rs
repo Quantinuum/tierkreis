@@ -209,6 +209,24 @@ mod tierkreis {
         new_from_config(PyRuntimeConfig(RuntimeConfig::sqlite_memory())).await
     }
 
+    /// Create the default Tierkreis directories (`~/.tierkreis/tmp` and
+    /// `~/.tierkreis/assets`) if they do not already exist.
+    #[pyfunction]
+    fn create_default_directories(py: Python<'_>) -> PyResult<()> {
+        crate::config::create_default_directories().map_err(|err| convert_err(py, err))
+    }
+
+    /// Write a default `RuntimeConfig` to `~/.tierkreis/tierkreis.toml` if one
+    /// does not already exist there. Returns the path to the config file.
+    #[pyfunction]
+    #[pyo3(signature = (path=None))]
+    fn create_default_config(
+        py: Python<'_>,
+        path: Option<std::path::PathBuf>,
+    ) -> PyResult<std::path::PathBuf> {
+        crate::config::create_default_config(path).map_err(|err| convert_err(py, err))
+    }
+
     #[pyfunction]
     async fn new_from_config(config: PyRuntimeConfig) -> PyResult<PyRuntime> {
         let res = get_runtime()
