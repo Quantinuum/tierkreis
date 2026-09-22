@@ -19,12 +19,19 @@ use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
-    }, event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent}, executor::{
+    },
+    event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
+    executor::{
         Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, SlurmWrapper,
         SubprocessExecutor,
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
-    }, graph::{NodeDefinition, WorkflowGraph}, location::{Location, LocationComponent, LocationPattern, PatternComponent}, monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing}, orchestrator::{OrchestrationContext, Orchestrator}, state::{
+    },
+    graph::{NodeDefinition, WorkflowGraph},
+    location::{Location, LocationComponent, LocationPattern, PatternComponent},
+    monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
+    orchestrator::{OrchestrationContext, Orchestrator},
+    state::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
     },
@@ -689,7 +696,6 @@ fn with_iteration_output_node(
     workflow_graph: &WorkflowGraph,
     pattern: &LocationPattern,
 ) -> miette::Result<LocationPattern> {
-
     if !matches!(
         pattern.components().last(),
         Some(PatternComponent::AnyLoopIndex | PatternComponent::AnyMapIndex)

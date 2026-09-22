@@ -15,7 +15,9 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle,
+    asset_storage::AssetSpec,
+    event::WorkflowRunEvent,
+    executor::interface::TaskHandle,
     graph::WorkflowGraph,
     location::{Location, LocationPattern},
 };

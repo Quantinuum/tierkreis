@@ -380,10 +380,7 @@ impl WorkflowGraph {
     /// # Errors
     ///
     /// If a nested subgraph referenced by a Loop/Map node cannot be loaded.
-    pub fn resolve_loop_name(
-        &self,
-        name: &str,
-    ) -> miette::Result<Option<LocationPattern>> {
+    pub fn resolve_loop_name(&self, name: &str) -> miette::Result<Option<LocationPattern>> {
         for node_index in self.node_ids() {
             let Some(def) = self.node_definition(node_index) else {
                 continue;
@@ -402,7 +399,7 @@ impl WorkflowGraph {
                     if let Some(inner) = subgraph.resolve_loop_name(name)? {
                         let wildcard = if matches!(def, NodeDefinition::Loop { .. }) {
                             "L*"
-                        } else { 
+                        } else {
                             "M*"
                         };
                         return Ok(Some(LocationPattern::new(&format!(
@@ -993,8 +990,8 @@ impl ConversionState {
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
     use crate::builder::{constant, link, named_loop_node, output, workflow};
+    use rstest::rstest;
 
     use super::*;
 
@@ -1167,11 +1164,7 @@ mod tests {
         link(&mut graph, body_const, (loop_idx, "graph"))?;
         link(&mut graph, (loop_idx, "loop_acc"), out)?;
 
-        assert!(
-            graph
-                .resolve_loop_name("does_not_exist")?
-                .is_none()
-        );
+        assert!(graph.resolve_loop_name("does_not_exist")?.is_none());
 
         Ok(())
     }

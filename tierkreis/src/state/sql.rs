@@ -41,9 +41,9 @@ use crate::{
         queries::{
             add_run_attempt_metadata, get_workflow_run_summary, insert_workflow,
             insert_workflow_run, insert_workflow_run_inputs, list_active_runs,
-            list_workflow_run_summaries, read_node_state, read_node_states,
-            read_matching_node_states, read_run_attempt_metadata, read_workflow,
-            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
+            list_workflow_run_summaries, read_matching_node_states, read_node_state,
+            read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
+            read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };

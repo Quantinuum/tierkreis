@@ -309,7 +309,7 @@ impl LocationPattern {
     /// Returns a SQL `LIKE` pattern that is guaranteed to match a superset of the
     /// [`Location`]s that satisfy this [`LocationPattern`].
     ///
-    /// Can be used with `LIKE ... ESCAPE '\'` as a cheap, index-friendly prefilter. 
+    /// Can be used with `LIKE ... ESCAPE '\'` as a cheap, index-friendly prefilter.
     /// Callers must still apply [`LocationPattern::matches`] on the results.
     #[must_use]
     pub fn as_sql_like_pattern(&self) -> String {
@@ -415,7 +415,10 @@ mod tests {
         let pattern = LocationPattern::new("N3.L*.N1")?;
         assert_eq!(pattern.sort_key(&Location::new("N3.L2.N1")?), vec![2]);
         let pattern = LocationPattern::new("N3.L*.N1.L*")?;
-        assert_eq!(pattern.sort_key(&Location::new("N3.L2.N1.L0.N3")?), vec![2, 0]);
+        assert_eq!(
+            pattern.sort_key(&Location::new("N3.L2.N1.L0.N3")?),
+            vec![2, 0]
+        );
 
         Ok(())
     }
