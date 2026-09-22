@@ -236,11 +236,11 @@ mod tierkreis {
     ) -> PyResult<PyRuntimeConfig> {
         let config = match path {
             Some(path) => {
-                if !path.is_file() {
+                if path.is_file() {
+                    RuntimeConfig::from_file(&path)
+                } else {
                     crate::config::create_default_config(Some(path.clone()))
                         .and_then(|_| RuntimeConfig::from_file(&path))
-                } else {
-                    RuntimeConfig::from_file(&path)
                 }
             }
             None => match crate::config::discover_config_path() {
