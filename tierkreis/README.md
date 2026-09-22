@@ -99,8 +99,7 @@ Under the hood, Tierkreis consists of three main components.
 - **Executor**: Executors are responsible to execute external function calls implemented by workers.
 - **Worker**: A worker is a standalone program which conforms to the Tierkreis worker interface.
 
-The `run_workflow()` function provides sensible defaults which can be replaced as needed.
-Roughly, a workflow runs by
+Roughly, a workflow runs with the following
 
 ```python
 graph = times_5()
