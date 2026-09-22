@@ -136,7 +136,7 @@ impl NodeDefinition {
                 task_name,
             } => format!("{worker_name}.{task_name}"),
             NodeDefinition::Eval {} => "eval".to_string(),
-            NodeDefinition::Loop {} => "loop".to_string(),
+            NodeDefinition::Loop { .. } => "loop".to_string(),
             NodeDefinition::Map { .. } => "map".to_string(),
         }
     }
