@@ -214,6 +214,154 @@ where
     }
 }
 
+/// A component of a [`LocationPattern`], either matching a specific [`LocationComponent`]
+/// or acting as a wildcard for any Loop or Map iteration index.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PatternComponent {
+    /// Matches only the given [`LocationComponent`] exactly.
+    Exact(LocationComponent),
+    /// Matches any `LoopIndex` value, e.g. "L*".
+    AnyLoopIndex,
+    /// Matches any `MapIndex` value, e.g. "M*".
+    AnyMapIndex,
+}
+
+impl std::fmt::Display for PatternComponent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PatternComponent::Exact(component) => write!(f, "{component}"),
+            PatternComponent::AnyLoopIndex => write!(f, "L*"),
+            PatternComponent::AnyMapIndex => write!(f, "M*"),
+        }
+    }
+}
+
+impl PatternComponent {
+    fn new(step: &str) -> miette::Result<Self> {
+        match step {
+            "L*" => Ok(PatternComponent::AnyLoopIndex),
+            "M*" => Ok(PatternComponent::AnyMapIndex),
+            other => Ok(PatternComponent::Exact(LocationComponent::new(other)?)),
+        }
+    }
+}
+
+/// A [`LocationPattern`] describes a set of [`Location`]s that share a fixed structure.
+///
+/// For example the pattern `"N3.L*.N1"` matches the `Location`s of node `N1` inside
+/// the subgraph of loop node `N3`, for every iteration of that loop.
+/// The pattern `"N3.L*"` matches the output node of every iteration of the loop node `N3`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LocationPattern(Vec<PatternComponent>);
+
+impl LocationPattern {
+    /// Construct a new [`LocationPattern`] from a &str.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the &str is malformed and cannot be parsed.
+    pub fn new(k: &str) -> miette::Result<Self> {
+        let parts = k.split_terminator('.');
+        let mut steps = Vec::new();
+        for part in parts {
+            steps.push(PatternComponent::new(part)?);
+        }
+        Ok(Self(steps))
+    }
+
+    /// Returns true if the given [`Location`] matches this pattern.
+    #[must_use]
+    pub fn matches(&self, location: &Location) -> bool {
+        if self.0.len() != location.0.len() {
+            return false;
+        }
+        self.0
+            .iter()
+            .zip(location.0.iter())
+            .all(|(pattern, component)| match (pattern, component) {
+                (PatternComponent::Exact(expected), actual) => expected == actual,
+                (PatternComponent::AnyLoopIndex, LocationComponent::LoopIndex { .. })
+                | (PatternComponent::AnyMapIndex, LocationComponent::MapIndex { .. }) => true,
+                _ => false,
+            })
+    }
+
+    /// Returns the wildcard indices (in pattern order) of a matching [`Location`].
+    ///
+    /// Useful for sorting matches by iteration order. Only meaningful if
+    /// `self.matches(location)` is `true`; otherwise the result is unspecified.
+    /// E.g. for the pattern `"N3.L*.N1.L*"`, the sort key for the location `"N3.L2.N1.L0.N3"` would be `[2, 0]`.
+    #[must_use]
+    pub fn sort_key(&self, location: &Location) -> Vec<u32> {
+        self.0
+            .iter()
+            .zip(&location.0)
+            .filter_map(|(pattern, component)| match (pattern, component) {
+                (PatternComponent::AnyLoopIndex, LocationComponent::LoopIndex { index })
+                | (PatternComponent::AnyMapIndex, LocationComponent::MapIndex { index }) => {
+                    Some(*index)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Returns a SQL `LIKE` pattern that is guaranteed to match a superset of the
+    /// [`Location`]s that satisfy this [`LocationPattern`].
+    ///
+    /// Can be used with `LIKE ... ESCAPE '\'` as a cheap, index-friendly prefilter. 
+    /// Callers must still apply [`LocationPattern::matches`] on the results.
+    #[must_use]
+    pub fn as_sql_like_pattern(&self) -> String {
+        self.0
+            .iter()
+            .map(|component| match component {
+                PatternComponent::Exact(component) => component
+                    .to_string()
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_"),
+                PatternComponent::AnyLoopIndex | PatternComponent::AnyMapIndex => "%".to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    /// Iterate over the [`PatternComponent`]s that make up this [`LocationPattern`].
+    pub fn components(&self) -> impl Iterator<Item = &PatternComponent> {
+        self.0.iter()
+    }
+
+    /// Extend the [`LocationPattern`] with an exact Node component with the specified [`NodeIndex`].
+    #[must_use]
+    pub fn with_node(&self, node: NodeIndex) -> LocationPattern {
+        let mut inner = self.0.clone();
+        inner.push(PatternComponent::Exact(LocationComponent::Node { node }));
+        LocationPattern(inner)
+    }
+}
+
+impl std::fmt::Display for LocationPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0
+            .first()
+            .map(|first_step| write!(f, "{first_step}"))
+            .transpose()?;
+        for step in self.0.iter().skip(1) {
+            write!(f, ".{step}")?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for LocationPattern {
+    type Err = miette::ErrReport;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::new(s)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +391,50 @@ mod tests {
         let root = Location::root();
         assert_eq!(root.to_string(), "");
         assert_eq!("".parse::<Location>()?, root);
+
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_matches_any_loop_iteration() -> miette::Result<()> {
+        let pattern = LocationPattern::new("N3.L*.N1")?;
+        assert!(pattern.matches(&Location::new("N3.L0.N1")?));
+        assert!(pattern.matches(&Location::new("N3.L7.N1")?));
+        assert!(!pattern.matches(&Location::new("N3.L0.N2")?));
+        assert!(!pattern.matches(&Location::new("N3.M0.N1")?));
+        assert!(!pattern.matches(&Location::new("N3.L0.L0.N1")?));
+
+        let pattern = LocationPattern::new("N3.L*")?;
+        assert!(!pattern.matches(&Location::new("N3.L0.N1")?));
+
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_sort_key_orders_by_iteration() -> miette::Result<()> {
+        let pattern = LocationPattern::new("N3.L*.N1")?;
+        assert_eq!(pattern.sort_key(&Location::new("N3.L2.N1")?), vec![2]);
+        let pattern = LocationPattern::new("N3.L*.N1.L*")?;
+        assert_eq!(pattern.sort_key(&Location::new("N3.L2.N1.L0.N3")?), vec![2, 0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn pattern_sql_like_escapes_special_characters() -> miette::Result<()> {
+        let pattern = LocationPattern::new("N3.L*.N1")?;
+        assert_eq!(pattern.as_sql_like_pattern(), "N3.%.N1");
+
+        Ok(())
+    }
+
+    #[test]
+    fn roundtrip_pattern_serialization() -> miette::Result<()> {
+        let pattern = LocationPattern::new("N3.L*.M*.N1")?;
+        let serialized = pattern.to_string();
+        assert_eq!(serialized, "N3.L*.M*.N1");
+        let parsed = serialized.parse::<LocationPattern>()?;
+        assert_eq!(pattern, parsed);
 
         Ok(())
     }
