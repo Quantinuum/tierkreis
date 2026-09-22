@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 
 from tierkreis._tierkreis import load_runtime_config, new_from_config
 from tierkreis.builder import Graph
-from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType, Workflow, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
@@ -156,34 +155,6 @@ def parse_args(
     )
 
     return parser
-
-
-def run_workflow_args(args: argparse.Namespace) -> None:
-    """Run a Tierkreis workflow according to the run command.
-
-    :param args: The arguments parsed from tkr run.
-    :type args: argparse.Namespace
-    """
-    if args.verbose:
-        args.log_level = logging.DEBUG
-    if ":" in str(args.graph):
-        graph = load_graph(str(args.graph))
-    else:
-        with Path.open(args.graph) as fh:
-            graph = ptype_from_bytes(fh.read().encode(), GraphData)
-    inputs = _load_inputs(args.input_files) if args.input_files is not None else {}
-    run_workflow(
-        graph,
-        inputs,
-        name=args.name,
-        run_id=args.run_id,
-        log_level=args.loglevel,
-        registry_path=args.registry_path,
-        n_iterations=args.n_iterations,
-        polling_interval_seconds=args.polling_interval_seconds,
-        print_output=args.print_output,
-        use_uv_executor=args.uv,
-    )
 
 
 async def run_workflow_new(args: argparse.Namespace) -> None:

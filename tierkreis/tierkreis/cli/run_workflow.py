@@ -15,6 +15,7 @@ from tierkreis.storage import read_outputs
 logger = logging.getLogger(__name__)
 
 
+# TODO: Remove this once the tutorial has been updated
 def run_workflow(
     workflow: GraphData | Workflow,
     inputs: dict[str, PType],

@@ -60,7 +60,7 @@ In both cases, the controller will stop the execution, raising a `TierkreisError
 #### Accessing error information
 
 Error information is available in two places.
-When running [`run_graph`](#tierkreis.controller.run_graph) or [`run_workflow`](#tierkreis.cli.run_workflow.run_workflow), error information including a stack trace will be printed to `stdout`.
+When running [`run_graph`](#tierkreis.controller.run_graph) error information including a stack trace will be printed to `stdout`.
 For example running the [Errors and Debugging](../examples/errors_and_debugging.ipynb) example will produce the following output
 
 ```
@@ -139,7 +139,7 @@ resume_graph(storage, executor)
 ### Debug Mode
 
 If you want to debug a graph with a python debugger you can use [](#tierkreis.controller.storgare.debug_graph.debug_graph).
-It acts similar to `run_workflow` with some defaults enabled:
+It acts similar to `run_graph` with some defaults enabled:
 - Enables all set breakpoints
 - Sets up logging
 - Adds a specific storage and executor to enable python debugging
