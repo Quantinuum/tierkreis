@@ -62,6 +62,13 @@ impl Default for LoggingConfig {
     }
 }
 
+impl LoggingConfig {
+    /// Override the configured logging level.
+    pub fn set_log_level(&mut self, log_level: impl Into<String>) {
+        self.log_level = Some(log_level.into());
+    }
+}
+
 static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 static TRACER_PROVIDER: Mutex<Option<SdkTracerProvider>> = Mutex::new(None);

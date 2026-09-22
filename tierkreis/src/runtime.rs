@@ -37,7 +37,7 @@ use crate::{
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
@@ -49,6 +49,13 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Override the configured logging level.
+    pub fn set_log_level(&mut self, log_level: impl Into<String>) {
+        let mut logging_config = self.logging_config.take().unwrap_or_default();
+        logging_config.set_log_level(log_level);
+        self.logging_config = Some(logging_config);
+    }
+
     /// Construct a pre-defined config that keeps state in memory and can only
     /// run built-in tasks that also run in memory.
     #[must_use]
@@ -122,14 +129,14 @@ impl Default for RuntimeConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum AssetStorageConfig {
     Memory {},
     File { asset_dir: PathBuf },
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum ExecutorConfig {
     Memory {
@@ -152,13 +159,13 @@ enum ExecutorConfig {
     },
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum HpcSchedulerConfig {
     Slurm,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum RuntimeStateConfig {
     Memory {},
