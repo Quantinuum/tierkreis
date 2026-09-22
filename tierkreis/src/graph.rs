@@ -13,6 +13,8 @@ use portgraph::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::location::LocationPattern;
+
 /// Possible definitions for Nodes in the [`WorkflowGraph`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum NodeDefinition {
@@ -338,6 +340,81 @@ impl WorkflowGraph {
             node_filter,
             port_filter,
         )
+    }
+
+    /// Load a subgraph from a Const node containing a serialized `WorkflowGraph`.
+    ///
+    /// # Errors
+    ///
+    /// If `node_index` has no connected "graph" input, or that input is not a
+    /// Const node holding a (possibly legacy) serialized `WorkflowGraph`.
+    pub fn load_subgraph_from_const_node(&self, node_index: NodeIndex) -> miette::Result<Self> {
+        tracing::info!("Loading subgraph from Const node {node_index:?}");
+        let (source_node, _source_port) = self
+            .connected_input_by_port_name(node_index, "graph")
+            .wrap_err_with(|| {
+                format!("No connected input by port name 'graph' for node {node_index:?}")
+            })?;
+        let source_def = self
+            .node_definition(source_node)
+            .ok_or_else(|| miette!("Node definition missing for {source_node:?}"))?;
+        if let NodeDefinition::Const { value } = source_def {
+            if let Ok(val) = serde_json::from_value::<Self>(value.clone()) {
+                tracing::info!("Loaded subgraph from Const node {node_index:?}: {:?}", val);
+                Ok(val)
+            } else {
+                let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone())
+                    .map_err(|_| miette!("Fallback Failed"))?;
+                Ok(legacy_val.to_workflow_graph()?)
+            }
+        } else {
+            Err(miette!("Node {node_index:?} is not a Const node"))
+        }
+    }
+
+    /// Recursively resolve a named Loop node to a wildcard-terminated [`LocationPattern`].
+    ///
+    /// Searches this graph and any nested Loop/Map subgraphs for a Loop node
+    /// registered under `name`.
+    ///
+    /// # Errors
+    ///
+    /// If a nested subgraph referenced by a Loop/Map node cannot be loaded.
+    pub fn resolve_named_loop_pattern(
+        &self,
+        name: &str,
+    ) -> miette::Result<Option<LocationPattern>> {
+        for node_index in self.node_ids() {
+            let Some(def) = self.node_definition(node_index) else {
+                continue;
+            };
+            match def {
+                NodeDefinition::Loop {
+                    name: Some(loop_name),
+                } if loop_name == name => {
+                    return Ok(Some(LocationPattern::new(&format!(
+                        "N{}.L*",
+                        node_index.index()
+                    ))?));
+                }
+                NodeDefinition::Loop { .. } | NodeDefinition::Map { .. } => {
+                    let subgraph = self.load_subgraph_from_const_node(node_index)?;
+                    if let Some(inner) = subgraph.resolve_named_loop_pattern(name)? {
+                        let wildcard = if matches!(def, NodeDefinition::Loop { .. }) {
+                            "L*"
+                        } else { 
+                            "M*"
+                        };
+                        return Ok(Some(LocationPattern::new(&format!(
+                            "N{}.{wildcard}.{inner}",
+                            node_index.index()
+                        ))?));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -917,6 +994,7 @@ impl ConversionState {
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use crate::builder::{constant, link, named_loop_node, output, workflow};
 
     use super::*;
 
@@ -1001,6 +1079,99 @@ mod tests {
                 _ => panic!("Node mismatch!: {original_node:?} != {converted_node:?}"),
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_named_loop_pattern_finds_top_level_loop() -> miette::Result<()> {
+        let loop_body = workflow(["loop_acc", "should_continue"]);
+
+        let mut graph = workflow(["out"]);
+        let acc = constant(&mut graph, 0)?;
+        let body_const = constant(&mut graph, loop_body)?;
+        let loop_idx = named_loop_node(&mut graph, ["loop_acc"], ["loop_acc"], Some("my_loop"));
+        let out = output(&graph, "out");
+        link(&mut graph, acc, (loop_idx, "loop_acc"))?;
+        link(&mut graph, body_const, (loop_idx, "graph"))?;
+        link(&mut graph, (loop_idx, "loop_acc"), out)?;
+
+        let pattern = graph
+            .resolve_named_loop_pattern("my_loop")?
+            .expect("expected to find named loop");
+        assert_eq!(pattern.to_string(), format!("N{}.L*", loop_idx.index()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_named_loop_pattern_finds_nested_loop() -> miette::Result<()> {
+        let innermost_body = workflow(["loop_acc", "should_continue"]);
+
+        let mut inner_body = workflow(["loop_acc", "should_continue"]);
+        let inner_acc = constant(&mut inner_body, 0)?;
+        let innermost_body_const = constant(&mut inner_body, innermost_body)?;
+        let inner_loop_idx = named_loop_node(
+            &mut inner_body,
+            ["loop_acc"],
+            ["loop_acc"],
+            Some("inner_loop"),
+        );
+        let inner_should_continue = constant(&mut inner_body, false)?;
+        let inner_out = output(&inner_body, "loop_acc");
+        let inner_continue_out = output(&inner_body, "should_continue");
+        link(&mut inner_body, inner_acc, (inner_loop_idx, "loop_acc"))?;
+        link(
+            &mut inner_body,
+            innermost_body_const,
+            (inner_loop_idx, "graph"),
+        )?;
+        link(&mut inner_body, (inner_loop_idx, "loop_acc"), inner_out)?;
+        link(&mut inner_body, inner_should_continue, inner_continue_out)?;
+
+        let mut graph = workflow(["out"]);
+        let acc = constant(&mut graph, 0)?;
+        let body_const = constant(&mut graph, inner_body)?;
+        let outer_loop_idx =
+            named_loop_node(&mut graph, ["loop_acc"], ["loop_acc"], Some("outer_loop"));
+        let out = output(&graph, "out");
+        link(&mut graph, acc, (outer_loop_idx, "loop_acc"))?;
+        link(&mut graph, body_const, (outer_loop_idx, "graph"))?;
+        link(&mut graph, (outer_loop_idx, "loop_acc"), out)?;
+
+        let pattern = graph
+            .resolve_named_loop_pattern("inner_loop")?
+            .expect("expected to find nested named loop");
+        assert_eq!(
+            pattern.to_string(),
+            format!(
+                "N{}.L*.N{}.L*",
+                outer_loop_idx.index(),
+                inner_loop_idx.index()
+            )
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_named_loop_pattern_returns_none_for_unknown_name() -> miette::Result<()> {
+        let loop_body = workflow(["loop_acc", "should_continue"]);
+
+        let mut graph = workflow(["out"]);
+        let acc = constant(&mut graph, 0)?;
+        let body_const = constant(&mut graph, loop_body)?;
+        let loop_idx = named_loop_node(&mut graph, ["loop_acc"], ["loop_acc"], Some("my_loop"));
+        let out = output(&graph, "out");
+        link(&mut graph, acc, (loop_idx, "loop_acc"))?;
+        link(&mut graph, body_const, (loop_idx, "graph"))?;
+        link(&mut graph, (loop_idx, "loop_acc"), out)?;
+
+        assert!(
+            graph
+                .resolve_named_loop_pattern("does_not_exist")?
+                .is_none()
+        );
 
         Ok(())
     }
