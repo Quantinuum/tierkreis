@@ -42,14 +42,14 @@ use crate::{
             add_run_attempt_metadata, get_workflow_run_summary, insert_workflow,
             insert_workflow_run, insert_workflow_run_inputs, list_active_runs,
             list_workflow_run_summaries, read_node_state, read_node_states,
-            read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs,
-            update_node_state, update_workflow_run,
+            read_matching_node_states, read_run_attempt_metadata, read_workflow,
+            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
 use crate::{
     event::{NodeStatus, RunningStateUpdate},
-    location::Location,
+    location::{Location, LocationPattern},
     state::{
         WorkflowRunState,
         interface::{NodeState, RuntimeState},
@@ -525,6 +525,17 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         async move {
             let mut conn = self.get_conn().await?;
             read_node_states(&mut conn, self.run_id, self.attempt, locations).await
+        }
+        .boxed()
+    }
+
+    fn read_matching<'a>(
+        &'a self,
+        pattern: &'a LocationPattern,
+    ) -> BoxFuture<'a, miette::Result<Vec<(Location, NodeState)>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_matching_node_states(&mut conn, self.run_id, self.attempt, pattern).await
         }
         .boxed()
     }

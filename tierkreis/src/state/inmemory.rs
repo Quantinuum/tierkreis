@@ -24,7 +24,7 @@ use crate::{
 };
 use crate::{
     event::{NodeEvent, RunningStateUpdate},
-    location::Location,
+    location::{Location, LocationPattern},
     state::{
         WorkflowRunState,
         interface::{NodeState, RuntimeState},
@@ -417,6 +417,29 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
             });
 
             states.collect()
+        }
+        .boxed()
+    }
+
+    fn read_matching<'a>(
+        &'a self,
+        pattern: &'a LocationPattern,
+    ) -> BoxFuture<'a, miette::Result<Vec<(Location, NodeState)>>> {
+        async move {
+            let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
+                return Err(miette!(
+                    "Run Attempt with id {} and attempt {} not found",
+                    self.run_id,
+                    self.attempt
+                ));
+            };
+            Ok(run_state
+                .value()
+                .nodes
+                .iter()
+                .filter(|(location, _)| pattern.matches(location))
+                .map(|(location, state)| (location.clone(), state.clone()))
+                .collect())
         }
         .boxed()
     }
