@@ -27,7 +27,7 @@ use crate::{
     location::Location,
     state::{
         WorkflowRunState,
-        interface::{NodeState, RuntimeState},
+        interface::{NodeState, NodeStats, RuntimeState},
     },
 };
 
@@ -166,6 +166,52 @@ impl RuntimeState for InMemoryRuntimeState {
         self.update_receiver.clone()
     }
 
+    fn create_next_attempt(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut latest: Option<(u32, Uuid, HashMap<String, AssetSpec>)> = None;
+            for item in &self.inner.runs {
+                let (id, attempt) = *item.key();
+                if id != run_id {
+                    continue;
+                }
+                if latest
+                    .as_ref()
+                    .is_none_or(|(latest_attempt, ..)| attempt > *latest_attempt)
+                {
+                    latest = Some((attempt, item.workflow_id, item.inputs.clone()));
+                }
+            }
+            let (max_attempt, workflow_id, inputs) =
+                latest.ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?;
+            let next_attempt = max_attempt + 1;
+
+            {
+                let mut entry = self.inner.runs.entry((run_id, next_attempt)).or_default();
+                entry.workflow_id = workflow_id;
+                entry.inputs = inputs;
+                entry.started_time = Some(Utc::now());
+            }
+
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, next_attempt));
+            });
+
+            let state = InMemoryWorkflowRunState {
+                global_state: Arc::clone(&self.inner),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt: next_attempt,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
+        }
+        .boxed()
+    }
+
     fn list_workflow_run_summaries(
         &self,
     ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>> {
@@ -201,6 +247,52 @@ impl RuntimeState for InMemoryRuntimeState {
             summaries.sort_by_key(|k| k.started_time);
 
             Ok(summaries)
+        }
+        .boxed()
+    }
+
+    fn list_workflows(&self) -> BoxFuture<'_, miette::Result<Vec<crate::state::interface::WorkflowInfo>>> {
+        let workflows = self
+            .inner
+            .workflows
+            .iter()
+            .map(|item| (*item.key(), item.value().0.clone()))
+            .collect();
+        future::ok(workflows).boxed()
+    }
+
+    fn node_stats(&self) -> BoxFuture<'_, miette::Result<NodeStats>> {
+        async move {
+            let mut stats = NodeStats::default();
+            let mut duration_sum = 0.0;
+            let mut duration_count = 0u64;
+
+            for run in &self.inner.runs {
+                for node in run.value().nodes.values() {
+                    if node.complete_time.is_some() {
+                        stats.tasks_completed += 1;
+                    } else if node.error_time.is_some() {
+                        stats.tasks_errored += 1;
+                    } else if node.cancelled_time.is_some() {
+                        stats.tasks_cancelled += 1;
+                    } else if node.running_time.is_some() {
+                        stats.tasks_running += 1;
+                    }
+
+                    if let (Some(start), Some(end)) = (node.running_time, node.complete_time) {
+                        duration_sum += (end - start).as_seconds_f64();
+                        duration_count += 1;
+                    }
+                }
+            }
+
+            #[allow(clippy::cast_precision_loss)]
+            {
+                stats.avg_duration_seconds = (duration_count > 0)
+                    .then_some(duration_sum / duration_count as f64);
+            }
+
+            Ok(stats)
         }
         .boxed()
     }
@@ -421,6 +513,27 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         .boxed()
     }
 
+    fn read_all(&self) -> BoxFuture<'_, miette::Result<Vec<(Location, NodeState)>>> {
+        async move {
+            let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
+                return Err(miette!(
+                    "Run Attempt with id {} and attempt {} not found",
+                    self.run_id,
+                    self.attempt
+                ));
+            };
+            let mut states: Vec<(Location, NodeState)> = run_state
+                .value()
+                .nodes
+                .iter()
+                .map(|(loc, state)| (loc.clone(), state.clone()))
+                .collect();
+            states.sort_by_key(|(_, state)| state.scheduled_time);
+            Ok(states)
+        }
+        .boxed()
+    }
+
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         entry.or_default().metadata.extend(metadata);
@@ -514,6 +627,9 @@ fn handle_node_event(
                 if node_state.cancelled_time.is_none() {
                     node_state.cancelled_time = Some(now);
                 }
+            }
+            crate::event::NodeStatus::Logs { ref logs } => {
+                node_state.logs = Some(logs.clone());
             }
             crate::event::NodeStatus::Error {
                 ref error,

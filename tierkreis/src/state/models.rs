@@ -115,6 +115,7 @@ pub struct NodeState {
     pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub logs: Option<String>,
 }
 
 #[derive(Insertable, AsChangeset, Default, Debug)]
@@ -138,6 +139,7 @@ pub struct UpsertNodeState {
     pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub logs: Option<String>,
 }
 
 // -----------------------------------------------------------------------------

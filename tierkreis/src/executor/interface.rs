@@ -69,10 +69,36 @@ pub struct WorkerSpec {
     pub worker_name: String,
 }
 
+/// Static, human-readable metadata about an [Executor] and the resources it
+/// has available, used to power the runtime metadata/monitoring endpoint.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExecutorDescription {
+    /// The kind of executor, e.g. "memory", "subprocess", "hpc", "nexus".
+    pub kind: String,
+    /// Arbitrary additional details, e.g. HPC resource limits.
+    pub details: HashMap<String, String>,
+}
+
+/// Full runtime metadata for a named [Executor], combining its static
+/// [`ExecutorDescription`] with the currently available Workers.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExecutorInfo {
+    /// The name this executor is registered under.
+    pub name: String,
+    /// The kind of executor, e.g. "memory", "subprocess", "hpc", "nexus".
+    pub kind: String,
+    /// Arbitrary additional details, e.g. HPC resource limits.
+    pub details: HashMap<String, String>,
+    /// The number of Workers currently available to this executor.
+    pub worker_count: usize,
+}
+
 /// The [Executor] defines the minimum methods required for Task execution.
 pub trait Executor: Send + Sync {
     /// Return a list of the Workers available to the Executor with their metadata.
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>>;
+    /// Return static metadata describing this executor and its available resources.
+    fn describe(&self) -> ExecutorDescription;
     /// Dispatch a list of [`TaskPlan`]s to be run on an [Executor], returning a list of Task
     /// ids that can be used to cancel the Tasks if needed.
     ///

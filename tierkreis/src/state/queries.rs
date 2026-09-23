@@ -6,12 +6,12 @@ use std::hash::BuildHasher;
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::sql_types::{Binary, Bool, Integer, Nullable, Text, Timestamp};
+use diesel::sql_types::{BigInt, Binary, Bool, Double, Integer, Nullable, Text, Timestamp};
 use diesel::sqlite::Sqlite;
 use diesel::upsert::excluded;
 use diesel::{
-    BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
-    SelectableHelper, define_sql_function,
+    BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension,
+    QueryableByName, QueryDsl, SelectableHelper, define_sql_function, sql_query,
 };
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -51,6 +51,24 @@ pub async fn read_workflow(
         .wrap_err_with(|| miette!("Failed to select workflow with id: {}", workflow_id))?;
 
     Ok(workflow)
+}
+
+/// List every workflow's id and name, regardless of whether it has any runs.
+///
+/// # Errors
+///
+/// Returns an error when the query fails.
+pub async fn list_workflows(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+) -> miette::Result<Vec<Workflow>> {
+    use crate::state::schema::workflows::dsl as wf;
+
+    wf::workflows
+        .select(Workflow::as_select())
+        .get_results(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to list workflows")
 }
 
 /// Insert a workflow graph to the workflows table.
@@ -290,6 +308,7 @@ pub async fn update_node_state(
                         ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
                         ns::error_detail
                             .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
+                        ns::logs.eq(coalesce_text(ns::logs, excluded(ns::logs))),
                     ))
                     .execute(conn)
                     .await?;
@@ -425,6 +444,7 @@ pub async fn read_node_state(
             map_completed,
             error: db_node.error.clone(),
             error_detail: db_node.error_detail.clone(),
+            logs: db_node.logs.clone(),
             outputs,
             handle,
         })
@@ -506,10 +526,96 @@ pub async fn read_node_states(
                 map_completed,
                 error: db_node.error.clone(),
                 error_detail: db_node.error_detail.clone(),
+                logs: db_node.logs.clone(),
                 outputs,
                 handle,
             },
         );
+    }
+
+    Ok(states)
+}
+
+/// Read the persisted node state for every location recorded for a workflow
+/// run attempt, used to build an execution trace/waterfall view.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the node state
+/// lookup fails.
+pub async fn read_all_node_states(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: uuid::Uuid,
+    attempt: u32,
+) -> miette::Result<Vec<(Location, crate::state::interface::NodeState)>> {
+    use crate::state::schema::node_states::dsl as ns;
+
+    let attempt_i32 = i32::try_from(attempt)
+        .into_diagnostic()
+        .wrap_err_with(|| miette!("Attempt value {attempt} does not fit into i32"))?;
+    let db_nodes = ns::node_states
+        .filter(ns::run_id.eq(run_id.to_string()))
+        .filter(ns::attempt.eq(attempt_i32))
+        .order(ns::scheduled_time.asc())
+        .get_results::<NodeState>(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!("Failed to query all node states for run {run_id} attempt {attempt}")
+        })?;
+
+    let mut states = Vec::with_capacity(db_nodes.len());
+    for db_node in db_nodes {
+        let loop_index = db_node
+            .loop_index
+            .map(|idx| {
+                u32::try_from(idx)
+                    .into_diagnostic()
+                    .wrap_err_with(|| {
+                        miette!(
+                            "Stored loop index {idx} is invalid for run {run_id} attempt {attempt}",
+                        )
+                    })
+            })
+            .transpose()?;
+        let map_completed = db_node
+            .map_completed
+            .as_deref()
+            .map(|x| {
+                let mut bits = BitVec::from_slice(x);
+                bits.truncate(
+                    db_node
+                        .map_size
+                        .ok_or_else(|| miette!("Could not get map size from node state"))?
+                        .try_into()
+                        .into_diagnostic()?,
+                );
+                Ok::<_, miette::Report>(bits)
+            })
+            .transpose()?;
+
+        let outputs = read_outputs(conn, &db_node).await?;
+        let handle = db_node.handle.clone();
+
+        states.push((
+            db_node.node_location,
+            crate::state::interface::NodeState {
+                scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                queued_time: db_node.queued_time.map(utc_timestamp),
+                running_time: db_node.running_time.map(utc_timestamp),
+                complete_time: db_node.complete_time.map(utc_timestamp),
+                cancelled_time: db_node.cancelled_time.map(utc_timestamp),
+                error_time: db_node.error_time.map(utc_timestamp),
+                cond: db_node.cond,
+                loop_index,
+                map_completed,
+                error: db_node.error.clone(),
+                error_detail: db_node.error_detail.clone(),
+                logs: db_node.logs.clone(),
+                outputs,
+                handle,
+            },
+        ));
     }
 
     Ok(states)
@@ -646,10 +752,59 @@ async fn read_outputs(
     Ok(outputs)
 }
 
+#[derive(QueryableByName)]
+struct NodeStatsRow {
+    #[diesel(sql_type = BigInt)]
+    tasks_running: i64,
+    #[diesel(sql_type = BigInt)]
+    tasks_completed: i64,
+    #[diesel(sql_type = BigInt)]
+    tasks_errored: i64,
+    #[diesel(sql_type = BigInt)]
+    tasks_cancelled: i64,
+    #[diesel(sql_type = Nullable<Double>)]
+    avg_duration_seconds: Option<f64>,
+}
+
+/// Compute aggregate node execution statistics across every workflow run and
+/// attempt, used to power the monitoring dashboard.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the query fails.
+pub async fn node_stats(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+) -> miette::Result<crate::state::interface::NodeStats> {
+    let row: NodeStatsRow = sql_query(
+        "SELECT \
+            COALESCE(SUM(CASE WHEN running_time IS NOT NULL AND complete_time IS NULL \
+                AND error_time IS NULL AND cancelled_time IS NULL THEN 1 ELSE 0 END), 0) AS tasks_running, \
+            COALESCE(SUM(CASE WHEN complete_time IS NOT NULL THEN 1 ELSE 0 END), 0) AS tasks_completed, \
+            COALESCE(SUM(CASE WHEN error_time IS NOT NULL THEN 1 ELSE 0 END), 0) AS tasks_errored, \
+            COALESCE(SUM(CASE WHEN cancelled_time IS NOT NULL THEN 1 ELSE 0 END), 0) AS tasks_cancelled, \
+            AVG(CASE WHEN running_time IS NOT NULL AND complete_time IS NOT NULL \
+                THEN (julianday(complete_time) - julianday(running_time)) * 86400.0 END) AS avg_duration_seconds \
+         FROM node_states",
+    )
+    .get_result(conn)
+    .await
+    .into_diagnostic()
+    .wrap_err("Failed to compute node stats")?;
+
+    Ok(crate::state::interface::NodeStats {
+        tasks_running: u64::try_from(row.tasks_running).unwrap_or(0),
+        tasks_completed: u64::try_from(row.tasks_completed).unwrap_or(0),
+        tasks_errored: u64::try_from(row.tasks_errored).unwrap_or(0),
+        tasks_cancelled: u64::try_from(row.tasks_cancelled).unwrap_or(0),
+        avg_duration_seconds: row.avg_duration_seconds,
+    })
+}
+
 define_sql_function!(
     /// Patch a jsonb BLOB with a jsonb format patch, returning the patched copy.
     fn jsonb_patch(t: Binary, p: Binary) -> Binary;
 );
+
 
 /// Merge additional metadata into the persisted run metadata for a workflow run.
 ///
@@ -903,4 +1058,51 @@ pub async fn list_active_runs(
             Ok((run_id, attempt))
         })
         .collect()
+}
+
+/// Return the highest existing attempt number for a given `run_id`, if any.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the query fails.
+pub async fn max_attempt(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+) -> miette::Result<Option<i32>> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    wra::workflow_run_attempts
+        .filter(wra::workflow_run_id.eq(run_id))
+        .select(diesel::dsl::max(wra::attempt))
+        .first(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to query max attempt")
+}
+
+/// Insert a new `workflow_run_attempts` row for an existing run with an explicit
+/// attempt number.
+///
+/// # Errors
+///
+/// Returns an error when the insert fails.
+pub async fn insert_workflow_run_attempt(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+) -> miette::Result<()> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    let now = chrono::Utc::now().naive_utc();
+    diesel::insert_into(wra::workflow_run_attempts)
+        .values((
+            wra::workflow_run_id.eq(run_id),
+            wra::attempt.eq(attempt),
+            wra::started_time.eq(Some(now)),
+        ))
+        .execute(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to insert new workflow run attempt")?;
+    Ok(())
 }

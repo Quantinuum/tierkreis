@@ -170,6 +170,11 @@ pub enum NodeStatus {
         /// The outputs from the nodes
         outputs: Vec<HashMap<String, AssetSpec>>,
     },
+    /// The combined stdout/stderr logs captured for the node.
+    Logs {
+        /// The raw log text captured from the node's execution.
+        logs: String,
+    },
     /// The node has been cancelled.
     Cancelled,
     /// The node has errored.
@@ -297,6 +302,33 @@ pub async fn send_complete(
         .await
         .into_diagnostic()
         .wrap_err("Failed to send node complete event")
+}
+
+/// Utility function to send a new [`Event`] with [`NodeStatus::Logs`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_logs(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+    logs: String,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
+            status: NodeStatus::Logs { logs },
+        }),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send node logs event")
 }
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a conditional value

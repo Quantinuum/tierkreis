@@ -57,6 +57,22 @@ pub struct WorkflowRunStateSummary {
     pub errored_locations: Vec<Location>,
 }
 
+/// [`NodeStats`] is an aggregate summary of node execution state across every
+/// workflow run and attempt, used to power the monitoring dashboard.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct NodeStats {
+    /// The number of nodes currently running (started but not yet terminal).
+    pub tasks_running: u64,
+    /// The number of nodes that completed successfully.
+    pub tasks_completed: u64,
+    /// The number of nodes that errored.
+    pub tasks_errored: u64,
+    /// The number of nodes that were cancelled.
+    pub tasks_cancelled: u64,
+    /// The average duration, in seconds, between a node starting and completing.
+    pub avg_duration_seconds: Option<f64>,
+}
+
 /// [`NodeState`] is a struct that stores the possible state that a node
 /// in the Workflow graph can be in.
 ///
@@ -94,9 +110,15 @@ pub struct NodeState {
     /// The detail of the error for the node if any.
     pub error_detail: Option<String>,
 
+    /// The combined stdout/stderr logs captured for the node if any.
+    pub logs: Option<String>,
+
     /// The handle to the node
     pub handle: Option<TaskHandle>,
 }
+
+/// The id and name of a saved Workflow.
+pub type WorkflowInfo = (Uuid, Option<String>);
 
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
@@ -134,6 +156,14 @@ pub trait RuntimeState: Debug + Send + Sync {
         run_id: Uuid,
         attempt: u32,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
+    /// Create a new attempt for an existing `run_id`, one greater than the highest
+    /// existing attempt for that run, reusing the run's original inputs.
+    ///
+    /// The new attempt should be included in the active runs of `RuntimeWatchState`.
+    fn create_next_attempt(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
     /// Listen for updates about *all* of the running workflows.
     fn listen(&self) -> watch::Receiver<RuntimeWatchState>;
 
@@ -141,6 +171,13 @@ pub trait RuntimeState: Debug + Send + Sync {
     fn list_workflow_run_summaries(
         &self,
     ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>>;
+
+    /// List the id and name of every saved Workflow, including ones with no runs yet.
+    fn list_workflows(&self) -> BoxFuture<'_, miette::Result<Vec<WorkflowInfo>>>;
+
+    /// Compute aggregate node execution statistics across every workflow run
+    /// and attempt, used to power the monitoring dashboard.
+    fn node_stats(&self) -> BoxFuture<'_, miette::Result<NodeStats>>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
@@ -168,6 +205,9 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         &'a self,
         locations: &'a mut (dyn Iterator<Item = Location> + Send),
     ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>>;
+    /// Read the state of every Node recorded for this Workflow run attempt, in
+    /// scheduling order, used to build an execution trace/waterfall view.
+    fn read_all(&self) -> BoxFuture<'_, miette::Result<Vec<(Location, NodeState)>>>;
     /// Add metadata for the Workflow run. The new metadata will be merged with the existing values.
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.

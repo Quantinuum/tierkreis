@@ -1,4 +1,7 @@
-use super::models::{AppState, RuntimeMetadata, WorkflowDisplay};
+use super::models::{
+    AppState, AttemptSummary, ExecutorSummary, MonitoringSummary, NewRunRequest, NewRunResponse,
+    RunSummary, RuntimeInfo, RuntimeMetadata, TraceSpan, WorkflowDisplay, WorkflowSummary,
+};
 
 use axum::{
     Json,
@@ -7,6 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
+use miette::IntoDiagnostic;
 use std::collections::HashMap;
 
 use crate::{
@@ -18,7 +22,6 @@ use crate::{
             try_load_output_value, try_load_outputs,
         },
     },
-    state::RuntimeState,
 };
 use uuid::Uuid;
 
@@ -65,6 +68,52 @@ pub async fn list_workflows(
         .collect();
 
     Ok(Json(displays))
+}
+
+/// Compute aggregate runtime statistics for the monitoring dashboard.
+///
+/// # Errors
+///
+/// Returns an internal server error if the database query fails.
+#[utoipa::path(
+    get,
+    path = "/monitor",
+    responses((status = OK, body = MonitoringSummary))
+)]
+pub async fn get_monitoring_summary(
+    State(state): State<AppState>,
+) -> HandlerResult<Json<MonitoringSummary>> {
+    let summaries = state.runtime_state.list_workflow_run_summaries().await?;
+    let node_stats = state.runtime_state.node_stats().await?;
+
+    let total_runs = summaries.len();
+    let runs_with_errors = summaries
+        .iter()
+        .filter(|s| !s.errored_locations.is_empty())
+        .count();
+    let active_runs = summaries
+        .into_iter()
+        .filter(|s| {
+            s.complete_time.is_none() && s.cancelled_time.is_none() && s.error_time.is_none()
+        })
+        .map(|s| super::models::ActiveRun {
+            run_id: s.run_id,
+            attempt: s.attempt,
+            name: s.name,
+            started_time: s.started_time.map_or_else(String::new, |t| t.to_rfc3339()),
+        })
+        .collect();
+
+    Ok(Json(MonitoringSummary {
+        active_runs,
+        total_runs,
+        runs_with_errors,
+        tasks_running: node_stats.tasks_running,
+        tasks_completed: node_stats.tasks_completed,
+        tasks_errored: node_stats.tasks_errored,
+        tasks_cancelled: node_stats.tasks_cancelled,
+        avg_task_duration_seconds: node_stats.avg_duration_seconds,
+    }))
 }
 
 /// Get the graphs for a specific workflow.
@@ -338,7 +387,6 @@ pub async fn get_node_errors(
         .into_response())
 }
 
-#[allow(unused)]
 /// Get the logs for a specific node in a workflow run, returning the log detail as a string.
 ///
 /// # Errors
@@ -360,7 +408,17 @@ pub async fn get_node_logs(
     State(state): State<AppState>,
     Path((run_id, location_str)): Path<(Uuid, String)>,
 ) -> HandlerResult<Response> {
-    Ok("Not implemented".to_string().into_response())
+    let run_state = state
+        .runtime_state
+        .load_workflow_run_state(run_id, 0)
+        .await?;
+
+    let loc = parse_location(&location_str)?;
+    let node_state = run_state.read(&loc).await?;
+    Ok(node_state
+        .logs
+        .unwrap_or_else(|| "No logs available".to_string())
+        .into_response())
 }
 
 #[allow(unused)]
@@ -385,4 +443,231 @@ pub async fn get_workflow_logs(
     Path(run_id): Path<Uuid>,
 ) -> HandlerResult<Response> {
     Ok("Not implemented".to_string().into_response())
+}
+
+/// List every Workflow, grouped by workflow, then by run, then by attempt.
+///
+/// A Workflow is a graph structure; a run is a Workflow tied to a specific set
+/// of inputs; an attempt is a single execution of a run (restarts of the same
+/// run create additional attempts).
+///
+/// # Errors
+///
+/// Returns an internal server error if the database query fails.
+///
+/// # Panics
+///
+/// Never panics in practice: the `expect` calls only follow an unconditional push.
+#[utoipa::path(
+    get,
+    path = "/monitor/workflows",
+    responses((status = OK, body = Vec<WorkflowSummary>))
+)]
+pub async fn get_workflows_summary(
+    State(state): State<AppState>,
+) -> HandlerResult<Json<Vec<WorkflowSummary>>> {
+    let all_workflows = state.runtime_state.list_workflows().await?;
+    let summaries = state.runtime_state.list_workflow_run_summaries().await?;
+
+    // Seed with every saved Workflow (including ones with no runs yet) so
+    // they still show up in the monitor.
+    let mut workflows: Vec<WorkflowSummary> = all_workflows
+        .into_iter()
+        .map(|(workflow_id, name)| WorkflowSummary {
+            workflow_id,
+            name,
+            runs: Vec::new(),
+        })
+        .collect();
+
+    for s in summaries {
+        let workflow = if let Some(w) = workflows
+            .iter_mut()
+            .find(|w| w.workflow_id == s.workflow_id)
+        {
+            w
+        } else {
+            workflows.push(WorkflowSummary {
+                workflow_id: s.workflow_id,
+                name: s.name.clone(),
+                runs: Vec::new(),
+            });
+            workflows.last_mut().expect("just pushed")
+        };
+
+        let run = if let Some(r) = workflow.runs.iter_mut().find(|r| r.run_id == s.run_id) {
+            r
+        } else {
+            workflow.runs.push(RunSummary {
+                run_id: s.run_id,
+                attempts: Vec::new(),
+            });
+            workflow.runs.last_mut().expect("just pushed")
+        };
+
+        run.attempts.push(AttemptSummary {
+            attempt: s.attempt,
+            started_time: s.started_time.map_or_else(String::new, |t| t.to_rfc3339()),
+            complete_time: s.complete_time.map(|t| t.to_rfc3339()),
+            cancelled_time: s.cancelled_time.map(|t| t.to_rfc3339()),
+            error_time: s.error_time.map(|t| t.to_rfc3339()),
+            errored_locations: s
+                .errored_locations
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
+        });
+    }
+
+    Ok(Json(workflows))
+}
+
+/// Describe the runtime's version and the Executors available to it,
+/// including their Workers and resources (e.g. HPC node counts).
+///
+/// # Errors
+///
+/// Returns an internal server error if any Executor cannot be queried.
+#[utoipa::path(
+    get,
+    path = "/runtime",
+    responses((status = OK, body = RuntimeInfo))
+)]
+pub async fn get_runtime_info(State(state): State<AppState>) -> HandlerResult<Json<RuntimeInfo>> {
+    let executors = state
+        .runtime
+        .describe_executors()
+        .await?
+        .into_iter()
+        .map(|info| ExecutorSummary {
+            name: info.name,
+            kind: info.kind,
+            worker_count: info.worker_count,
+            details: info.details,
+        })
+        .collect();
+
+    Ok(Json(RuntimeInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        executors,
+    }))
+}
+
+/// Get the execution trace (every recorded Node state, in scheduling order)
+/// for a specific Workflow run attempt.
+///
+/// # Errors
+///
+/// Returns an internal server error if the workflow run state cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/runs/{run_id}/attempts/{attempt}/trace",
+    params(
+        ("run_id" = Uuid, Path, description = "Run ID"),
+        ("attempt" = u32, Path, description = "Attempt number"),
+    ),
+    responses((status = OK, body = Vec<TraceSpan>))
+)]
+pub async fn get_run_trace(
+    State(state): State<AppState>,
+    Path((run_id, attempt)): Path<(Uuid, u32)>,
+) -> HandlerResult<Json<Vec<TraceSpan>>> {
+    let run_state = state
+        .runtime_state
+        .load_workflow_run_state(run_id, attempt)
+        .await?;
+    let states = run_state.read_all().await?;
+
+    let spans = states
+        .into_iter()
+        .map(|(location, node_state)| TraceSpan {
+            location: location.to_string(),
+            status: super::models::node_status_from_state(&node_state),
+            scheduled_time: node_state.scheduled_time.map(|t| t.to_rfc3339()),
+            queued_time: node_state.queued_time.map(|t| t.to_rfc3339()),
+            running_time: node_state.running_time.map(|t| t.to_rfc3339()),
+            complete_time: node_state.complete_time.map(|t| t.to_rfc3339()),
+            error_time: node_state.error_time.map(|t| t.to_rfc3339()),
+            cancelled_time: node_state.cancelled_time.map(|t| t.to_rfc3339()),
+            error: node_state.error,
+        })
+        .collect();
+
+    Ok(Json(spans))
+}
+
+/// Start a new Workflow run with the given inputs.
+///
+/// # Errors
+///
+/// Returns an internal server error if an input cannot be serialized or the
+/// runtime state cannot be written to.
+#[utoipa::path(
+    post,
+    path = "/workflows/{workflow_id}/runs",
+    params(("workflow_id" = Uuid, Path, description = "Workflow ID")),
+    responses((status = OK, body = NewRunResponse))
+)]
+pub async fn start_new_run(
+    State(state): State<AppState>,
+    Path(workflow_id): Path<Uuid>,
+    Json(request): Json<NewRunRequest>,
+) -> HandlerResult<Json<NewRunResponse>> {
+    let mut inputs = HashMap::new();
+    for (name, value) in request.inputs {
+        inputs.insert(name, serde_json::to_vec(&value).into_diagnostic()?);
+    }
+
+    let (run_id, attempt) = state.runtime.start_new_run(workflow_id, inputs).await?;
+    Ok(Json(NewRunResponse { run_id, attempt }))
+}
+
+/// List the names of the top-level input ports of a Workflow, so that a
+/// caller can be prompted for the right input names before starting a run.
+///
+/// # Errors
+///
+/// Returns an internal server error if the Workflow cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/input_names",
+    params(("workflow_id" = Uuid, Path, description = "Workflow ID")),
+    responses((status = OK, body = Vec<String>))
+)]
+pub async fn get_workflow_input_names(
+    State(state): State<AppState>,
+    Path(workflow_id): Path<Uuid>,
+) -> HandlerResult<Json<Vec<String>>> {
+    let (_name, graph) = state.runtime_state.load_workflow(workflow_id).await?;
+
+    let mut names: Vec<String> = graph
+        .node_ids()
+        .filter_map(|n| match graph.node_definition(n) {
+            Some(crate::graph::NodeDefinition::Input { name }) => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
+    names.sort();
+
+    Ok(Json(names))
+}
+
+/// Start a new attempt for an existing run, reusing its original inputs.
+///
+/// # Errors
+///
+/// Returns an internal server error if the run does not exist or the runtime
+/// state cannot be written to.
+#[utoipa::path(
+    post,
+    path = "/runs/{run_id}/attempts",
+    params(("run_id" = Uuid, Path, description = "Run ID")),
+    responses((status = OK, body = NewRunResponse))
+)]
+pub async fn start_new_attempt(
+    State(state): State<AppState>,
+    Path(run_id): Path<Uuid>,
+) -> HandlerResult<Json<NewRunResponse>> {
+    let attempt = state.runtime.create_next_attempt(run_id).await?;
+    Ok(Json(NewRunResponse { run_id, attempt }))
 }

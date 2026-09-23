@@ -40,10 +40,11 @@ use crate::{
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
             add_run_attempt_metadata, get_workflow_run_summary, insert_workflow,
-            insert_workflow_run, insert_workflow_run_inputs, list_active_runs,
-            list_workflow_run_summaries, read_node_state, read_node_states,
-            read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs,
-            update_node_state, update_workflow_run,
+            insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs,
+            list_active_runs, list_workflow_run_summaries, list_workflows, max_attempt,
+            node_stats, read_all_node_states, read_node_state, read_node_states,
+            read_run_attempt_metadata, read_workflow, read_workflow_run,
+            read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
@@ -393,12 +394,73 @@ impl RuntimeState for SqliteRuntimeState {
         self.update_receiver.clone()
     }
 
+    fn create_next_attempt(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let run_id_str = run_id.to_string();
+            let next_attempt_i32 = max_attempt(&mut conn, &run_id_str)
+                .await?
+                .ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?
+                + 1;
+            insert_workflow_run_attempt(&mut conn, &run_id_str, next_attempt_i32).await?;
+            let next_attempt = u32::try_from(next_attempt_i32).into_diagnostic()?;
+
+            let run = read_workflow_run(&mut conn, run_id, next_attempt).await?;
+            let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
+
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, next_attempt));
+            });
+
+            let state = SqliteWorkflowRunState {
+                pool: self.pool.clone(),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt: next_attempt,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
+        }
+        .boxed()
+    }
+
     fn list_workflow_run_summaries(
         &self,
     ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>> {
         async move {
             let mut conn = self.get_conn().await?;
             list_workflow_run_summaries(&mut conn).await
+        }
+        .boxed()
+    }
+
+    fn list_workflows(&self) -> BoxFuture<'_, miette::Result<Vec<crate::state::interface::WorkflowInfo>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let workflows = list_workflows(&mut conn).await?;
+            workflows
+                .into_iter()
+                .map(|w| {
+                    let id: Uuid = w
+                        .id
+                        .parse()
+                        .into_diagnostic()
+                        .wrap_err_with(|| miette!("Invalid workflow UUID: {}", w.id))?;
+                    Ok((id, w.name))
+                })
+                .collect()
+        }
+        .boxed()
+    }
+
+    fn node_stats(&self) -> BoxFuture<'_, miette::Result<crate::state::interface::NodeStats>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            node_stats(&mut conn).await
         }
         .boxed()
     }
@@ -529,6 +591,14 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         .boxed()
     }
 
+    fn read_all(&self) -> BoxFuture<'_, miette::Result<Vec<(Location, NodeState)>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_all_node_states(&mut conn, self.run_id, self.attempt).await
+        }
+        .boxed()
+    }
+
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut conn = self.get_conn().await?;
@@ -639,6 +709,9 @@ impl SqliteWorkflowRunState {
                     }
                     NodeStatus::Cancelled => {
                         row.cancelled_time = Some(now);
+                    }
+                    NodeStatus::Logs { ref logs } => {
+                        row.logs = Some(logs.clone());
                     }
                     NodeStatus::Error {
                         ref error,
@@ -919,6 +992,55 @@ mod tests {
 
         metadata1.extend(metadata2.into_iter());
         assert_eq!(metadata1, read_metadata);
+
+        Ok(())
+    }
+
+    /// Test that `node_stats` aggregates node execution state across a run.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn node_stats_aggregates_node_states() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
+        let workflow_run_state = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+
+        let running = Location::new("N0")?;
+        let completed = Location::new("N1")?;
+        let errored = Location::new("N2")?;
+
+        workflow_run_state
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![running.clone(), completed.clone(), errored.clone()],
+                status: NodeStatus::Running { state_update: None },
+            }))
+            .await?;
+        workflow_run_state
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![completed],
+                status: NodeStatus::Complete {
+                    outputs: vec![HashMap::new()],
+                },
+            }))
+            .await?;
+        workflow_run_state
+            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
+                locs: vec![errored],
+                status: NodeStatus::Error {
+                    error: "boom".to_string(),
+                    detail: None,
+                },
+            }))
+            .await?;
+
+        let stats = runtime_state.node_stats().await?;
+        assert_eq!(stats.tasks_running, 1);
+        assert_eq!(stats.tasks_completed, 1);
+        assert_eq!(stats.tasks_errored, 1);
+        assert_eq!(stats.tasks_cancelled, 0);
 
         Ok(())
     }

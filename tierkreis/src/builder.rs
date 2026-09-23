@@ -57,6 +57,7 @@ pub(crate) fn task<'a>(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     graph.add_node(
         NodeDefinition::IfElse {},
@@ -69,6 +70,7 @@ pub(crate) fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     graph.add_node(
         NodeDefinition::IfElse {},
@@ -81,6 +83,7 @@ pub(crate) fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn eval<'a>(
     graph: &mut WorkflowGraph,
     inputs: impl IntoIterator<Item = &'a str>,
@@ -95,6 +98,7 @@ pub(crate) fn eval<'a>(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn loop_node<'a>(
     graph: &mut WorkflowGraph,
     inputs: impl IntoIterator<Item = &'a str>,
@@ -109,6 +113,7 @@ pub(crate) fn loop_node<'a>(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn map_node<'a>(
     graph: &mut WorkflowGraph,
     mapped_inputs: impl IntoIterator<Item = &'a str>,
