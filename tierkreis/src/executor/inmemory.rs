@@ -30,7 +30,7 @@ use crate::{
     },
     executor::{
         Executor,
-        interface::{TaskPlan, WorkerSpec},
+        interface::{ExecutorDescription, TaskPlan, WorkerSpec},
     },
     location::Location,
 };
@@ -528,6 +528,13 @@ impl Executor for InMemoryExecutor {
             worker_name: "builtin".to_string(),
         }])
         .boxed()
+    }
+
+    fn describe(&self) -> ExecutorDescription {
+        ExecutorDescription {
+            kind: "memory".to_string(),
+            details: HashMap::new(),
+        }
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {

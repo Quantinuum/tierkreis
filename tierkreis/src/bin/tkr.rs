@@ -29,6 +29,8 @@ enum Command {
     Viz {},
     Serve {},
     Exec {},
+    /// Populate the runtime's persistent state with synthetic demo Workflows/runs/attempts.
+    Seed {},
 }
 
 fn main() -> miette::Result<()> {
@@ -40,13 +42,17 @@ fn main() -> miette::Result<()> {
             from_file: _from_file,
             ..
         } => {}
+        Command::Init {} => {}
+        Command::Viz {} => {}
         Command::Serve {} => {
             tierkreis::server::serve()?;
         }
         Command::Exec {} => {
             tierkreis::runtime::exec()?;
         }
-        _ => {}
+        Command::Seed {} => {
+            tierkreis::seed::seed()?;
+        }
     }
     flush_logs();
     Ok(())

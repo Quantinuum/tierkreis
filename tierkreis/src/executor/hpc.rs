@@ -29,7 +29,7 @@ use crate::{
     },
     executor::{
         hpc::spec::{HPCResourceSpec, JobSpec, SchedulerStatus, SchedulerWrapper},
-        interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+        interface::{Executor, ExecutorDescription, TaskHandle, TaskPlan, WorkerSpec},
     },
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
@@ -532,6 +532,24 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
 }
 
 impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
+    fn describe(&self) -> ExecutorDescription {
+        let mut details = HashMap::new();
+        details.insert("nodes".to_string(), self.max_resources.nodes.to_string());
+        if let Some(cores) = self.max_resources.cores_per_node {
+            details.insert("cores_per_node".to_string(), cores.to_string());
+        }
+        if let Some(mem) = self.max_resources.memory_per_node_gb {
+            details.insert("memory_per_node_gb".to_string(), mem.to_string());
+        }
+        if let Some(gpus) = self.max_resources.gpus_per_node {
+            details.insert("gpus_per_node".to_string(), gpus.to_string());
+        }
+        ExecutorDescription {
+            kind: "hpc".to_string(),
+            details,
+        }
+    }
+
     // TODO: How to make sure this is run on the compute node?
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         async move {

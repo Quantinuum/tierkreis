@@ -36,9 +36,9 @@ use crate::{
     },
     event::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
-        send_cancelled, send_complete, send_error, send_queued, send_running,
+        send_cancelled, send_complete, send_error, send_logs, send_queued, send_running,
     },
-    executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    executor::interface::{Executor, ExecutorDescription, TaskHandle, TaskPlan, WorkerSpec},
     location::Location,
     monitoring::{CommandEnvCarrier, inject_trace_context},
 };
@@ -72,6 +72,7 @@ struct BackgroundTask {
     loc: Location,
     output_storage_name: String,
     outputs: HashMap<String, AssetSpec>,
+    stdout: JoinHandle<String>,
     stderr: JoinHandle<String>,
 
     // Handles to temporary files to prevent deletion
@@ -119,6 +120,15 @@ async fn process_finished_task(
 
     abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
+    let stdout = background_task.stdout.await.ok();
+    let stderr = background_task.stderr.await.ok();
+    let logs = format!(
+        "=== stdout ===\n{}\n=== stderr ===\n{}",
+        stdout.as_deref().unwrap_or_default(),
+        stderr.as_deref().unwrap_or_default(),
+    );
+    send_logs(event_sender, workflow_run_id, attempt, loc.clone(), logs).await?;
+
     if exit_status.success() {
         let outputs = transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
         match outputs {
@@ -137,7 +147,6 @@ async fn process_finished_task(
             }
         }
     } else {
-        let stderr = background_task.stderr.await.ok();
         event_sender
             .send(RuntimeEvent::WorkflowRun {
                 workflow_run_id,
@@ -210,6 +219,7 @@ async fn start_task(
             return Ok(());
         }
     };
+    let stdout = read_stdout(&mut child);
     let stderr = read_stderr(&mut child);
     let process_identity = child.id().map(process_identity).transpose()?;
     let (pid, start_time) =
@@ -239,6 +249,7 @@ async fn start_task(
                     loc: background_loc,
                     output_storage_name,
                     outputs,
+                    stdout,
                     stderr,
                     _worker_args: worker_args,
                 },
@@ -477,7 +488,7 @@ fn spawn_worker(
 
     command
         .arg(worker_args_path)
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
     let child = command
@@ -545,6 +556,15 @@ fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<Str
     })
 }
 
+fn read_stdout(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
+    let mut stdout = child.stdout.take().unwrap();
+    tokio::spawn(async move {
+        let mut stdout_out = String::new();
+        let _ = stdout.read_to_string(&mut stdout_out).await;
+        stdout_out
+    })
+}
+
 // Json format expected for subprocess workers.
 #[derive(Serialize, Deserialize, Default)]
 struct WorkerCallArgs {
@@ -574,6 +594,13 @@ fn write_input_paths(
 impl Executor for SubprocessExecutor {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
+    }
+
+    fn describe(&self) -> ExecutorDescription {
+        ExecutorDescription {
+            kind: "subprocess".to_string(),
+            details: HashMap::new(),
+        }
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
@@ -749,8 +776,8 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
@@ -775,6 +802,16 @@ mod tests {
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Logs { .. },
+                    ..
+                }),
+                ..
+            }
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Complete { .. },
                     ..
                 }),
@@ -784,7 +821,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;
@@ -824,8 +861,8 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
@@ -850,6 +887,16 @@ mod tests {
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Logs { .. },
+                    ..
+                }),
+                ..
+            }
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Complete { .. },
                     ..
                 }),
@@ -859,7 +906,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;
@@ -914,8 +961,8 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(6).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 6);
+        let events = stream.take(8).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 8);
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
@@ -1007,8 +1054,8 @@ mod tests {
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
@@ -1033,6 +1080,16 @@ mod tests {
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Logs { .. },
+                    ..
+                }),
+                ..
+            }
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Complete { .. },
                     ..
                 }),
@@ -1042,7 +1099,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;
@@ -1069,8 +1126,8 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
@@ -1093,6 +1150,16 @@ mod tests {
         );
         assert_matches!(
             events[2],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Logs { .. },
+                    ..
+                }),
+                ..
+            }
+        );
+        assert_matches!(
+            events[3],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Error { ref error, .. },
@@ -1214,8 +1281,8 @@ mod tests {
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
@@ -1240,6 +1307,16 @@ mod tests {
             events[2],
             RuntimeEvent::WorkflowRun {
                 event: WorkflowRunEvent::NodeEvent(NodeEvent {
+                    status: NodeStatus::Logs { .. },
+                    ..
+                }),
+                ..
+            }
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvent(NodeEvent {
                     status: NodeStatus::Complete { .. },
                     ..
                 }),
@@ -1249,7 +1326,7 @@ mod tests {
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;

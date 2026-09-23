@@ -23,10 +23,24 @@ export function WorkflowSidebar({
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>
-            <Link to="/"> Workflows</Link>
+            <Link to="/monitor"> Workflows</Link>
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link to="/monitor">
+                    <span>Monitoring</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link to="/builder">
+                    <span>Graph builder (POC)</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {workflows.map((workflow) => (
                 <SidebarMenuItem key={workflow.id}>
                   <SidebarMenuButton

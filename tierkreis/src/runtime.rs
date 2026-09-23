@@ -84,6 +84,22 @@ impl RuntimeConfig {
         };
         config
     }
+
+    /// Construct the default config, but with state persisted to the default
+    /// on-disk `SQLite` database instead of kept in memory.
+    ///
+    /// Used by the HTTP server so that Workflow runs started via the API survive
+    /// server restarts and are visible to other processes reading the same database.
+    #[must_use]
+    #[allow(clippy::field_reassign_with_default)]
+    pub fn persistent() -> Self {
+        let mut config = Self::default();
+        config.runtime_state = RuntimeStateConfig::Sqlite {
+            memory: false,
+            url: None,
+        };
+        config
+    }
 }
 
 impl Default for RuntimeConfig {
@@ -338,6 +354,46 @@ impl Runtime {
         Ok((run_id, attempt))
     }
 
+    /// Start a new attempt for an existing run, reusing its original inputs.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the run does not exist or the runtime state cannot be written to.
+    pub async fn create_next_attempt(&self, run_id: Uuid) -> miette::Result<u32> {
+        let workflow_run_state = self.state.create_next_attempt(run_id).await?;
+        let attempt = workflow_run_state.attempt();
+        tracing::info!(
+            run_id = %run_id.to_string(),
+            attempt = attempt, "Starting new attempt for existing run",
+        );
+        Ok(attempt)
+    }
+
+    /// Access the underlying [`RuntimeState`], e.g. for building an HTTP API on top
+    /// of the same state driving orchestration.
+    #[must_use]
+    pub fn state(&self) -> Arc<dyn RuntimeState> {
+        Arc::clone(&self.state)
+    }
+
+    /// Access the underlying [`AssetStorageRegistry`].
+    #[must_use]
+    pub fn asset_storage_registry(&self) -> AssetStorageRegistry {
+        Arc::clone(&self.asset_storage_registry)
+    }
+
+    /// Describe the Executors available to this Runtime, including the
+    /// Workers and resources each has available.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if listing the Workers for any Executor fails.
+    pub async fn describe_executors(
+        &self,
+    ) -> miette::Result<Vec<crate::executor::interface::ExecutorInfo>> {
+        self.orchestrator.describe_executors().await
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn process_events(
         state: Arc<dyn RuntimeState>,
@@ -415,6 +471,17 @@ impl Runtime {
                                         "node completed"
                                     );
                                 }
+                                NodeStatus::Logs { logs } => {
+                                    tracing::info!(
+                                        target: "tierkreis::node_logs",
+                                        workflow_id = %workflow_id,
+                                        run_id = %workflow_run_id,
+                                        attempt,
+                                        ?locs,
+                                        %logs,
+                                        "node logs"
+                                    );
+                                }
                                 NodeStatus::Error { error, .. } => {
                                     tracing::error!(
                                         target: "tierkreis::events",
@@ -487,13 +554,27 @@ impl Runtime {
                     context
                 };
 
-                let actions = self
+                let actions = match self.orchestrator.build_actions(context, workflow_graph).await
+                {
+                    Ok(actions) => actions,
+                    Err(err) => {
+                        tracing::error!(%run_id, attempt, error = ?err, "Failed to build actions for workflow run, marking it as errored");
+                        self.orchestrator
+                            .mark_run_errored(run_id, attempt, &err)
+                            .await?;
+                        continue;
+                    }
+                };
+                if let Err(err) = self
                     .orchestrator
-                    .build_actions(context, workflow_graph)
-                    .await?;
-                self.orchestrator
                     .perform_actions(run_id, attempt, actions)
-                    .await?;
+                    .await
+                {
+                    tracing::error!(%run_id, attempt, error = ?err, "Failed to perform actions for workflow run, marking it as errored");
+                    self.orchestrator
+                        .mark_run_errored(run_id, attempt, &err)
+                        .await?;
+                }
             }
             state_recv.changed().await.into_diagnostic()?;
         }
