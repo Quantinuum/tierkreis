@@ -172,6 +172,13 @@ pub struct NewRunResponse {
     pub attempt: u32,
 }
 
+/// The names of a Workflow's top-level input and output ports.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WorkflowPorts {
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+}
+
 
 /// The status of a node in the workflow graph.
 /// TODO: Enable remaining states

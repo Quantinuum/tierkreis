@@ -11,6 +11,7 @@ import {
 } from "chart.js";
 import { useMemo } from "react";
 import { Bar, Doughnut } from "react-chartjs-2";
+import { Link } from "@tanstack/react-router";
 import { RuntimeInfoCard } from "./RuntimeInfoCard";
 import { RunHistoryHeatmap } from "./RunHistoryHeatmap";
 import { WorkflowsTree } from "./WorkflowsTree";
@@ -79,6 +80,9 @@ export default function MonitorPage() {
     <div className="p-8">
       <div className="flex items-center justify-between pb-8">
         <div className="text-4xl">Monitoring</div>
+        <Link to="/builder" className="hover:underline">
+          Graph builder (POC) &rarr;
+        </Link>
       </div>
 
       {error && (

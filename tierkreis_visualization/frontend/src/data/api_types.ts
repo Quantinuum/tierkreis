@@ -79,3 +79,8 @@ export type NewRunResponse = {
   run_id: string;
   attempt: number;
 };
+
+export type WorkflowPorts = {
+  inputs: string[];
+  outputs: string[];
+};

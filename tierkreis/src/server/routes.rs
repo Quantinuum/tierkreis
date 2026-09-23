@@ -1,6 +1,7 @@
 use super::models::{
     AppState, AttemptSummary, ExecutorSummary, MonitoringSummary, NewRunRequest, NewRunResponse,
-    RunSummary, RuntimeInfo, RuntimeMetadata, TraceSpan, WorkflowDisplay, WorkflowSummary,
+    RunSummary, RuntimeInfo, RuntimeMetadata, TraceSpan, WorkflowDisplay, WorkflowPorts,
+    WorkflowSummary,
 };
 
 use axum::{
@@ -650,6 +651,43 @@ pub async fn get_workflow_input_names(
     names.sort();
 
     Ok(Json(names))
+}
+
+/// List the names of both the top-level input and output ports of a
+/// Workflow, e.g. so the graph builder can show a subgraph reference node
+/// with the right number of handles.
+///
+/// # Errors
+///
+/// Returns an internal server error if the Workflow cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/ports",
+    params(("workflow_id" = Uuid, Path, description = "Workflow ID")),
+    responses((status = OK, body = WorkflowPorts))
+)]
+pub async fn get_workflow_ports(
+    State(state): State<AppState>,
+    Path(workflow_id): Path<Uuid>,
+) -> HandlerResult<Json<WorkflowPorts>> {
+    let (_name, graph) = state.runtime_state.load_workflow(workflow_id).await?;
+
+    let mut inputs: Vec<String> = graph
+        .node_ids()
+        .filter_map(|n| match graph.node_definition(n) {
+            Some(crate::graph::NodeDefinition::Input { name }) => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
+    inputs.sort();
+
+    let mut outputs: Vec<String> = graph
+        .input_names(graph.output_idx())?
+        .cloned()
+        .collect();
+    outputs.sort();
+
+    Ok(Json(WorkflowPorts { inputs, outputs }))
 }
 
 /// Start a new attempt for an existing run, reusing its original inputs.

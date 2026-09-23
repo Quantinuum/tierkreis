@@ -38,6 +38,7 @@ async fn server(runtime: Arc<Runtime>) -> miette::Result<()> {
         .routes(routes!(routes::get_run_trace))
         .routes(routes!(routes::start_new_run))
         .routes(routes!(routes::get_workflow_input_names))
+        .routes(routes!(routes::get_workflow_ports))
         .routes(routes!(routes::start_new_attempt))
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))

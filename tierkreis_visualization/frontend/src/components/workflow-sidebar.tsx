@@ -34,6 +34,13 @@ export function WorkflowSidebar({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link to="/builder">
+                    <span>Graph builder (POC)</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {workflows.map((workflow) => (
                 <SidebarMenuItem key={workflow.id}>
                   <SidebarMenuButton

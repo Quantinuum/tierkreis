@@ -7,6 +7,7 @@ import type {
   NewRunResponse,
   RuntimeInfo,
   TraceSpan,
+  WorkflowPorts,
   WorkflowSummary,
 } from "./api_types";
 
@@ -152,6 +153,13 @@ export const useWorkflowInputNamesQuery = (workflow_id: string) =>
     queryKey: ["workflow-input-names", workflow_id],
     queryFn: () =>
       getJson<string[]>(`api/workflows/${workflow_id}/input_names`),
+    enabled: !!workflow_id,
+  });
+
+export const useWorkflowPortsQuery = (workflow_id: string) =>
+  useQuery({
+    queryKey: ["workflow-ports", workflow_id],
+    queryFn: () => getJson<WorkflowPorts>(`api/workflows/${workflow_id}/ports`),
     enabled: !!workflow_id,
   });
 

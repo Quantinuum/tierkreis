@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MonitorIndexRouteImport } from './routes/monitor/index'
+import { Route as BuilderIndexRouteImport } from './routes/builder/index'
 import { Route as WorkflowsWidNodesLocIndexRouteImport } from './routes/workflows/_.$wid.nodes.$loc/index'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const MonitorIndexRoute = MonitorIndexRouteImport.update({
   path: '/monitor/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BuilderIndexRoute = BuilderIndexRouteImport.update({
+  id: '/builder/',
+  path: '/builder/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkflowsWidNodesLocIndexRoute =
   WorkflowsWidNodesLocIndexRouteImport.update({
     id: '/workflows/_/$wid/nodes/$loc/',
@@ -32,30 +38,39 @@ const WorkflowsWidNodesLocIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/builder/': typeof BuilderIndexRoute
   '/monitor/': typeof MonitorIndexRoute
   '/workflows/$wid/nodes/$loc/': typeof WorkflowsWidNodesLocIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/builder': typeof BuilderIndexRoute
   '/monitor': typeof MonitorIndexRoute
   '/workflows/$wid/nodes/$loc': typeof WorkflowsWidNodesLocIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/builder/': typeof BuilderIndexRoute
   '/monitor/': typeof MonitorIndexRoute
   '/workflows/_/$wid/nodes/$loc/': typeof WorkflowsWidNodesLocIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/monitor/' | '/workflows/$wid/nodes/$loc/'
+  fullPaths: '/' | '/builder/' | '/monitor/' | '/workflows/$wid/nodes/$loc/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/monitor' | '/workflows/$wid/nodes/$loc'
-  id: '__root__' | '/' | '/monitor/' | '/workflows/_/$wid/nodes/$loc/'
+  to: '/' | '/builder' | '/monitor' | '/workflows/$wid/nodes/$loc'
+  id:
+    | '__root__'
+    | '/'
+    | '/builder/'
+    | '/monitor/'
+    | '/workflows/_/$wid/nodes/$loc/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BuilderIndexRoute: typeof BuilderIndexRoute
   MonitorIndexRoute: typeof MonitorIndexRoute
   WorkflowsWidNodesLocIndexRoute: typeof WorkflowsWidNodesLocIndexRoute
 }
@@ -76,6 +91,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MonitorIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/builder/': {
+      id: '/builder/'
+      path: '/builder'
+      fullPath: '/builder/'
+      preLoaderRoute: typeof BuilderIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workflows/_/$wid/nodes/$loc/': {
       id: '/workflows/_/$wid/nodes/$loc/'
       path: '/workflows/$wid/nodes/$loc'
@@ -88,6 +110,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BuilderIndexRoute: BuilderIndexRoute,
   MonitorIndexRoute: MonitorIndexRoute,
   WorkflowsWidNodesLocIndexRoute: WorkflowsWidNodesLocIndexRoute,
 }
