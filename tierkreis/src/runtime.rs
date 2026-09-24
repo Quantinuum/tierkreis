@@ -27,7 +27,7 @@ use crate::{
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
     },
-    graph::WorkflowGraph,
+    graph::{NodeDefinition, WorkflowGraph},
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},

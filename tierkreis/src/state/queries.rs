@@ -963,13 +963,13 @@ pub async fn insert_workflow_run_attempt(
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed or a query fails.
-pub async fn copy_node_states(
+pub async fn copy_node_states<S: ::std::hash::BuildHasher + std::marker::Sync>(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     source_attempt: i32,
     dest_attempt: i32,
-    exclude: &HashSet<Location>,
-    truncate: &HashSet<Location>,
+    exclude: &HashSet<Location, S>,
+    truncate: &HashSet<Location, S>,
 ) -> miette::Result<()> {
     use crate::state::schema::node_outputs::dsl as no;
     use crate::state::schema::node_states::dsl as ns;
