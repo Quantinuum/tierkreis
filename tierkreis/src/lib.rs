@@ -378,6 +378,37 @@ mod tierkreis {
             }
         }
 
+        #[pyo3(signature = (run_id, locations=None, attempt=0))]
+        async fn restart_task(
+            &self,
+            run_id: Uuid,
+            locations: Option<Vec<String>>,
+            attempt: u32,
+        ) -> PyResult<(u32, Vec<String>)> {
+            let locations = locations.unwrap_or_default();
+            let inner = self.inner.clone();
+            let locations = locations
+                .iter()
+                .map(|s| Location::new(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            let res = get_runtime()
+                .spawn(async move { inner.restart_task(run_id, attempt, locations).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok((new_attempt, invalidated)) => Ok((
+                    new_attempt,
+                    invalidated.into_iter().map(|loc| loc.to_string()).collect(),
+                )),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
         fn __enter__(&mut self) {
             // We are already running a background runtime. Do nothing.
             if self.cancel.is_some() {

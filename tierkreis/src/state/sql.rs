@@ -6,7 +6,7 @@ These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env::{self, home_dir},
     fmt::Debug,
     sync::Arc,
@@ -39,11 +39,11 @@ use crate::{
         interface::{RuntimeWatchState, WorkflowRunStateSummary},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
-            add_run_attempt_metadata, get_workflow_run_summary, insert_workflow,
-            insert_workflow_run, insert_workflow_run_inputs, list_active_runs,
-            list_workflow_run_summaries, read_node_state, read_node_states,
-            read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_inputs,
-            update_node_state, update_workflow_run,
+            add_run_attempt_metadata, copy_node_states, get_workflow_run_summary, insert_workflow,
+            insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs,
+            list_active_runs, list_workflow_run_summaries, max_attempt, read_node_state,
+            read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
+            read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
@@ -402,6 +402,40 @@ impl RuntimeState for SqliteRuntimeState {
         }
         .boxed()
     }
+
+    fn new_attempt(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let run_id_str = run_id.to_string();
+            let next_attempt_i32 = max_attempt(&mut conn, &run_id_str)
+                .await?
+                .ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?
+                + 1;
+            insert_workflow_run_attempt(&mut conn, &run_id_str, next_attempt_i32).await?;
+            let next_attempt = u32::try_from(next_attempt_i32).into_diagnostic()?;
+
+            let run = read_workflow_run(&mut conn, run_id, next_attempt).await?;
+            let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
+
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, next_attempt));
+            });
+
+            let state = SqliteWorkflowRunState {
+                pool: self.pool.clone(),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt: next_attempt,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
+        }
+        .boxed()
+    }
 }
 
 /// [`SqlWorkflowRunState`] is an implementation of [`WorkflowRunState`] that shares storage
@@ -541,6 +575,29 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         async move {
             let mut conn = self.get_conn().await?;
             read_run_attempt_metadata(&mut conn, self.run_id, self.attempt).await
+        }
+        .boxed()
+    }
+
+    fn copy_node_states_from<'a>(
+        &'a self,
+        source: &'a dyn WorkflowRunState,
+        exclude: &'a HashSet<Location>,
+        truncate: &'a HashSet<Location>,
+    ) -> BoxFuture<'a, miette::Result<()>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let source_attempt = i32::try_from(source.attempt()).into_diagnostic()?;
+            let dest_attempt = i32::try_from(self.attempt).into_diagnostic()?;
+            copy_node_states(
+                &mut conn,
+                &source.run_id().to_string(),
+                source_attempt,
+                dest_attempt,
+                exclude,
+                truncate,
+            )
+            .await
         }
         .boxed()
     }
