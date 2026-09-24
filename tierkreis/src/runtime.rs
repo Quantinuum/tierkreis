@@ -623,6 +623,7 @@ impl Runtime {
 
     /// Restart one or more `Task` nodes within a workflow run.
     ///
+    /// If `locs` is empty, all errored node locs from the source attempt are restarted.
     /// Creates a new attempt for `run_id`, one greater than the highest existing
     /// attempt, copying forward all node state except: `locs` and everything that
     /// (transitively) depends on them, which are fully invalidated and will be
