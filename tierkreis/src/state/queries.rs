@@ -2,6 +2,7 @@
 This module defines the queries for reading the workflow state from the `SQlite` database.
 */
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::BuildHasher;
 
 use bitvec::vec::BitVec;
@@ -903,4 +904,159 @@ pub async fn list_active_runs(
             Ok((run_id, attempt))
         })
         .collect()
+}
+
+/// Return the highest existing attempt number for a given `run_id`, if any.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or the query fails.
+pub async fn max_attempt(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+) -> miette::Result<Option<i32>> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    wra::workflow_run_attempts
+        .filter(wra::workflow_run_id.eq(run_id))
+        .select(diesel::dsl::max(wra::attempt))
+        .first(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to query max attempt")
+}
+
+/// Insert a new `workflow_run_attempts` row for an existing run with an explicit
+/// attempt number.
+///
+/// # Errors
+///
+/// Returns an error when the insert fails.
+pub async fn insert_workflow_run_attempt(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+) -> miette::Result<()> {
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+
+    let now = chrono::Utc::now().naive_utc();
+    diesel::insert_into(wra::workflow_run_attempts)
+        .values((
+            wra::workflow_run_id.eq(run_id),
+            wra::attempt.eq(attempt),
+            wra::started_time.eq(Some(now)),
+        ))
+        .execute(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to insert new workflow run attempt")?;
+    Ok(())
+}
+
+/// Copy node states (and their outputs) from `source_attempt` to `dest_attempt` of
+/// the same `run_id`.
+///
+/// Locations in `exclude` are skipped entirely.
+/// Locations in `truncate` are copied with times and outputs cleared.
+/// See `copy_node_states_from` for more details.
+///
+/// # Errors
+///
+/// Returns an error when the connection pool cannot be accessed or a query fails.
+pub async fn copy_node_states(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    source_attempt: i32,
+    dest_attempt: i32,
+    exclude: &HashSet<Location>,
+    truncate: &HashSet<Location>,
+) -> miette::Result<()> {
+    use crate::state::schema::node_outputs::dsl as no;
+    use crate::state::schema::node_states::dsl as ns;
+
+    conn.transaction(|conn| {
+        async move {
+            let rows: Vec<NodeState> = ns::node_states
+                .filter(ns::run_id.eq(run_id))
+                .filter(ns::attempt.eq(source_attempt))
+                .get_results(conn)
+                .await?;
+
+            for row in rows {
+                if exclude.contains(&row.node_location) {
+                    continue;
+                }
+                let is_truncated = truncate.contains(&row.node_location);
+                // copy over node state TODO: clarify which times to retain.
+                let new_row = if is_truncated {
+                    UpsertNodeState {
+                        run_id: run_id.to_string(),
+                        attempt: dest_attempt,
+                        node_location: row.node_location.clone(),
+                        scheduled_time: row.scheduled_time,
+                        queued_time: row.queued_time,
+                        running_time: row.running_time,
+                        complete_time: None,
+                        cancelled_time: None,
+                        error_time: None,
+                        cond: row.cond, // retained to preserve conditional state even when truncated
+                        loop_index: row.loop_index, // retained to preserve loop index even when truncated
+                        map_size: row.map_size,
+                        map_completed: None, // reset to indicate no progress on the map
+                        handle: None,
+                        error: None,
+                        error_detail: None,
+                    }
+                } else {
+                    UpsertNodeState {
+                        run_id: run_id.to_string(),
+                        attempt: dest_attempt,
+                        node_location: row.node_location.clone(),
+                        scheduled_time: row.scheduled_time,
+                        queued_time: row.queued_time,
+                        running_time: row.running_time,
+                        complete_time: row.complete_time,
+                        cancelled_time: row.cancelled_time,
+                        error_time: row.error_time,
+                        cond: row.cond,
+                        loop_index: row.loop_index,
+                        map_size: row.map_size,
+                        map_completed: row.map_completed.clone(),
+                        handle: row.handle.clone(),
+                        error: row.error.clone(),
+                        error_detail: row.error_detail.clone(),
+                    }
+                };
+
+                let new_id: i32 = diesel::insert_into(ns::node_states)
+                    .values(new_row)
+                    .returning(ns::id)
+                    .get_result(conn)
+                    .await?;
+                // copy over node outputs to the new node state
+                if !is_truncated {
+                    let outputs: Vec<NodeOutput> =
+                        NodeOutput::belonging_to(&row).get_results(conn).await?;
+                    for output in outputs {
+                        diesel::insert_into(no::node_outputs)
+                            .values((
+                                no::node_state_id.eq(new_id),
+                                no::name.eq(output.name),
+                                no::asset_kind.eq(output.asset_kind),
+                                no::storage_name.eq(output.storage_name),
+                                no::asset_key.eq(output.asset_key),
+                            ))
+                            .execute(conn)
+                            .await?;
+                    }
+                }
+            }
+
+            Ok::<_, diesel::result::Error>(())
+        }
+        .scope_boxed()
+    })
+    .await
+    .into_diagnostic()
+    .wrap_err("Failed to copy node states to new attempt")
 }

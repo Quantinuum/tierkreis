@@ -141,6 +141,13 @@ pub trait RuntimeState: Debug + Send + Sync {
     fn list_workflow_run_summaries(
         &self,
     ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>>;
+
+    /// Create a new attempt for an existing `run_id`
+    ///
+    /// attempt(new) = max(attempts) + 1, should always be sequential
+    /// This can be a partial restart, e.g., if some nodes errored.
+    fn new_attempt(&self, run_id: Uuid)
+    -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.
@@ -172,4 +179,16 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.
     fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
+
+    /// Copy node state (and outputs) from `source` into `self`.
+    ///
+    /// Locations in `exclude` are skipped to reset them
+    /// Locations in `truncate` retain structural state such as `cond` and `loop_index` is
+    /// map progress is reset
+    fn copy_node_states_from<'a>(
+        &'a self,
+        source: &'a dyn WorkflowRunState,
+        exclude: &'a HashSet<Location>,
+        truncate: &'a HashSet<Location>,
+    ) -> BoxFuture<'a, miette::Result<()>>;
 }
