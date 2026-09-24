@@ -170,6 +170,31 @@ impl Location {
         Location(components)
     }
 
+    /// Split off the last [`LocationComponent`], returning the parent [`Location`]
+    /// and the component, or `None` if this is the root Location.
+    #[must_use]
+    pub fn split_last(&self) -> Option<(Location, LocationComponent)> {
+        let mut components = self.0.clone();
+        let last = components.pop()?;
+        Some((Location(components), last))
+    }
+
+    /// Returns the ancestor Locations of `self` that end in a N* component
+    #[must_use]
+    pub fn node_ancestors(&self) -> Vec<Location> {
+        let mut ancestors = Vec::new();
+        let mut prefix = Vec::new();
+        let mut components = self.0.iter();
+        components.next_back(); // self is not its ancestor
+        for component in components {
+            prefix.push(component.clone());
+            if let LocationComponent::Node { .. } = component {
+                ancestors.push(Location(prefix.clone()));
+            }
+        }
+        ancestors
+    }
+
     /// Iterate over the [`LocationComponent`]s that make up this [`Location`].
     pub fn components(&self) -> impl Iterator<Item = &LocationComponent> {
         self.0.iter()
