@@ -620,6 +620,72 @@ impl Runtime {
         let node_states = workflow_state.read_many(&mut locations).await?;
         Ok(node_states)
     }
+
+    /// Restart one or more `Task` nodes within a workflow run.
+    ///
+    /// Creates a new attempt for `run_id`, one greater than the highest existing
+    /// attempt, copying forward all node state except: `locs` and everything that
+    /// (transitively) depends on them, which are fully invalidated and will be
+    /// re-run from scratch; and their ancestor container nodes (`Eval`/`Loop`/
+    /// `Map`/`Output`), which are partially invalidated (their aggregated
+    /// completion/outputs are cleared, but they otherwise keep their state).
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if `locs` is empty, cannot be resolved, or does not refer
+    /// to a `Task` node.
+    /// TODO: Debatable whether this should always refer to the latest attempt of not if we want to simplify.
+    pub async fn restart_task(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        locs: Vec<Location>,
+    ) -> miette::Result<(u32, Vec<Location>)> {
+        if locs.is_empty() {
+            // TODO: could relay empty to do complete new run
+            return Err(miette!("Must specify at least one Location to restart"));
+        }
+
+        let source_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let workflow_id = source_state.workflow_id();
+        let (_workflow_name, workflow_graph) = self.state.load_workflow(workflow_id).await?;
+        let workflow_graph = Arc::new(workflow_graph);
+
+        let mut exclude = HashSet::new();
+        let mut truncate = HashSet::new();
+
+        for loc in &locs {
+            let (graph, _, node) = self
+                .orchestrator
+                .resolve_location(&source_state, &workflow_graph, loc)
+                .await?;
+            if !matches!(
+                graph.node_definition(node),
+                Some(NodeDefinition::Task { .. })
+            ) {
+                return Err(miette!("Can only restart Task nodes, {loc} is not a Task"));
+            }
+
+            exclude.insert(loc.clone());
+            exclude.extend(
+                self.orchestrator
+                    .dependents(&source_state, &workflow_graph, loc)
+                    .await?,
+            );
+            truncate.extend(loc.node_ancestors());
+        }
+        truncate.retain(|loc| !exclude.contains(loc));
+
+        let new_state = self.state.new_attempt(run_id).await?;
+        new_state
+            .copy_node_states_from(&*source_state, &exclude, &truncate)
+            .await?;
+
+        let mut invalidated: Vec<Location> = exclude.into_iter().collect();
+        invalidated.sort_by_key(ToString::to_string);
+
+        Ok((new_state.attempt(), invalidated))
+    }
 }
 
 async fn executor_registry_from_config(
