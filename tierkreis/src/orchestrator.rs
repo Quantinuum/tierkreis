@@ -38,7 +38,7 @@ use crate::{
         interface::{TaskHandle, TaskPlan},
     },
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
-    location::Location,
+    location::{Location, LocationComponent},
     state::{WorkflowRunState, interface::NodeState},
 };
 
