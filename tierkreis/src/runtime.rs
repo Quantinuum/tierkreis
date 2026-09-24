@@ -632,8 +632,8 @@ impl Runtime {
     ///
     /// # Errors
     ///
-    /// Will return Err if `locs` is empty, cannot be resolved, or does not refer
-    /// to a `Task` node.
+    // Will return Err if there are no errored nodes, a location
+    /// cannot be resolved, or a location does not refer to a `Task` node.
     /// TODO: Debatable whether this should always refer to the latest attempt of not if we want to simplify.
     pub async fn restart_task(
         &self,
@@ -641,12 +641,16 @@ impl Runtime {
         attempt: u32,
         locs: Vec<Location>,
     ) -> miette::Result<(u32, Vec<Location>)> {
-        if locs.is_empty() {
-            // TODO: could relay empty to do complete new run
-            return Err(miette!("Must specify at least one Location to restart"));
-        }
-
         let source_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let locs = if locs.is_empty() {
+            let errored_locations = source_state.summary().await?.errored_locations;
+            if errored_locations.is_empty() {
+                return Err(miette!("No errored nodes to restart"));
+            }
+            errored_locations
+        } else {
+            locs
+        };
         let workflow_id = source_state.workflow_id();
         let (_workflow_name, workflow_graph) = self.state.load_workflow(workflow_id).await?;
         let workflow_graph = Arc::new(workflow_graph);

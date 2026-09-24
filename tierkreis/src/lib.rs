@@ -378,13 +378,14 @@ mod tierkreis {
             }
         }
 
-        #[pyo3(signature = (run_id, locations, attempt=0))]
+        #[pyo3(signature = (run_id, locations=None, attempt=0))]
         async fn restart_task(
             &self,
             run_id: Uuid,
-            locations: Vec<String>,
+            locations: Option<Vec<String>>,
             attempt: u32,
         ) -> PyResult<(u32, Vec<String>)> {
+            let locations = locations.unwrap_or_default();
             let inner = self.inner.clone();
             let locations = locations
                 .iter()
