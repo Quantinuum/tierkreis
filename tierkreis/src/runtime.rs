@@ -31,6 +31,7 @@ use crate::{
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
+    resource_profiles::ResourceProfiles,
     state::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
@@ -47,9 +48,59 @@ pub struct RuntimeConfig {
     default_storage_name: String,
     default_executor_name: String,
     logging_config: Option<LoggingConfig>,
+    #[serde(default)]
+    resources: ResourceSettings,
+}
+
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+struct ResourceSettings {
+    environment: Option<String>,
+    #[serde(default)]
+    paths: Vec<PathBuf>,
+}
+
+impl ResourceSettings {
+    // TODO: unify the default paths once #667 is merged
+    fn load_profiles(&self) -> miette::Result<Option<ResourceProfiles>> {
+        let environment = std::env::var("TIERKREIS_ENV")
+            .ok()
+            .or_else(|| self.environment.clone());
+        let Some(environment) = environment else {
+            return Ok(None);
+        };
+
+        let mut roots = Vec::new();
+        let project_root = crate::config::discover_config_path()
+            .and_then(|path| path.parent().map(PathBuf::from))
+            .or_else(|| std::env::current_dir().ok());
+        if let Some(project_root) = &project_root {
+            roots.push(project_root.join("resource_profiles"));
+        }
+        roots.extend(self.paths.iter().map(|path| match &project_root {
+            Some(root) if path.is_relative() => root.join(path),
+            _ => path.clone(),
+        }));
+        roots.push(
+            home_dir()
+                .unwrap_or_else(|| "/tmp".into())
+                .join(".tierkreis/resource_profiles"),
+        );
+        if let Some(paths) = std::env::var_os("TKR_RESOURCE_PATH") {
+            roots.extend(std::env::split_paths(&paths));
+        }
+
+        ResourceProfiles::load(&roots, &environment).map(Some)
+    }
 }
 
 impl RuntimeConfig {
+    /// Select a deployment profile for this runtime configuration.
+    #[must_use]
+    pub fn with_profile(mut self, profile: String) -> Self {
+        self.resources.environment = Some(profile);
+        self
+    }
+
     /// Construct a pre-defined config that keeps state in memory and can only
     /// run built-in tasks that also run in memory.
     #[must_use]
@@ -70,6 +121,7 @@ impl RuntimeConfig {
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
             logging_config: Some(LoggingConfig::default()),
+            resources: ResourceSettings::default(),
         }
     }
 
@@ -121,6 +173,7 @@ impl Default for RuntimeConfig {
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
             logging_config: Some(LoggingConfig::default()),
+            resources: ResourceSettings::default(),
         }
     }
 }
@@ -222,13 +275,16 @@ impl Runtime {
             executor_registry_from_config(&asset_storage_registry, config).await?;
 
         init_logging_and_tracing(&config.logging_config);
-        let orchestrator = Orchestrator::try_new(
+        let mut orchestrator = Orchestrator::try_new(
             &asset_storage_registry,
             &executor_registry,
             &config.default_storage_name,
             &config.default_executor_name,
         )
         .await?;
+        if let Some(profiles) = config.resources.load_profiles()? {
+            orchestrator.set_profiles(profiles);
+        }
         let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
             RuntimeStateConfig::Sqlite { memory: true, .. } => {

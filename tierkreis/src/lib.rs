@@ -14,6 +14,7 @@ pub mod graph;
 pub mod location;
 pub mod monitoring;
 pub mod orchestrator;
+pub mod resource_profiles;
 pub mod runtime;
 pub mod server;
 pub mod state;
@@ -195,8 +196,13 @@ mod tierkreis {
     }
 
     #[pyfunction]
-    async fn new_default() -> PyResult<PyRuntime> {
-        new_from_config(PyRuntimeConfig(RuntimeConfig::default())).await
+    #[pyo3(signature = (profile=None))]
+    async fn new_default(profile: Option<String>) -> PyResult<PyRuntime> {
+        let config = match profile {
+            Some(profile) => RuntimeConfig::default().with_profile(profile),
+            None => RuntimeConfig::default(),
+        };
+        new_from_config(PyRuntimeConfig(config)).await
     }
 
     #[pyfunction]
