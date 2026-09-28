@@ -1,0 +1,11 @@
+extends = "cpu_only"
+executor = "slurm"
+max_concurrency = 2
+cpu = "500m"
+memory = "1536Mi"
+
+[native.slurm]
+"--exclusive" = true
+
+[native.subprocess]
+unused = "other"

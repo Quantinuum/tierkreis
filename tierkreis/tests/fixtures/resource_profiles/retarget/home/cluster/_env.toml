@@ -1,0 +1,5 @@
+extends = "base"
+default_context = "cpu_only"
+
+[workers.tkr-qulacs-worker]
+context = "cpu_only"

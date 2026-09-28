@@ -1,0 +1,2 @@
+[contexts]
+cpu_only = "a100.toml"
