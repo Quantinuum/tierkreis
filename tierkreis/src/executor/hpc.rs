@@ -36,15 +36,16 @@ use crate::{
     },
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
+    resource_profiles::Quantity,
 };
 
 #[derive(serde::Deserialize, Default)]
 #[serde(default)]
 struct RawResourceRequest {
     nodes: Option<u32>,
-    cpu: Option<f64>,
-    memory: Option<String>,
-    gpu: Option<u32>,
+    cpu: Option<Quantity>,
+    memory: Option<Quantity>,
+    gpu: Option<Quantity>,
     walltime: Option<String>,
     queue: Option<String>,
     account: Option<String>,
@@ -56,6 +57,7 @@ struct RawResourceRequest {
     container: Option<ContainerSpec>,
     extra_scheduler_args: HashMap<String, Option<String>>,
     extras: HashMap<String, serde_json::Value>,
+    native: HashMap<String, serde_json::Value>,
 }
 
 struct ResourceRequest {
@@ -78,31 +80,9 @@ impl TryFrom<HashMap<String, serde_json::Value>> for ResourceRequest {
             serde_json::from_value(serde_json::Value::Object(resources.into_iter().collect()))
                 .into_diagnostic()
                 .wrap_err("Invalid HPC resource specification")?;
-        let cores_per_node = raw
-            .cpu
-            .map(|cpu| {
-                if cpu.is_finite() && cpu > 0.0 && cpu.fract() == 0.0 && cpu <= f64::from(u32::MAX)
-                {
-                    format!("{cpu:.0}").parse::<u32>().into_diagnostic()
-                } else {
-                    Err(miette!(
-                        "HPC cpu must be a positive whole number of cores per node"
-                    ))
-                }
-            })
-            .transpose()?;
-        let memory_per_node_gb = raw
-            .memory
-            .as_deref()
-            .map(|memory| {
-                let gib = memory
-                    .strip_suffix("Gi")
-                    .ok_or_else(|| miette!("HPC memory must use Gi units"))?;
-                gib.parse::<u32>()
-                    .into_diagnostic()
-                    .wrap_err("Invalid HPC memory quantity")
-            })
-            .transpose()?;
+        let cores_per_node = raw.cpu.map(|cpu| cpu.count()).transpose()?;
+        let memory_per_node_gb = raw.memory.map(|memory| memory.gib()).transpose()?;
+        let gpus_per_node = raw.gpu.map(|gpu| gpu.count()).transpose()?;
         let mut extra_scheduler_args = raw.extra_scheduler_args;
         if let Some(flags) = raw.extras.get("flags") {
             let flags: Vec<String> = serde_json::from_value(flags.clone())
@@ -112,13 +92,22 @@ impl TryFrom<HashMap<String, serde_json::Value>> for ResourceRequest {
                 extra_scheduler_args.insert(flag, None);
             }
         }
+        for (flag, value) in raw.native {
+            let argument = match value {
+                serde_json::Value::Bool(false) => continue,
+                serde_json::Value::Bool(true) | serde_json::Value::Null => None,
+                serde_json::Value::String(text) => Some(text),
+                other => Some(other.to_string()),
+            };
+            extra_scheduler_args.insert(flag, argument);
+        }
 
         Ok(Self {
             resources: HPCResourceSpec {
-                nodes: raw.nodes.unwrap_or_default(),
+                nodes: raw.nodes.unwrap_or(1),
                 cores_per_node,
                 memory_per_node_gb,
-                gpus_per_node: raw.gpu,
+                gpus_per_node,
                 qpus: (!raw.qpus.is_empty()).then_some(raw.qpus),
                 gres: (!raw.gres.is_empty()).then_some(raw.gres),
             },
@@ -774,6 +763,41 @@ mod tests {
 
         assert_eq!(request.resources.cores_per_node, Some(4));
         assert_eq!(request.extra_scheduler_args["--verbose"], None);
+        Ok(())
+    }
+
+    #[test]
+    fn resource_request_defaults_to_one_node() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::new())?;
+        assert_eq!(request.resources.nodes, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn resource_request_converts_quantities_and_native_flags() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::from([
+            ("cpu".into(), json!("1500m")),
+            ("memory".into(), json!("1536Mi")),
+            ("gpu".into(), json!("500m")),
+            ("max_concurrency".into(), json!(2)),
+            (
+                "native".into(),
+                json!({"--exclusive": true, "--partition": "gpu", "--skip": false, "--priority": 2}),
+            ),
+        ]))?;
+        assert_eq!(request.resources.cores_per_node, Some(2));
+        assert_eq!(request.resources.memory_per_node_gb, Some(2));
+        assert_eq!(request.resources.gpus_per_node, Some(1));
+        assert_eq!(request.extra_scheduler_args["--exclusive"], None);
+        assert_eq!(
+            request.extra_scheduler_args["--partition"].as_deref(),
+            Some("gpu")
+        );
+        assert_eq!(
+            request.extra_scheduler_args["--priority"].as_deref(),
+            Some("2")
+        );
+        assert!(!request.extra_scheduler_args.contains_key("--skip"));
         Ok(())
     }
 
