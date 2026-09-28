@@ -134,7 +134,7 @@ pub async fn build_loop_py_graph(
             id: iter_loc.to_string(),
             status,
             function_name: format!("L{i}"),
-            node_type: NodeDefinition::Eval {}.node_type(),
+            node_type: NodeDefinition::Eval { context: None }.node_type(),
             node_location: iter_loc.to_string(),
             outputs: output_names.clone(),
             inputs: Vec::new(),
@@ -155,6 +155,7 @@ pub async fn build_loop_py_graph(
             } else {
                 String::new()
             },
+            context: None,
         });
     }
 
@@ -238,7 +239,7 @@ pub async fn build_map_py_graph(
             id: elem_loc.to_string(),
             status,
             function_name: format!("M{i}"),
-            node_type: NodeDefinition::Eval {}.node_type(),
+            node_type: NodeDefinition::Eval { context: None }.node_type(),
             node_location: elem_loc.to_string(),
             outputs: output_names.clone(),
             inputs: Vec::new(),
@@ -253,6 +254,7 @@ pub async fn build_map_py_graph(
             } else {
                 String::new()
             },
+            context: None,
         });
     }
 
@@ -385,6 +387,7 @@ pub async fn build_py_graph(
             finished_time: state
                 .complete_time
                 .map_or_else(String::new, |t| t.to_rfc3339()),
+            context: def.context().map(str::to_owned),
         });
     }
 
@@ -452,11 +455,11 @@ pub async fn load_graph(
                     .ok_or_else(|| miette::miette!("Node {node:?} not found in graph"))?;
 
                 match def {
-                    NodeDefinition::Eval {} => {
+                    NodeDefinition::Eval { .. } => {
                         prefix = node_loc;
                         current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
                     }
-                    NodeDefinition::Loop {} => {
+                    NodeDefinition::Loop { .. } => {
                         // If the next component is a LoopIndex, descend and continue walking.
                         // Otherwise this is the terminal location: return iteration placeholders.
                         let next_is_loop_index = i + 1 < n
