@@ -187,7 +187,10 @@ mod tierkreis {
             } else {
                 "Unknown".to_string()
             };
-            Self { status, execution_context: node_state.execution_context }
+            Self {
+                status,
+                execution_context: node_state.execution_context,
+            }
         }
     }
 

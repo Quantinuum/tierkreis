@@ -577,7 +577,9 @@ impl SqliteWorkflowRunState {
                     ..Default::default()
                 };
                 match event.status {
-                    NodeStatus::Scheduled { ref execution_context } => {
+                    NodeStatus::Scheduled {
+                        ref execution_context,
+                    } => {
                         row.scheduled_time = Some(now);
                         row.execution_context.clone_from(execution_context);
                     }

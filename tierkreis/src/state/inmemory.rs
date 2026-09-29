@@ -442,7 +442,9 @@ fn handle_node_event(
     for (idx, loc) in node_event.locs.iter().enumerate() {
         let node_state = run_state.nodes.entry(loc.clone()).or_default();
         match node_event.status {
-            crate::event::NodeStatus::Scheduled { ref execution_context } => {
+            crate::event::NodeStatus::Scheduled {
+                ref execution_context,
+            } => {
                 if node_state.scheduled_time.is_none() {
                     node_state.scheduled_time = Some(now);
                 }
