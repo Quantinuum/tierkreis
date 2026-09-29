@@ -442,9 +442,12 @@ fn handle_node_event(
     for (idx, loc) in node_event.locs.iter().enumerate() {
         let node_state = run_state.nodes.entry(loc.clone()).or_default();
         match node_event.status {
-            crate::event::NodeStatus::Scheduled => {
+            crate::event::NodeStatus::Scheduled { ref execution_context } => {
                 if node_state.scheduled_time.is_none() {
                     node_state.scheduled_time = Some(now);
+                }
+                if execution_context.is_some() {
+                    node_state.execution_context.clone_from(execution_context);
                 }
             }
             crate::event::NodeStatus::Queued { ref handle } => {
@@ -571,7 +574,9 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
             }))
             .await?;
 
@@ -601,13 +606,16 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {
+                    execution_context: Some("cpu_only".to_string()),
+                },
             }))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
+        assert_eq!(node_state.execution_context.as_deref(), Some("cpu_only"));
 
         Ok(())
     }

@@ -206,6 +206,8 @@ impl ExecutionContext {
 /// Executor placement and requirements for a single task.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResolvedContext {
+    /// Name of the context selected for the task, if any.
+    pub name: Option<String>,
     /// Executor selected by the profile, if any.
     pub executor: Option<String>,
     /// Resource requirements.
@@ -288,9 +290,11 @@ impl ResourceProfiles {
             .or(self.default.as_deref());
         match name {
             Some(name) => {
-                self.profiles.get(name).cloned().ok_or_else(|| {
+                let mut context = self.profiles.get(name).cloned().ok_or_else(|| {
                     miette!("Unknown execution context `{name}` for worker `{worker}`")
-                })
+                })?;
+                context.name = Some(name.to_owned());
+                Ok(context)
             }
             None => Ok(ResolvedContext::default()),
         }
@@ -450,6 +454,7 @@ fn resolve_context(name: &str, raw: &HashMap<String, toml::Value>) -> Result<Res
     }
 
     Ok(ResolvedContext {
+        name: None,
         executor,
         resources: fields.into_iter().collect(),
         environment,
@@ -554,6 +559,7 @@ mod tests {
     fn selected_executor_receives_inherited_native_settings() -> Result<()> {
         let profiles = ResourceProfiles::load(&[profile_fixtures()], "cluster")?;
         let context = profiles.resolve("tkr-qulacs-worker", None)?;
+        assert_eq!(context.name.as_deref(), Some("gpu_large"));
         assert_eq!(context.executor.as_deref(), Some("slurm"));
         assert_eq!(context.resources["cpu"], "500m");
         assert_eq!(context.resources["memory"], "1536Mi");

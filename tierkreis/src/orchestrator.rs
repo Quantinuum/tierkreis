@@ -30,7 +30,7 @@ use crate::{
     event::{
         EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
         send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
-        send_workflow_run_complete, send_workflow_run_errored,
+        send_scheduled, send_workflow_run_complete, send_workflow_run_errored,
     },
     executor::{
         ExecutorRegistry,
@@ -68,7 +68,7 @@ pub enum ActionKind {
         /// A persisted handle used to reattach to a Task that was already
         /// dispatched to an Executor before a crash/restart, if any.
         task_handle: Option<TaskHandle>,
-        /// Arbitrary resource requirements used for executor selection.
+        /// Resolved execution context and resource requirements.
         resources: Box<ResolvedContext>,
     },
     /// Mark the node as switching with a particular value.
@@ -107,6 +107,7 @@ pub enum ActionKind {
 #[derive(Debug, Clone, Default)]
 struct ActionPlan {
     tasks: HashMap<String, Vec<TaskPlan>>,
+    scheduled_tasks: Vec<(Location, Option<String>)>,
     switching: Vec<(Location, bool)>,
     looping: Vec<(Location, u32)>,
     mapping: Vec<(Location, usize)>,
@@ -523,7 +524,9 @@ impl Orchestrator {
             .workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: nodes.map(|n| context.parent_loc.with_node(*n)).collect(),
-                status: crate::event::NodeStatus::Scheduled {},
+                status: crate::event::NodeStatus::Scheduled {
+                    execution_context: None,
+                },
             }))
             .await?;
 
@@ -1159,6 +1162,8 @@ impl Orchestrator {
                     resources,
                 } => {
                     let resolved = *resources;
+                    plan.scheduled_tasks
+                        .push((loc.clone(), resolved.name.clone()));
                     plan.tasks
                         .entry(
                             resolved
@@ -1211,6 +1216,17 @@ impl Orchestrator {
         if !plan.node_complete.is_empty() {
             let (locs, outputs) = plan.node_complete.into_iter().unzip();
             send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
+        }
+
+        for (loc, execution_context) in plan.scheduled_tasks {
+            send_scheduled(
+                &mut event_sender,
+                workflow_run_id,
+                attempt,
+                loc,
+                execution_context,
+            )
+            .await?;
         }
 
         for (loc, size) in plan.mapping {
