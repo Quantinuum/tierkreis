@@ -38,10 +38,14 @@ def runtime_e2e_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(PROFILE_ENV_VAR, raising=False)
 
 
+profiles = ["runtime_e2e", "runtime_e2e2"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("runtime_e2e_profile")
-async def test_nested_profile_routes_map_tasks_to_memory() -> None:
-    runtime = await new_default("runtime_e2e")
+@pytest.mark.parametrize("profile", profiles)
+async def test_nested_profile_routes_map_tasks_to_memory(profile: str) -> None:
+    runtime = await new_default(profile)
     with runtime:
         workflow_id = await runtime.save_workflow(
             "nested_profile", nested_builtin_map()
@@ -70,8 +74,9 @@ async def test_nested_profile_routes_map_tasks_to_memory() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("runtime_e2e_profile")
-async def test_profile_env_reaches_subprocess_worker() -> None:
-    runtime = await new_default("runtime_e2e")
+@pytest.mark.parametrize("profile", profiles)
+async def test_profile_env_reaches_subprocess_worker(profile: str) -> None:
+    runtime = await new_default(profile)
     with runtime:
         workflow_id = await runtime.save_workflow("profile_env", read_profile_env())
         run_id = await runtime.start_new_run(workflow_id, {"value": PROFILE_ENV_VAR})
@@ -80,6 +85,6 @@ async def test_profile_env_reaches_subprocess_worker() -> None:
         states = await runtime.debug_read_node_states(run_id, 0, ["N1"])
 
     # Only set via the profile's [env] table, so this also proves the subprocess executor ran it.
-    assert outputs == "from-runtime-e2e-profile"
+    assert outputs == f"from-{profile.replace('_', '-')}-profile"
     assert states["N1"].execution_context == "subprocess"
     assert PROFILE_ENV_VAR not in os.environ
