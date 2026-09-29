@@ -115,6 +115,7 @@ pub struct NodeState {
     pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub execution_context: Option<String>,
 }
 
 #[derive(Insertable, AsChangeset, Default, Debug)]

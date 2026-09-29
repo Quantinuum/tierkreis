@@ -427,6 +427,7 @@ pub async fn read_node_state(
             error_detail: db_node.error_detail.clone(),
             outputs,
             handle,
+            execution_context: db_node.execution_context.clone(),
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
@@ -508,6 +509,7 @@ pub async fn read_node_states(
                 error_detail: db_node.error_detail.clone(),
                 outputs,
                 handle,
+                execution_context: db_node.execution_context.clone(),
             },
         );
     }

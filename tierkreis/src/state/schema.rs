@@ -27,9 +27,10 @@ diesel::table! {
         loop_index -> Nullable<Integer>,
         map_size -> Nullable<Integer>,
         map_completed -> Nullable<Binary>,
-        handle -> Nullable<Text>,
         error -> Nullable<Text>,
         error_detail -> Nullable<Text>,
+        handle -> Nullable<Text>,
+        execution_context -> Nullable<Text>,
     }
 }
 
