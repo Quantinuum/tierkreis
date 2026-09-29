@@ -1,0 +1,6 @@
+executor = "memory"
+cpu = 2
+modules = ["openmpi/5", "legacy"]
+
+[native.slurm]
+"--exclusive" = true

@@ -1,0 +1,5 @@
+executor = "subprocess"
+cpu = 2
+
+[env]
+TKR_PROFILE_MARKER = "from-runtime-e2e-profile"

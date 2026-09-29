@@ -290,6 +290,10 @@ pub async fn update_node_state(
                         ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
                         ns::error_detail
                             .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
+                        ns::execution_context.eq(coalesce_text(
+                            excluded(ns::execution_context),
+                            ns::execution_context,
+                        )),
                     ))
                     .execute(conn)
                     .await?;
@@ -427,6 +431,7 @@ pub async fn read_node_state(
             error_detail: db_node.error_detail.clone(),
             outputs,
             handle,
+            execution_context: db_node.execution_context.clone(),
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
@@ -508,6 +513,7 @@ pub async fn read_node_states(
                 error_detail: db_node.error_detail.clone(),
                 outputs,
                 handle,
+                execution_context: db_node.execution_context.clone(),
             },
         );
     }

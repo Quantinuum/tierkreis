@@ -1,0 +1,6 @@
+extends = "slurm_base"
+gpu = "500m"
+modules = ["!legacy", "cuda/12"] # Remove legacy inherited from cpu_only.
+
+[native.slurm]
+"--partition" = "gpu"

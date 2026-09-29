@@ -58,6 +58,7 @@ struct BackgroundTaskPlan {
     attempt: u32,
     loc: Location,
     worker_name: String,
+    environment: HashMap<String, String>,
     output_storage_name: String,
     worker_args: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
@@ -200,7 +201,11 @@ async fn start_task(
     let worker_args_path = worker_args.path();
     let res = {
         let _enter = parent_span.enter();
-        spawn_worker(&internal_task.worker_name, worker_args_path)
+        spawn_worker(
+            &internal_task.worker_name,
+            worker_args_path,
+            &internal_task.environment,
+        )
     };
     let mut child = match res {
         Ok(child) => child,
@@ -469,9 +474,11 @@ impl SubprocessExecutor {
 fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
+    environment: &HashMap<String, String>,
 ) -> miette::Result<tokio::process::Child> {
     let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
     let mut command = Command::new(&cmd);
+    command.envs(environment);
     let cx = tracing::Span::current().context();
     inject_trace_context(&cx, &mut CommandEnvCarrier(&mut command));
 
@@ -581,6 +588,22 @@ impl Executor for SubprocessExecutor {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
+                if !task_plan.resources.is_empty() {
+                    tracing::warn!("Subprocess executor does not implement resources");
+                }
+                // TODO:
+                let environment: HashMap<String, String> = task_plan
+                    .environment
+                    .iter()
+                    .map(|(key, value)| {
+                        value
+                            .as_str()
+                            .map(|value| (key.clone(), value.to_owned()))
+                            .ok_or_else(|| {
+                                miette!("Subprocess environment `{key}` must be a string")
+                            })
+                    })
+                    .collect::<miette::Result<_>>()?;
                 let inputs = self
                     .build_inputs(&task_plan.inputs)
                     .await
@@ -630,6 +653,7 @@ impl Executor for SubprocessExecutor {
                         attempt: task_plan.attempt,
                         loc: task_plan.loc,
                         worker_name: task_plan.worker_name,
+                        environment,
                         output_storage_name,
                         worker_args,
                         outputs,

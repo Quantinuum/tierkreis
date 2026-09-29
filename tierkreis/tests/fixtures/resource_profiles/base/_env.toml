@@ -1,0 +1,2 @@
+# Abstract profiles provide shared contexts but cannot be selected directly.
+abstract = true

@@ -96,6 +96,9 @@ pub struct NodeState {
 
     /// The handle to the node
     pub handle: Option<TaskHandle>,
+
+    /// Assigned execution context for the node if any.
+    pub execution_context: Option<String>,
 }
 
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across

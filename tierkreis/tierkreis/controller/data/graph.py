@@ -29,6 +29,7 @@ class NodeMetaData(BaseModel):
 
     has_breakpoint: bool = False
     is_hidden: bool = False
+    context: str | None = None
 
 
 @dataclass

@@ -1,0 +1,9 @@
+extends = "base"
+default_context = "cpu_only"
+
+[contexts]
+gpu_large = "gpu/a100-4node.toml"
+gpu = "gpu/a100-4node.toml"
+
+[workers.tkr-qulacs-worker]
+context = "gpu_large"

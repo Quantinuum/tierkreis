@@ -154,7 +154,10 @@ pub enum RunningStateUpdate {
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeStatus {
     /// The node is scheduled to be run by the [Orchestrator].
-    Scheduled,
+    Scheduled {
+        /// Execution context selected by the [Orchestrator], if any.
+        execution_context: Option<String>,
+    },
     /// The node is queued to run using an [Executor][crate::executor::Executor].
     Queued {
         /// Unique handle to the task on the executor that is running this node.
@@ -192,6 +195,33 @@ pub type EventSender = mpsc::Sender<RuntimeEvent>;
 /// This alias is useful for [Executor][`crate::executor::Executor`] implementors who
 /// wish to forward [`Event`] messages as this type implements [`Stream`].
 pub type EventReceiver = mpsc::Receiver<RuntimeEvent>;
+
+/// Utility function to send a new [`Event`] with [`NodeStatus::Scheduled`].
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_scheduled(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+    execution_context: Option<String>,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvent(NodeEvent {
+            locs: vec![loc],
+            status: NodeStatus::Scheduled { execution_context },
+        }),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send node scheduled event")
+}
 
 /// Utility function to send a new [`Event`] with [`NodeStatus::Running`].
 ///

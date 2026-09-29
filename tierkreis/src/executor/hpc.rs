@@ -28,12 +28,100 @@ use crate::{
         send_queued, send_running,
     },
     executor::{
-        hpc::spec::{HPCResourceSpec, JobSpec, SchedulerStatus, SchedulerWrapper},
+        hpc::spec::{
+            ContainerSpec, HPCResourceSpec, JobSpec, MpiSpec, SchedulerStatus, SchedulerWrapper,
+            UserSpec,
+        },
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     },
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
+    resource_profiles::Quantity,
 };
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct RawResourceRequest {
+    nodes: Option<u32>,
+    cpu: Option<Quantity>,
+    memory: Option<Quantity>,
+    gpu: Option<Quantity>,
+    walltime: Option<String>,
+    queue: Option<String>,
+    account: Option<String>,
+    modules: Vec<String>,
+    gres: Vec<String>,
+    qpus: Vec<String>,
+    user: Option<UserSpec>,
+    mpi: Option<MpiSpec>,
+    container: Option<ContainerSpec>,
+    extra_scheduler_args: HashMap<String, Option<String>>,
+    extras: HashMap<String, serde_json::Value>,
+    native: HashMap<String, serde_json::Value>,
+}
+
+struct ResourceRequest {
+    resources: HPCResourceSpec,
+    walltime: Option<String>,
+    queue: Option<String>,
+    account: Option<String>,
+    modules: Vec<String>,
+    user: Option<UserSpec>,
+    mpi: Option<MpiSpec>,
+    container: Option<ContainerSpec>,
+    extra_scheduler_args: HashMap<String, Option<String>>,
+}
+
+impl TryFrom<HashMap<String, serde_json::Value>> for ResourceRequest {
+    type Error = miette::Report;
+
+    fn try_from(resources: HashMap<String, serde_json::Value>) -> Result<Self, Self::Error> {
+        let raw: RawResourceRequest =
+            serde_json::from_value(serde_json::Value::Object(resources.into_iter().collect()))
+                .into_diagnostic()
+                .wrap_err("Invalid HPC resource specification")?;
+        let cores_per_node = raw.cpu.map(|cpu| cpu.count()).transpose()?;
+        let memory_per_node_gb = raw.memory.map(|memory| memory.gib()).transpose()?;
+        let gpus_per_node = raw.gpu.map(|gpu| gpu.count()).transpose()?;
+        let mut extra_scheduler_args = raw.extra_scheduler_args;
+        if let Some(flags) = raw.extras.get("flags") {
+            let flags: Vec<String> = serde_json::from_value(flags.clone())
+                .into_diagnostic()
+                .wrap_err("HPC extras.flags must be a list of strings")?;
+            for flag in flags {
+                extra_scheduler_args.insert(flag, None);
+            }
+        }
+        for (flag, value) in raw.native {
+            let argument = match value {
+                serde_json::Value::Bool(false) => continue,
+                serde_json::Value::Bool(true) | serde_json::Value::Null => None,
+                serde_json::Value::String(text) => Some(text),
+                other => Some(other.to_string()),
+            };
+            extra_scheduler_args.insert(flag, argument);
+        }
+
+        Ok(Self {
+            resources: HPCResourceSpec {
+                nodes: raw.nodes.unwrap_or(1),
+                cores_per_node,
+                memory_per_node_gb,
+                gpus_per_node,
+                qpus: (!raw.qpus.is_empty()).then_some(raw.qpus),
+                gres: (!raw.gres.is_empty()).then_some(raw.gres),
+            },
+            walltime: raw.walltime,
+            queue: raw.queue,
+            account: raw.account,
+            modules: raw.modules,
+            user: raw.user,
+            mpi: raw.mpi,
+            container: raw.container,
+            extra_scheduler_args,
+        })
+    }
+}
 
 #[derive(Serialize, Deserialize, Default)]
 struct WorkerCallArgs {
@@ -492,20 +580,24 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
             .clone()
             .unwrap_or_else(|| format!("tkr-{}", task.worker_name.replace('_', "-")));
         let command = format!("{worker_command} {}", worker_args_path.display());
-        let hpc_resources = serde_json::from_value(task.resources.clone().into_iter().collect())
-            .into_diagnostic()
-            .wrap_err("Invalid HPC resource specification")?;
+        let request = ResourceRequest::try_from(task.resources.clone())?;
         let hpc_environment =
             serde_json::from_value(task.environment.clone().into_iter().collect())
                 .into_diagnostic()
                 .wrap_err("Invalid HPC environment specification")?;
-        // TODO get other JobSpec Related fields from the task.resources
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
-            walltime: "01:00:00".to_string(),
-            resources: hpc_resources,
+            walltime: request.walltime.unwrap_or_else(|| "01:00:00".to_string()),
+            resources: request.resources,
             environment: hpc_environment,
+            queue: request.queue,
+            account: request.account,
+            modules: request.modules,
+            user: request.user,
+            mpi: request.mpi,
+            container: request.container,
+            extra_scheduler_args: request.extra_scheduler_args,
             ..Default::default()
         };
         let context = tracing::Span::current().context();
@@ -657,6 +749,58 @@ mod tests {
         event::{NodeEvent, NodeStatus, WorkflowRunEvent},
         executor::{HPCExecutor, SlurmWrapper},
     };
+
+    #[test]
+    fn resource_request_ignores_unknown_keys() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::from([
+            ("cpu".to_string(), json!(4)),
+            ("future_resource".to_string(), json!(true)),
+            (
+                "extras".to_string(),
+                json!({"flags": ["--verbose"], "future": ["ignored"]}),
+            ),
+        ]))?;
+
+        assert_eq!(request.resources.cores_per_node, Some(4));
+        assert_eq!(request.extra_scheduler_args["--verbose"], None);
+        Ok(())
+    }
+
+    #[test]
+    fn resource_request_defaults_to_one_node() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::new())?;
+        assert_eq!(request.resources.nodes, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn resource_request_converts_quantities_and_native_flags() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::from([
+            ("cpu".into(), json!("1500m")),
+            ("memory".into(), json!("1536Mi")),
+            ("gpu".into(), json!("500m")),
+            ("max_concurrency".into(), json!(2)),
+            (
+                "native".into(),
+                json!({"--exclusive": true, "--partition": "gpu", "--skip": false, "--priority": 2}),
+            ),
+        ]))?;
+        assert_eq!(request.resources.cores_per_node, Some(2));
+        assert_eq!(request.resources.memory_per_node_gb, Some(2));
+        assert_eq!(request.resources.gpus_per_node, Some(1));
+        assert_eq!(request.extra_scheduler_args["--exclusive"], None);
+        assert_eq!(
+            request.extra_scheduler_args["--partition"].as_deref(),
+            Some("gpu")
+        );
+        assert_eq!(
+            request.extra_scheduler_args["--priority"].as_deref(),
+            Some("2")
+        );
+        assert!(!request.extra_scheduler_args.contains_key("--skip"));
+        Ok(())
+    }
+
     // Test that we can launch a task and listen for
     // errors when they occur
     #[tokio::test]

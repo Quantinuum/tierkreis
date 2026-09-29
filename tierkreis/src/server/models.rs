@@ -112,6 +112,18 @@ pub fn node_status_from_state(state: &NodeState) -> NodeStatus {
 }
 
 impl NodeDefinition {
+    /// Return the portable execution context explicitly attached to this node.
+    #[must_use]
+    pub fn context(&self) -> Option<&str> {
+        match self {
+            NodeDefinition::Task { context, .. }
+            | NodeDefinition::Eval { context }
+            | NodeDefinition::Loop { context }
+            | NodeDefinition::Map { context, .. } => context.as_deref(),
+            _ => None,
+        }
+    }
+
     #[must_use]
     pub fn node_type(&self) -> String {
         match self {
@@ -134,9 +146,10 @@ impl NodeDefinition {
             NodeDefinition::Task {
                 worker_name,
                 task_name,
+                ..
             } => format!("{worker_name}.{task_name}"),
-            NodeDefinition::Eval {} => "eval".to_string(),
-            NodeDefinition::Loop {} => "loop".to_string(),
+            NodeDefinition::Eval { .. } => "eval".to_string(),
+            NodeDefinition::Loop { .. } => "loop".to_string(),
             NodeDefinition::Map { .. } => "map".to_string(),
         }
     }
@@ -175,6 +188,8 @@ pub struct PyNode {
     pub started_time: String,
     /// ISO-8601 timestamp when the node finished, or `""` if not finished.
     pub finished_time: String,
+    /// Execution context context
+    pub context: Option<String>,
 }
 
 /// A directed edge in the workflow graph.

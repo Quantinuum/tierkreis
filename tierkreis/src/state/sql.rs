@@ -577,8 +577,11 @@ impl SqliteWorkflowRunState {
                     ..Default::default()
                 };
                 match event.status {
-                    NodeStatus::Scheduled => {
+                    NodeStatus::Scheduled {
+                        ref execution_context,
+                    } => {
                         row.scheduled_time = Some(now);
+                        row.execution_context.clone_from(execution_context);
                     }
                     NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
@@ -721,7 +724,9 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
             }))
             .await?;
 
@@ -754,13 +759,16 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {
                 locs: vec![Location::root()],
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {
+                    execution_context: Some("cpu_only".to_string()),
+                },
             }))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
 
         assert!(node_state.scheduled_time.is_some());
+        assert_eq!(node_state.execution_context.as_deref(), Some("cpu_only"));
 
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvent(NodeEvent {

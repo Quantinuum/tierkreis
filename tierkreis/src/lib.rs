@@ -14,6 +14,7 @@ pub mod graph;
 pub mod location;
 pub mod monitoring;
 pub mod orchestrator;
+pub mod resource_profiles;
 pub mod runtime;
 pub mod server;
 pub mod state;
@@ -128,6 +129,8 @@ mod tierkreis {
     struct PyNodeState {
         #[pyo3(get)]
         pub status: String,
+        #[pyo3(get)]
+        pub execution_context: Option<String>,
     }
 
     #[pyclass(name = "WorkflowSummary")]
@@ -184,7 +187,10 @@ mod tierkreis {
             } else {
                 "Unknown".to_string()
             };
-            Self { status }
+            Self {
+                status,
+                execution_context: node_state.execution_context,
+            }
         }
     }
 
@@ -195,8 +201,13 @@ mod tierkreis {
     }
 
     #[pyfunction]
-    async fn new_default() -> PyResult<PyRuntime> {
-        new_from_config(PyRuntimeConfig(RuntimeConfig::default())).await
+    #[pyo3(signature = (profile=None))]
+    async fn new_default(profile: Option<String>) -> PyResult<PyRuntime> {
+        let config = match profile {
+            Some(profile) => RuntimeConfig::default().with_profile(profile),
+            None => RuntimeConfig::default(),
+        };
+        new_from_config(PyRuntimeConfig(config)).await
     }
 
     #[pyfunction]
