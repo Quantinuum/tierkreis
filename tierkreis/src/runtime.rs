@@ -430,13 +430,14 @@ impl Runtime {
                             let locs = locs.iter().map(ToString::to_string).collect::<Vec<_>>();
                             // Whitespaces are added to align for LogFormat::Compact
                             match &status {
-                                NodeStatus::Scheduled => {
+                                NodeStatus::Scheduled { execution_context } => {
                                     tracing::info!(
                                         target: "tierkreis::events",
                                         workflow_id = %workflow_id,
                                         run_id = %workflow_run_id,
                                         attempt,
                                         ?locs,
+                                        ?execution_context,
                                         "node scheduled"
                                     );
                                 }

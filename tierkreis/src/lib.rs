@@ -129,6 +129,8 @@ mod tierkreis {
     struct PyNodeState {
         #[pyo3(get)]
         pub status: String,
+        #[pyo3(get)]
+        pub execution_context: Option<String>,
     }
 
     #[pyclass(name = "WorkflowSummary")]
@@ -185,7 +187,7 @@ mod tierkreis {
             } else {
                 "Unknown".to_string()
             };
-            Self { status }
+            Self { status, execution_context: node_state.execution_context }
         }
     }
 
