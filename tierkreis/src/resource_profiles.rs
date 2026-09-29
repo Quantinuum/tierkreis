@@ -629,25 +629,22 @@ mod tests {
     }
 
     #[test]
-    fn a_mapping_cannot_shadow_an_unrelated_implicit_context() -> Result<()> {
+    fn a_mapping_cannot_shadow_an_unrelated_implicit_context() {
         let root = profile_fixtures().join("mapping_collision");
         assert!(ResourceProfiles::load(&[root], "cluster").is_err());
-        Ok(())
     }
 
     #[test]
-    fn rejects_profile_and_context_cycles() -> Result<()> {
+    fn rejects_profile_and_context_cycles() {
         let root = profile_fixtures().join("cycles");
-        assert!(ResourceProfiles::load(&[root.clone()], "profile_cycle").is_err());
+        assert!(ResourceProfiles::load(std::slice::from_ref(&root), "profile_cycle").is_err());
         assert!(ResourceProfiles::load(&[root], "context_cycle").is_err());
-        Ok(())
     }
 
     #[test]
-    fn rejects_invalid_quantities_and_escaping_aliases() -> Result<()> {
+    fn rejects_invalid_quantities_and_escaping_aliases() {
         let fixtures = profile_fixtures().join("invalid_settings");
         assert!(ResourceProfiles::load(&[fixtures.join("invalid_quantities")], "local").is_err());
         assert!(ResourceProfiles::load(&[fixtures.join("escaping_alias")], "local").is_err());
-        Ok(())
     }
 }
