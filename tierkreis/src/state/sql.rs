@@ -146,7 +146,7 @@ pub async fn build_conn_pool(max_size: Option<usize>) -> miette::Result<ConnPool
 }
 
 fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
-    let fallback = crate::config::tierkreis_home_dir().join("tierkreis.sqlite");
+    let fallback = crate::config::tierkreis_home_dir().join("state.sqlite");
     if let Some(parent) = fallback.parent()
         && !parent.exists()
     {

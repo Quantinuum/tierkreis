@@ -157,8 +157,8 @@ def parse_args(
     return parser
 
 
-async def run_workflow_new(args: argparse.Namespace) -> None:
-    """Run a Tierkreis workflow using the new method."""
+async def run_workflow(args: argparse.Namespace) -> None:
+    """Run a Tierkreis workflow using the rust-based runtime method."""
     config = load_runtime_config(args.config)
     if args.verbose:
         config.set_log_level("debug")
@@ -196,4 +196,4 @@ class TierkreisRunCli:
     @staticmethod
     def execute(args: argparse.Namespace) -> None:
         """Execute the run subcommand."""
-        asyncio.run(run_workflow_new(args))
+        asyncio.run(run_workflow(args))
