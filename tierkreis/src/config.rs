@@ -14,9 +14,9 @@ use miette::{Context, IntoDiagnostic};
 use crate::runtime::RuntimeConfig;
 
 /// Default file name
-pub const CONFIG_FILE_NAME: &str = "tierkreis.toml";
+pub const CONFIG_FILE_NAME: &str = "runtime.toml";
 /// Fallback env var
-pub const CONFIG_ENV_VAR: &str = "TIERKREIS_CONFIG";
+pub const CONFIG_ENV_VAR: &str = "TKR_CONFIG";
 /// Name of the temporary files directory under the Tierkreis home directory.
 pub const TMP_DIR_NAME: &str = "tmp";
 /// Name of the default file asset storage directory un                                      der the Tierkreis home directory.
@@ -26,9 +26,11 @@ pub const ASSETS_DIR_NAME: &str = "assets";
 /// to `/tmp/.tierkreis` if the user's home directory cannot be determined.
 #[must_use]
 pub fn tierkreis_home_dir() -> PathBuf {
-    home_dir()
-        .unwrap_or_else(|| "/tmp".into())
-        .join(".tierkreis")
+    if let Some(home_dir) = home_dir() {
+        home_dir.join(".tierkreis")
+    } else {
+        "/tmp/tierkreis".into()
+    }
 }
 
 /// Locate a `RuntimeConfig` TOML file, searching:

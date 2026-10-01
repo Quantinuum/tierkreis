@@ -19,6 +19,7 @@ use crate::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
     },
+    config::tierkreis_home_dir,
     event::{NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
         Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, PbsWrapper, PjsubWrapper,
@@ -94,9 +95,7 @@ impl RuntimeConfig {
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
-        let tierkreis_dir = crate::config::tierkreis_home_dir();
-
-        let asset_dir = tierkreis_dir.join("assets");
+        let asset_dir = tierkreis_home_dir().join("assets");
         RuntimeConfig {
             asset_storage: [
                 ("memory".to_string(), AssetStorageConfig::Memory {}),

@@ -38,10 +38,14 @@ mod tierkreis {
     use uuid::Uuid;
 
     use crate::{
+        config::CONFIG_FILE_NAME,
         graph::{LegacyWorkflowGraph, WorkflowGraph},
         location::Location,
         runtime::RuntimeConfig,
     };
+
+    #[pymodule_export]
+    pub const DEFAULT_CONFIG_FILE_NAME: &str = CONFIG_FILE_NAME;
 
     #[allow(clippy::unnecessary_wraps)]
     #[pymodule_init]
@@ -234,22 +238,13 @@ mod tierkreis {
         py: Python<'_>,
         path: Option<std::path::PathBuf>,
     ) -> PyResult<PyRuntimeConfig> {
-        let config = match path {
-            Some(path) => {
-                if path.is_file() {
-                    RuntimeConfig::from_file(&path)
-                } else {
-                    crate::config::create_default_config(Some(path.clone()))
-                        .and_then(|_| RuntimeConfig::from_file(&path))
-                }
-            }
-            None => match crate::config::discover_config_path() {
-                Some(path) => RuntimeConfig::from_file(&path),
-                None => crate::config::create_default_config(None)
-                    .and_then(|path| RuntimeConfig::from_file(&path)),
-            },
+        // Check if path is some, if not try to discover one, if that fails create the default config
+        let path = match path {
+            Some(path) if path.is_file() => Ok(path),
+            None if let Some(discovered) = crate::config::discover_config_path() => Ok(discovered),
+            _ => crate::config::create_default_config(path),
         };
-        config
+        path.and_then(|p| RuntimeConfig::from_file(&p))
             .map(PyRuntimeConfig)
             .map_err(|err| convert_err(py, err))
     }

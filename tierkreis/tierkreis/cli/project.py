@@ -8,7 +8,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tierkreis._tierkreis import create_default_config, create_default_directories
+from tierkreis._tierkreis import (
+    DEFAULT_CONFIG_FILE_NAME,
+    create_default_config,
+    create_default_directories,
+)
 from tierkreis.cli.templates import (
     default_graph,
     external_worker_idl,
@@ -229,7 +233,7 @@ def run_args(args: argparse.Namespace) -> None:
                 != "y"
             ):
                 return
-        create_default_config(str(project_dir / "tierkreis.toml"))
+        create_default_config(DEFAULT_CONFIG_FILE_NAME)
         worker_name = "example_worker"
         worker_dir = Path(args.worker_directory)
         if not worker_dir.is_absolute():
