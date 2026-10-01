@@ -3,7 +3,6 @@ The runtime module defines the entrypoint to running Workflows.
 */
 use std::{
     collections::{HashMap, HashSet},
-    env::home_dir,
     hash::BuildHasher,
     path::PathBuf,
     sync::Arc,
@@ -20,6 +19,7 @@ use crate::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
     },
+    config::tierkreis_home_dir,
     event::{NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
         Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, SlurmWrapper,
@@ -38,7 +38,7 @@ use crate::{
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeConfig {
     asset_storage: HashMap<String, AssetStorageConfig>,
     executors: HashMap<String, ExecutorConfig>,
@@ -50,6 +50,13 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Override the configured logging level.
+    pub fn set_log_level(&mut self, log_level: impl Into<String>) {
+        let mut logging_config = self.logging_config.take().unwrap_or_default();
+        logging_config.set_log_level(log_level);
+        self.logging_config = Some(logging_config);
+    }
+
     /// Construct a pre-defined config that keeps state in memory and can only
     /// run built-in tasks that also run in memory.
     #[must_use]
@@ -88,11 +95,7 @@ impl RuntimeConfig {
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
-        let tierkreis_dir = home_dir()
-            .unwrap_or_else(|| "/tmp".into())
-            .join(".tierkreis");
-
-        let asset_dir = tierkreis_dir.join("assets");
+        let asset_dir = tierkreis_home_dir().join("assets");
         RuntimeConfig {
             asset_storage: [
                 ("memory".to_string(), AssetStorageConfig::Memory {}),
@@ -125,14 +128,14 @@ impl Default for RuntimeConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum AssetStorageConfig {
     Memory {},
     File { asset_dir: PathBuf },
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum ExecutorConfig {
     Memory {
@@ -155,13 +158,13 @@ enum ExecutorConfig {
     },
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum HpcSchedulerConfig {
     Slurm,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum RuntimeStateConfig {
     Memory {},
