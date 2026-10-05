@@ -228,7 +228,11 @@ mod tests {
 
         assert!(script.contains("#PBS -N tierkreis-test"));
         assert!(script.contains("#PBS -l walltime=00:15:00"));
-        assert!(script.contains("#PBS -l select=2:ncpus=4:mem=8gb:ngpus=1:mpiprocs=4"));
+        assert!(script.contains("#PBS -l nodes=2"));
+        assert!(script.contains("#PBS -l ncpus=4"));
+        assert!(script.contains("#PBS -l mem=8gb"));
+        assert!(script.contains("#PBS -l ngpus=1"));
+        assert!(script.contains("#PBS -l mpiprocs=4"));
         assert!(script.contains("mpiexec worker args.json"));
     }
 

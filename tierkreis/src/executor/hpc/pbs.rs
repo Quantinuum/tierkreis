@@ -111,7 +111,7 @@ impl PbsWrapper {
 
 impl SchedulerWrapper for PbsWrapper {
     async fn submit(&self, spec: JobSpec, script_path: &Path) -> Result<String> {
-        let scheduler = self.clone();
+        let scheduler = self;
         let script_path = script_path.to_path_buf();
         std::fs::write(&script_path, scheduler.templates.render("pbs", &spec)?)
             .into_diagnostic()?;
@@ -131,7 +131,7 @@ impl SchedulerWrapper for PbsWrapper {
     }
 
     async fn check(&self, job_ids: Vec<String>) -> Result<HashMap<String, SchedulerStatus>> {
-        let scheduler = self.clone();
+        let scheduler = self;
         if job_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -156,7 +156,7 @@ impl SchedulerWrapper for PbsWrapper {
     }
 
     async fn cancel(&self, job_id: String) -> Result<()> {
-        let scheduler = self.clone();
+        let scheduler = self;
         let status = Command::new(&scheduler.qdel)
             .arg(job_id)
             .status()
