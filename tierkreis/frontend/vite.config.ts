@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   mode: isWatch ? "dev" : "production",
   build: {
-    outDir: "../tierkreis_visualization/static/dist",
+    outDir: "dist",
     emptyOutDir: true,
     minify: !isWatch,
     sourcemap: isWatch,

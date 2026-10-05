@@ -60,7 +60,7 @@ in
     languages.javascript = {
       enable = true;
       pnpm.enable = true;
-      directory = "./tierkreis_visualization";
+      directory = "./tierkreis/frontend";
     };
     scripts.sbatch.exec = ''
       ./infra/slurm_local/sbatch "$@";

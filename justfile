@@ -39,10 +39,10 @@ docs:
 serve:
 	{{uvrun}} python tierkreis_visualization/main.py
 
-[working-directory:'tierkreis_visualization/frontend']
+[working-directory:'tierkreis/frontend']
 prod:
-	pnpm i
-	pnpm run build
+  pnpm i
+  pnpm run build
 
 stubs-generate dir:
   #!/usr/bin/env bash

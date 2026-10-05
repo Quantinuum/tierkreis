@@ -1,0 +1,568 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "utoipa-axum",
+    "description": "Utoipa's axum bindings for seamless integration for the two",
+    "contact": {
+      "name": "Juha Kukkonen",
+      "email": "juha7kukkonen@gmail.com"
+    },
+    "license": {
+      "name": "MIT OR Apache-2.0",
+      "identifier": "MIT OR Apache-2.0"
+    },
+    "version": "0.2.0"
+  },
+  "paths": {
+    "/api/info": {
+      "get": {
+        "operationId": "get_info",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflows/": {
+      "get": {
+        "summary": "List all workflows in the database, returning a summary of each.",
+        "description": "# Errors\n\nReturns an internal server error if the database query fails.",
+        "operationId": "list_workflows",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowDisplay"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/graphs": {
+      "get": {
+        "summary": "Get the graphs for a specific workflow.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow is not found or if the graph cannot be built.",
+        "operationId": "list_nodes",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": " The workflow uuid",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locs",
+            "in": "query",
+            "description": "Location strings to fetch graphs for (repeatable).",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error building graph"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/logs": {
+      "get": {
+        "summary": "Get the logs for a specific workflow run, returning the log detail as a string.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.",
+        "operationId": "get_workflow_logs",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Log detail for the workflow"
+          },
+          "500": {
+            "description": "Error loading log detail"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
+      "get": {
+        "summary": "Get the error logs for a specific node in a workflow run, returning the error detail as a string.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the error logs cannot be loaded.",
+        "operationId": "get_node_errors",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Error detail for the node"
+          },
+          "500": {
+            "description": "Error loading error detail"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}": {
+      "get": {
+        "summary": "Get the input for a specific port of a node in a workflow run, returning the raw value as JSON or text.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the input value cannot be loaded.",
+        "operationId": "get_input",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "port_name",
+            "in": "path",
+            "description": "Output port name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Input value as JSON or text"
+          },
+          "404": {
+            "description": "Input not found"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
+      "get": {
+        "summary": "Get the logs for a specific node in a workflow run, returning the log detail as a string.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.",
+        "operationId": "get_node_logs",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Log detail for the node"
+          },
+          "500": {
+            "description": "Error loading log detail"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs": {
+      "get": {
+        "summary": "List all outputs for a specific node in a workflow run, returning a map of port name to value.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.",
+        "operationId": "get_all_outputs",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON object of port name to value"
+          },
+          "500": {
+            "description": "Error loading outputs"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}": {
+      "get": {
+        "summary": "List the output for a specific port of a node in a workflow run, returning the raw value as JSON or text.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.",
+        "operationId": "get_single_output",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "port_name",
+            "in": "path",
+            "description": "Output port name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw output value as JSON or text"
+          },
+          "404": {
+            "description": "Output not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GraphsResponse": {
+        "type": "object",
+        "description": "Response containing graphs for multiple requested locations.",
+        "required": [
+          "graphs"
+        ],
+        "properties": {
+          "graphs": {
+            "type": "object",
+            "description": "Map from location string to the graph at that location.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PyGraph"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NodeInputs": {
+        "type": "object",
+        "description": "Describes a connection into an input port of a node.",
+        "required": [
+          "port",
+          "from_node",
+          "from_port"
+        ],
+        "properties": {
+          "from_node": {
+            "type": "string",
+            "description": "The location of the node providing the value."
+          },
+          "from_port": {
+            "type": "string",
+            "description": "The name of the output port on the source node."
+          },
+          "port": {
+            "type": "string",
+            "description": "The name of the input port on this node."
+          }
+        }
+      },
+      "NodeStatus": {
+        "type": "string",
+        "description": "The status of a node in the workflow graph.\nTODO: Enable remaining states",
+        "enum": [
+          "Not started",
+          "Started",
+          "Error",
+          "Finished"
+        ]
+      },
+      "PyEdge": {
+        "type": "object",
+        "description": "A directed edge in the workflow graph.",
+        "required": [
+          "from_node",
+          "from_port",
+          "to_node",
+          "to_port",
+          "conditional"
+        ],
+        "properties": {
+          "conditional": {
+            "type": "boolean",
+            "description": "Whether this edge is part of a conditional branch."
+          },
+          "from_node": {
+            "type": "string",
+            "description": "Location of the source node."
+          },
+          "from_port": {
+            "type": "string",
+            "description": "Name of the output port on the source node."
+          },
+          "to_node": {
+            "type": "string",
+            "description": "Location of the target node."
+          },
+          "to_port": {
+            "type": "string",
+            "description": "Name of the input port on the target node."
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Loaded output value at this edge, if available and the node has completed."
+          }
+        }
+      },
+      "PyGraph": {
+        "type": "object",
+        "description": "The graph of nodes and edges at a particular location in the workflow.",
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "properties": {
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PyEdge"
+            },
+            "description": "The edges connecting nodes in this graph."
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PyNode"
+            },
+            "description": "The nodes in this graph."
+          }
+        }
+      },
+      "PyNode": {
+        "type": "object",
+        "description": "A node in the workflow graph, with its current execution status.",
+        "required": [
+          "id",
+          "status",
+          "function_name",
+          "node_type",
+          "node_location",
+          "outputs",
+          "inputs",
+          "started_time",
+          "finished_time"
+        ],
+        "properties": {
+          "finished_time": {
+            "type": "string",
+            "description": "ISO-8601 timestamp when the node finished, or `\"\"` if not finished."
+          },
+          "function_name": {
+            "type": "string",
+            "description": "Human-readable display name derived from the node definition."
+          },
+          "id": {
+            "type": "string",
+            "description": "The location of this node as a string."
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeInputs"
+            },
+            "description": "Incoming connections for each input port."
+          },
+          "node_location": {
+            "type": "string",
+            "description": "Same as `id`; kept for Python API compatibility."
+          },
+          "node_type": {
+            "type": "string",
+            "description": "The structural type of the node."
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the output ports."
+          },
+          "started_time": {
+            "type": "string",
+            "description": "ISO-8601 timestamp when the node started running, or `\"\"` if not started."
+          },
+          "status": {
+            "$ref": "#/components/schemas/NodeStatus",
+            "description": "Current execution status."
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A human-readable value associated with the node (const value, input name, etc.)."
+          }
+        }
+      },
+      "RuntimeMetadata": {
+        "type": "object",
+        "description": "Runtime metadata returned by `/api/info`.",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkflowDisplay": {
+        "type": "object",
+        "description": "Workflow display information returned by `/api/workflows/`.",
+        "required": [
+          "id",
+          "id_int",
+          "start_time",
+          "errors",
+          "tkr_version"
+        ],
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Errored Nodes are taken from Errored time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Currently the run UUID, no attempt/workflow"
+          },
+          "id_int": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "tkr_version": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

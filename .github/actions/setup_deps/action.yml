@@ -46,5 +46,5 @@ runs:
       with:
         node-version: "24.8.0"
         cache: "pnpm"
-        cache-dependency-path: tierkreis_visualization/frontend/pnpm-lock.yaml
+        cache-dependency-path: tierkreis/frontend/pnpm-lock.yaml
         package-manager-cache: false
