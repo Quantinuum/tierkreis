@@ -16,6 +16,7 @@ services:
       - ~/.psij:/home/pbsuser/.psij/
       - ../../tierkreis:/tierkreis
       - data:/data
+      - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
     expose:
       - "15001"
       - "15002"
@@ -36,6 +37,7 @@ services:
       - ~/.psij:/home/pbsuser/.psij/
       - ../../tierkreis:/tierkreis
       - data:/data
+      - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
     expose:
       - "15002"
       - "15003"
@@ -56,6 +58,7 @@ services:
       - ~/.psij:/home/pbsuser/.psij/
       - ../../tierkreis:/tierkreis
       - data:/data
+      - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
     expose:
       - "15002"
       - "15003"
