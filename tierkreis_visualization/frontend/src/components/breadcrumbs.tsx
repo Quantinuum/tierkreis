@@ -24,8 +24,8 @@ export const Breadcrumbs = (props: { wid: string; loc: string }) => {
   const crumbs = slices.map((x) => <Breadcrumb wid={props.wid} loc={x} />);
   return (
     <div className="border-b-1 h-12 flex items-center">
-      <Link to={"/workflows"} className="m-1 p-2">
-        workflows
+      <Link to={"/monitor"} className="m-1 p-2">
+        monitor
       </Link>
       {crumbs}
       <div className="flex-1 flex h-12 justify-end">

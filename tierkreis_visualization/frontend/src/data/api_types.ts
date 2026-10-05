@@ -8,3 +8,79 @@ export type PyEdge = PyGraph["edges"][0];
 export type PyNode = PyGraph["nodes"][0];
 export type NodeType = PyNode["node_type"];
 export type NodeInputs = PyNode["inputs"][0];
+
+// Hand-written: served only by the Rust runtime server, not yet part of the
+// generated openapi stubs (which are still generated from the Python service).
+export type ActiveRun = {
+  run_id: string;
+  attempt: number;
+  name: string | null;
+  started_time: string;
+};
+
+export type MonitoringSummary = {
+  active_runs: ActiveRun[];
+  total_runs: number;
+  runs_with_errors: number;
+  tasks_running: number;
+  tasks_completed: number;
+  tasks_errored: number;
+  tasks_cancelled: number;
+  avg_task_duration_seconds: number | null;
+};
+
+// Workflow = graph structure. Run = a Workflow tied to specific inputs.
+// Attempt = a single execution of a run (restarts create additional attempts).
+export type AttemptSummary = {
+  attempt: number;
+  started_time: string;
+  complete_time: string | null;
+  cancelled_time: string | null;
+  error_time: string | null;
+  errored_locations: string[];
+};
+
+export type RunSummary = {
+  run_id: string;
+  attempts: AttemptSummary[];
+};
+
+export type WorkflowSummary = {
+  workflow_id: string;
+  name: string | null;
+  runs: RunSummary[];
+};
+
+export type TraceSpan = {
+  location: string;
+  status: "Not started" | "Started" | "Error" | "Finished";
+  scheduled_time: string | null;
+  queued_time: string | null;
+  running_time: string | null;
+  complete_time: string | null;
+  error_time: string | null;
+  cancelled_time: string | null;
+  error: string | null;
+};
+
+export type ExecutorSummary = {
+  name: string;
+  kind: string;
+  worker_count: number;
+  details: Record<string, string>;
+};
+
+export type RuntimeInfo = {
+  version: string;
+  executors: ExecutorSummary[];
+};
+
+export type NewRunResponse = {
+  run_id: string;
+  attempt: number;
+};
+
+export type WorkflowPorts = {
+  inputs: string[];
+  outputs: string[];
+};

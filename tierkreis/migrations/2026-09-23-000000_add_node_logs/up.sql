@@ -1,0 +1,1 @@
+ALTER TABLE `node_states` ADD COLUMN `logs` TEXT DEFAULT NULL;

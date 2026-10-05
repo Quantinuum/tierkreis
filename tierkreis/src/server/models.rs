@@ -11,8 +11,9 @@ use uuid::Uuid;
 use crate::{
     asset_storage::AssetStorageRegistry,
     graph::NodeDefinition,
+    runtime::Runtime,
     state::{
-        SqliteRuntimeState,
+        RuntimeState,
         interface::{NodeState, RuntimeWatchState},
     },
 };
@@ -41,7 +42,9 @@ pub type HandlerResult<T> = Result<T, AppError>;
 /// Server state shared across all requests.
 #[derive(Clone)]
 pub struct AppState {
-    pub runtime_state: Arc<SqliteRuntimeState>,
+    /// The full [`Runtime`], used to start new runs/attempts.
+    pub runtime: Arc<Runtime>,
+    pub runtime_state: Arc<dyn RuntimeState>,
     pub asset_registry: AssetStorageRegistry,
     pub update_receiver: watch::Receiver<RuntimeWatchState>,
 }
@@ -65,6 +68,117 @@ pub struct WorkflowDisplay {
     pub tkr_version: String,
     // TODO: wf id / attempt
 }
+
+/// A workflow run attempt that has not yet reached a terminal state.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ActiveRun {
+    pub run_id: Uuid,
+    pub attempt: u32,
+    pub name: Option<String>,
+    pub started_time: String,
+}
+
+/// Aggregate runtime statistics returned by `/api/monitor`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MonitoringSummary {
+    /// Workflow run attempts that have not yet completed, errored, or been cancelled.
+    pub active_runs: Vec<ActiveRun>,
+    /// Total number of workflow run attempts recorded.
+    pub total_runs: usize,
+    /// Number of workflow run attempts with at least one errored node.
+    pub runs_with_errors: usize,
+    /// Number of nodes currently running.
+    pub tasks_running: u64,
+    /// Number of nodes that completed successfully.
+    pub tasks_completed: u64,
+    /// Number of nodes that errored.
+    pub tasks_errored: u64,
+    /// Number of nodes that were cancelled.
+    pub tasks_cancelled: u64,
+    /// Average duration, in seconds, between a node starting and completing.
+    pub avg_task_duration_seconds: Option<f64>,
+}
+
+/// A single execution of a [`RunSummary`] (same run, same inputs).
+///
+/// Attempts are created by restarting the same run, e.g. after a failure.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AttemptSummary {
+    pub attempt: u32,
+    pub started_time: String,
+    pub complete_time: Option<String>,
+    pub cancelled_time: Option<String>,
+    pub error_time: Option<String>,
+    pub errored_locations: Vec<String>,
+}
+
+/// A Workflow run, tied to a specific set of inputs. May have multiple
+/// [`AttemptSummary`]s if it was restarted.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RunSummary {
+    pub run_id: Uuid,
+    pub attempts: Vec<AttemptSummary>,
+}
+
+/// A Workflow (graph structure), grouping every [`RunSummary`] created from it.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WorkflowSummary {
+    pub workflow_id: Uuid,
+    pub name: Option<String>,
+    pub runs: Vec<RunSummary>,
+}
+
+/// A single Node's recorded execution state, as part of an execution trace.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct TraceSpan {
+    pub location: String,
+    pub status: NodeStatus,
+    pub scheduled_time: Option<String>,
+    pub queued_time: Option<String>,
+    pub running_time: Option<String>,
+    pub complete_time: Option<String>,
+    pub error_time: Option<String>,
+    pub cancelled_time: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Static metadata and available resources for a single registered Executor.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ExecutorSummary {
+    pub name: String,
+    pub kind: String,
+    pub worker_count: usize,
+    pub details: HashMap<String, String>,
+}
+
+/// Runtime metadata returned by `/api/runtime`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RuntimeInfo {
+    pub version: String,
+    pub executors: Vec<ExecutorSummary>,
+}
+
+/// Request body to start a new Workflow run with the given inputs.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct NewRunRequest {
+    /// Input values, keyed by input port name, serialized as JSON.
+    pub inputs: HashMap<String, serde_json::Value>,
+}
+
+/// Response returned after starting a new run or attempt.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct NewRunResponse {
+    pub run_id: Uuid,
+    pub attempt: u32,
+}
+
+/// The names of a Workflow's top-level input and output ports.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WorkflowPorts {
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+}
+
 
 /// The status of a node in the workflow graph.
 /// TODO: Enable remaining states

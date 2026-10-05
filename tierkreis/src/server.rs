@@ -17,27 +17,29 @@ use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::{
-    asset_storage::AssetStorageRegistry,
-    runtime::{RuntimeConfig, asset_storage_registry_from_config},
-    state::{RuntimeState, SqliteRuntimeState},
-};
+use crate::runtime::{Runtime, RuntimeConfig};
 
-async fn server(
-    runtime_state: Arc<SqliteRuntimeState>,
-    asset_registry: AssetStorageRegistry,
-) -> miette::Result<()> {
-    let update_receiver = runtime_state.listen();
+async fn server(runtime: Arc<Runtime>) -> miette::Result<()> {
+    let update_receiver = runtime.listen();
 
     let app_state = models::AppState {
-        runtime_state,
-        asset_registry,
+        runtime_state: runtime.state(),
+        asset_registry: runtime.asset_storage_registry(),
+        runtime,
         update_receiver,
     };
 
     let api_router = OpenApiRouter::new()
         .routes(routes!(routes::get_info))
         .routes(routes!(routes::list_workflows))
+        .routes(routes!(routes::get_monitoring_summary))
+        .routes(routes!(routes::get_workflows_summary))
+        .routes(routes!(routes::get_runtime_info))
+        .routes(routes!(routes::get_run_trace))
+        .routes(routes!(routes::start_new_run))
+        .routes(routes!(routes::get_workflow_input_names))
+        .routes(routes!(routes::get_workflow_ports))
+        .routes(routes!(routes::start_new_attempt))
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
         .routes(routes!(routes::get_single_output))
@@ -95,6 +97,10 @@ async fn server(
 
 /// Server entry point.
 ///
+/// Builds a [`Runtime`] backed by persistent `SQLite` state and runs its
+/// orchestration loop alongside the HTTP API in this same process, so that
+/// runs/attempts started via the API are actually executed.
+///
 /// # Errors
 ///
 /// Returns an error if the current directory cannot be read, static frontend files
@@ -105,7 +111,11 @@ async fn server(
 /// Panics if the static frontend files are not found in the expected location.
 #[tokio::main]
 pub async fn serve() -> miette::Result<()> {
-    let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
-    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
-    server(runtime_state, asset_registry).await
+    let runtime = Arc::new(Runtime::from_config(&RuntimeConfig::persistent()).await?);
+    let orchestration_runtime = Arc::clone(&runtime);
+    let orchestration = async move { orchestration_runtime.run().await };
+    // Polled concurrently on this same task (no `tokio::spawn`), since the
+    // orchestration loop's internal streams are not `Send`.
+    tokio::try_join!(server(runtime), orchestration)?;
+    Ok(())
 }

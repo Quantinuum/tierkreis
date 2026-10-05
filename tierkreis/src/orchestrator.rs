@@ -30,8 +30,8 @@ use crate::{
     },
     event::{
         EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
-        send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
-        send_workflow_run_complete, send_workflow_run_errored,
+        send_error, send_map_elem_complete, send_running_loop, send_running_map,
+        send_running_switching, send_workflow_run_complete, send_workflow_run_errored,
     },
     executor::{
         ExecutorRegistry,
@@ -208,6 +208,55 @@ impl Orchestrator {
             default_storage_name: default_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
         })
+    }
+
+    /// Describe the Executors available to this Orchestrator, including the
+    /// Workers and resources each has available.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if listing the Workers for any Executor fails.
+    pub async fn describe_executors(&self) -> miette::Result<Vec<crate::executor::interface::ExecutorInfo>> {
+        let mut infos = Vec::with_capacity(self.executor_registry.len());
+        for (name, executor) in self.executor_registry.iter() {
+            let description = executor.describe();
+            let worker_count = executor.workers().await?.len();
+            infos.push(crate::executor::interface::ExecutorInfo {
+                name: name.clone(),
+                kind: description.kind,
+                details: description.details,
+                worker_count,
+            });
+        }
+        infos.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(infos)
+    }
+
+    /// Mark an entire Workflow run attempt as errored, e.g. because building or
+    /// performing its Actions failed outside of the usual per-Node error path
+    /// (such as a missing top-level input). This records the error against the
+    /// run's root location and emits `WorkflowRunEvent::Errored`, so a single
+    /// failing run cannot take down the whole orchestration loop.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the event channel is full or closed.
+    pub async fn mark_run_errored(
+        &self,
+        workflow_run_id: Uuid,
+        attempt: u32,
+        err: &miette::Error,
+    ) -> miette::Result<()> {
+        let mut event_sender = self.event_sender.clone();
+        send_error(
+            &mut event_sender,
+            workflow_run_id,
+            attempt,
+            crate::location::Location::root(),
+            err,
+        )
+        .await?;
+        send_workflow_run_errored(&mut event_sender, workflow_run_id, attempt).await
     }
 
     /// Create a stream of [`Action`]s based on [`OrchstrationContext`] and a [`WorkflowGraph`].

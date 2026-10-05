@@ -32,7 +32,7 @@ use crate::{
     },
     executor::{
         Executor,
-        interface::{TaskPlan, WorkerSpec},
+        interface::{ExecutorDescription, TaskPlan, WorkerSpec},
         nexus::client::{
             NexusClient,
             models::jobs::{JobDefinition, StatusEnum},
@@ -551,6 +551,13 @@ impl Executor for NexusExecutor {
             worker_name: "nexus_worker".to_string(),
         }])
         .boxed()
+    }
+
+    fn describe(&self) -> ExecutorDescription {
+        ExecutorDescription {
+            kind: "nexus".to_string(),
+            details: HashMap::new(),
+        }
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {

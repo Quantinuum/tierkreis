@@ -5,7 +5,7 @@ use miette::Context;
 use crate::asset_storage::{load_asset, load_assets};
 use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
 use crate::location::{Location, LocationComponent};
-use crate::server::AssetStorageRegistry;
+use crate::asset_storage::AssetStorageRegistry;
 use crate::server::models::{
     NodeInputs, NodeStatus, PyEdge, PyGraph, PyNode, node_status_from_state,
 };

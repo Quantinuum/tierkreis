@@ -7,6 +7,7 @@ const validateSearch = z.object({
   openEvals: z.array(z.string()).default([]),
   openLoops: z.array(z.string()).default([]),
   openMaps: z.array(z.string()).default([]),
+  view: z.enum(["graph", "timeline"]).optional(),
 });
 
 export const Route = createFileRoute("/workflows/_/$wid/nodes/$loc/")({
@@ -17,7 +18,7 @@ export const Route = createFileRoute("/workflows/_/$wid/nodes/$loc/")({
 
 function RouteComponent() {
   const { wid, loc } = Route.useParams();
-  const { openEvals, openLoops, openMaps } = Route.useSearch();
+  const { openEvals, openLoops, openMaps, view } = Route.useSearch();
   return (
     <NodePage
       key={wid + loc}
@@ -26,6 +27,7 @@ function RouteComponent() {
       openEvals={openEvals}
       openLoops={openLoops}
       openMaps={openMaps}
+      initialView={view}
     ></NodePage>
   );
 }

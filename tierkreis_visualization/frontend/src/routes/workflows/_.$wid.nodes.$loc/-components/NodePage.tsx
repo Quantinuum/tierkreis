@@ -21,6 +21,7 @@ export default function NodePage(props: {
   openEvals: string[];
   openLoops: string[];
   openMaps: string[];
+  initialView?: "graph" | "timeline";
 }) {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
@@ -102,6 +103,7 @@ export default function NodePage(props: {
       loc={node_location_str}
       infoProps={info}
       setInfo={setInfo}
+      initialView={props.initialView}
     />
   );
 }
