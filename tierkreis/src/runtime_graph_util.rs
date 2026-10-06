@@ -19,9 +19,9 @@ use crate::{
 ///
 /// Returns Err if the graph asset cannot be loaded or decoded.
 #[tracing::instrument(skip_all, err)]
-pub async fn load_subgraph(
+pub async fn load_subgraph<S: ::std::hash::BuildHasher>(
     asset_storage_registry: &AssetStorageRegistry,
-    inputs: &HashMap<String, AssetSpec>,
+    inputs: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<Arc<WorkflowGraph>> {
     let subgraph_bytes = load_asset(asset_storage_registry, inputs, "graph").await?;
     let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
