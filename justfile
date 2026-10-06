@@ -44,6 +44,13 @@ prod:
   pnpm i
   pnpm run build
 
+openapi:
+    cargo run --manifest-path tierkreis/Cargo.toml --bin tkr -- openapi tierkreis/openapi.json
+
+wheel:
+    just prod
+    maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
+
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
