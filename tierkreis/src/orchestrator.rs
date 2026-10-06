@@ -492,10 +492,14 @@ impl Orchestrator {
     ) -> miette::Result<()> {
         context
             .workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: nodes.map(|n| context.parent_loc.with_node(*n)).collect(),
-                status: crate::event::NodeStatus::Scheduled {},
-            }))
+            .write(WorkflowRunEvent::NodeEvents(
+                nodes
+                    .map(|n| NodeEvent {
+                        loc: context.parent_loc.with_node(*n),
+                        status: crate::event::NodeStatus::Scheduled {},
+                    })
+                    .collect(),
+            ))
             .await?;
 
         Ok(())
@@ -1155,8 +1159,13 @@ impl Orchestrator {
         }
 
         if !plan.node_complete.is_empty() {
-            let (locs, outputs) = plan.node_complete.into_iter().unzip();
-            send_complete(&mut event_sender, workflow_run_id, attempt, locs, outputs).await?;
+            send_complete(
+                &mut event_sender,
+                workflow_run_id,
+                attempt,
+                plan.node_complete,
+            )
+            .await?;
         }
 
         for (loc, size) in plan.mapping {
@@ -1803,12 +1812,12 @@ mod tests {
             RuntimeEvent::WorkflowRun { event, .. } => event,
         };
 
-        let eval_complete_event = WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![Location::new("N3")?],
+        let eval_complete_event = WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc: Location::new("N3")?,
             status: NodeStatus::Complete {
-                outputs: inner_output_complete_outputs,
+                outputs: inner_output_complete_outputs[0].clone(),
             },
-        });
+        }]);
         workflow_run_state
             .write(inner_output_complete_event)
             .await?;

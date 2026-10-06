@@ -476,13 +476,13 @@ impl WorkflowRunState for SqliteWorkflowRunState {
                     workflow_update.complete_time = Some(now);
                     send_workflow_stopped = true;
                 }
-                WorkflowRunEvent::NodeEvent(ref node_event) => {
+                WorkflowRunEvent::NodeEvents(ref node_events) => {
                     // TODO: can we receive node events before start is set?
-                    self.handle_node_event(node_event).await?;
+                    self.handle_node_events(node_events).await?;
                 }
             }
 
-            if !matches!(event, WorkflowRunEvent::NodeEvent(_)) {
+            if !matches!(event, WorkflowRunEvent::NodeEvents(_)) {
                 let attempt = self.attempt.try_into().into_diagnostic()?;
                 let mut conn = self.get_conn().await?;
                 update_workflow_run(
@@ -561,19 +561,17 @@ impl SqliteWorkflowRunState {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
+    async fn handle_node_events(&self, events: &[NodeEvent]) -> miette::Result<()> {
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
         let mut node_outputs = Vec::new();
-        let node_updates = event
-            .locs
+        let node_updates = events
             .iter()
-            .enumerate()
-            .map(|(index, loc)| {
+            .map(|event| {
                 let mut row = UpsertNodeState {
                     run_id: self.run_id.to_string(),
                     attempt,
-                    node_location: loc.clone(),
+                    node_location: event.loc.clone(),
                     ..Default::default()
                 };
                 match event.status {
@@ -623,18 +621,16 @@ impl SqliteWorkflowRunState {
                     }
                     NodeStatus::Complete { ref outputs } => {
                         row.complete_time = Some(now);
-                        if let Some(output) = outputs.get(index) {
-                            for (port, asset_spec) in output {
-                                node_outputs.push((
-                                    loc.clone(),
-                                    NewNodeOutput {
-                                        name: port,
-                                        asset_kind: asset_spec.kind.to_string(),
-                                        storage_name: &asset_spec.storage_name,
-                                        asset_key: asset_spec.asset_key.to_string(),
-                                    },
-                                ));
-                            }
+                        for (port, asset_spec) in outputs {
+                            node_outputs.push((
+                                event.loc.clone(),
+                                NewNodeOutput {
+                                    name: port,
+                                    asset_kind: asset_spec.kind.to_string(),
+                                    storage_name: &asset_spec.storage_name,
+                                    asset_key: asset_spec.asset_key.to_string(),
+                                },
+                            ));
                         }
                     }
                     NodeStatus::Cancelled => {
@@ -719,10 +715,10 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Scheduled,
-            }))
+            }]))
             .await?;
 
         let updated = recv.borrow_and_update();
@@ -752,10 +748,10 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Scheduled,
-            }))
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -763,10 +759,10 @@ mod tests {
         assert!(node_state.scheduled_time.is_some());
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Queued { handle: None },
-            }))
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -799,12 +795,10 @@ mod tests {
             },
         );
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
-                status: NodeStatus::Complete {
-                    outputs: vec![outputs],
-                },
-            }))
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
+                status: NodeStatus::Complete { outputs },
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -827,12 +821,12 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
                 },
-            }))
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -842,14 +836,14 @@ mod tests {
         let mut bits1 = BitVec::repeat(false, 2);
         bits1.set(0, true);
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits1.clone(),
                     }),
                 },
-            }))
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -859,14 +853,14 @@ mod tests {
         let mut bits2 = BitVec::repeat(false, 2);
         bits2.set(1, true);
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits2.clone(),
                     }),
                 },
-            }))
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;

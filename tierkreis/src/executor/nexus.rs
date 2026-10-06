@@ -150,14 +150,7 @@ async fn process_finished_task(
                 .await?;
             }
 
-            send_complete(
-                event_sender,
-                workflow_run_id,
-                attempt,
-                vec![loc],
-                vec![outputs],
-            )
-            .await?;
+            send_complete(event_sender, workflow_run_id, attempt, vec![(loc, outputs)]).await?;
         }
         StatusEnum::Cancelled => {
             send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
@@ -687,7 +680,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, save_asset, test_storage_registry},
-        event::{NodeEvent, NodeStatus, WorkflowRunEvent},
+        event::{NodeStatus, WorkflowRunEvent},
         executor::nexus::client::TLSMode,
     };
 
@@ -891,42 +884,30 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[3],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
 
         assert_registry_contains_values(
@@ -1031,22 +1012,17 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Error { ref error, .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            } if error == "Job failed with message: job has errored"
+            } if matches!(node_events[0].status, NodeStatus::Error { ref error, .. }
+            if error == "Job failed with message: job has errored")
         );
 
         Ok(())
@@ -1160,24 +1136,18 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
 
         let event = stream.next().await.unwrap();
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Cancelled,
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Cancelled)
         );
 
         Ok(())
