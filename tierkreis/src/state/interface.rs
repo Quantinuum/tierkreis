@@ -144,6 +144,10 @@ pub trait RuntimeState: Debug + Send + Sync {
 
     /// Create a new attempt for an existing `run_id`
     ///
+    /// ### Errors
+    ///
+    /// Should error when there already is an active run.
+    ///
     /// attempt(new) = max(attempts) + 1, should always be sequential
     /// This can be a partial restart, e.g., if some nodes errored.
     fn new_attempt(&self, run_id: Uuid)

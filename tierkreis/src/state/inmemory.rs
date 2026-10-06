@@ -214,26 +214,29 @@ impl RuntimeState for InMemoryRuntimeState {
         run_id: Uuid,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         async move {
-            // Find the latest attempt
-            // TODO: clarify the behavior: can we have multiple attempts at the same time?
-            // Is there an invariant that we don't need to search all runs?
             let mut latest: Option<(u32, Uuid, HashMap<String, AssetSpec>)> = None;
-            for item in &self.inner.runs {
-                let (id, attempt) = *item.key();
-                if id != run_id {
-                    continue;
-                }
-                if latest
-                    .as_ref()
-                    .is_none_or(|(latest_attempt, ..)| attempt > *latest_attempt)
-                {
-                    latest = Some((attempt, item.workflow_id, item.inputs.clone()));
-                }
+            let mut attempt = 0;
+            while let Some(item) = self.inner.runs.get(&(run_id, attempt)) {
+                latest = Some((attempt, item.workflow_id, item.inputs.clone()));
+                attempt += 1;
             }
             let (max_attempt, workflow_id, inputs) =
                 latest.ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?;
-            let next_attempt = max_attempt + 1;
+            let max_attempt_summary = self
+                .load_workflow_run_state(run_id, max_attempt)
+                .await?
+                .summary()
+                .await?;
+            if max_attempt_summary.cancelled_time.is_none()
+                && max_attempt_summary.error_time.is_none()
+                && max_attempt_summary.complete_time.is_none()
+            {
+                return Err(miette!(
+                    "Cannot create a new attempt for a run that is still active"
+                ));
+            }
 
+            let next_attempt = max_attempt + 1;
             // TODO: same as new_workflow_run_state just with provided run_id and attempt, consolidate?
             let mut entry = self.inner.runs.entry((run_id, next_attempt)).or_default();
             entry.workflow_id = workflow_id;

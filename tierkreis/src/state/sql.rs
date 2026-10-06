@@ -414,8 +414,22 @@ impl RuntimeState for SqliteRuntimeState {
                 .await?
                 .ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?
                 + 1;
-            insert_workflow_run_attempt(&mut conn, &run_id_str, next_attempt_i32).await?;
             let next_attempt = u32::try_from(next_attempt_i32).into_diagnostic()?;
+            let max_attempt_summary = self
+                .load_workflow_run_state(run_id, next_attempt - 1)
+                .await?
+                .summary()
+                .await?;
+            if max_attempt_summary.cancelled_time.is_none()
+                && max_attempt_summary.error_time.is_none()
+                && max_attempt_summary.complete_time.is_none()
+            {
+                return Err(miette!(
+                    "Cannot create a new attempt for a run that is still active"
+                ));
+            }
+
+            insert_workflow_run_attempt(&mut conn, &run_id_str, next_attempt_i32).await?;
 
             let run = read_workflow_run(&mut conn, run_id, next_attempt).await?;
             let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
