@@ -5,7 +5,11 @@ that can be used by the tierkreis runtime.
 These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
-use std::{collections::HashMap, ops::BitOrAssign, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::BitOrAssign,
+    sync::Arc,
+};
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
@@ -201,6 +205,57 @@ impl RuntimeState for InMemoryRuntimeState {
             summaries.sort_by_key(|k| k.started_time);
 
             Ok(summaries)
+        }
+        .boxed()
+    }
+
+    fn new_attempt(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut latest: Option<(u32, Uuid, HashMap<String, AssetSpec>)> = None;
+            let mut attempt = 0;
+            while let Some(item) = self.inner.runs.get(&(run_id, attempt)) {
+                latest = Some((attempt, item.workflow_id, item.inputs.clone()));
+                attempt += 1;
+            }
+            let (max_attempt, workflow_id, inputs) =
+                latest.ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?;
+            let max_attempt_summary = self
+                .load_workflow_run_state(run_id, max_attempt)
+                .await?
+                .summary()
+                .await?;
+            if max_attempt_summary.cancelled_time.is_none()
+                && max_attempt_summary.error_time.is_none()
+                && max_attempt_summary.complete_time.is_none()
+            {
+                return Err(miette!(
+                    "Cannot create a new attempt for a run that is still active"
+                ));
+            }
+
+            let next_attempt = max_attempt + 1;
+            // TODO: same as new_workflow_run_state just with provided run_id and attempt, consolidate?
+            let mut entry = self.inner.runs.entry((run_id, next_attempt)).or_default();
+            entry.workflow_id = workflow_id;
+            entry.inputs = inputs;
+            entry.started_time = Some(Utc::now());
+
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, next_attempt));
+            });
+
+            let state = InMemoryWorkflowRunState {
+                global_state: Arc::clone(&self.inner),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt: next_attempt,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
         }
         .boxed()
     }
@@ -431,6 +486,56 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         let entry = self.global_state.runs.entry((self.run_id, self.attempt));
         let metadata = entry.or_default().value().metadata.clone();
         future::ok(metadata).boxed()
+    }
+
+    fn copy_node_states_from<'a>(
+        &'a self,
+        source: &'a dyn WorkflowRunState,
+        exclude: &'a HashSet<Location>,
+        truncate: &'a HashSet<Location>,
+    ) -> BoxFuture<'a, miette::Result<()>> {
+        async move {
+            let nodes: HashMap<Location, NodeState> = {
+                let source_run = self
+                    .global_state
+                    .runs
+                    .get(&(source.run_id(), source.attempt()))
+                    .ok_or_else(|| miette!("Source run attempt not found"))?;
+
+                source_run
+                    .nodes
+                    .iter()
+                    .filter(|(loc, _)| !exclude.contains(*loc))
+                    .map(|(loc, state)| {
+                        let mut state = state.clone();
+                        if truncate.contains(loc) {
+                            state.scheduled_time = None;
+                            state.queued_time = None;
+                            state.running_time = None;
+                            state.complete_time = None;
+                            state.cancelled_time = None;
+                            state.error_time = None;
+                            state.outputs = None;
+                            state.map_completed = None;
+                            state.error = None;
+                            state.error_detail = None;
+                            state.handle = None;
+                        }
+                        (loc.clone(), state)
+                    })
+                    .collect()
+            };
+
+            self.global_state
+                .runs
+                .entry((self.run_id, self.attempt))
+                .or_default()
+                .nodes
+                .extend(nodes);
+
+            Ok(())
+        }
+        .boxed()
     }
 }
 

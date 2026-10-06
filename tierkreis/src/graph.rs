@@ -320,6 +320,11 @@ impl WorkflowGraph {
         self.graph.input_neighbours(node).all(f)
     }
 
+    /// Returns the `node`s direct dependents
+    pub fn output_neighbours(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.graph.output_neighbours(node)
+    }
+
     /// Return an iterator that returns the `NodeIndex` of Nodes where
     /// the supplied `filter` function returns `true`, starting at the
     /// `output_node` of the graph and then in topologically sorted order.
