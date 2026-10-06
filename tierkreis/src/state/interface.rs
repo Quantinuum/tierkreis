@@ -10,13 +10,18 @@ use std::{
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, Utc};
-use futures::future::BoxFuture;
+use futures::{FutureExt, future::BoxFuture};
+use miette::miette;
 use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec, event::WorkflowRunEvent, executor::interface::TaskHandle,
-    graph::WorkflowGraph, location::Location,
+    asset_storage::{AssetSpec, AssetStorageRegistry},
+    event::WorkflowRunEvent,
+    executor::interface::TaskHandle,
+    graph::{NodeDefinition, WorkflowGraph},
+    location::Location,
+    runtime_graph_util::{dependents, resolve_location},
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
@@ -152,6 +157,72 @@ pub trait RuntimeState: Debug + Send + Sync {
     /// This can be a partial restart, e.g., if some nodes errored.
     fn new_attempt(&self, run_id: Uuid)
     -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
+
+    /// Restart Task nodes in a new attempt, preserving unaffected node state.
+    ///
+    /// An empty `locs` restarts all errored nodes from the source attempt.
+    /// Returns the new attempt number and sorted fully invalidated locations.
+    ///
+    /// # Errors
+    ///
+    /// Returns Err if there are no errored nodes, a location is not a Task,
+    /// graph resolution fails, or the new attempt cannot be created or populated.
+    fn restart_task<'a>(
+        &'a self,
+        asset_storage_registry: &'a AssetStorageRegistry,
+        run_id: Uuid,
+        attempt: u32,
+        locs: Vec<Location>,
+    ) -> BoxFuture<'a, miette::Result<(u32, Vec<Location>)>> {
+        async move {
+            let source_state = self.load_workflow_run_state(run_id, attempt).await?;
+            let locs = if locs.is_empty() {
+                let errored_locations = source_state.summary().await?.errored_locations;
+                if errored_locations.is_empty() {
+                    return Err(miette!("No errored nodes to restart"));
+                }
+                errored_locations
+            } else {
+                locs
+            };
+            let workflow_id = source_state.workflow_id();
+            let (_workflow_name, workflow_graph) = self.load_workflow(workflow_id).await?;
+            let workflow_graph = Arc::new(workflow_graph);
+
+            let mut exclude = HashSet::new();
+            let mut truncate = HashSet::new();
+
+            for loc in &locs {
+                let (graph, _, node) =
+                    resolve_location(asset_storage_registry, &source_state, &workflow_graph, loc)
+                        .await?;
+                if !matches!(
+                    graph.node_definition(node),
+                    Some(NodeDefinition::Task { .. })
+                ) {
+                    return Err(miette!("Can only restart Task nodes, {loc} is not a Task"));
+                }
+
+                exclude.insert(loc.clone());
+                exclude.extend(
+                    dependents(asset_storage_registry, &source_state, &workflow_graph, loc).await?,
+                );
+                truncate.extend(loc.node_ancestors());
+            }
+            truncate.retain(|loc| !exclude.contains(loc));
+
+            let new_state = self.new_attempt(run_id).await?;
+            new_state
+                .copy_node_states_from(&*source_state, &exclude, &truncate)
+                .await?;
+
+            let mut invalidated: Vec<Location> = exclude.into_iter().collect();
+            invalidated.sort_by_key(ToString::to_string);
+
+            Ok((new_state.attempt(), invalidated))
+        }
+        .boxed()
+    }
 }
 
 /// [`WorkflowRunState`] is an interface to the state of an individual Workflow run attempt.

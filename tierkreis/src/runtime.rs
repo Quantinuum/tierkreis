@@ -27,7 +27,7 @@ use crate::{
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
     },
-    graph::{NodeDefinition, WorkflowGraph},
+    graph::WorkflowGraph,
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
@@ -635,7 +635,7 @@ impl Runtime {
     ///
     /// # Errors
     ///
-    // Will return Err if there are no errored nodes, a location
+    /// Will return Err if there are no errored nodes, a location
     /// cannot be resolved, or a location does not refer to a `Task` node.
     /// TODO: Debatable whether this should always refer to the latest attempt of not if we want to simplify.
     pub async fn restart_task(
@@ -644,54 +644,9 @@ impl Runtime {
         attempt: u32,
         locs: Vec<Location>,
     ) -> miette::Result<(u32, Vec<Location>)> {
-        let source_state = self.state.load_workflow_run_state(run_id, attempt).await?;
-        let locs = if locs.is_empty() {
-            let errored_locations = source_state.summary().await?.errored_locations;
-            if errored_locations.is_empty() {
-                return Err(miette!("No errored nodes to restart"));
-            }
-            errored_locations
-        } else {
-            locs
-        };
-        let workflow_id = source_state.workflow_id();
-        let (_workflow_name, workflow_graph) = self.state.load_workflow(workflow_id).await?;
-        let workflow_graph = Arc::new(workflow_graph);
-
-        let mut exclude = HashSet::new();
-        let mut truncate = HashSet::new();
-
-        for loc in &locs {
-            let (graph, _, node) = self
-                .orchestrator
-                .resolve_location(&source_state, &workflow_graph, loc)
-                .await?;
-            if !matches!(
-                graph.node_definition(node),
-                Some(NodeDefinition::Task { .. })
-            ) {
-                return Err(miette!("Can only restart Task nodes, {loc} is not a Task"));
-            }
-
-            exclude.insert(loc.clone());
-            exclude.extend(
-                self.orchestrator
-                    .dependents(&source_state, &workflow_graph, loc)
-                    .await?,
-            );
-            truncate.extend(loc.node_ancestors());
-        }
-        truncate.retain(|loc| !exclude.contains(loc));
-
-        let new_state = self.state.new_attempt(run_id).await?;
-        new_state
-            .copy_node_states_from(&*source_state, &exclude, &truncate)
-            .await?;
-
-        let mut invalidated: Vec<Location> = exclude.into_iter().collect();
-        invalidated.sort_by_key(ToString::to_string);
-
-        Ok((new_state.attempt(), invalidated))
+        self.state
+            .restart_task(&self.asset_storage_registry, run_id, attempt, locs)
+            .await
     }
 }
 
