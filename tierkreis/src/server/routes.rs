@@ -338,6 +338,41 @@ pub async fn get_node_errors(
         .into_response())
 }
 
+/// Restart a task node and return the locations invalidated by the restart.
+///
+/// # Errors
+///
+/// Returns an internal server error if the workflow run or node cannot be restarted.
+#[utoipa::path(
+    post,
+    path = "/workflows/{workflow_id}/nodes/{node_location_str}/restart",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("node_location_str" = String, Path, description = "Location string"),
+    ),
+    responses(
+        (status = OK, body = Vec<String>),
+        (status = 500, description = "Error restarting node"),
+    )
+)]
+pub async fn restart_node(
+    State(state): State<AppState>,
+    Path((run_id, location_str)): Path<(Uuid, String)>,
+) -> HandlerResult<Json<Vec<String>>> {
+    let location = parse_location(&location_str)?;
+    let (_, invalidated) = state
+        .runtime_state
+        .restart_task(&state.asset_registry, run_id, 0, vec![location])
+        .await?;
+
+    Ok(Json(
+        invalidated
+            .into_iter()
+            .map(|location| location.to_string())
+            .collect(),
+    ))
+}
+
 #[allow(unused)]
 /// Get the logs for a specific node in a workflow run, returning the log detail as a string.
 ///
