@@ -93,6 +93,11 @@ impl WorkflowRunEvent {
 pub struct NodeEvent {
     /// The location of the Node for this Event.
     pub loc: Location,
+    /// The user specified name for the Node if any.
+    ///
+    /// Setting the value wil set the Node name in the state but not setting
+    /// it will not override the previous value.
+    pub name: Option<String>,
     /// The new status of the Node.
     pub status: NodeStatus,
 }
@@ -154,7 +159,7 @@ pub enum RunningStateUpdate {
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeStatus {
     /// The node is scheduled to be run by the [Orchestrator].
-    Scheduled,
+    Scheduled {},
     /// The node is queued to run using an [Executor][crate::executor::Executor].
     Queued {
         /// Unique handle to the task on the executor that is running this node.
@@ -210,6 +215,7 @@ pub async fn send_running(
         event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
             loc,
             status: NodeStatus::Running { state_update: None },
+            name: None,
         }]),
     };
     event_sender
@@ -236,6 +242,7 @@ pub async fn send_cancelled(
         event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
             loc,
             status: NodeStatus::Cancelled,
+            name: None,
         }]),
     };
     event_sender
@@ -263,6 +270,7 @@ pub async fn send_queued(
         event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
             loc,
             status: NodeStatus::Queued { handle },
+            name: None,
         }]),
     };
     event_sender
@@ -292,6 +300,7 @@ pub async fn send_complete(
                 .map(|(loc, outputs)| NodeEvent {
                     loc,
                     status: NodeStatus::Complete { outputs },
+                    name: None,
                 })
                 .collect(),
         ),
@@ -324,6 +333,7 @@ pub async fn send_running_switching(
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             },
+            name: None,
         }]),
     };
     event_sender
@@ -345,6 +355,7 @@ pub async fn send_running_loop(
     attempt: u32,
     loc: Location,
     index: u32,
+    name: Option<String>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -354,6 +365,7 @@ pub async fn send_running_loop(
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             },
+            name,
         }]),
     };
     event_sender
@@ -387,6 +399,7 @@ pub async fn send_running_map(
                     size: u32::try_from(size).into_diagnostic()?,
                 }),
             },
+            name: None,
         }]),
     };
     event_sender
@@ -418,6 +431,7 @@ pub async fn send_map_elem_complete(
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
             },
+            name: None,
         }]),
     };
     event_sender
@@ -451,6 +465,7 @@ pub async fn send_error(
                 error: err.to_string(),
                 detail: Some(detail),
             },
+            name: None,
         }]),
     };
     event_sender

@@ -42,8 +42,8 @@ use crate::{
             add_run_attempt_metadata, copy_node_states, get_workflow_run_summary, insert_workflow,
             insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs,
             list_active_runs, list_workflow_run_summaries, max_attempt, read_node_state,
-            read_node_states, read_run_attempt_metadata, read_workflow, read_workflow_run,
-            read_workflow_run_inputs, update_node_state, update_workflow_run,
+            read_node_states, read_node_states_by_name, read_run_attempt_metadata, read_workflow,
+            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
@@ -564,6 +564,17 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         .boxed()
     }
 
+    fn read_by_name<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_node_states_by_name(&mut conn, self.run_id, self.attempt, name).await
+        }
+        .boxed()
+    }
+
     fn read_many<'a>(
         &'a self,
         locations: &'a mut (dyn Iterator<Item = Location> + Send),
@@ -641,10 +652,11 @@ impl SqliteWorkflowRunState {
                     run_id: self.run_id.to_string(),
                     attempt,
                     node_location: event.loc.clone(),
+                    name: event.name.clone(),
                     ..Default::default()
                 };
                 match event.status {
-                    NodeStatus::Scheduled => {
+                    NodeStatus::Scheduled {} => {
                         row.scheduled_time = Some(now);
                     }
                     NodeStatus::Queued { ref handle } => {
@@ -786,7 +798,8 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {},
+                name: None,
             }]))
             .await?;
 
@@ -819,7 +832,8 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {},
+                name: None,
             }]))
             .await?;
 
@@ -831,6 +845,7 @@ mod tests {
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
                 status: NodeStatus::Queued { handle: None },
+                name: None,
             }]))
             .await?;
 
@@ -867,6 +882,7 @@ mod tests {
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
                 status: NodeStatus::Complete { outputs },
+                name: None,
             }]))
             .await?;
 
@@ -895,6 +911,7 @@ mod tests {
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
                 },
+                name: None,
             }]))
             .await?;
 
@@ -912,6 +929,7 @@ mod tests {
                         bits: bits1.clone(),
                     }),
                 },
+                name: None,
             }]))
             .await?;
 
@@ -929,6 +947,7 @@ mod tests {
                         bits: bits2.clone(),
                     }),
                 },
+                name: None,
             }]))
             .await?;
 

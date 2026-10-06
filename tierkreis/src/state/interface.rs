@@ -69,6 +69,8 @@ pub struct WorkflowRunStateSummary {
 /// by the [`WorkflowRunState`] interface.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NodeState {
+    /// The user specified name for the Node if any.
+    pub name: Option<String>,
     /// The time at which the node was scheduled by the [`Orchestrator`] if any.
     pub scheduled_time: Option<DateTime<Utc>>,
     /// The time at which the node was queued by an [`Executor`] if any.
@@ -243,6 +245,11 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     ///
     /// If the `location` has no existing state, a default [`NodeState`] will be returned.
     fn read<'a>(&'a self, location: &'a Location) -> BoxFuture<'a, miette::Result<NodeState>>;
+    /// Read the state of potentially many nodes with the specified name.
+    fn read_by_name<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>>;
     /// Read the state of many Nodes at the specified [`Location`]s.
     ///
     /// If the `location` has no existing state, no entry will be returned for that [`Location`].

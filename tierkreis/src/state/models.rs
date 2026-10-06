@@ -99,6 +99,7 @@ pub struct UpsertWorkflowRun {
 #[diesel(table_name = node_states)]
 pub struct NodeState {
     pub id: i32,
+    pub name: Option<String>,
     pub run_id: String,
     pub attempt: i32,
     pub node_location: Location,
@@ -112,9 +113,9 @@ pub struct NodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
-    pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub handle: Option<String>,
 }
 
 #[derive(Insertable, AsChangeset, Default, Debug)]
@@ -122,6 +123,7 @@ pub struct NodeState {
 #[diesel(table_name = crate::state::schema::node_states)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct UpsertNodeState {
+    pub name: Option<String>,
     pub run_id: String,
     pub attempt: i32,
     pub node_location: Location,
@@ -135,9 +137,9 @@ pub struct UpsertNodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
-    pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub handle: Option<String>,
 }
 
 // -----------------------------------------------------------------------------

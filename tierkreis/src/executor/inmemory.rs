@@ -766,7 +766,8 @@ mod tests {
             attempt: 0,
             event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: loc1.clone(),
-                status: NodeStatus::Running { state_update: None }
+                status: NodeStatus::Running { state_update: None },
+                name: None,
             }])
         }));
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
@@ -774,7 +775,8 @@ mod tests {
             attempt: 0,
             event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: loc2.clone(),
-                status: NodeStatus::Running { state_update: None }
+                status: NodeStatus::Running { state_update: None },
+                name: None,
             }])
         }));
 

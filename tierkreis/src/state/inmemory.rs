@@ -304,6 +304,19 @@ impl InMemoryWorkflowRunState {
             events,
         )
     }
+
+    fn get_run_state(
+        &self,
+    ) -> miette::Result<dashmap::mapref::one::Ref<'_, (Uuid, u32), RunAttemptState>> {
+        let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
+            return Err(miette!(
+                "Run Attempt with id {} and attempt {} not found",
+                self.run_id,
+                self.attempt
+            ));
+        };
+        Ok(run_state)
+    }
 }
 
 impl WorkflowRunState for InMemoryWorkflowRunState {
@@ -428,17 +441,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
     #[instrument]
     fn read<'a>(&'a self, location: &'a Location) -> BoxFuture<'a, miette::Result<NodeState>> {
         async move {
-            let run_state = self
-                .global_state
-                .runs
-                .get(&(self.run_id, self.attempt))
-                .ok_or_else(|| {
-                    miette!(
-                        "Run Attempt with id {} and attempt {} not found",
-                        self.run_id,
-                        self.attempt
-                    )
-                })?;
+            let run_state = self.get_run_state()?;
             let state = run_state
                 .value()
                 .nodes
@@ -446,7 +449,26 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 .cloned()
                 .unwrap_or_default();
 
-            Ok(state.clone())
+            Ok(state)
+        }
+        .boxed()
+    }
+
+    fn read_by_name<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
+        async move {
+            let run_state = self.get_run_state()?;
+            let node_states = run_state
+                .value()
+                .nodes
+                .iter()
+                .filter(|(_, node_state)| node_state.name.as_deref() == Some(name))
+                .map(|(loc, node_state)| (loc.clone(), node_state.clone()))
+                .collect();
+
+            Ok(node_states)
         }
         .boxed()
     }
@@ -456,13 +478,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         locations: &'a mut (dyn Iterator<Item = Location> + Send),
     ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
         async move {
-            let Some(run_state) = self.global_state.runs.get(&(self.run_id, self.attempt)) else {
-                return Err(miette!(
-                    "Run Attempt with id {} and attempt {} not found",
-                    self.run_id,
-                    self.attempt
-                ));
-            };
+            let run_state = self.get_run_state()?;
             let states = locations.map(move |location| {
                 let node_state = run_state
                     .value()
@@ -548,8 +564,11 @@ fn handle_node_events(
     let now = Utc::now();
     for node_event in node_events {
         let node_state = run_state.nodes.entry(node_event.loc.clone()).or_default();
+        if node_event.name.is_some() {
+            node_state.name.clone_from(&node_event.name);
+        }
         match node_event.status {
-            crate::event::NodeStatus::Scheduled => {
+            crate::event::NodeStatus::Scheduled {} => {
                 if node_state.scheduled_time.is_none() {
                     node_state.scheduled_time = Some(now);
                 }
@@ -678,7 +697,8 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {},
+                name: None,
             }]))
             .await?;
 
@@ -708,7 +728,8 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled,
+                status: NodeStatus::Scheduled {},
+                name: None,
             }]))
             .await?;
 

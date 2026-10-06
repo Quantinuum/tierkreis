@@ -122,6 +122,12 @@ impl Location {
         self.0.is_empty()
     }
 
+    /// Returns true if the Location represents an iteration of a loop.
+    #[must_use]
+    pub fn is_loop(&self) -> bool {
+        matches!(self.0.last(), Some(LocationComponent::LoopIndex { .. }))
+    }
+
     /// Construct a [`Location`] from an iterator of [`NodeIndex`].
     pub fn from_node_index_iter(nodes: impl IntoIterator<Item = NodeIndex>) -> Self {
         Self(
@@ -193,6 +199,16 @@ impl Location {
             }
         }
         ancestors
+    }
+
+    /// Returns index of the loop if it is the last component
+    #[must_use]
+    pub fn loop_index(&self) -> Option<u32> {
+        if let Some(LocationComponent::LoopIndex { index }) = self.0.last() {
+            Some(*index)
+        } else {
+            None
+        }
     }
 
     /// Iterate over the [`LocationComponent`]s that make up this [`Location`].
