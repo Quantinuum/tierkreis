@@ -21,7 +21,7 @@ use crate::{
     executor::interface::TaskHandle,
     graph::{NodeDefinition, WorkflowGraph},
     location::Location,
-    runtime_graph_util::{dependents, resolve_location},
+    workflow_state_query::{dependents, resolve_location},
 };
 
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface

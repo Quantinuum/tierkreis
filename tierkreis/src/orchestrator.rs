@@ -39,8 +39,8 @@ use crate::{
     },
     graph::{NodeDefinition, WorkflowGraph},
     location::Location,
-    runtime_graph_util::{collect_inputs, load_subgraph},
     state::{WorkflowRunState, interface::NodeState},
+    workflow_state_query::{collect_inputs, load_subgraph},
 };
 
 /// `Action` describes an operation the Orchestrator should perform.

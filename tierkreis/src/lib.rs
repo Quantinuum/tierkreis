@@ -15,9 +15,9 @@ pub mod location;
 pub mod monitoring;
 pub mod orchestrator;
 pub mod runtime;
-pub mod runtime_graph_util;
 pub mod server;
 pub mod state;
+pub mod workflow_state_query;
 
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]
