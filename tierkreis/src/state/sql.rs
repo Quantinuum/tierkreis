@@ -95,13 +95,13 @@ pub async fn build_conn_pool_with_url(
     let mut builder = diesel_async::pooled_connection::deadpool::Pool::builder(manager)
         .runtime(Runtime::Tokio1)
         .wait_timeout(Some(default_wait))
-        .post_create(Hook::async_fn(move |mut conn, _metrics| {
+        .post_create(Hook::async_fn(move |conn, _metrics| {
             Box::pin(async move {
                 let res: diesel::QueryResult<_> = sql_query(format!(
                     "PRAGMA busy_timeout = {}",
                     default_wait.as_millis()
                 ))
-                .execute(&mut conn)
+                .execute(&mut *conn)
                 .await;
                 res.into_diagnostic()
                     .map_err(|err| HookError::message(err.to_string()))?;
