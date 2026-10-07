@@ -1,12 +1,18 @@
 """CLI for project related operations."""
 
 import argparse
+import logging
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from tierkreis._tierkreis import (
+    DEFAULT_CONFIG_FILE_NAME,
+    create_default_config,
+    create_default_directories,
+)
 from tierkreis.cli.templates import (
     default_graph,
     external_worker_idl,
@@ -22,6 +28,8 @@ from tierkreis.cli.templates import (
 )
 from tierkreis.exceptions import TierkreisError
 from tierkreis.namespace import Namespace
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args(
@@ -66,6 +74,12 @@ def parse_args(
         help="Overwrites the default graph directory.",
         type=Path,
         default=Path("./tkr") / "graphs",
+    )
+    project.add_argument(
+        "--create-default-directories",
+        help="Create the default Tierkreis directories (~/.tierkreis/tmp, "
+        "~/.tierkreis/assets) if they don't already exist.",
+        action="store_true",
     )
     worker = init_subparsers.add_parser(
         "worker",
@@ -203,6 +217,8 @@ def _gen_worker_stubs(worker_directory: Path, stubs_name: str) -> None:
 def run_args(args: argparse.Namespace) -> None:
     """Run the project initialization according to the args."""
     if args.init_type == "project":
+        if args.create_default_directories:
+            create_default_directories()
         project_dir = Path(args.project_directory)
         if (project_dir / "tkr").exists():
             if not (project_dir / "tkr").is_dir():
@@ -217,6 +233,7 @@ def run_args(args: argparse.Namespace) -> None:
                 != "y"
             ):
                 return
+        create_default_config(DEFAULT_CONFIG_FILE_NAME)
         worker_name = "example_worker"
         worker_dir = Path(args.worker_directory)
         if not worker_dir.is_absolute():
