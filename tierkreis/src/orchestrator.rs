@@ -37,9 +37,10 @@ use crate::{
         ExecutorRegistry,
         interface::{TaskHandle, TaskPlan},
     },
-    graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
-    location::{Location, LocationComponent},
+    graph::{NodeDefinition, WorkflowGraph},
+    location::Location,
     state::{WorkflowRunState, interface::NodeState},
+    workflow_state_query::{collect_inputs, load_subgraph},
 };
 
 /// `Action` describes an operation the Orchestrator should perform.
@@ -724,7 +725,7 @@ impl Orchestrator {
         let loc = parent_location.with_node(n);
 
         let subgraph = if inputs.contains_key("graph") {
-            self.load_subgraph(&inputs).await?
+            load_subgraph(&self.asset_storage_registry, &inputs).await?
         } else {
             workflow_graph
         };
@@ -787,7 +788,7 @@ impl Orchestrator {
                 // visited this loop iteration.
                 let mut inputs =
                     collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
-                let subgraph = self.load_subgraph(&inputs).await?;
+                let subgraph = load_subgraph(&self.asset_storage_registry, &inputs).await?;
 
                 let loop_loc = loc.with_loop_index(index);
                 let loop_subgraph_output_loc = loop_loc.with_node(subgraph.output_idx());
@@ -865,7 +866,7 @@ impl Orchestrator {
             .get(&parent_location.with_node(n))
             .and_then(|state| state.map_completed.as_deref());
         let inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
-        let subgraph = self.load_subgraph(&inputs).await?;
+        let subgraph = load_subgraph(&self.asset_storage_registry, &inputs).await?;
 
         Ok(match completed {
             None => {
@@ -1069,167 +1070,6 @@ impl Orchestrator {
         })
     }
 
-    #[instrument(skip_all, err)]
-    async fn load_subgraph(
-        &self,
-        inputs: &HashMap<String, AssetSpec>,
-    ) -> miette::Result<Arc<WorkflowGraph>> {
-        let subgraph_bytes = load_asset(&self.asset_storage_registry, inputs, "graph").await?;
-        let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
-            serde_json::from_slice(&subgraph_bytes);
-
-        let subgraph = match subgraph_res {
-            Ok(subgraph) => subgraph,
-            Err(_err) => {
-                // TODO: rich error message here
-                let legacy: LegacyWorkflowGraph =
-                    serde_json::from_slice(&subgraph_bytes).into_diagnostic()?;
-                legacy.to_workflow_graph()?
-            }
-        };
-
-        Ok(Arc::new(subgraph))
-    }
-
-    /// Resolve the [`WorkflowGraph`] that contains the node referenced by the terminal
-    /// component of `loc`, descending into `Eval`/`Loop`/`Map` subgraphs as needed.
-    ///
-    /// # Errors
-    ///
-    /// Will return Err if `loc` is malformed or an iteration component appears
-    /// without a preceding node.
-    pub async fn resolve_location(
-        &self,
-        workflow_run_state: &Arc<dyn WorkflowRunState>,
-        root_graph: &Arc<WorkflowGraph>,
-        loc: &Location,
-    ) -> miette::Result<(Arc<WorkflowGraph>, Location, NodeIndex)> {
-        let mut current_graph = Arc::clone(root_graph);
-        let mut parent_loc = Location::root();
-        let mut current_node: Option<NodeIndex> = None;
-
-        let node_states = workflow_run_state
-            .read_many(&mut current_graph.node_ids().map(|n| parent_loc.with_node(n)))
-            .await?;
-
-        for component in loc.components() {
-            match component {
-                LocationComponent::Node { node } => {
-                    if let Some(prev_node) = current_node
-                        && matches!(
-                            current_graph.node_definition(prev_node),
-                            Some(NodeDefinition::Eval {})
-                        )
-                    {
-                        let inputs =
-                            collect_inputs(&current_graph, &node_states, &parent_loc, prev_node)?;
-                        if inputs.contains_key("graph") {
-                            current_graph = self.load_subgraph(&inputs).await?;
-                            parent_loc = parent_loc.with_node(prev_node);
-                        }
-                    }
-                    current_node = Some(*node);
-                }
-                LocationComponent::LoopIndex { index } => {
-                    let node = current_node.ok_or_else(|| {
-                        miette!(
-                            "Malformed location {loc}: loop iteration without an enclosing node"
-                        )
-                    })?;
-                    let inputs = collect_inputs(&current_graph, &node_states, &parent_loc, node)?;
-                    current_graph = self.load_subgraph(&inputs).await?;
-                    parent_loc = parent_loc.with_node(node).with_loop_index(*index);
-                    current_node = None;
-                }
-                LocationComponent::MapIndex { index } => {
-                    let node = current_node.ok_or_else(|| {
-                        miette!("Malformed location {loc}: map iteration without an enclosing node")
-                    })?;
-                    let inputs = collect_inputs(&current_graph, &node_states, &parent_loc, node)?;
-                    current_graph = self.load_subgraph(&inputs).await?;
-                    parent_loc = parent_loc
-                        .with_node(node)
-                        .with_map_index(usize::try_from(*index).into_diagnostic()?);
-                    current_node = None;
-                }
-            }
-        }
-
-        let node =
-            current_node.ok_or_else(|| miette!("Location {loc} does not refer to a node"))?;
-        Ok((current_graph, parent_loc, node))
-    }
-
-    /// Recursively compute the [`Location`]s that (transitively) consume `loc`s  output, later
-    /// iterations of an enclosing `Loop`, and whatever depends on those in turn.
-    ///
-    /// # Errors
-    ///
-    /// Will return Err if `loc` cannot be resolved against `root_graph`.
-    pub fn dependents<'a>(
-        &'a self,
-        workflow_run_state: &'a Arc<dyn WorkflowRunState>,
-        root_graph: &'a Arc<WorkflowGraph>,
-        loc: &'a Location,
-    ) -> future::BoxFuture<'a, miette::Result<HashSet<Location>>> {
-        async move {
-            let mut descendants = HashSet::new();
-            let Some((parent, last)) = loc.split_last() else {
-                return Ok(descendants);
-            };
-
-            match last {
-                LocationComponent::Node { .. } => {
-                    let (graph, graph_prefix, node) = self
-                        .resolve_location(workflow_run_state, root_graph, loc)
-                        .await?;
-
-                    // An Output node's dependents are whatever depends on its enclosing node.
-                    if matches!(graph.node_definition(node), Some(NodeDefinition::Output {})) {
-                        descendants.extend(
-                            self.dependents(workflow_run_state, root_graph, &parent)
-                                .await?,
-                        );
-                    }
-
-                    for child in graph.output_neighbours(node) {
-                        let child_loc = graph_prefix.with_node(child);
-                        if descendants.insert(child_loc.clone()) {
-                            descendants.extend(
-                                self.dependents(workflow_run_state, root_graph, &child_loc)
-                                    .await?,
-                            );
-                        }
-                    }
-                }
-                LocationComponent::LoopIndex { index } => {
-                    // The Loop node's own state tracks the latest iteration it has reached.
-                    let latest = workflow_run_state
-                        .read(&parent)
-                        .await?
-                        .loop_index
-                        .unwrap_or(0);
-                    for i in (index + 1)..=latest {
-                        descendants.insert(parent.with_loop_index(i));
-                    }
-                    descendants.extend(
-                        self.dependents(workflow_run_state, root_graph, &parent)
-                            .await?,
-                    );
-                }
-                LocationComponent::MapIndex { .. } => {
-                    descendants.extend(
-                        self.dependents(workflow_run_state, root_graph, &parent)
-                            .await?,
-                    );
-                }
-            }
-
-            Ok(descendants)
-        }
-        .boxed()
-    }
-
     /// Perform a series of actions, dispatching to [`Executor`]s when necessary.
     ///
     /// # Errors
@@ -1429,42 +1269,6 @@ fn should_traverse_if_else_port(
         "if_false" => matches!(node_cond, Some(false)),
         _ => panic!("Unexpected port name for `IfElse`"),
     }
-}
-
-#[instrument(
-    skip_all,
-    fields(location = %parent_location.with_node(n)),
-    err,
-)]
-fn collect_inputs(
-    workflow_graph: &WorkflowGraph,
-    node_states: &NodeStates,
-    parent_location: &Location,
-    n: NodeIndex,
-) -> miette::Result<HashMap<String, AssetSpec>> {
-    let mut inputs = HashMap::new();
-    for (i, o) in workflow_graph.input_links(n) {
-        let input_name = workflow_graph.get_port_name(i.into())?;
-        let output_name = workflow_graph.get_port_name(o.into())?;
-        let linked_node = workflow_graph.port_node(o)?;
-        let node_state = node_states
-            .get(&parent_location.with_node(linked_node))
-            .wrap_err_with(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
-        let outputs = node_state
-            .outputs
-            .as_ref()
-            .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
-        let output_asset_spec = outputs.get(output_name).ok_or_else(|| {
-            let output_keys: Vec<_> = outputs.keys().collect();
-            miette!(
-                help = format!("Available outputs: {output_keys:?}"),
-                "Could not get node output for node: {linked_node:?} and port name: {output_name}",
-            )
-        })?;
-
-        inputs.insert(input_name.clone(), output_asset_spec.clone());
-    }
-    Ok(inputs)
 }
 
 #[cfg(test)]
