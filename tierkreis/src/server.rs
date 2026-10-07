@@ -21,6 +21,7 @@ use crate::{
     runtime::{RuntimeConfig, asset_storage_registry_from_config},
     state::{RuntimeState, SqliteRuntimeState},
 };
+use std::net::Ipv4Addr;
 
 fn api_router() -> OpenApiRouter<models::AppState> {
     OpenApiRouter::new()
@@ -91,4 +92,32 @@ pub async fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
     let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
     let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
     server(runtime_state, asset_registry, host, port).await
+}
+
+/// Serve a workflow graph in an isolated in-memory runtime state.
+///
+/// # Errors
+///
+/// Returns an error if the state cannot be created or the server fails to bind or run.
+///
+/// # Panics
+///
+/// Panics if the tokio runtime cannot be started.
+#[tokio::main]
+pub async fn serve_graph(graph: crate::graph::WorkflowGraph, port: u16) -> miette::Result<()> {
+    let runtime_state = Arc::new(SqliteRuntimeState::try_new_in_memory().await?);
+    let workflow_id = runtime_state
+        .save_workflow(Some("Graph".to_string()), graph)
+        .await?;
+    let _run_state = runtime_state
+        .new_workflow_run_state(workflow_id, std::collections::HashMap::new())
+        .await?;
+    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
+    server(
+        runtime_state,
+        asset_registry,
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        port,
+    )
+    .await
 }
