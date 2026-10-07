@@ -18,7 +18,6 @@ use crate::{
             try_load_output_value, try_load_outputs,
         },
     },
-    state::RuntimeState,
 };
 use uuid::Uuid;
 
@@ -89,6 +88,16 @@ pub async fn list_nodes(
     Path(run_id): Path<Uuid>, //TODO currently we only have the RUN_ID from the frontend
     Query(query): Query<GraphsQuery>,
 ) -> HandlerResult<Json<GraphsResponse>> {
+    if let Some(graph_data) = &state.display_graph {
+        let mut graphs = HashMap::new();
+        for loc_str in &query.locs {
+            let location = parse_location(loc_str)?;
+            let graph = super::nodes::build_graph_data_py_graph(graph_data, &location)?;
+            graphs.insert(loc_str.clone(), graph);
+        }
+        return Ok(Json(GraphsResponse { graphs }));
+    }
+
     // Once we get the actual workflow ID the logic needs to be reversed
     // Or the frontend needs to start submitting run_ids
     let run_state = state
@@ -169,6 +178,13 @@ pub async fn get_all_outputs(
     State(state): State<AppState>,
     Path((run_id, location_str)): Path<(Uuid, String)>,
 ) -> HandlerResult<Json<HashMap<String, serde_json::Value>>> {
+    if let Some(graph_data) = &state.display_graph {
+        let location = parse_location(&location_str)?;
+        return Ok(Json(super::nodes::graph_data_outputs(
+            graph_data, &location,
+        )?));
+    }
+
     let run_state = state
         .runtime_state
         .load_workflow_run_state(run_id, 0)
@@ -203,6 +219,17 @@ pub async fn get_single_output(
     State(state): State<AppState>,
     Path((run_id, node_location_str, port_name)): Path<(Uuid, String, String)>,
 ) -> HandlerResult<Json<serde_json::Value>> {
+    if let Some(graph_data) = &state.display_graph {
+        let location = parse_location(&node_location_str)?;
+        let outputs = super::nodes::graph_data_outputs(graph_data, &location)?;
+        return Ok(Json(
+            outputs
+                .get(&port_name)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        ));
+    }
+
     let run_state = state
         .runtime_state
         .load_workflow_run_state(run_id, 0)
@@ -359,6 +386,10 @@ pub async fn restart_node(
     State(state): State<AppState>,
     Path((run_id, location_str)): Path<(Uuid, String)>,
 ) -> HandlerResult<Json<Vec<String>>> {
+    if state.display_graph.is_some() {
+        return Ok(Json(Vec::new()));
+    }
+
     let location = parse_location(&location_str)?;
     let (_, invalidated) = state
         .runtime_state

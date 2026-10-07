@@ -55,9 +55,16 @@ mod tierkreis {
 
     #[pyfunction]
     #[pyo3(signature = (graph, port=3000))]
-    fn serve_graph(py: Python<'_>, graph: PyWorkflowGraph, port: u16) -> PyResult<()> {
-        let graph = graph.0;
-        let result = py.detach(move || crate::server::serve_graph(graph, port));
+    fn serve_graph(py: Python<'_>, graph: &Bound<'_, PyAny>, port: u16) -> PyResult<()> {
+        let graph_json: String = if graph.hasattr("data")? {
+            graph
+                .getattr("data")?
+                .call_method0("model_dump_json")?
+                .extract()?
+        } else {
+            graph.call_method0("model_dump_json")?.extract()?
+        };
+        let result = py.detach(move || crate::server::serve_graph(&graph_json, port));
         result.map_err(|err| Python::attach(|py| convert_err(py, err)))
     }
 

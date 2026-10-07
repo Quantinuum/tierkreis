@@ -18,8 +18,9 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
     asset_storage::AssetStorageRegistry,
+    graph::WorkflowGraph,
     runtime::{RuntimeConfig, asset_storage_registry_from_config},
-    state::{RuntimeState, SqliteRuntimeState},
+    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
 use std::net::Ipv4Addr;
 
@@ -47,10 +48,11 @@ pub fn openapi_spec() -> OpenApi {
 }
 
 async fn server(
-    runtime_state: Arc<SqliteRuntimeState>,
+    runtime_state: Arc<dyn RuntimeState>,
     asset_registry: AssetStorageRegistry,
     host: IpAddr,
     port: u16,
+    display_graph: Option<Arc<serde_json::Value>>,
 ) -> miette::Result<()> {
     let update_receiver = runtime_state.listen();
 
@@ -58,6 +60,7 @@ async fn server(
         runtime_state,
         asset_registry,
         update_receiver,
+        display_graph,
     };
 
     let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
@@ -89,9 +92,9 @@ async fn server(
 /// Panics if the tokio runtime cannot be started.
 #[tokio::main]
 pub async fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
-    let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
+    let runtime_state: Arc<dyn RuntimeState> = Arc::new(SqliteRuntimeState::try_new().await?);
     let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
-    server(runtime_state, asset_registry, host, port).await
+    server(runtime_state, asset_registry, host, port, None).await
 }
 
 /// Serve a workflow graph in an isolated in-memory runtime state.
@@ -104,10 +107,14 @@ pub async fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
 ///
 /// Panics if the tokio runtime cannot be started.
 #[tokio::main]
-pub async fn serve_graph(graph: crate::graph::WorkflowGraph, port: u16) -> miette::Result<()> {
-    let runtime_state = Arc::new(SqliteRuntimeState::try_new_in_memory().await?);
+pub async fn serve_graph(graph_json: &str, port: u16) -> miette::Result<()> {
+    let display_graph: serde_json::Value = serde_json::from_str(graph_json).into_diagnostic()?;
+    let runtime_state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
     let workflow_id = runtime_state
-        .save_workflow(Some("Graph".to_string()), graph)
+        .save_workflow(
+            Some("Graph".to_string()),
+            WorkflowGraph::new(std::iter::empty::<String>()),
+        )
         .await?;
     let _run_state = runtime_state
         .new_workflow_run_state(workflow_id, std::collections::HashMap::new())
@@ -118,6 +125,7 @@ pub async fn serve_graph(graph: crate::graph::WorkflowGraph, port: u16) -> miett
         asset_registry,
         IpAddr::V4(Ipv4Addr::LOCALHOST),
         port,
+        Some(Arc::new(display_graph)),
     )
     .await
 }
