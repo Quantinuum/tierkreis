@@ -123,14 +123,7 @@ async fn process_finished_task(
         let outputs = transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
         match outputs {
             Ok(outputs) => {
-                send_complete(
-                    event_sender,
-                    workflow_run_id,
-                    attempt,
-                    vec![loc],
-                    vec![outputs],
-                )
-                .await?;
+                send_complete(event_sender, workflow_run_id, attempt, vec![(loc, outputs)]).await?;
             }
             Err(err) => {
                 send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
@@ -142,13 +135,13 @@ async fn process_finished_task(
             .send(RuntimeEvent::WorkflowRun {
                 workflow_run_id,
                 attempt,
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    locs: vec![loc],
+                event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                    loc,
                     status: NodeStatus::Error {
                         error: format!("Subprocess failed with error code: {exit_status}"),
                         detail: stderr,
                     },
-                }),
+                }]),
             })
             .await
             .map_err(|err| miette!("Failed to send error event: {err}"))?;
@@ -754,32 +747,23 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
@@ -829,32 +813,23 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
@@ -919,18 +894,18 @@ mod tests {
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc1.clone()],
+            event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: loc1.clone(),
                 status: NodeStatus::Running { state_update: None }
-            })
+            }])
         }));
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc2.clone()],
+            event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: loc2.clone(),
                 status: NodeStatus::Running { state_update: None }
-            })
+            }])
         }));
 
         // These may complete out of order, so find the correct events.
@@ -940,11 +915,10 @@ mod tests {
                 matches!(
                     event,
                     RuntimeEvent::WorkflowRun {
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs,
-                            status: NodeStatus::Complete { .. }
-                        }), ..
-                    } if locs == &vec![loc1.clone()]
+                        event: WorkflowRunEvent::NodeEvents(node_events),
+                        ..
+                    } if node_events[0].loc == loc1
+                    && matches!(node_events[0].status, NodeStatus::Complete { .. })
                 )
             })
             .unwrap();
@@ -961,11 +935,10 @@ mod tests {
                 matches!(
                     event,
                     RuntimeEvent::WorkflowRun {
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs,
-                            status: NodeStatus::Complete { .. }
-                        }), ..
-                    } if locs == &vec![loc2.clone()]
+                        event: WorkflowRunEvent::NodeEvents(node_events),
+                        ..
+                    } if node_events[0].loc == loc2
+                    && matches!(node_events[0].status, NodeStatus::Complete { .. })
                 )
             })
             .unwrap();
@@ -1012,32 +985,23 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
@@ -1074,32 +1038,24 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Error { ref error, .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            } if error == "Subprocess failed with error code: exit status: 1"
+            } if matches!(node_events[0].status, NodeStatus::Error { ref error, .. }
+            if error == "Subprocess failed with error code: exit status: 1")
         );
 
         Ok(())
@@ -1137,23 +1093,18 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
+
         let event = stream.next().await.unwrap();
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -1162,12 +1113,9 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Cancelled,
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Cancelled)
         );
 
         Ok(())
@@ -1219,32 +1167,23 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,

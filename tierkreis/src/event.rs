@@ -42,9 +42,9 @@ impl RuntimeEvent {
     pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
         match self {
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(node_event),
+                event: WorkflowRunEvent::NodeEvents(node_events),
                 ..
-            } => node_event.outputs(),
+            } => node_events.into_iter().map(NodeEvent::outputs).collect(),
             RuntimeEvent::WorkflowRun { .. } => Vec::new(),
         }
     }
@@ -68,7 +68,7 @@ pub enum WorkflowRunEvent {
     /// The workflow run is waiting to be executed.
     Queued {},
     /// An event relating to a specific set of nodes in the workflow run.
-    NodeEvent(NodeEvent),
+    NodeEvents(Vec<NodeEvent>),
 }
 
 impl WorkflowRunEvent {
@@ -92,7 +92,7 @@ impl WorkflowRunEvent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeEvent {
     /// The location of the Node for this Event.
-    pub locs: Vec<Location>,
+    pub loc: Location,
     /// The new status of the Node.
     pub status: NodeStatus,
 }
@@ -104,12 +104,12 @@ impl NodeEvent {
         matches!(self.status, NodeStatus::Complete { .. })
     }
 
-    /// Returns the outputs from locations specified in the event if any.
+    /// Returns the outputs from location specified in the event if any.
     #[must_use]
-    pub fn outputs(self) -> Vec<HashMap<String, AssetSpec>> {
+    pub fn outputs(self) -> HashMap<String, AssetSpec> {
         match self.status {
             NodeStatus::Complete { outputs, .. } => outputs,
-            _ => Vec::new(),
+            _ => HashMap::new(),
         }
     }
 }
@@ -167,8 +167,8 @@ pub enum NodeStatus {
     },
     /// The node is finished and has outputs.
     Complete {
-        /// The outputs from the nodes
-        outputs: Vec<HashMap<String, AssetSpec>>,
+        /// The outputs from the node
+        outputs: HashMap<String, AssetSpec>,
     },
     /// The node has been cancelled.
     Cancelled,
@@ -207,10 +207,10 @@ pub async fn send_running(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Running { state_update: None },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -233,10 +233,10 @@ pub async fn send_cancelled(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Cancelled,
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -260,10 +260,10 @@ pub async fn send_queued(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Queued { handle },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -281,16 +281,20 @@ pub async fn send_complete(
     event_sender: &mut EventSender,
     workflow_run_id: Uuid,
     attempt: u32,
-    locs: Vec<Location>,
-    outputs: Vec<HashMap<String, AssetSpec, RandomState>>,
+    outputs_by_loc: Vec<(Location, HashMap<String, AssetSpec, RandomState>)>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs,
-            status: NodeStatus::Complete { outputs },
-        }),
+        event: WorkflowRunEvent::NodeEvents(
+            outputs_by_loc
+                .into_iter()
+                .map(|(loc, outputs)| NodeEvent {
+                    loc,
+                    status: NodeStatus::Complete { outputs },
+                })
+                .collect(),
+        ),
     };
     event_sender
         .send(event)
@@ -315,12 +319,12 @@ pub async fn send_running_switching(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Switching { cond }),
             },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -345,12 +349,12 @@ pub async fn send_running_loop(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::Looping { index }),
             },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -376,14 +380,14 @@ pub async fn send_running_map(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapStarted {
                     size: u32::try_from(size).into_diagnostic()?,
                 }),
             },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -409,12 +413,12 @@ pub async fn send_map_elem_complete(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc.clone()],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
             },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -441,13 +445,13 @@ pub async fn send_error(
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
         attempt,
-        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-            locs: vec![loc],
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
             status: NodeStatus::Error {
                 error: err.to_string(),
                 detail: Some(detail),
             },
-        }),
+        }]),
     };
     event_sender
         .send(event)
@@ -545,13 +549,11 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Error { ref error, ref detail },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(node_events),
                 ..
-            } if error == "Second Context"
-                && *detail == Some("Second Context
+            } if matches!(node_events[0].status, NodeStatus::Error { ref error, ref detail }
+                if error == "Second Context"
+                    && *detail == Some("Second Context
 
 Which was caused by:
 
@@ -560,7 +562,7 @@ First Context
 Which was caused by:
 
 Root cause".to_string())
-        );
+        ));
 
         Ok(())
     }

@@ -406,7 +406,9 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 }
                 send_workflow_stopped = true;
             }
-            WorkflowRunEvent::NodeEvent(ref node_event) => handle_node_event(run_state, node_event),
+            WorkflowRunEvent::NodeEvents(ref node_events) => {
+                handle_node_events(run_state, node_events);
+            }
         }
 
         self.update_sender.send_modify(|run_attempt_updated| {
@@ -539,13 +541,13 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
     }
 }
 
-fn handle_node_event(
+fn handle_node_events(
     mut run_state: dashmap::mapref::one::RefMut<'_, (Uuid, u32), RunAttemptState>,
-    node_event: &NodeEvent,
+    node_events: &[NodeEvent],
 ) {
     let now = Utc::now();
-    for (idx, loc) in node_event.locs.iter().enumerate() {
-        let node_state = run_state.nodes.entry(loc.clone()).or_default();
+    for node_event in node_events {
+        let node_state = run_state.nodes.entry(node_event.loc.clone()).or_default();
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
@@ -612,7 +614,7 @@ fn handle_node_event(
             crate::event::NodeStatus::Complete { ref outputs } => {
                 if node_state.complete_time.is_none() {
                     node_state.complete_time = Some(now);
-                    node_state.outputs = Some(outputs.get(idx).unwrap().clone());
+                    node_state.outputs = Some(outputs.clone());
                 }
             }
             crate::event::NodeStatus::Cancelled => {
@@ -674,10 +676,10 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Scheduled,
-            }))
+            }]))
             .await?;
 
         let updated = recv.borrow_and_update();
@@ -704,10 +706,10 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Scheduled,
-            }))
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;

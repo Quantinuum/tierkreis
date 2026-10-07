@@ -132,14 +132,8 @@ async fn process_finished_task(
                 transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
             match outputs {
                 Ok(outputs) => {
-                    send_complete(
-                        event_sender,
-                        workflow_run_id,
-                        attempt,
-                        vec![loc],
-                        vec![outputs],
-                    )
-                    .await?;
+                    send_complete(event_sender, workflow_run_id, attempt, vec![(loc, outputs)])
+                        .await?;
                 }
                 Err(err) => {
                     send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
@@ -665,7 +659,7 @@ mod tests {
     use super::*;
     use crate::{
         asset_storage::{FileAssetStorage, assert_registry_contains_values, test_storage_registry},
-        event::{NodeEvent, NodeStatus, WorkflowRunEvent},
+        event::{NodeStatus, WorkflowRunEvent},
         executor::{HPCExecutor, PbsWrapper, SlurmWrapper},
     };
 
@@ -730,22 +724,16 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued {..})
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running {..})
         );
         assert_registry_contains_values(
             &registry,
