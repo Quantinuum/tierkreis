@@ -323,6 +323,52 @@
           }
         }
       }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}/restart": {
+      "post": {
+        "summary": "Restart a task node and return the locations invalidated by the restart.",
+        "description": "# Errors\n\nReturns an internal server error if the workflow run or node cannot be restarted.",
+        "operationId": "restart_node",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error restarting node"
+          }
+        }
+      }
     }
   },
   "components": {

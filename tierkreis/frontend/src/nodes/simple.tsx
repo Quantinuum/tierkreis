@@ -32,7 +32,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
       );
       data.setInfo?.({
         type: "Constant value",
-        content,
+        content: content ?? "No value available.",
         workflow_id,
         node_location,
         started_time: data.started_time,
@@ -48,7 +48,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
       );
       data.setInfo?.({
         type: "Input",
-        content,
+        content: content ?? "No value available.",
         workflow_id,
         node_location,
         started_time: data.started_time,
@@ -61,7 +61,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
       const content = await fetchOutputs(data.workflowId, parent);
       data.setInfo?.({
         type: "Output",
-        content,
+        content: content ?? "No value available.",
         workflow_id,
         node_location,
         started_time: data.started_time,
