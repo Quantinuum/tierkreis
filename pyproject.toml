@@ -1,7 +1,6 @@
 [tool.uv.workspace]
 members = [
     "tierkreis",
-    "tierkreis_visualization",
     "tierkreis_workers/*worker",
     "tierkreis_workers/*worker/api",
     "docs/source/examples/example_workers/*worker",
