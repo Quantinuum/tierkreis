@@ -82,7 +82,7 @@ export const restartNode = async (
     console.log("Failed to restart node.");
     return [];
   }
-  return res.data;
+  return res.data ?? [];
 };
 
 export const useInfoQuery = () => $api.useQuery("get", "/api/info");

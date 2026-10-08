@@ -9,8 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up dependencies
+        uses: ./.github/actions/setup_deps
+        with:
+          include_node: "yes"
+      - name: Build frontend
+        run: just prod
+      - name: Upload frontend bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-dist
+          path: tierkreis/frontend/dist
+
   linux:
     runs-on: ${{ matrix.platform.runner }}
+    needs: frontend
     strategy:
       matrix:
         platform:
@@ -28,6 +45,11 @@ jobs:
             target: ppc64le
     steps:
       - uses: actions/checkout@v6
+      - name: Download frontend bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: tierkreis/frontend/dist
       - uses: actions/setup-python@v6
         with:
           python-version: |
@@ -48,6 +70,7 @@ jobs:
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
+    needs: frontend
     strategy:
       matrix:
         platform:
@@ -61,6 +84,11 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@v6
+      - name: Download frontend bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: tierkreis/frontend/dist
       - uses: actions/setup-python@v6
         with:
           python-version: |
@@ -81,6 +109,7 @@ jobs:
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
+    needs: frontend
     strategy:
       matrix:
         platform:
@@ -95,6 +124,11 @@ jobs:
             python_arch: arm64
     steps:
       - uses: actions/checkout@v6
+      - name: Download frontend bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: tierkreis/frontend/dist
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -123,6 +157,7 @@ jobs:
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
+    needs: frontend
     strategy:
       matrix:
         platform:
@@ -132,6 +167,11 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v6
+      - name: Download frontend bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: tierkreis/frontend/dist
       - uses: actions/setup-python@v6
         with:
           python-version: |
@@ -151,8 +191,16 @@ jobs:
 
   sdist:
     runs-on: ubuntu-latest
+    needs: frontend
     steps:
       - uses: actions/checkout@v6
+      - name: Download frontend bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: tierkreis/frontend/dist
+      - name: Verify frontend is included in the Cargo package
+        run: cargo package --list --manifest-path tierkreis/Cargo.toml | grep -Fx 'frontend/dist/index.html'
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:

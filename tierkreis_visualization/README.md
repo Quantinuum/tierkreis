@@ -50,10 +50,10 @@ uv run tkr-vis-dev
 from the `tierkreis/tierkreis_visualization` directory and
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
-from the `tierkreis/tierkreis_visualization/frontend` directory.
+from the `tierkreis/tierkreis/frontend` directory.
 
 ### OpenAPI
 

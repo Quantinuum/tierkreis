@@ -49,7 +49,7 @@ export function DefaultNode({ data }: NodeProps<BackendNode>) {
     } else if (data.node_type === "output") {
       return;
     } else {
-      data.node_type satisfies never;
+      return;
     }
   };
 
