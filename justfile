@@ -35,9 +35,8 @@ fix:
 docs:
   just docs/build
 
-[working-directory:'tierkreis_visualization']
 serve:
-	{{uvrun}} python tierkreis_visualization/main.py
+	cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
 
 [working-directory:'tierkreis/frontend']
 prod:

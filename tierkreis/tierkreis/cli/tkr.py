@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 
 from tierkreis.cli.project import TierkreisInitCli
 from tierkreis.cli.run import TierkreisRunCli
+from tierkreis.viz import serve
 
-logger = logging.getLogger(__name__)
+
+def _serve(args: argparse.Namespace) -> None:
+    serve(args.port)
 
 
 def main() -> None:
@@ -22,15 +24,9 @@ def main() -> None:
     subparser = parser.add_subparsers(title="subcommands")
     TierkreisRunCli.add_subcommand(subparser)
     TierkreisInitCli.add_subcommand(subparser)
-    try:
-        from tierkreis_visualization.cli import TierkreisVizCli
-
-        TierkreisVizCli.add_subcommand(subparser)
-    except ImportError:
-        logger.warning("Could not import Tierkreis Visualization CLI")
-        logger.warning(
-            "To install it, please run 'uv add tierkreis-visualization'",
-        )
+    serve_parser = subparser.add_parser("serve", help="Start the visualization server.")
+    serve_parser.add_argument("--port", type=int, default=3000)
+    serve_parser.set_defaults(func=_serve)
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
     args.func(args)
 
