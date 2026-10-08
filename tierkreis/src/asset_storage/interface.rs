@@ -4,10 +4,17 @@ implementations must satisfy.
 */
 use std::{fmt::Display, path::PathBuf, str::FromStr, time::SystemTime};
 
+use bytes::Bytes;
 use futures::future::BoxFuture;
 use miette::{Context, IntoDiagnostic, miette};
 use url::Url;
 use uuid::Uuid;
+
+/// Immutable bytes stored as an asset.
+///
+/// Cloning this type shares the underlying allocation, which allows in-memory
+/// storage to serve an asset without copying its complete payload.
+pub type AssetData = Bytes;
 
 /// [`AssetKind`] is used to categorize [`AssetSpec`] and [`AssetStorage`] implementations
 /// as some [Executor][crate::executor::Executor] implementations may make use of this detail.
@@ -160,13 +167,13 @@ pub trait AssetStorage: Send + Sync {
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<AssetKind>>;
+    fn save(&self, key: &AssetKey, value: AssetData) -> BoxFuture<'_, miette::Result<AssetKind>>;
     /// Load an Asset from the [`AssetStorage`] using an [`AssetKey`].
     ///
     /// # Errors
     ///
     /// Will return Err if the data backing the [`AssetStorage`] is unreachable or busy.
-    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>>;
+    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<AssetData>>;
 }
 
 #[cfg(test)]

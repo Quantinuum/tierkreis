@@ -24,7 +24,8 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::{
-        AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs, save_asset_with_spec,
+        AssetData, AssetSpec, AssetStorageRegistry, load_assets, reserve_asset_specs,
+        save_asset_with_spec,
     },
     event::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
@@ -42,7 +43,6 @@ use crate::{
 };
 pub use client::NexusClientConfig;
 
-#[derive(Clone)]
 struct BackgroundTaskPlan {
     workflow_run_id: Uuid,
     attempt: u32,
@@ -52,7 +52,6 @@ struct BackgroundTaskPlan {
     parent_span: tracing::Span,
 }
 
-#[derive(Clone)]
 struct BackgroundTask {
     workflow_run_id: Uuid,
     attempt: u32,
@@ -226,7 +225,7 @@ async fn monitor_task(
     let task_loc = loc.clone();
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
-    let parent_span = internal_task.parent_span.clone();
+    let parent_span = internal_task.parent_span;
 
     let client = client.clone();
     let mut event_sender = event_sender.clone();
@@ -285,7 +284,7 @@ async fn monitor_task(
             BackgroundTask {
                 workflow_run_id,
                 attempt,
-                loc: background_loc.clone(),
+                loc: background_loc,
                 job_id,
                 outputs,
             },
@@ -351,20 +350,23 @@ async fn process_tasks(
                 }
 
 
+                let workflow_run_id = task.workflow_run_id;
+                let attempt = task.attempt;
+                let error_loc = task.loc.clone();
                 let processing_result = process_finished_task(
                     &client,
                     &mut event_sender,
                     &mut job_handles,
                     &asset_storage_registry,
-                    task.clone(),
+                    task,
                 )
                 .await;
                 if let Err(err) = processing_result {
                     send_error(
                         &mut event_sender,
-                        task.workflow_run_id,
-                        task.attempt,
-                        task.loc,
+                        workflow_run_id,
+                        attempt,
+                        error_loc,
                         &err,
                     )
                     .await
@@ -379,22 +381,25 @@ async fn process_tasks(
                     loc = %internal_task.loc,
                     "Received task to monitor"
                 );
+                let workflow_run_id = internal_task.workflow_run_id;
+                let attempt = internal_task.attempt;
+                let error_loc = internal_task.loc.clone();
                 let res = monitor_task(
                     &client,
                     &event_sender,
                     &mut cancel_sender,
                     &mut job_handles,
                     &mut running,
-                    internal_task.clone(),
+                    internal_task,
                 )
                 .await;
 
                 if let Err(err) = res {
                     send_error(
                         &mut event_sender,
-                        internal_task.workflow_run_id,
-                        internal_task.attempt,
-                        internal_task.loc,
+                        workflow_run_id,
+                        attempt,
+                        error_loc,
                         &err,
                     )
                     .await
@@ -440,8 +445,7 @@ impl NexusExecutor {
     ) -> miette::Result<Self> {
         let client = NexusClient::try_new(client_config).await?;
 
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -528,7 +532,7 @@ impl NexusExecutor {
 }
 
 fn extract_json_input<T: for<'b> serde::Deserialize<'b>>(
-    inputs: &mut HashMap<String, Vec<u8>>,
+    inputs: &mut HashMap<String, AssetData>,
     name: &str,
 ) -> miette::Result<T> {
     let input_bytes = inputs
@@ -562,7 +566,6 @@ impl Executor for NexusExecutor {
 
                 let output_storage_name = task_plan
                     .output_storage_name
-                    .clone()
                     .unwrap_or_else(|| self.output_storage_name.clone());
 
                 let outputs = self

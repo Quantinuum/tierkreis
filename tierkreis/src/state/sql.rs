@@ -278,13 +278,13 @@ impl RuntimeState for SqliteRuntimeState {
     fn load_workflow(
         &self,
         workflow_id: Uuid,
-    ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>> {
+    ) -> BoxFuture<'_, miette::Result<(Option<String>, Arc<WorkflowGraph>)>> {
         async move {
             let mut conn = self.get_conn().await?;
             let workflow = read_workflow(&mut conn, workflow_id).await?;
             Ok((
                 workflow.name,
-                serde_json::from_slice(&workflow.definition).into_diagnostic()?,
+                Arc::new(serde_json::from_slice(&workflow.definition).into_diagnostic()?),
             ))
         }
         .boxed()

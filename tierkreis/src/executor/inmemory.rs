@@ -23,7 +23,7 @@ use tokio::task::{AbortHandle, JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::{AssetStorageRegistry, load_assets, save_assets},
+    asset_storage::{AssetData, AssetStorageRegistry, load_assets, save_assets},
     event::{
         EventReceiver, EventSender, RuntimeEvent, send_cancelled, send_complete, send_error,
         send_running,
@@ -59,7 +59,7 @@ struct BackgroundTask {
     attempt: u32,
     loc: Location,
     output_storage_name: String,
-    task_output: miette::Result<HashMap<String, Vec<u8>>>,
+    task_output: miette::Result<HashMap<String, AssetData>>,
 }
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
@@ -67,7 +67,7 @@ type TaskReceiver = mpsc::Receiver<BackgroundTaskPlan>;
 type CancelSender = mpsc::Sender<(Uuid, u32, Location)>;
 type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 
-fn extract_value<'a, T>(inputs: &'a HashMap<String, Vec<u8>>, name: &str) -> miette::Result<T>
+fn extract_value<'a, T>(inputs: &'a HashMap<String, AssetData>, name: &str) -> miette::Result<T>
 where
     T: Deserialize<'a>,
 {
@@ -80,7 +80,7 @@ where
 }
 
 fn extract_optional_value<'a, T>(
-    inputs: &'a HashMap<String, Vec<u8>>,
+    inputs: &'a HashMap<String, AssetData>,
     name: &str,
 ) -> miette::Result<Option<T>>
 where
@@ -99,12 +99,12 @@ where
 }
 
 fn output_value(
-    outputs: &mut HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, AssetData>,
     value: impl Serialize,
 ) -> miette::Result<()> {
     outputs.insert(
         "value".to_string(),
-        serde_json::to_vec(&value).into_diagnostic()?,
+        serde_json::to_vec(&value).into_diagnostic()?.into(),
     );
     Ok(())
 }
@@ -145,8 +145,8 @@ macro_rules! bin_method {
 
 fn run_builtin(
     task_name: &str,
-    inputs: &HashMap<String, Vec<u8>>,
-) -> miette::Result<HashMap<String, Vec<u8>>> {
+    inputs: &HashMap<String, AssetData>,
+) -> miette::Result<HashMap<String, AssetData>> {
     let mut outputs = HashMap::new();
     match task_name {
         // i64 operations
@@ -219,11 +219,11 @@ fn run_builtin(
 
             outputs.insert(
                 "a".to_string(),
-                serde_json::to_vec(&value.0).into_diagnostic()?,
+                serde_json::to_vec(&value.0).into_diagnostic()?.into(),
             );
             outputs.insert(
                 "b".to_string(),
-                serde_json::to_vec(&value.1).into_diagnostic()?,
+                serde_json::to_vec(&value.1).into_diagnostic()?.into(),
             );
         }
         "mean" => {
@@ -265,8 +265,8 @@ fn run_builtin(
 }
 
 fn range_impl(
-    inputs: &HashMap<String, Vec<u8>>,
-    outputs: &mut HashMap<String, Vec<u8>>,
+    inputs: &HashMap<String, AssetData>,
+    outputs: &mut HashMap<String, AssetData>,
 ) -> Result<(), miette::Error> {
     let start: i64 = extract_value(inputs, "start")?;
     let stop: i64 = extract_value(inputs, "stop")?;
@@ -482,12 +482,11 @@ impl InMemoryExecutor {
     ///
     /// This function will return Err if the specified `output_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -527,10 +526,10 @@ impl Executor for InMemoryExecutor {
         let fut = async {
             let mut task_sender = self.task_sender.clone();
 
-            for task_plan in task_plans {
+            for mut task_plan in task_plans {
                 let output_storage_name = task_plan
                     .output_storage_name
-                    .clone()
+                    .take()
                     .unwrap_or_else(|| self.output_storage_name.clone());
 
                 task_sender
@@ -603,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn inmemory_workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let workers = executor.workers().await?;
 
@@ -635,7 +634,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -688,7 +687,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -755,7 +754,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -839,7 +838,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -885,7 +884,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -928,7 +927,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -961,7 +960,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -986,7 +985,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;

@@ -44,7 +44,7 @@ use crate::{
 };
 
 /// `Action` describes an operation the Orchestrator should perform.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Action {
     /// The node location in the graph where orchestration should occur.
     pub loc: Location,
@@ -54,7 +54,7 @@ pub struct Action {
 
 /// [`ActionKind`] is a placeholder enum for operation the [`Orchestrator`] can perform
 /// when interpreting a [`WorkflowGraph`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ActionKind {
     /// An operation performed by a Worker.
     PerformTask {
@@ -105,7 +105,7 @@ pub enum ActionKind {
     WorkflowFinished {},
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 struct ActionPlan {
     tasks: Vec<TaskPlan>,
     switching: Vec<(Location, bool)>,
@@ -121,7 +121,7 @@ struct ActionPlan {
 #[derive(Debug)]
 pub struct OrchestrationContext {
     parent_loc: Location,
-    graph_inputs: HashMap<String, AssetSpec>,
+    graph_inputs: Arc<HashMap<String, AssetSpec>>,
     workflow_run_state: Arc<dyn WorkflowRunState>,
     // Locations scheduled in this orchestration context.
     // This solves relying on scheduled_time == Some() after a runtime restart.
@@ -147,7 +147,7 @@ impl OrchestrationContext {
     ) -> Self {
         Self {
             parent_loc: Location::root(),
-            graph_inputs: inputs,
+            graph_inputs: Arc::new(inputs),
             workflow_run_state: Arc::clone(workflow_run_state),
             scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         }
@@ -182,7 +182,7 @@ impl Orchestrator {
     /// This function will return Err if the specified `default_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`] or if the specified `default_executor_name` does
     /// not exist inside the [`ExecutorRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         executor_registry: &ExecutorRegistry,
         default_storage_name: &str,
@@ -190,8 +190,7 @@ impl Orchestrator {
     ) -> miette::Result<Self> {
         let (sender, receiver) = mpsc::channel(128);
 
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(default_storage_name) {
+        if !asset_storage_registry.contains_key(default_storage_name) {
             return Err(miette!("default_storage_name not in registry"));
         }
 
@@ -276,9 +275,14 @@ impl Orchestrator {
 
                 let parent_location = context.parent_loc.clone();
                 match definition {
-                    NodeDefinition::Input { name } => stream_action_result(
-                        Self::build_input_action(&context.graph_inputs, parent_location, n, name),
-                    ),
+                    NodeDefinition::Input { name } => {
+                        stream_action_result(Self::build_input_action(
+                            context.graph_inputs.as_ref(),
+                            parent_location,
+                            n,
+                            name,
+                        ))
+                    }
                     NodeDefinition::Const { value } => self
                         .build_const_action(parent_location, n, value.clone())
                         .into_stream()
@@ -543,7 +547,7 @@ impl Orchestrator {
                 Ok(Action {
                     loc: parent_location.with_node(n),
                     kind: ActionKind::SetSwitching {
-                        cond: pred_bytes == b"true",
+                        cond: pred_bytes.as_ref() == b"true",
                     },
                 })
             }
@@ -610,7 +614,7 @@ impl Orchestrator {
         let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred").await?;
         let mut outputs = HashMap::new();
 
-        if pred_bytes == b"true" {
+        if pred_bytes.as_ref() == b"true" {
             let value = inputs.remove("if_true").unwrap();
             outputs.insert("value".to_string(), value);
         } else {
@@ -748,7 +752,7 @@ impl Orchestrator {
             .build_actions(
                 OrchestrationContext {
                     parent_loc: loc,
-                    graph_inputs: inputs,
+                    graph_inputs: Arc::new(inputs),
                     workflow_run_state: workflow_run_state.clone(),
                     scheduled_this_lifetime,
                 },
@@ -814,7 +818,7 @@ impl Orchestrator {
                             .build_actions(
                                 OrchestrationContext {
                                     parent_loc: loop_loc,
-                                    graph_inputs: inputs,
+                                    graph_inputs: Arc::new(inputs),
                                     workflow_run_state: Arc::clone(&workflow_run_state),
                                     scheduled_this_lifetime,
                                 },
@@ -827,7 +831,7 @@ impl Orchestrator {
                             load_asset(&self.asset_storage_registry, &outputs, "should_continue")
                                 .await?;
 
-                        if should_continue_bytes == b"true" {
+                        if should_continue_bytes.as_ref() == b"true" {
                             Ok(stream::once(future::ok(Action {
                                 loc,
                                 kind: ActionKind::SetRunningLoop { index: index + 1 },
@@ -919,21 +923,35 @@ impl Orchestrator {
         inputs: HashMap<String, AssetSpec>,
         subgraph: Arc<WorkflowGraph>,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
-        let mut input_sets = Vec::new();
+        let mut unfolded_inputs = Vec::with_capacity(mapped_ports.len());
+        let mut map_size = None;
         for mapped_port in mapped_ports {
             let unfolded_assets =
                 unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port).await?;
-
-            if input_sets.is_empty() {
-                input_sets.extend(iter::repeat_n(inputs.clone(), unfolded_assets.len()));
+            if let Some(expected) = map_size {
+                if unfolded_assets.len() != expected {
+                    return Err(miette!(
+                        "Mapped input `{mapped_port}` has {} elements; expected {expected}",
+                        unfolded_assets.len()
+                    ));
+                }
+            } else {
+                map_size = Some(unfolded_assets.len());
             }
+            unfolded_inputs.push((mapped_port, unfolded_assets));
+        }
 
-            for (index, asset) in unfolded_assets.into_iter().enumerate() {
-                let input_set = input_sets.get_mut(index).unwrap();
+        let map_size = map_size.unwrap_or_default();
+        let mut common_inputs = inputs;
+        for (mapped_port, _) in &unfolded_inputs {
+            common_inputs.remove(mapped_port);
+        }
+        let mut input_sets: Vec<_> = iter::repeat_n(common_inputs, map_size).collect();
+        for (mapped_port, unfolded_assets) in unfolded_inputs {
+            for (input_set, asset) in input_sets.iter_mut().zip(unfolded_assets) {
                 input_set.insert(mapped_port.clone(), asset);
             }
         }
-        let map_size = input_sets.len();
 
         let loc_copy = location.clone();
 
@@ -943,7 +961,7 @@ impl Orchestrator {
                 self.build_actions(
                     OrchestrationContext {
                         parent_loc: map_loc,
-                        graph_inputs: inputs,
+                        graph_inputs: Arc::new(inputs),
                         workflow_run_state: Arc::clone(&workflow_run_state),
                         scheduled_this_lifetime: Arc::clone(&scheduled_this_lifetime),
                     },
@@ -975,6 +993,7 @@ impl Orchestrator {
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
         let output_idx = subgraph.output_idx();
         let map_size = completed.len();
+        let inputs = Arc::new(inputs);
 
         Ok(stream::iter(completed.into_iter().enumerate())
             .filter(|(_index, completed)| future::ready(!completed))
@@ -985,7 +1004,7 @@ impl Orchestrator {
                 self.build_actions(
                     OrchestrationContext {
                         parent_loc: map_loc,
-                        graph_inputs: inputs.clone(),
+                        graph_inputs: Arc::clone(&inputs),
                         workflow_run_state: Arc::clone(&workflow_run_state),
                         scheduled_this_lifetime: Arc::clone(&scheduled_this_lifetime),
                     },
@@ -1293,26 +1312,16 @@ mod tests {
 
     use super::*;
 
-    async fn test_executor_registry(
-        asset_storage_registry: &AssetStorageRegistry,
-    ) -> ExecutorRegistry {
+    fn test_executor_registry(asset_storage_registry: &AssetStorageRegistry) -> ExecutorRegistry {
         let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
 
         executor_registry.insert(
             "memory".to_string(),
-            Box::new(
-                InMemoryExecutor::try_new(asset_storage_registry, "memory")
-                    .await
-                    .unwrap(),
-            ),
+            Box::new(InMemoryExecutor::try_new(asset_storage_registry, "memory").unwrap()),
         );
         executor_registry.insert(
             "subprocess".to_string(),
-            Box::new(
-                SubprocessExecutor::try_new(asset_storage_registry, "file", "file")
-                    .await
-                    .unwrap(),
-            ),
+            Box::new(SubprocessExecutor::try_new(asset_storage_registry, "file", "file").unwrap()),
         );
 
         Arc::new(executor_registry)
@@ -1496,7 +1505,7 @@ mod tests {
     ) -> miette::Result<Vec<Action>> {
         let context = OrchestrationContext {
             parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
+            graph_inputs: Arc::new(inputs.clone()),
             workflow_run_state: Arc::clone(workflow_run_state),
             scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
@@ -1523,14 +1532,13 @@ mod tests {
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let workflow_graph = Arc::new(two_inputs_two_outputs);
 
@@ -1559,14 +1567,13 @@ mod tests {
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1})], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
         let mut stream = orchestrator.listen()?;
         let workflow_graph = Arc::new(one_input_one_output);
 
@@ -1649,14 +1656,13 @@ mod tests {
             vec![],
         )
         .await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
         let mut stream = orchestrator.listen()?;
 
         let workflow_graph = Arc::new(simple_eval);
@@ -1798,21 +1804,20 @@ mod tests {
 
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1})], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
             parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
+            graph_inputs: Arc::new(inputs.clone()),
             workflow_run_state: Arc::clone(&workflow_run_state),
             scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
@@ -1905,21 +1910,20 @@ mod tests {
             vec![],
         )
         .await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
             parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
+            graph_inputs: Arc::new(inputs.clone()),
             workflow_run_state: Arc::clone(&workflow_run_state),
             scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
@@ -2022,21 +2026,20 @@ mod tests {
         let workflow_graph = Arc::new(workflow_graph);
 
         let (registry, input_sets, _dir) = test_storage_registry(vec![inputs], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let inputs = input_sets[0].clone();
         let context = OrchestrationContext {
             parent_loc: Location::root(),
-            graph_inputs: inputs.clone(),
+            graph_inputs: Arc::new(inputs.clone()),
             workflow_run_state: Arc::clone(&workflow_run_state),
             scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };
@@ -2105,20 +2108,19 @@ mod tests {
         let workflow_graph = Arc::new(graph.to_workflow_graph().unwrap());
 
         let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
         let context = OrchestrationContext {
             parent_loc: Location::root(),
-            graph_inputs: HashMap::new(),
+            graph_inputs: Arc::new(HashMap::new()),
             workflow_run_state: Arc::clone(&workflow_run_state),
             scheduled_this_lifetime: Arc::new(RwLock::new(HashSet::new())),
         };

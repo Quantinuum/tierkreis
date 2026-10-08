@@ -11,7 +11,7 @@ use std::{
 use futures::{Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{RwLock, watch};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
@@ -232,8 +232,7 @@ impl Runtime {
             &executor_registry,
             &config.default_storage_name,
             &config.default_executor_name,
-        )
-        .await?;
+        )?;
         let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
             RuntimeStateConfig::Sqlite { memory: true, .. } => {
@@ -358,7 +357,7 @@ impl Runtime {
                     let workflow_state = state
                         .load_workflow_run_state(workflow_run_id, attempt)
                         .await?;
-                    let workflow_id = workflow_state.workflow_id().to_string();
+                    let workflow_id = workflow_state.workflow_id();
                     match &event {
                         WorkflowRunEvent::Started {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started");
@@ -385,7 +384,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node scheduled"
                                         );
                                     }
@@ -395,7 +394,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node queued   "
                                         );
                                     }
@@ -405,7 +404,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             ?state_update,
                                             "node running  "
                                         );
@@ -416,7 +415,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node completed"
                                         );
                                     }
@@ -426,7 +425,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             ?error,
                                             "node errored  "
                                         );
@@ -437,7 +436,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node cancelled"
                                         );
                                     }
@@ -480,9 +479,6 @@ impl Runtime {
                 let workflow_id = workflow_run_state.workflow_id();
                 let (_workflow_name, workflow_graph) =
                     self.state.load_workflow(workflow_id).await?;
-
-                let workflow_run_state = Arc::new(workflow_run_state);
-                let workflow_graph = Arc::new(workflow_graph);
 
                 let context = if let Some(context) = contexts.get(&(run_id, attempt)) {
                     context.clone()
@@ -587,7 +583,10 @@ impl Runtime {
         )
         .await?;
 
-        Ok(outputs)
+        Ok(outputs
+            .into_iter()
+            .map(|(name, data)| (name, data.to_vec()))
+            .collect())
     }
 
     /// Read the [`WorkflowRunStateSummary`] for a specific workflow run to get a high
@@ -667,23 +666,21 @@ async fn executor_registry_from_config(
                 output_storage_name,
             } => executor_registry.insert(
                 executor_name.clone(),
-                Box::new(
-                    InMemoryExecutor::try_new(asset_storage_registry, output_storage_name).await?,
-                ),
+                Box::new(InMemoryExecutor::try_new(
+                    asset_storage_registry,
+                    output_storage_name,
+                )?),
             ),
             ExecutorConfig::Subprocess {
                 subprocess_storage_name,
                 output_storage_name,
             } => executor_registry.insert(
                 executor_name.clone(),
-                Box::new(
-                    SubprocessExecutor::try_new(
-                        asset_storage_registry,
-                        subprocess_storage_name,
-                        output_storage_name,
-                    )
-                    .await?,
-                ),
+                Box::new(SubprocessExecutor::try_new(
+                    asset_storage_registry,
+                    subprocess_storage_name,
+                    output_storage_name,
+                )?),
             ),
             ExecutorConfig::Nexus {
                 client_config,
@@ -710,51 +707,42 @@ async fn executor_registry_from_config(
                     let scheduler = Arc::new(PbsWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
                         executor_name.clone(),
-                        Box::new(
-                            HPCExecutor::try_new(
-                                asset_storage_registry,
-                                hpc_storage_name,
-                                output_storage_name,
-                                scheduler,
-                                resources.clone(),
-                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            )
-                            .await?,
-                        ),
+                        Box::new(HPCExecutor::try_new(
+                            asset_storage_registry,
+                            hpc_storage_name,
+                            output_storage_name,
+                            scheduler,
+                            resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        )?),
                     )
                 }
                 HpcSchedulerConfig::Pjsub => {
                     let scheduler = Arc::new(PjsubWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
                         executor_name.clone(),
-                        Box::new(
-                            HPCExecutor::try_new(
-                                asset_storage_registry,
-                                hpc_storage_name,
-                                output_storage_name,
-                                scheduler,
-                                resources.clone(),
-                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            )
-                            .await?,
-                        ),
+                        Box::new(HPCExecutor::try_new(
+                            asset_storage_registry,
+                            hpc_storage_name,
+                            output_storage_name,
+                            scheduler,
+                            resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        )?),
                     )
                 }
                 HpcSchedulerConfig::Slurm => {
                     let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
                         executor_name.clone(),
-                        Box::new(
-                            HPCExecutor::try_new(
-                                asset_storage_registry,
-                                hpc_storage_name,
-                                output_storage_name,
-                                scheduler,
-                                resources.clone(),
-                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            )
-                            .await?,
-                        ),
+                        Box::new(HPCExecutor::try_new(
+                            asset_storage_registry,
+                            hpc_storage_name,
+                            output_storage_name,
+                            scheduler,
+                            resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        )?),
                     )
                 }
             },
@@ -783,7 +771,7 @@ pub fn asset_storage_registry_from_config(
             ),
         };
     }
-    Ok(Arc::new(RwLock::new(asset_storage_registry)))
+    Ok(Arc::new(asset_storage_registry))
 }
 
 /// Start the runtime until cancelled.

@@ -365,13 +365,12 @@ impl SubprocessExecutor {
     ///
     /// This function will return Err if the specified `subprocess_storage_name` or
     /// `output_storage_name` does not exist inside the [`AssetStorageRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         subprocess_storage_name: &str,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if let Some(subprocess_storage) = asset_storage_registry_lock.get(subprocess_storage_name) {
+        if let Some(subprocess_storage) = asset_storage_registry.get(subprocess_storage_name) {
             let subprocess_storage: &dyn Any = subprocess_storage as &dyn Any;
             if subprocess_storage.is::<FileAssetStorage>() {
                 return Err(miette!(
@@ -382,7 +381,7 @@ impl SubprocessExecutor {
             return Err(miette!("subprocess_storage_name not in registry"));
         }
 
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -614,7 +613,6 @@ impl Executor for SubprocessExecutor {
 
                 let output_storage_name = task_plan
                     .output_storage_name
-                    .clone()
                     .unwrap_or_else(|| self.output_storage_name.clone());
 
                 task_sender
@@ -692,7 +690,7 @@ mod tests {
     #[tokio::test]
     async fn subprocess_workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let workers = executor.workers().await?;
 
@@ -737,7 +735,7 @@ mod tests {
             outputs,
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -803,7 +801,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -884,7 +882,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -975,7 +973,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -1028,7 +1026,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1084,7 +1082,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1126,7 +1124,7 @@ mod tests {
     #[tokio::test]
     async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -1157,7 +1155,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;

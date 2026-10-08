@@ -11,15 +11,15 @@ use futures::{
 };
 use miette::miette;
 
-use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
+use crate::asset_storage::interface::{AssetData, AssetKey, AssetKind, AssetStorage};
 
 /// [`InMemoryStorage`] is an implementation of [`AssetStorage`] that stores
 /// Assets in a concurrent map data structure using [`AssetKey`]s as keys.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct InMemoryStorage {
     // DashMap is a concurrent HashMap that lets us avoid locking the entire
     // storage when saving/loading values.
-    store: DashMap<AssetKey, Vec<u8>>,
+    store: DashMap<AssetKey, AssetData>,
 }
 
 impl InMemoryStorage {
@@ -50,16 +50,36 @@ impl AssetStorage for InMemoryStorage {
         .boxed()
     }
 
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<AssetKind>> {
+    fn save(&self, key: &AssetKey, value: AssetData) -> BoxFuture<'_, miette::Result<AssetKind>> {
         self.store.insert(*key, value);
         future::ok(AssetKind::Memory).boxed()
     }
 
-    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>> {
+    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<AssetData>> {
         let res = self
             .store
             .get(key)
             .ok_or_else(|| miette!("Asset not found in InMemoryStorage"));
-        future::ready(res.map(|x| x.clone())).boxed()
+        future::ready(res.map(|x| AssetData::clone(&x))).boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn loads_share_the_stored_allocation() {
+        let storage = InMemoryStorage::new();
+        let key = AssetKey::new();
+        let data = AssetData::from(vec![42; 1024 * 1024]);
+        let stored_ptr = data.as_ptr();
+
+        storage.save(&key, data).await.unwrap();
+        let first = storage.load(&key).await.unwrap();
+        let second = storage.load(&key).await.unwrap();
+
+        assert_eq!(first.as_ptr(), stored_ptr);
+        assert_eq!(second.as_ptr(), stored_ptr);
     }
 }

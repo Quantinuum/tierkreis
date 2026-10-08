@@ -16,6 +16,7 @@ use futures::{FutureExt, SinkExt, StreamExt, channel::mpsc, future::BoxFuture, s
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use tracing::{instrument, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -211,7 +212,7 @@ async fn monitor_task<T: SchedulerWrapper>(
 }
 
 async fn check_jobs<T: SchedulerWrapper>(
-    scheduler: &Arc<T>,
+    scheduler: &T,
     event_sender: &mut EventSender,
     job_handles: &mut JobHandles,
     asset_storage_registry: &AssetStorageRegistry,
@@ -229,9 +230,8 @@ async fn check_jobs<T: SchedulerWrapper>(
         return Ok(());
     }
 
-    let statuses = scheduler
-        .check(jobs.iter().map(|(_, job_id)| job_id.clone()).collect())
-        .await?;
+    let job_ids: Vec<_> = jobs.iter().map(|(_, job_id)| job_id.as_str()).collect();
+    let statuses = scheduler.check(&job_ids).await?;
     for (key, job_id) in jobs {
         let Some(status) = statuses.get(&job_id).cloned() else {
             continue;
@@ -303,7 +303,7 @@ async fn process_tasks<T: SchedulerWrapper>(
             }
             _ = monitor_interval.tick() => {
                 if let Err(error) = check_jobs(
-                    &scheduler,
+                    scheduler.as_ref(),
                     &mut event_sender,
                     &mut job_handles,
                     &asset_storage_registry,
@@ -360,7 +360,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
     /// # Errors
     ///
     /// If the specified storage names are not present in the registry.
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         hpc_storage_name: &str,
         output_storage_name: &str,
@@ -368,11 +368,10 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         max_resources: HPCResourceSpec,
         poll_interval: Duration,
     ) -> miette::Result<Self> {
-        let storage = asset_storage_registry.read().await;
-        if !storage.contains_key(hpc_storage_name) {
+        if !asset_storage_registry.contains_key(hpc_storage_name) {
             return Err(miette!("hpc_storage_name not in registry"));
         }
-        if !storage.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
         let tierkreis_dir = crate::config::tierkreis_home_dir().join("tmp");
@@ -385,7 +384,6 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
                 )
             })?;
 
-        drop(storage);
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
@@ -451,58 +449,56 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
 
     async fn build_worker_call_args(
         &self,
-        task: &TaskPlan,
+        task_name: String,
+        inputs: &HashMap<String, AssetSpec>,
         output_paths: HashMap<String, PathBuf>,
     ) -> miette::Result<WorkerCallArgs> {
-        let inputs = transfer_assets(
-            &self.asset_storage_registry,
-            &self.hpc_storage_name,
-            &task.inputs,
-        )
-        .await?;
+        let inputs =
+            transfer_assets(&self.asset_storage_registry, &self.hpc_storage_name, inputs).await?;
         let input_paths = inputs
             .iter()
             .map(|(name, spec)| Ok((name.clone(), spec.path()?)))
             .collect::<miette::Result<HashMap<_, _>>>()?;
         Ok(WorkerCallArgs {
-            function_name: task.task_name.clone(),
+            function_name: task_name,
             inputs: input_paths,
             outputs: output_paths,
-            done_path: self.tkr_tmp_dir.join("_done").clone(),
-            error_path: self.tkr_tmp_dir.join("_error").clone(),
+            done_path: self.tkr_tmp_dir.join("_done"),
+            error_path: self.tkr_tmp_dir.join("_error"),
             ..Default::default()
         })
     }
 
     async fn start_single_job(
         &self,
-        task: &TaskPlan,
+        workflow_run_id: Uuid,
+        worker_name: &str,
+        mut resources: HashMap<String, Value>,
+        environment: HashMap<String, Value>,
         worker_args_path: &Path,
         script_path: &Path,
     ) -> miette::Result<String> {
         let worker_command = self
             .worker_command
             .clone()
-            .unwrap_or_else(|| format!("tkr-{}", task.worker_name.replace('_', "-")));
+            .unwrap_or_else(|| format!("tkr-{}", worker_name.replace('_', "-")));
         let command = format!("{worker_command} {}", worker_args_path.display());
-        let hpc_resources = serde_json::from_value(task.resources.clone().into_iter().collect())
-            .into_diagnostic()
-            .wrap_err("Invalid HPC resource specification")?;
-        let extra_scheduler_args = task
-            .resources
-            .get("extra_scheduler_args")
-            .map(|value| serde_json::from_value(value.clone()))
+        let extra_scheduler_args = resources
+            .remove("extra_scheduler_args")
+            .map(serde_json::from_value)
             .transpose()
             .into_diagnostic()
             .wrap_err("Invalid HPC extra scheduler arguments")?
             .unwrap_or_default();
-        let hpc_environment =
-            serde_json::from_value(task.environment.clone().into_iter().collect())
-                .into_diagnostic()
-                .wrap_err("Invalid HPC environment specification")?;
+        let hpc_resources = serde_json::from_value(resources.into_iter().collect())
+            .into_diagnostic()
+            .wrap_err("Invalid HPC resource specification")?;
+        let hpc_environment = serde_json::from_value(environment.into_iter().collect())
+            .into_diagnostic()
+            .wrap_err("Invalid HPC environment specification")?;
         // TODO get other JobSpec Related fields from the task.resources
         let mut job_spec = JobSpec {
-            name: format!("tierkreis-{}", task.workflow_run_id),
+            name: format!("tierkreis-{workflow_run_id}"),
             command,
             walltime: "01:00:00".to_string(),
             resources: hpc_resources,
@@ -517,12 +513,8 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
     }
 
     async fn is_job_active(&self, job_id: &str) -> miette::Result<String> {
-        match self
-            .scheduler
-            .check(vec![job_id.to_string()])
-            .await?
-            .get(job_id)
-        {
+        let job_ids = [job_id];
+        match self.scheduler.check(&job_ids).await?.get(job_id) {
             Some(
                 SchedulerStatus::Queued | SchedulerStatus::Complete | SchedulerStatus::Running,
             ) => Ok(job_id.to_string()),
@@ -571,35 +563,56 @@ impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
-                let tmp_paths = self.reserve_tmp_paths(2)?;
-                let worker_args_path = &tmp_paths[0];
-                let script_path = &tmp_paths[1];
-                let (outputs, output_paths) = self.build_outputs(task_plan.outputs.clone()).await?;
-                let worker_args_file = std::fs::File::create(worker_args_path).into_diagnostic()?;
+                let TaskPlan {
+                    workflow_run_id,
+                    attempt,
+                    loc,
+                    worker_name,
+                    task_name,
+                    inputs,
+                    outputs: output_names,
+                    resources,
+                    environment,
+                    task_handle,
+                    ..
+                } = task_plan;
+                let mut tmp_paths = self.reserve_tmp_paths(2)?;
+                let script_path = tmp_paths.pop().expect("reserved script path");
+                let worker_args_path = tmp_paths.pop().expect("reserved worker args path");
+                let (outputs, output_paths) = self.build_outputs(output_names).await?;
+                let worker_args_file =
+                    std::fs::File::create(&worker_args_path).into_diagnostic()?;
 
                 // If we were given a handle to a previously submitted  job
                 // and it's still active, reattach to it instead of resubmitting.
                 // TODO: make the retry logic more explicit
-                let job_id = if let Some(job_id) = &task_plan.task_handle {
+                let job_id = if let Some(job_id) = &task_handle {
                     self.is_job_active(job_id).await?
                 } else {
                     let worker_args = self
-                        .build_worker_call_args(&task_plan, output_paths)
+                        .build_worker_call_args(task_name, &inputs, output_paths)
                         .await?;
                     serde_json::to_writer(worker_args_file, &worker_args).into_diagnostic()?;
-                    self.start_single_job(&task_plan, worker_args_path, script_path)
-                        .await?
+                    self.start_single_job(
+                        workflow_run_id,
+                        &worker_name,
+                        resources,
+                        environment,
+                        &worker_args_path,
+                        &script_path,
+                    )
+                    .await?
                 };
 
                 task_sender
                     .send(BackgroundTaskPlan {
-                        workflow_run_id: task_plan.workflow_run_id,
-                        attempt: task_plan.attempt,
-                        loc: task_plan.loc,
+                        workflow_run_id,
+                        attempt,
+                        loc,
                         job_id,
                         outputs,
                         output_storage_name: self.output_storage_name.clone(),
-                        _worker_args: worker_args_path.clone(),
+                        _worker_args: worker_args_path,
                     })
                     .await
                     .into_diagnostic()?;
@@ -672,10 +685,10 @@ mod tests {
         let file_storage = FileAssetStorage::try_new(&checkpoints_path)?;
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
-        registry
-            .write()
-            .await
-            .insert("checkpoints".to_string(), Box::new(file_storage));
+        let mut registry = Arc::try_unwrap(registry)
+            .unwrap_or_else(|_| panic!("test registry should have one owner"));
+        registry.insert("checkpoints".to_string(), Box::new(file_storage));
+        let registry = Arc::new(registry);
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
         let mut task_resources = HashMap::new();
@@ -707,8 +720,7 @@ mod tests {
             Arc::new(scheduler),
             resources,
             Duration::from_secs(1),
-        )
-        .await?
+        )?
         .with_worker_command("mpiexec --allow-run-as-root uv run /mpi_worker/main.py");
         // TODO: enable mpi environment, worker on slurm is still old format
 

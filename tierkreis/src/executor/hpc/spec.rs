@@ -194,7 +194,7 @@ pub trait SchedulerWrapper: Send + Sync {
     /// Jobs that cannot be found are omitted from the returned map.
     fn check(
         &self,
-        job_ids: Vec<String>,
+        job_ids: &[&str],
     ) -> impl Future<Output = Result<HashMap<String, SchedulerStatus>>> + Send;
     /// Request cancellation of a job.
     fn cancel(&self, job_id: String) -> impl Future<Output = Result<()>> + Send;

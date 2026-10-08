@@ -54,7 +54,7 @@ struct RunAttemptState {
 /// references.
 #[derive(Debug, Default)]
 struct InMemoryRuntimeStateInner {
-    workflows: DashMap<Uuid, (Option<String>, WorkflowGraph)>,
+    workflows: DashMap<Uuid, (Option<String>, Arc<WorkflowGraph>)>,
     runs: DashMap<(Uuid, u32), RunAttemptState>,
 }
 
@@ -96,7 +96,7 @@ impl RuntimeState for InMemoryRuntimeState {
     fn load_workflow(
         &self,
         workflow_id: Uuid,
-    ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>> {
+    ) -> BoxFuture<'_, miette::Result<(Option<String>, Arc<WorkflowGraph>)>> {
         async move {
             let workflow = self
                 .inner
@@ -116,7 +116,7 @@ impl RuntimeState for InMemoryRuntimeState {
         let workflow_id = Uuid::now_v7();
         self.inner
             .workflows
-            .insert(workflow_id, (name, workflow_graph));
+            .insert(workflow_id, (name, Arc::new(workflow_graph)));
         future::ok(workflow_id).boxed()
     }
 
@@ -406,7 +406,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 }
                 send_workflow_stopped = true;
             }
-            WorkflowRunEvent::NodeEvents(ref node_events) => {
+            WorkflowRunEvent::NodeEvents(node_events) => {
                 handle_node_events(run_state, node_events);
             }
         }
@@ -446,7 +446,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 .cloned()
                 .unwrap_or_default();
 
-            Ok(state.clone())
+            Ok(state)
         }
         .boxed()
     }
@@ -543,19 +543,19 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
 
 fn handle_node_events(
     mut run_state: dashmap::mapref::one::RefMut<'_, (Uuid, u32), RunAttemptState>,
-    node_events: &[NodeEvent],
+    node_events: Vec<NodeEvent>,
 ) {
     let now = Utc::now();
     for node_event in node_events {
-        let node_state = run_state.nodes.entry(node_event.loc.clone()).or_default();
+        let node_state = run_state.nodes.entry(node_event.loc).or_default();
         match node_event.status {
             crate::event::NodeStatus::Scheduled => {
                 if node_state.scheduled_time.is_none() {
                     node_state.scheduled_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Queued { ref handle } => {
-                node_state.handle.clone_from(handle);
+            crate::event::NodeStatus::Queued { handle } => {
+                node_state.handle = handle;
                 if node_state.queued_time.is_none() {
                     node_state.queued_time = Some(now);
                 }
@@ -601,20 +601,20 @@ fn handle_node_events(
                 }
             }
             crate::event::NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
+                state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
                 ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
                 }
                 if let Some(map_completed) = node_state.map_completed.as_mut() {
-                    map_completed.bitor_assign(bits);
+                    map_completed.bitor_assign(&bits);
                 }
             }
-            crate::event::NodeStatus::Complete { ref outputs } => {
+            crate::event::NodeStatus::Complete { outputs } => {
                 if node_state.complete_time.is_none() {
                     node_state.complete_time = Some(now);
-                    node_state.outputs = Some(outputs.clone());
+                    node_state.outputs = Some(outputs);
                 }
             }
             crate::event::NodeStatus::Cancelled => {
@@ -622,14 +622,11 @@ fn handle_node_events(
                     node_state.cancelled_time = Some(now);
                 }
             }
-            crate::event::NodeStatus::Error {
-                ref error,
-                ref detail,
-            } => {
+            crate::event::NodeStatus::Error { error, detail } => {
                 if node_state.error_time.is_none() {
                     node_state.error_time = Some(now);
-                    node_state.error = Some(error.clone());
-                    node_state.error_detail.clone_from(detail);
+                    node_state.error = Some(error);
+                    node_state.error_detail = detail;
                 }
             }
         }
@@ -643,6 +640,20 @@ mod tests {
     use crate::event::NodeStatus;
 
     use super::*;
+
+    #[tokio::test]
+    async fn workflow_loads_share_the_stored_graph() -> miette::Result<()> {
+        let runtime_state = InMemoryRuntimeState::new();
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new(["value".to_string()]))
+            .await?;
+
+        let (_, first) = runtime_state.load_workflow(workflow_id).await?;
+        let (_, second) = runtime_state.load_workflow(workflow_id).await?;
+
+        assert!(Arc::ptr_eq(&first, &second));
+        Ok(())
+    }
 
     /// Test that reading a location returns the default value.
     #[tokio::test]

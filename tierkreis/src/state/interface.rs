@@ -115,7 +115,7 @@ pub trait RuntimeState: Debug + Send + Sync {
     fn load_workflow(
         &self,
         workflow_id: Uuid,
-    ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>>;
+    ) -> BoxFuture<'_, miette::Result<(Option<String>, Arc<WorkflowGraph>)>>;
     /// Save a [`WorkflowGraph`] and return a new id.
     fn save_workflow(
         &self,
@@ -187,8 +187,6 @@ pub trait RuntimeState: Debug + Send + Sync {
             };
             let workflow_id = source_state.workflow_id();
             let (_workflow_name, workflow_graph) = self.load_workflow(workflow_id).await?;
-            let workflow_graph = Arc::new(workflow_graph);
-
             let mut exclude = HashSet::new();
             let mut truncate = HashSet::new();
 

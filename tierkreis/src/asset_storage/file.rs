@@ -17,11 +17,11 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::asset_storage::interface::{AssetKey, AssetKind, AssetStorage};
+use crate::asset_storage::interface::{AssetData, AssetKey, AssetKind, AssetStorage};
 
 /// [`FileAssetStorage`] is an implementation of [`AssetStorage`] that stores
 /// Assets in a single directory using file names derived from [`AssetKey`]s.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FileAssetStorage {
     base_dir: PathBuf,
 }
@@ -73,7 +73,7 @@ impl AssetStorage for FileAssetStorage {
         .boxed()
     }
 
-    fn save(&self, key: &AssetKey, value: Vec<u8>) -> BoxFuture<'_, miette::Result<AssetKind>> {
+    fn save(&self, key: &AssetKey, value: AssetData) -> BoxFuture<'_, miette::Result<AssetKind>> {
         let location = self.location(key);
         async move {
             let mut file = File::create(&location)
@@ -93,7 +93,7 @@ impl AssetStorage for FileAssetStorage {
         .boxed()
     }
 
-    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<Vec<u8>>> {
+    fn load(&self, key: &AssetKey) -> BoxFuture<'_, miette::Result<AssetData>> {
         let location = self.location(key);
         async move {
             let mut file = File::open(&location)
@@ -106,7 +106,7 @@ impl AssetStorage for FileAssetStorage {
             let mut value = Vec::new();
             file.read_to_end(&mut value).await.into_diagnostic()?;
 
-            Ok(value)
+            Ok(value.into())
         }
         .boxed()
     }

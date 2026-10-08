@@ -3980,6 +3980,7 @@ dependencies = [
  "axum-extra",
  "axum-test",
  "bitvec",
+ "bytes",
  "chrono",
  "clap",
  "dashmap",

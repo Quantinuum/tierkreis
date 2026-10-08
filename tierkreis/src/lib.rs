@@ -1,5 +1,12 @@
 /*! This is the library module for the rust components of the Tierkreis
 Workflow Management system.
+
+# Ownership conventions
+
+Read-only values should normally be borrowed. Values sent through channels or
+stored by background tasks should be moved, and immutable data shared across
+those lifetime boundaries should use [`std::sync::Arc`]. Locks are reserved for
+shared state that is actually mutated; configured registries are immutable.
 */
 #![warn(missing_docs)]
 #![warn(clippy::all, clippy::pedantic)]
