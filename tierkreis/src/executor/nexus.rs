@@ -440,8 +440,7 @@ impl NexusExecutor {
     ) -> miette::Result<Self> {
         let client = NexusClient::try_new(client_config).await?;
 
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 

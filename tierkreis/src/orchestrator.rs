@@ -184,7 +184,7 @@ impl Orchestrator {
     /// This function will return Err if the specified `default_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`] or if the specified `default_executor_name` does
     /// not exist inside the [`ExecutorRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         executor_registry: &ExecutorRegistry,
         default_storage_name: &str,
@@ -192,8 +192,7 @@ impl Orchestrator {
     ) -> miette::Result<Self> {
         let (sender, receiver) = mpsc::channel(128);
 
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(default_storage_name) {
+        if !asset_storage_registry.contains_key(default_storage_name) {
             return Err(miette!("default_storage_name not in registry"));
         }
 
@@ -1287,26 +1286,16 @@ mod tests {
 
     use super::*;
 
-    async fn test_executor_registry(
-        asset_storage_registry: &AssetStorageRegistry,
-    ) -> ExecutorRegistry {
+    fn test_executor_registry(asset_storage_registry: &AssetStorageRegistry) -> ExecutorRegistry {
         let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
 
         executor_registry.insert(
             "memory".to_string(),
-            Box::new(
-                InMemoryExecutor::try_new(asset_storage_registry, "memory")
-                    .await
-                    .unwrap(),
-            ),
+            Box::new(InMemoryExecutor::try_new(asset_storage_registry, "memory").unwrap()),
         );
         executor_registry.insert(
             "subprocess".to_string(),
-            Box::new(
-                SubprocessExecutor::try_new(asset_storage_registry, "file", "file")
-                    .await
-                    .unwrap(),
-            ),
+            Box::new(SubprocessExecutor::try_new(asset_storage_registry, "file", "file").unwrap()),
         );
 
         Arc::new(executor_registry)
@@ -1517,14 +1506,13 @@ mod tests {
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1, "b": 4})], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let workflow_graph = Arc::new(two_inputs_two_outputs);
 
@@ -1553,14 +1541,13 @@ mod tests {
     ) -> miette::Result<()> {
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1})], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
         let mut stream = orchestrator.listen()?;
         let workflow_graph = Arc::new(one_input_one_output);
 
@@ -1643,14 +1630,13 @@ mod tests {
             vec![],
         )
         .await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
         let mut stream = orchestrator.listen()?;
 
         let workflow_graph = Arc::new(simple_eval);
@@ -1793,14 +1779,13 @@ mod tests {
 
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"a": 1})], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
@@ -1900,14 +1885,13 @@ mod tests {
             vec![],
         )
         .await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
@@ -2017,14 +2001,13 @@ mod tests {
         let workflow_graph = Arc::new(workflow_graph);
 
         let (registry, input_sets, _dir) = test_storage_registry(vec![inputs], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
@@ -2100,14 +2083,13 @@ mod tests {
         let workflow_graph = Arc::new(graph.to_workflow_graph().unwrap());
 
         let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]).await;
-        let executor_registry = test_executor_registry(&registry).await;
+        let executor_registry = test_executor_registry(&registry);
         let orchestrator = Orchestrator::try_new(
             &registry,
             &executor_registry,
             default_storage_name,
             "memory",
-        )
-        .await?;
+        )?;
 
         let (workflow_run_state, mut state_recv) = InMemoryWorkflowRunState::test();
         let workflow_run_state: Arc<dyn WorkflowRunState> = Arc::new(workflow_run_state);
