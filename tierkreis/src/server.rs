@@ -75,7 +75,26 @@ async fn server(
         .await
         .into_diagnostic()?;
     tracing::info!("Visualization server listening on http://{host}:{port}");
-    axum::serve(listener, router).await.into_diagnostic()?;
+    let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
+    let serving = axum::serve(listener, router).with_graceful_shutdown(async move {
+        let _ = shutdown_receiver.await;
+    });
+    let serving = std::future::IntoFuture::into_future(serving);
+    tokio::pin!(serving);
+    tokio::select! {
+        result = &mut serving => result.into_diagnostic()?,
+        signal = tokio::signal::ctrl_c() => {
+            signal.into_diagnostic()?;
+            tracing::info!("Stopping visualization server");
+            let _ = shutdown_sender.send(());
+            if let Ok(result) = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                &mut serving,
+            ).await {
+                result.into_diagnostic()?;
+            }
+        }
+    }
 
     Ok(())
 }

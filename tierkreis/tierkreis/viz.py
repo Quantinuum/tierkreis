@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 import webbrowser
-from threading import Thread
+from threading import Event, Thread
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -18,7 +18,12 @@ from tierkreis.models import Workflow
 
 def serve(port: int = 3000) -> None:
     """Start the Rust visualization server and block until it exits."""
-    _serve(port)
+    print(f"Starting Tierkreis visualization at http://127.0.0.1:{port}", flush=True)
+    try:
+        _serve(port)
+    except KeyboardInterrupt:
+        pass
+    print("Tierkreis visualization server stopped.", flush=True)
 
 
 def visualize_graph(graph_data: GraphData | Workflow | Graph, port: int = 3000) -> None:
@@ -27,12 +32,15 @@ def visualize_graph(graph_data: GraphData | Workflow | Graph, port: int = 3000) 
         graph_data = graph_data.data
 
     server_errors: list[ValueError] = []
+    stopped = Event()
 
     def run_server() -> None:
         try:
             _serve_graph(graph_data, port)
         except ValueError as error:
             server_errors.append(error)
+        finally:
+            stopped.set()
 
     server_thread = Thread(target=run_server, daemon=True)
     server_thread.start()
@@ -57,5 +65,19 @@ def visualize_graph(graph_data: GraphData | Workflow | Graph, port: int = 3000) 
     if not workflows:
         raise RuntimeError("The Rust server did not register the graph")
 
+    print(f"Tierkreis visualization is running at {base_url}", flush=True)
+    print("Press Ctrl+C to stop the server.", flush=True)
     webbrowser.open(f"{base_url}/workflows/{workflows[0]['id']}/nodes/-")
-    server_thread.join()
+    try:
+        while not stopped.wait(timeout=0.1):
+            pass
+    except KeyboardInterrupt:
+        if not stopped.wait(timeout=6):
+            raise RuntimeError(
+                "Tierkreis visualization server did not stop in time"
+            ) from None
+    if server_errors:
+        raise RuntimeError("Tierkreis visualization server failed") from server_errors[
+            0
+        ]
+    print("Tierkreis visualization server stopped.", flush=True)
