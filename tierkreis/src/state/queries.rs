@@ -457,7 +457,7 @@ pub async fn read_node_states_by_name(
     let db_nodes = ns::node_states
         .filter(ns::run_id.eq(run_id.to_string()))
         .filter(ns::attempt.eq(attempt_i32))
-        .filter(ns::node_location.eq(name))
+        .filter(ns::name.eq(name))
         .get_results::<NodeState>(conn)
         .await
         .into_diagnostic()
