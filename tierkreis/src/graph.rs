@@ -114,6 +114,7 @@ impl WorkflowGraph {
     }
 
     /// Retrieve the name for a node if it exists.
+    #[must_use]
     pub fn node_name(&self, node: NodeIndex) -> Option<String> {
         self.node_names.get(&node).cloned()
     }
@@ -472,8 +473,8 @@ impl ConversionState {
             node_definitions,
             input_port_indices,
             output_port_indices,
-            node_names,
             port_names,
+            node_names,
             to_link,
             output_node,
         }

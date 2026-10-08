@@ -12,6 +12,7 @@ use futures::{Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, watch};
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::{
@@ -35,7 +36,7 @@ use crate::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
     },
-    workflow_state_query::{collect_input, collect_node_states, load_subgraph},
+    workflow_state_query::find_subgraph_input,
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -602,47 +603,40 @@ impl Runtime {
         run_id: Uuid,
         attempt: u32,
         name: &str,
-    ) -> miette::Result<Vec<HashMap<String, Vec<u8>>>> {
+        output_name: Option<&str>,
+    ) -> miette::Result<HashMap<String, Vec<Vec<u8>>>> {
         let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
-        let (_, mut workflow) = self
+        let (_, workflow) = self
             .state
             .load_workflow(workflow_run_state.workflow_id())
             .await?;
         let named_states = workflow_run_state.read_by_name(name).await?;
-        let loop_location = named_states.keys().next().unwrap();
 
-        let mut parent_location = Location::root();
-        for component in loop_location.components() {
-            match component {
-                crate::location::LocationComponent::Node { node } => {
-                    let node_states =
-                        collect_node_states(&workflow_run_state, &workflow, &parent_location)
-                            .await?;
-                    let graph_asset_spec =
-                        collect_input(&workflow, &node_states, &parent_location, *node, "graph")?;
-
-                    let mut inputs = HashMap::new();
-                    inputs.insert("graph".to_string(), graph_asset_spec.unwrap());
-
-                    workflow = load_subgraph(&self.asset_storage_registry, &inputs).await?;
-                    parent_location = parent_location.with_node(*node);
-                }
-                crate::location::LocationComponent::LoopIndex { index } => {
-                    parent_location = parent_location.with_loop_index(*index);
-                }
-                crate::location::LocationComponent::MapIndex { index } => {
-                    parent_location = parent_location.with_map_index(*index as usize);
-                }
-            }
+        let loop_location = named_states
+            .keys()
+            .next()
+            .ok_or_else(|| miette!("No Node states found for provided name: `{name}`"))?;
+        if named_states.len() > 1 {
+            warn!(
+                "Found multiple named states with name: `{name}`. Will use state at location: {loop_location}"
+            );
         }
+
+        let workflow = find_subgraph_input(
+            workflow,
+            &workflow_run_state,
+            &self.asset_storage_registry,
+            loop_location,
+        )
+        .await?;
         let output_idx = workflow.output_idx();
 
-        // expect a single named state?
         let mut trace = Vec::new();
         let mut loop_index = 0;
         let mut output_location = loop_location
             .with_loop_index(loop_index)
             .with_node(output_idx);
+        // It would likely be faster to speculatively read the next 10 locations or similar.
         while let state = workflow_run_state.read(&output_location).await?
             && state.complete_time.is_some()
         {
@@ -654,8 +648,6 @@ impl Runtime {
             )
             .await?;
 
-            dbg!(&outputs);
-
             trace.push((output_location, outputs));
 
             loop_index += 1;
@@ -664,13 +656,27 @@ impl Runtime {
                 .with_node(output_idx);
         }
 
-        Ok(trace
-            .into_iter()
-            .map(|(_, mut outputs)| {
-                outputs.remove("should_continue");
-                outputs
-            })
-            .collect())
+        let mut outputs = HashMap::new();
+        if let Some(output_name) = output_name {
+            let mut output = Vec::new();
+            for mut step in trace {
+                output.push(step.1.remove(output_name).ok_or_else(|| {
+                    miette!("Selected output not found at location: `{}`", step.0)
+                })?);
+            }
+            outputs.insert(output_name.to_string(), output);
+        } else {
+            for (_, step_outputs) in trace {
+                for (key, value) in step_outputs {
+                    if key != "should_continue" {
+                        let entry = outputs.entry(key).or_default();
+                        entry.push(value);
+                    }
+                }
+            }
+        }
+
+        Ok(outputs)
     }
 
     /// Read the [`WorkflowRunStateSummary`] for a specific workflow run to get a high

@@ -403,22 +403,21 @@ mod tierkreis {
             attempt: u32,
             name: String,
             output_name: Option<String>,
-        ) -> PyResult<Vec<ValueOrMapping>> {
+        ) -> PyResult<ValueOrMapping> {
             let inner = self.inner.clone();
             let res = get_runtime()
-                .spawn(async move { inner.read_loop_trace_by_name(run_id, attempt, &name).await })
+                .spawn(async move {
+                    inner
+                        .read_loop_trace_by_name(run_id, attempt, &name, output_name.as_deref())
+                        .await
+                })
                 .await
                 .map_err(|err| {
                     Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
                 })?;
 
             match res {
-                Ok(trace) => Python::attach(|py| {
-                    trace
-                        .into_iter()
-                        .map(|outputs| convert_outputs(py, outputs))
-                        .collect()
-                }),
+                Ok(trace) => Python::attach(|py| convert_loop_trace(py, trace)),
                 Err(err) => Python::attach(|py| Err(convert_err(py, err))),
             }
         }
@@ -636,7 +635,7 @@ mod tierkreis {
     ) -> PyResult<ValueOrMapping> {
         let mut outputs: HashMap<String, Option<Value>> = outputs
             .into_iter()
-            .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
+            .map(|(k, v)| Ok((k, serde_json::from_slice(&v).into_diagnostic()?)))
             .collect::<miette::Result<_>>()
             .map_err(|err| convert_err(py, err))?;
 
@@ -650,5 +649,25 @@ mod tierkreis {
         } else {
             Ok(ValueOrMapping::Mapping(outputs))
         }
+    }
+
+    fn convert_loop_trace(
+        py: Python<'_>,
+        outputs: HashMap<String, Vec<Vec<u8>>>,
+    ) -> PyResult<ValueOrMapping> {
+        let outputs: HashMap<String, Option<Value>> = outputs
+            .into_iter()
+            .map(|(k, trace)| {
+                let values: Vec<Value> = trace
+                    .into_iter()
+                    .map(|v| serde_json::from_slice(&v))
+                    .collect::<Result<_, _>>()
+                    .into_diagnostic()?;
+                Ok((k, Some(Value::List(values))))
+            })
+            .collect::<miette::Result<_>>()
+            .map_err(|err| convert_err(py, err))?;
+
+        Ok(ValueOrMapping::Mapping(outputs))
     }
 }

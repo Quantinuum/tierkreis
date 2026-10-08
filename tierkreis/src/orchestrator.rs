@@ -29,9 +29,9 @@ use crate::{
         unfold_asset,
     },
     event::{
-        EventReceiver, EventSender, NodeEvent, RuntimeEvent, WorkflowRunEvent, send_complete,
-        send_map_elem_complete, send_running_loop, send_running_map, send_running_switching,
-        send_workflow_run_complete, send_workflow_run_errored,
+        EventReceiver, EventSender, RuntimeEvent, send_complete, send_map_elem_complete,
+        send_running_loop, send_running_map, send_running_switching, send_workflow_run_complete,
+        send_workflow_run_errored,
     },
     executor::{
         ExecutorRegistry,
@@ -318,11 +318,9 @@ impl Orchestrator {
                         .boxed_local(),
                     NodeDefinition::Loop {} => self
                         .build_loop_actions(
+                            context.clone(),
                             workflow_graph.clone(),
-                            context.workflow_run_state.clone(),
-                            context.scheduled_this_lifetime.clone(),
                             node_states,
-                            parent_location,
                             n,
                             workflow_graph.node_name(n),
                         )
@@ -485,32 +483,6 @@ impl Orchestrator {
         Ok(node_states
             .get(&parent_location.with_node(connected_node))
             .is_some_and(|state| state.outputs.is_some()))
-    }
-
-    // Currently unused in favor of `scheduled_this_lifetime`.
-    // Can be reused to emit the event later instead of directly using it.
-    async fn mark_nodes_scheduled(
-        context: &OrchestrationContext,
-        workflow_graph: &WorkflowGraph,
-        nodes: impl Iterator<Item = &NodeIndex>,
-    ) -> miette::Result<()> {
-        context
-            .workflow_run_state
-            .write(WorkflowRunEvent::NodeEvents(
-                nodes
-                    .map(|n| {
-                        let name = workflow_graph.node_name(*n);
-                        NodeEvent {
-                            loc: context.parent_loc.with_node(*n),
-                            status: crate::event::NodeStatus::Scheduled {},
-                            name,
-                        }
-                    })
-                    .collect(),
-            ))
-            .await?;
-
-        Ok(())
     }
 
     #[instrument(
@@ -768,20 +740,18 @@ impl Orchestrator {
 
     #[instrument(
         skip_all,
-        fields(location = %parent_location.with_node(n)),
+        fields(location = %context.parent_loc.with_node(n)),
         err,
     )]
     async fn build_loop_actions<'a>(
         &'a self,
+        context: OrchestrationContext,
         workflow_graph: Arc<WorkflowGraph>,
-        workflow_run_state: Arc<dyn WorkflowRunState>,
-        scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         node_states: Arc<NodeStates>,
-        parent_location: Location,
         n: NodeIndex,
         name: Option<String>,
     ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
-        let loc = parent_location.with_node(n);
+        let loc = context.parent_loc.with_node(n);
         let loop_index = node_states.get(&loc).and_then(|state| state.loop_index);
         match loop_index {
             None => {
@@ -795,13 +765,15 @@ impl Orchestrator {
                 // TODO: We probably don't need the inputs if we have already
                 // visited this loop iteration.
                 let mut inputs =
-                    collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
+                    collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n)?;
                 let subgraph = load_subgraph(&self.asset_storage_registry, &inputs).await?;
 
                 let loop_loc = loc.with_loop_index(index);
                 let loop_subgraph_output_loc = loop_loc.with_node(subgraph.output_idx());
-                let loop_iteration_output_state =
-                    workflow_run_state.read(&loop_subgraph_output_loc).await?;
+                let loop_iteration_output_state = context
+                    .workflow_run_state
+                    .read(&loop_subgraph_output_loc)
+                    .await?;
 
                 match loop_iteration_output_state.outputs {
                     None => {
@@ -809,7 +781,8 @@ impl Orchestrator {
                             let prev_loop_loc = loc.with_loop_index(index - 1);
                             let prev_loop_subgraph_output_loc =
                                 prev_loop_loc.with_node(subgraph.output_idx());
-                            let prev_loop_iteration_output_state = workflow_run_state
+                            let prev_loop_iteration_output_state = context
+                                .workflow_run_state
                                 .read(&prev_loop_subgraph_output_loc)
                                 .await?;
 
@@ -823,8 +796,10 @@ impl Orchestrator {
                                 OrchestrationContext {
                                     parent_loc: loop_loc,
                                     graph_inputs: inputs,
-                                    workflow_run_state: Arc::clone(&workflow_run_state),
-                                    scheduled_this_lifetime,
+                                    workflow_run_state: Arc::clone(&context.workflow_run_state),
+                                    scheduled_this_lifetime: Arc::clone(
+                                        &context.scheduled_this_lifetime,
+                                    ),
                                 },
                                 Arc::new(subgraph),
                             )
@@ -1302,7 +1277,7 @@ mod tests {
     use crate::{
         asset_storage::{assert_registry_contains_values, test_storage_registry},
         builder::*,
-        event::{NodeEvent, NodeStatus},
+        event::{NodeEvent, NodeStatus, WorkflowRunEvent},
         executor::{
             inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
         },

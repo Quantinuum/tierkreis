@@ -4,12 +4,13 @@ from tierkreis._tierkreis import new_default
 from tests.controller.loop_graphdata import loop_multiple_acc, loop_multiple_acc_untyped
 from tierkreis.controller.data.graph import GraphData
 
-return_value = [
-    {"acc1": x, "acc2": y, "acc3": z}
-    for x, y, z in zip(range(1, 7), range(2, 13, 2), range(3, 19, 3), strict=True)
-]
+return_value = {
+    "acc1": [x for x in range(1, 7)],
+    "acc2": [x for x in range(2, 13, 2)],
+    "acc3": [x for x in range(3, 19, 3)],
+}
 
-params: list[tuple[GraphData, list[dict[str, int]], str]] = [
+params: list[tuple[GraphData, dict[str, list[int]], str]] = [
     (
         loop_multiple_acc_untyped(),
         return_value,
@@ -31,7 +32,7 @@ ids = [
 @pytest.mark.parametrize(("graph", "output", "name"), params, ids=ids)
 async def test_read_loop_trace_by_name(
     graph: GraphData,
-    output: list[dict[str, int]],
+    output: dict[str, list[int]],
     name: str,
 ) -> None:
     runtime = await new_default()
@@ -39,9 +40,30 @@ async def test_read_loop_trace_by_name(
         workflow_id = await runtime.save_workflow(name, graph)
         run_id = await runtime.start_new_run(workflow_id, {})
         await runtime.wait_for(run_id, timeout=30)
-        print((await runtime.debug_read_node_states(run_id, 0, ["N4.L0"]))["N4.L0"].name)
         actual_output = await runtime.get_loop_iterations(
             run_id, attempt=0, name="my_loop"
         )
 
     assert actual_output == output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("graph", "output", "name"), params, ids=ids)
+async def test_read_loop_trace_by_name_select_port(
+    graph: GraphData,
+    output: dict[str, list[int]],
+    name: str,
+) -> None:
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow(name, graph)
+        run_id = await runtime.start_new_run(workflow_id, {})
+        await runtime.wait_for(run_id, timeout=30)
+        actual_output = await runtime.get_loop_iterations(
+            run_id,
+            attempt=0,
+            name="my_loop",
+            output_name="acc3",
+        )
+
+    assert actual_output == {"acc3": output["acc3"]}

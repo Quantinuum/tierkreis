@@ -95,7 +95,7 @@ pub struct NodeEvent {
     pub loc: Location,
     /// The user specified name for the Node if any.
     ///
-    /// Setting the value wil set the Node name in the state but not setting
+    /// Setting the value will set the Node name in the state but not setting
     /// it will not override the previous value.
     pub name: Option<String>,
     /// The new status of the Node.
