@@ -1,6 +1,40 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAge: 20160 # 14 days
+minimumReleaseAgeExclude:
+  - esbuild@0.28.1
+  - js-yaml@4.1.2
+  - brace-expansion@2.1.2
+  - brace-expansion@1.1.16
+  - brace-expansion@5.0.7
+  - js-yaml@4.3.0
+  - brace-expansion@1.1.17
+  - brace-expansion@2.1.3
+  - brace-expansion@5.0.8
+  - postcss@8.5.23
+  - brace-expansion@5.0.9
+  - brace-expansion@2.1.4
+  - brace-expansion@1.1.18
+  - js-yaml@4.3.1
+  - nanoid@3.3.16
+  - nanoid@3.3.18
+  - postcss@8.5.18
+  - browserslist@4.28.7
+  - baseline-browser-mapping@2.11.0
+  - js-yaml@4.3.2
+  - brace-expansion@1.1.21
+  - brace-expansion@2.1.7
+  - brace-expansion@5.0.12
+  - brace-expansion@1.1.20
+  - brace-expansion@2.1.6
+  - brace-expansion@5.0.11
+  - brace-expansion@1.1.19
+  - brace-expansion@2.1.5
+  - brace-expansion@5.0.10
+  - braces@3.0.4
+  - seroval@1.6.1
+  - seroval@1.6.3
+  - source-map-js@1.2.2
 minimumReleaseAgeStrict: true
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 43200 # 30 days, See https://pnpm.io/settings#trustpolicyignoreafter
