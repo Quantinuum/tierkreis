@@ -13,6 +13,16 @@ use crate::{
     state::{WorkflowRunState, interface::NodeState},
 };
 
+pub(crate) async fn collect_node_states(
+    workflow_run_state: &Arc<dyn WorkflowRunState>,
+    workflow_graph: &WorkflowGraph,
+    parent_loc: &Location,
+) -> miette::Result<HashMap<Location, NodeState>> {
+    workflow_run_state
+        .read_many(&mut workflow_graph.node_ids().map(|n| parent_loc.with_node(n)))
+        .await
+}
+
 /// Load a subgraph from the `graph` input, accepting current and legacy formats.
 ///
 /// # Errors
@@ -22,7 +32,7 @@ use crate::{
 pub async fn load_subgraph<S: ::std::hash::BuildHasher>(
     asset_storage_registry: &AssetStorageRegistry,
     inputs: &HashMap<String, AssetSpec, S>,
-) -> miette::Result<Arc<WorkflowGraph>> {
+) -> miette::Result<WorkflowGraph> {
     let subgraph_bytes = load_asset(asset_storage_registry, inputs, "graph").await?;
     let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
         serde_json::from_slice(&subgraph_bytes);
@@ -36,7 +46,7 @@ pub async fn load_subgraph<S: ::std::hash::BuildHasher>(
         }
     };
 
-    Ok(Arc::new(subgraph))
+    Ok(subgraph)
 }
 
 /// Resolve the graph containing the terminal node of `loc`, descending into subgraphs.
@@ -49,8 +59,8 @@ pub async fn resolve_location(
     workflow_run_state: &Arc<dyn WorkflowRunState>,
     root_graph: &Arc<WorkflowGraph>,
     loc: &Location,
-) -> miette::Result<(Arc<WorkflowGraph>, Location, NodeIndex)> {
-    let mut current_graph = Arc::clone(root_graph);
+) -> miette::Result<(WorkflowGraph, Location, NodeIndex)> {
+    let mut current_graph = root_graph.as_ref().clone();
     let mut parent_loc = Location::root();
     let mut current_node: Option<NodeIndex> = None;
 
@@ -192,6 +202,73 @@ pub fn dependents<'a>(
         Ok(descendants)
     }
     .boxed()
+}
+
+/// Find the `graph` input to a Node at a specified Location and return it.
+pub(crate) async fn find_subgraph_input(
+    mut workflow: WorkflowGraph,
+    workflow_run_state: &Arc<dyn WorkflowRunState>,
+    asset_storage_registry: &AssetStorageRegistry,
+    location: &Location,
+) -> Result<WorkflowGraph, miette::Error> {
+    let mut parent_location = Location::root();
+    for component in location.components() {
+        match component {
+            crate::location::LocationComponent::Node { node } => {
+                let node_states =
+                    collect_node_states(workflow_run_state, &workflow, &parent_location).await?;
+                let graph_asset_spec =
+                    collect_input(&workflow, &node_states, &parent_location, *node, "graph")?;
+
+                let mut inputs = HashMap::new();
+                inputs.insert("graph".to_string(), graph_asset_spec);
+
+                workflow = load_subgraph(asset_storage_registry, &inputs).await?;
+                parent_location = parent_location.with_node(*node);
+            }
+            crate::location::LocationComponent::LoopIndex { index } => {
+                parent_location = parent_location.with_loop_index(*index);
+            }
+            crate::location::LocationComponent::MapIndex { index } => {
+                parent_location = parent_location.with_map_index(*index as usize);
+            }
+        }
+    }
+    Ok(workflow)
+}
+
+#[tracing::instrument(
+    skip_all,
+    fields(location = %parent_location.with_node(node)),
+    err,
+)]
+pub(crate) fn collect_input(
+    workflow_graph: &WorkflowGraph,
+    node_states: &HashMap<Location, NodeState>,
+    parent_location: &Location,
+    node: NodeIndex,
+    port_name: &str,
+) -> miette::Result<AssetSpec> {
+    let input_port = workflow_graph.get_input_port_index(node, port_name)?;
+    let (linked_node, output_port) = workflow_graph.connected_input(input_port)?;
+    let output_name = &workflow_graph.get_port_name(output_port)?;
+
+    let node_state = node_states
+        .get(&parent_location.with_node(linked_node))
+        .wrap_err_with(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
+    let outputs = node_state
+        .outputs
+        .as_ref()
+        .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
+    let output_asset_spec = outputs.get(*output_name).ok_or_else(|| {
+        let output_keys: Vec<_> = outputs.keys().collect();
+        miette!(
+            help = format!("Available outputs: {output_keys:?}"),
+            "Could not get node output for node: {linked_node:?} and port name: {output_name}",
+        )
+    })?;
+
+    Ok(output_asset_spec.clone())
 }
 
 #[tracing::instrument(

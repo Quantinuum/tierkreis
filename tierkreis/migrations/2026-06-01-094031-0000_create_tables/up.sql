@@ -1,6 +1,7 @@
 -- Your SQL goes here
 CREATE TABLE `node_states`(
 	`id` INTEGER NOT NULL PRIMARY KEY,
+	`name` TEXT,
 	`run_id` TEXT NOT NULL,
 	`attempt` INTEGER NOT NULL,
 	`node_location` TEXT NOT NULL,

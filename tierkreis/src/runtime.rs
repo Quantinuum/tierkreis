@@ -12,6 +12,7 @@ use futures::{Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, watch};
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::{
@@ -35,6 +36,7 @@ use crate::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
     },
+    workflow_state_query::find_subgraph_input,
 };
 
 /// `RuntimeConfig` defines the configuration for the runtime
@@ -379,7 +381,7 @@ impl Runtime {
                             for node_event in node_events {
                                 // Whitespaces are added to align for LogFormat::Compact
                                 match &node_event.status {
-                                    NodeStatus::Scheduled => {
+                                    NodeStatus::Scheduled { .. } => {
                                         tracing::info!(
                                             target: "tierkreis::events",
                                             workflow_id = %workflow_id,
@@ -586,6 +588,93 @@ impl Runtime {
                 .ok_or_else(|| miette!("No output values on Output node."))?,
         )
         .await?;
+
+        Ok(outputs)
+    }
+
+    /// Fetch the outputs of a workflow run attempt.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the workflow run attempt does not exist, the state cannot
+    /// be accessed or if the output node has no output values.
+    pub async fn read_loop_trace_by_name(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        name: &str,
+        output_name: Option<&str>,
+    ) -> miette::Result<HashMap<String, Vec<Vec<u8>>>> {
+        let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let (_, workflow) = self
+            .state
+            .load_workflow(workflow_run_state.workflow_id())
+            .await?;
+        let named_states = workflow_run_state.read_by_name(name).await?;
+
+        let loop_location = named_states
+            .keys()
+            .next()
+            .ok_or_else(|| miette!("No Node states found for provided name: `{name}`"))?;
+        if named_states.len() > 1 {
+            warn!(
+                "Found multiple named states with name: `{name}`. Will use state at location: {loop_location}"
+            );
+        }
+
+        let workflow = find_subgraph_input(
+            workflow,
+            &workflow_run_state,
+            &self.asset_storage_registry,
+            loop_location,
+        )
+        .await?;
+        let output_idx = workflow.output_idx();
+
+        let mut trace = Vec::new();
+        let mut loop_index = 0;
+        let mut output_location = loop_location
+            .with_loop_index(loop_index)
+            .with_node(output_idx);
+        // It would likely be faster to speculatively read the next 10 locations or similar.
+        while let state = workflow_run_state.read(&output_location).await?
+            && state.complete_time.is_some()
+        {
+            let outputs = load_assets(
+                &self.asset_storage_registry,
+                &state
+                    .outputs
+                    .ok_or_else(|| miette!("No output values on Output node."))?,
+            )
+            .await?;
+
+            trace.push((output_location, outputs));
+
+            loop_index += 1;
+            output_location = loop_location
+                .with_loop_index(loop_index)
+                .with_node(output_idx);
+        }
+
+        let mut outputs = HashMap::new();
+        if let Some(output_name) = output_name {
+            let mut output = Vec::new();
+            for mut step in trace {
+                output.push(step.1.remove(output_name).ok_or_else(|| {
+                    miette!("Selected output not found at location: `{}`", step.0)
+                })?);
+            }
+            outputs.insert(output_name.to_string(), output);
+        } else {
+            for (_, step_outputs) in trace {
+                for (key, value) in step_outputs {
+                    if key != "should_continue" {
+                        let entry = outputs.entry(key).or_default();
+                        entry.push(value);
+                    }
+                }
+            }
+        }
 
         Ok(outputs)
     }
@@ -805,7 +894,7 @@ pub async fn exec() -> miette::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{path::Path, time::Duration};
 
     use super::*;
     use crate::{
@@ -814,6 +903,7 @@ mod tests {
     };
     use futures::future::{AbortHandle, Abortable};
     use tempfile::NamedTempFile;
+    use tokio::time::timeout;
     use url::Url;
 
     async fn run_until_finished(
@@ -830,8 +920,10 @@ mod tests {
             handle.abort();
             Ok::<_, miette::Report>(())
         });
+        let run_task = timeout(Duration::from_secs(1), run_task);
         run_task
             .await
+            .expect("Task timed out")
             .expect_err("Task was not aborted as expected");
         background_task.await.expect("Failed to join wait task")?;
 
@@ -902,7 +994,11 @@ mod tests {
             }
             Ok::<_, miette::Report>(())
         });
-        assert!(task.await.is_err(), "the first runtime was not aborted");
+        let task = timeout(Duration::from_secs(5), task);
+        assert!(
+            task.await.expect("task timed out").is_err(),
+            "the first runtime was not aborted"
+        );
         drop(runtime);
 
         let resumed_runtime = test_persistent_runtime(database_file.path()).await?;
@@ -1188,7 +1284,11 @@ mod tests {
             }
             Ok::<_, miette::Report>(())
         });
-        assert!(task.await.is_err(), "the first runtime was not aborted");
+        let task = timeout(Duration::from_secs(5), task);
+        assert!(
+            task.await.expect("task timed out").is_err(),
+            "the first runtime was not aborted"
+        );
         drop(runtime); // Dropping the runtime should abort any remaining background tasks.
 
         let resumed_runtime =
@@ -1206,7 +1306,6 @@ mod tests {
             1
         );
         let job_id_before_resume = workflow_run_state.read(&task_location).await?.handle;
-
         // Let the mock Nexus job complete, as if it finished while the
         // runtime was down.
         release_sender.send(true).into_diagnostic()?;

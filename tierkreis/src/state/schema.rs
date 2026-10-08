@@ -14,6 +14,7 @@ diesel::table! {
 diesel::table! {
     node_states (id) {
         id -> Integer,
+        name -> Nullable<Text>,
         run_id -> Text,
         attempt -> Integer,
         node_location -> Text,
@@ -27,9 +28,9 @@ diesel::table! {
         loop_index -> Nullable<Integer>,
         map_size -> Nullable<Integer>,
         map_completed -> Nullable<Binary>,
-        handle -> Nullable<Text>,
         error -> Nullable<Text>,
         error_detail -> Nullable<Text>,
+        handle -> Nullable<Text>,
     }
 }
 

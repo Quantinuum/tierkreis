@@ -62,6 +62,7 @@ pub struct WorkflowGraph {
     node_definitions: BTreeMap<NodeIndex, NodeDefinition>,
     input_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
     output_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
+    node_names: BTreeMap<NodeIndex, String>,
     port_names: BTreeMap<PortIndex, String>,
 
     output_node: NodeIndex,
@@ -101,6 +102,7 @@ impl WorkflowGraph {
             input_port_indices,
             output_port_indices,
             port_names,
+            node_names: BTreeMap::new(),
             output_node: idx,
         }
     }
@@ -109,6 +111,12 @@ impl WorkflowGraph {
     #[must_use]
     pub fn output_idx(&self) -> NodeIndex {
         self.output_node
+    }
+
+    /// Retrieve the name for a node if it exists.
+    #[must_use]
+    pub fn node_name(&self, node: NodeIndex) -> Option<String> {
+        self.node_names.get(&node).cloned()
     }
 
     /// Retrieve the [`NodeDefinition`] for a node if it exists.
@@ -368,6 +376,8 @@ enum LegacyNodeDef {
         inputs: HashMap<String, ValueRef>,
         continue_port: String,
         outputs: HashMap<String, Vec<u32>>,
+        #[serde(default)]
+        name: Option<String>,
     },
     #[serde(rename = "map")]
     Map {
@@ -426,6 +436,7 @@ impl LegacyWorkflowGraph {
             input_port_indices: state.input_port_indices,
             output_port_indices: state.output_port_indices,
             port_names: state.port_names,
+            node_names: state.node_names,
             output_node: state
                 .output_node
                 .ok_or_else(|| miette!("Output node not found"))?,
@@ -439,6 +450,7 @@ struct ConversionState {
     pub input_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
     pub output_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
     pub port_names: BTreeMap<PortIndex, String>,
+    pub node_names: BTreeMap<NodeIndex, String>,
     pub to_link: BTreeMap<PortIndex, ValueRef>,
     pub output_node: Option<NodeIndex>,
 }
@@ -451,6 +463,7 @@ impl ConversionState {
         let node_definitions = BTreeMap::new();
         let input_port_indices = BTreeMap::new();
         let output_port_indices = BTreeMap::new();
+        let node_names = BTreeMap::new();
         let port_names = BTreeMap::new();
         let to_link = BTreeMap::new();
         let output_node = None;
@@ -461,6 +474,7 @@ impl ConversionState {
             input_port_indices,
             output_port_indices,
             port_names,
+            node_names,
             to_link,
             output_node,
         }
@@ -670,8 +684,9 @@ impl ConversionState {
                 continue_port: _continue_port,
                 inputs,
                 outputs,
+                name,
             } => {
-                self.convert_loop(body, inputs, outputs);
+                self.convert_loop(body, inputs, outputs, name);
             }
             LegacyNodeDef::Map {
                 body,
@@ -798,6 +813,7 @@ impl ConversionState {
         graph_source: ValueRef,
         inputs: HashMap<String, ValueRef>,
         outputs: HashMap<String, Vec<u32>>,
+        name: Option<String>,
     ) {
         let incoming = inputs.len();
         let outgoing = outputs.len();
@@ -805,6 +821,9 @@ impl ConversionState {
 
         self.node_definitions
             .insert(node_index, NodeDefinition::Loop {});
+        if let Some(name) = name {
+            self.node_names.insert(node_index, name);
+        }
 
         self.build_inputs(
             [("graph".to_string(), graph_source)]
