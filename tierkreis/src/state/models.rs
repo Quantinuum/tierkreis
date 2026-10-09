@@ -72,6 +72,7 @@ pub struct WorkflowRunAttempt {
     pub workflow_run_id: String, // UUID string
     pub attempt: i32,
     pub run_metadata: Vec<u8>, // JSON blob
+    pub enable_breakpoints: bool,
     pub started_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
@@ -104,6 +105,7 @@ pub struct NodeState {
     pub attempt: i32,
     pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
@@ -128,6 +130,7 @@ pub struct UpsertNodeState {
     pub attempt: i32,
     pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
