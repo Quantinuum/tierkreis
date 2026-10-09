@@ -22,6 +22,7 @@ pub mod workflow_state_query;
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
+    use std::net::{IpAddr, Ipv4Addr};
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use chrono::{TimeDelta, Utc};
@@ -44,6 +45,28 @@ mod tierkreis {
         location::Location,
         runtime::RuntimeConfig,
     };
+
+    #[pyfunction]
+    #[pyo3(signature = (port=3000))]
+    fn serve(py: Python<'_>, port: u16) -> PyResult<()> {
+        let result = py.detach(move || crate::server::serve(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
+        result.map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (graph, port=3000))]
+    fn serve_graph(py: Python<'_>, graph: &Bound<'_, PyAny>, port: u16) -> PyResult<()> {
+        let graph_json: String = if graph.hasattr("data")? {
+            graph
+                .getattr("data")?
+                .call_method0("model_dump_json")?
+                .extract()?
+        } else {
+            graph.call_method0("model_dump_json")?.extract()?
+        };
+        let result = py.detach(move || crate::server::serve_graph(&graph_json, port));
+        result.map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
 
     #[pymodule_export]
     pub const DEFAULT_CONFIG_FILE_NAME: &str = CONFIG_FILE_NAME;
