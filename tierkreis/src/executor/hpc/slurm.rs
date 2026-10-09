@@ -112,7 +112,7 @@ impl SchedulerWrapper for SlurmWrapper {
             .ok_or_else(|| miette!("sbatch returned no job id"))
     }
 
-    async fn check(&self, job_ids: Vec<String>) -> Result<HashMap<String, SchedulerStatus>> {
+    async fn check(&self, job_ids: &[&str]) -> Result<HashMap<String, SchedulerStatus>> {
         let scheduler = self;
         if job_ids.is_empty() {
             return Ok(HashMap::new());
