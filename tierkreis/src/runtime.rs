@@ -27,6 +27,7 @@ use crate::{
         SlurmWrapper, SubprocessExecutor,
         hpc::spec::{HPCResourceSpec, ScriptTemplates},
         nexus::{NexusClientConfig, NexusExecutor},
+        qrmi::{QrmiExecutor, QrmiExecutorConfig},
     },
     graph::WorkflowGraph,
     location::Location,
@@ -149,6 +150,10 @@ enum ExecutorConfig {
     },
     Nexus {
         client_config: NexusClientConfig,
+        output_storage_name: String,
+    },
+    Qrmi {
+        config: QrmiExecutorConfig,
         output_storage_name: String,
     },
     Hpc {
@@ -784,6 +789,17 @@ async fn executor_registry_from_config(
                     )
                     .await?,
                 ),
+            ),
+            ExecutorConfig::Qrmi {
+                config,
+                output_storage_name,
+            } => executor_registry.insert(
+                executor_name.clone(),
+                Box::new(QrmiExecutor::try_new(
+                    config,
+                    asset_storage_registry,
+                    output_storage_name,
+                )?),
             ),
             ExecutorConfig::Hpc {
                 hpc_storage_name,
