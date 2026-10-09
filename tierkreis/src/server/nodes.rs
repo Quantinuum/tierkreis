@@ -5,7 +5,7 @@ use portgraph::NodeIndex;
 use serde_json::Value;
 
 use crate::asset_storage::{load_asset, load_assets};
-use crate::graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
+use crate::graph::{LegacyNodeDef, LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
 use crate::location::{Location, LocationComponent};
 use crate::server::AssetStorageRegistry;
 use crate::server::models::{
@@ -399,55 +399,39 @@ pub async fn build_py_graph(
 ///
 /// Returns an error if the graph shape or a nested graph reference is invalid.
 pub fn build_graph_data_py_graph(
-    graph_data: &Value,
+    graph_data: &LegacyWorkflowGraph,
     location: &Location,
 ) -> miette::Result<PyGraph> {
     let graph_data = graph_data_at_location(graph_data, location)?;
-    let definitions = graph_data
-        .get("nodes")
-        .and_then(Value::as_array)
-        .ok_or_else(|| miette::miette!("GraphData is missing its nodes array"))?;
+    let definitions = &graph_data.nodes;
     let mut nodes = Vec::with_capacity(definitions.len());
     let mut edges = Vec::new();
 
     for (index, definition) in definitions.iter().enumerate() {
-        let node_type = definition
-            .get("type")
-            .and_then(Value::as_str)
-            .ok_or_else(|| miette::miette!("GraphData node {index} is missing its type"))?;
+        let node_type = definition.node_type();
         let node_location = location.with_node(NodeIndex::new(index)).to_string();
-        let inputs = graph_data_inputs(definition, node_type, location);
-        let outputs = definition
-            .get("outputs")
-            .and_then(Value::as_object)
-            .map(|outputs| outputs.keys().cloned().collect())
-            .unwrap_or_default();
-        let function_name = if node_type == "function" {
-            definition
-                .get("function_name")
-                .and_then(Value::as_str)
-                .unwrap_or(node_type)
-                .to_string()
-        } else {
-            node_type.to_string()
+        let input_links = graph_data_inputs(definition, location);
+        let outputs = graph_data_node_outputs(definition);
+        let function_name = match definition {
+            LegacyNodeDef::Func { function_name, .. } => function_name.clone(),
+            _ => node_type.to_string(),
         };
-        let value = match node_type {
-            "input" => definition
-                .get("name")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            "const" => definition.get("value").map(graph_data_value),
-            "output" if inputs.len() == 1 => inputs.first().and_then(|input| {
-                graph_data_node_index(&input.from_node)
-                    .and_then(|source_index| definitions.get(source_index))
-                    .and_then(|source| graph_data_static_value(source, &input.from_port))
-            }),
+        let value = match definition {
+            LegacyNodeDef::Input { name, .. } => Some(name.clone()),
+            LegacyNodeDef::Const { value, .. } => Some(graph_data_value(value)),
+            LegacyNodeDef::Output { .. } if input_links.len() == 1 => {
+                input_links.first().and_then(|(source_index, input)| {
+                    definitions
+                        .get(*source_index)
+                        .and_then(|source| graph_data_static_value(source, &input.from_port))
+                })
+            }
             _ => None,
         };
 
-        for input in &inputs {
-            let edge_value = graph_data_node_index(&input.from_node)
-                .and_then(|source_index| definitions.get(source_index))
+        for (source_index, input) in &input_links {
+            let edge_value = definitions
+                .get(*source_index)
                 .and_then(|source| graph_data_static_value(source, &input.from_port));
             edges.push(PyEdge {
                 from_node: input.from_node.clone(),
@@ -460,6 +444,7 @@ pub fn build_graph_data_py_graph(
             });
         }
 
+        let inputs = input_links.into_iter().map(|(_, input)| input).collect();
         nodes.push(PyNode {
             id: node_location.clone(),
             status: NodeStatus::NotStarted,
@@ -483,7 +468,7 @@ pub fn build_graph_data_py_graph(
 ///
 /// Returns an error if the graph shape or node location is invalid.
 pub fn graph_data_outputs(
-    graph_data: &Value,
+    graph_data: &LegacyWorkflowGraph,
     location: &Location,
 ) -> miette::Result<HashMap<String, Value>> {
     let Some((parent, component)) = location.split_last() else {
@@ -493,11 +478,13 @@ pub fn graph_data_outputs(
         return Ok(HashMap::new());
     };
     let graph_data = graph_data_at_location(graph_data, &parent)?;
-    let definition = graph_data_node_definition(graph_data, node.index())
+    let definition = graph_data
+        .nodes
+        .get(node.index())
         .ok_or_else(|| miette::miette!("GraphData node {node:?} was not found"))?;
 
-    if definition.get("type").and_then(Value::as_str) == Some("const") {
-        let value = definition.get("value").cloned().unwrap_or(Value::Null);
+    if let LegacyNodeDef::Const { value, .. } = definition {
+        let value = value.clone();
         let value = if value.get("nodes").is_some() {
             Value::String("Graph".to_string())
         } else {
@@ -506,94 +493,132 @@ pub fn graph_data_outputs(
         return Ok(HashMap::from([("value".to_string(), value)]));
     }
 
-    Ok(definition
-        .get("outputs")
-        .and_then(Value::as_object)
+    Ok(graph_data_node_outputs(definition)
         .into_iter()
-        .flatten()
-        .filter(|(name, _)| name.as_str() != "*")
-        .map(|(name, _)| (name.clone(), Value::Null))
+        .filter(|name| name != "*")
+        .map(|name| (name, Value::Null))
         .collect())
 }
 
-fn graph_data_at_location<'a>(root: &'a Value, location: &Location) -> miette::Result<&'a Value> {
-    let mut graph_data = root;
+fn graph_data_at_location(
+    root: &LegacyWorkflowGraph,
+    location: &Location,
+) -> miette::Result<LegacyWorkflowGraph> {
+    let mut graph_data = root.clone();
     for component in location.components() {
         let LocationComponent::Node { node } = component else {
             continue;
         };
-        let definition = graph_data_node_definition(graph_data, node.index())
+        let definition = graph_data
+            .nodes
+            .get(node.index())
             .ok_or_else(|| miette::miette!("GraphData node {node:?} was not found"))?;
-        let reference_name = match definition.get("type").and_then(Value::as_str) {
-            Some("eval") => "graph",
-            Some("loop" | "map") => "body",
+        let nested_reference = match definition {
+            LegacyNodeDef::Eval { graph, .. } => graph,
+            LegacyNodeDef::Loop { body, .. } | LegacyNodeDef::Map { body, .. } => body,
             _ => return Err(miette::miette!("Node at {location} has no nested graph")),
         };
-        let (source_index, _) = definition
-            .get(reference_name)
-            .and_then(graph_data_ref)
+        let (source_index, _) = graph_data_ref(nested_reference)
             .ok_or_else(|| miette::miette!("Nested graph reference is missing"))?;
-        graph_data = graph_data_node_definition(graph_data, source_index)
-            .and_then(|node| node.get("value"))
-            .filter(|value| value.get("nodes").is_some())
+        let nested_graph = graph_data
+            .nodes
+            .get(source_index)
+            .and_then(|node| match node {
+                LegacyNodeDef::Const { value, .. } if value.get("nodes").is_some() => {
+                    Some(value.clone())
+                }
+                _ => None,
+            })
             .ok_or_else(|| miette::miette!("Nested GraphData was not found"))?;
+        graph_data = serde_json::from_value(nested_graph)
+            .map_err(|error| miette::miette!("Nested GraphData is invalid: {error}"))?;
     }
     Ok(graph_data)
 }
 
-fn graph_data_node_definition(graph_data: &Value, index: usize) -> Option<&Value> {
-    graph_data.get("nodes")?.as_array()?.get(index)
+fn graph_data_node_outputs(node: &LegacyNodeDef) -> Vec<String> {
+    match node {
+        LegacyNodeDef::Func { outputs, .. }
+        | LegacyNodeDef::Eval { outputs, .. }
+        | LegacyNodeDef::Loop { outputs, .. }
+        | LegacyNodeDef::Map { outputs, .. } => outputs.keys().cloned().collect(),
+        LegacyNodeDef::Const { .. } => vec!["value".to_string()],
+        LegacyNodeDef::IfElse { .. } | LegacyNodeDef::EagerIfElse { .. } => {
+            vec!["value".to_string()]
+        }
+        LegacyNodeDef::Input { name } => vec![name.clone()],
+        LegacyNodeDef::Output { .. } => Vec::new(),
+    }
 }
 
-fn graph_data_inputs(node: &Value, node_type: &str, location: &Location) -> Vec<NodeInputs> {
+fn graph_data_inputs(node: &LegacyNodeDef, location: &Location) -> Vec<(usize, NodeInputs)> {
     let mut references = BTreeMap::<String, (usize, String)>::new();
-    if let Some(inputs) = node.get("inputs").and_then(Value::as_object) {
-        for (port, value) in inputs {
-            if let Some(reference) = graph_data_ref(value) {
-                references.insert(port.clone(), reference);
+    match node {
+        LegacyNodeDef::Func { inputs, .. }
+        | LegacyNodeDef::Eval { inputs, .. }
+        | LegacyNodeDef::Loop { inputs, .. }
+        | LegacyNodeDef::Map { inputs, .. }
+        | LegacyNodeDef::Output { inputs } => {
+            for (port, reference) in inputs {
+                if let Some(reference) = graph_data_ref(reference) {
+                    references.insert(port.clone(), reference);
+                }
+            }
+        }
+        LegacyNodeDef::Const { .. } | LegacyNodeDef::Input { .. } => {}
+        LegacyNodeDef::IfElse {
+            pred,
+            if_true,
+            if_false,
+        }
+        | LegacyNodeDef::EagerIfElse {
+            pred,
+            if_true,
+            if_false,
+        } => {
+            for (port, reference) in [("pred", pred), ("if_true", if_true), ("if_false", if_false)]
+            {
+                if let Some(reference) = graph_data_ref(reference) {
+                    references.insert(port.to_string(), reference);
+                }
             }
         }
     }
-    let special_inputs: &[(&str, &str)] = match node_type {
-        "eval" => &[("body", "graph")],
-        "loop" | "map" => &[("body", "body")],
-        "ifelse" | "eifelse" => &[
-            ("pred", "pred"),
-            ("if_true", "if_true"),
-            ("if_false", "if_false"),
-        ],
-        _ => &[],
-    };
-    for (port, field) in special_inputs {
-        if let Some(reference) = node.get(*field).and_then(graph_data_ref) {
-            references.insert((*port).to_string(), reference);
+    match node {
+        LegacyNodeDef::Eval { graph, .. } => {
+            if let Some(reference) = graph_data_ref(graph) {
+                references.insert("body".to_string(), reference);
+            }
         }
+        LegacyNodeDef::Loop { body, .. } | LegacyNodeDef::Map { body, .. } => {
+            if let Some(reference) = graph_data_ref(body) {
+                references.insert("body".to_string(), reference);
+            }
+        }
+        _ => {}
     }
     references
         .into_iter()
-        .map(|(port, (index, from_port))| NodeInputs {
-            port,
-            from_node: location.with_node(NodeIndex::new(index)).to_string(),
-            from_port,
+        .map(|(port, (index, from_port))| {
+            (
+                index,
+                NodeInputs {
+                    port,
+                    from_node: location.with_node(NodeIndex::new(index)).to_string(),
+                    from_port,
+                },
+            )
         })
         .collect()
 }
 
-fn graph_data_ref(value: &Value) -> Option<(usize, String)> {
-    let value = value.as_array()?;
-    Some((
-        usize::try_from(value.first()?.as_u64()?).ok()?,
-        value.get(1)?.as_str()?.to_string(),
-    ))
+fn graph_data_ref(value: &(i32, String)) -> Option<(usize, String)> {
+    Some((usize::try_from(value.0).ok()?, value.1.clone()))
 }
 
-fn graph_data_node_index(location: &str) -> Option<usize> {
-    location.rsplit('.').next()?.strip_prefix('N')?.parse().ok()
-}
-
-fn graph_data_static_value(node: &Value, port: &str) -> Option<String> {
-    match node.get("type")?.as_str()? {
-        "const" if port == "value" => Some(node.get("value")?.to_string()),
+fn graph_data_static_value(node: &LegacyNodeDef, port: &str) -> Option<String> {
+    match node {
+        LegacyNodeDef::Const { value, .. } if port == "value" => Some(value.to_string()),
         _ => None,
     }
 }
@@ -726,9 +751,11 @@ pub async fn load_graph(
 
 #[cfg(test)]
 mod graph_data_conversion_tests {
-    use super::build_graph_data_py_graph;
+    use super::{build_graph_data_py_graph, graph_data_outputs};
+    use crate::graph::LegacyWorkflowGraph;
     use crate::location::Location;
     use serde_json::json;
+    use std::collections::HashMap;
 
     #[test]
     fn converts_incomplete_graph_without_output() -> miette::Result<()> {
@@ -747,9 +774,12 @@ mod graph_data_conversion_tests {
                     "outputs": {"result": []}
                 }
             ],
+            "graph_inputs": [],
             "graph_output_idx": null
         });
 
+        let graph_data: LegacyWorkflowGraph = serde_json::from_value(graph_data)
+            .map_err(|error| miette::miette!(error.to_string()))?;
         let graph = build_graph_data_py_graph(&graph_data, &Location::root())?;
 
         assert_eq!(graph.nodes.len(), 2);
@@ -779,15 +809,19 @@ mod graph_data_conversion_tests {
                             "inputs": {},
                             "outputs": {"value": []}
                         }],
+                        "graph_inputs": [],
                         "graph_output_idx": null
                     },
                     "inputs": {},
                     "outputs": {"value": [0]}
                 }
             ],
+            "graph_inputs": [],
             "graph_output_idx": null
         });
 
+        let graph_data: LegacyWorkflowGraph = serde_json::from_value(graph_data)
+            .map_err(|error| miette::miette!(error.to_string()))?;
         let graph = build_graph_data_py_graph(&graph_data, &Location::new("N0")?)?;
 
         assert_eq!(graph.nodes.len(), 1);

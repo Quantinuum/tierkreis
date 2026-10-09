@@ -343,23 +343,25 @@ impl WorkflowGraph {
     }
 }
 
-type ValueRef = (i32, String);
+pub(crate) type ValueRef = (i32, String);
 
 // Note that many fields are ignored as they are not necessary for rebuilding
 // the graph as in most cases the ports are standardized by the node type.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
-enum LegacyNodeDef {
+pub(crate) enum LegacyNodeDef {
     #[serde(rename = "function")]
     Func {
         function_name: String,
         inputs: HashMap<String, ValueRef>,
+        #[serde(default)]
         outputs: HashMap<String, Vec<u32>>,
     },
     #[serde(rename = "eval")]
     Eval {
         graph: ValueRef,
         inputs: HashMap<String, ValueRef>,
+        #[serde(default)]
         outputs: HashMap<String, Vec<u32>>,
     },
     #[serde(rename = "loop")]
@@ -367,12 +369,14 @@ enum LegacyNodeDef {
         body: ValueRef,
         inputs: HashMap<String, ValueRef>,
         continue_port: String,
+        #[serde(default)]
         outputs: HashMap<String, Vec<u32>>,
     },
     #[serde(rename = "map")]
     Map {
         body: ValueRef,
         inputs: HashMap<String, ValueRef>,
+        #[serde(default)]
         outputs: HashMap<String, Vec<u32>>,
     },
     #[serde(rename = "const")]
@@ -395,12 +399,29 @@ enum LegacyNodeDef {
     Output { inputs: HashMap<String, ValueRef> },
 }
 
+impl LegacyNodeDef {
+    #[must_use]
+    pub(crate) fn node_type(&self) -> &'static str {
+        match self {
+            Self::Func { .. } => "function",
+            Self::Eval { .. } => "eval",
+            Self::Loop { .. } => "loop",
+            Self::Map { .. } => "map",
+            Self::Const { .. } => "const",
+            Self::IfElse { .. } => "ifelse",
+            Self::EagerIfElse { .. } => "eifelse",
+            Self::Input { .. } => "input",
+            Self::Output { .. } => "output",
+        }
+    }
+}
+
 /// A serializable structure for the previous workflow graph format.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LegacyWorkflowGraph {
-    nodes: Vec<LegacyNodeDef>,
+    pub(crate) nodes: Vec<LegacyNodeDef>,
     graph_inputs: Vec<String>,
-    graph_output_idx: u32,
+    graph_output_idx: Option<u32>,
 }
 
 impl LegacyWorkflowGraph {
@@ -953,7 +974,7 @@ mod tests {
 
         assert_eq!(
             original.graph_output_idx,
-            u32::try_from(converted.output_idx().index()).unwrap()
+            Some(u32::try_from(converted.output_idx().index()).unwrap())
         );
 
         assert_eq!(original.nodes.len(), converted.node_definitions.len());

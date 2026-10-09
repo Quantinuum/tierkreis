@@ -18,7 +18,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
     asset_storage::AssetStorageRegistry,
-    graph::WorkflowGraph,
+    graph::{LegacyWorkflowGraph, WorkflowGraph},
     runtime::{RuntimeConfig, asset_storage_registry_from_config},
     state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
 };
@@ -52,7 +52,7 @@ async fn server(
     asset_registry: AssetStorageRegistry,
     host: IpAddr,
     port: u16,
-    display_graph: Option<Arc<serde_json::Value>>,
+    display_graph: Option<Arc<LegacyWorkflowGraph>>,
 ) -> miette::Result<()> {
     let update_receiver = runtime_state.listen();
 
@@ -127,7 +127,7 @@ pub async fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
 /// Panics if the tokio runtime cannot be started.
 #[tokio::main]
 pub async fn serve_graph(graph_json: &str, port: u16) -> miette::Result<()> {
-    let display_graph: serde_json::Value = serde_json::from_str(graph_json).into_diagnostic()?;
+    let display_graph: LegacyWorkflowGraph = serde_json::from_str(graph_json).into_diagnostic()?;
     let runtime_state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
     let workflow_id = runtime_state
         .save_workflow(

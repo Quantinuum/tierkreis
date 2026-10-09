@@ -28,7 +28,6 @@ enum Command {
         print_output: bool,
     },
     Init {},
-    Viz {},
     Serve {
         #[clap(long, default_value = "127.0.0.1")]
         host: IpAddr,

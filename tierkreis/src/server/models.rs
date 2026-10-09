@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::AssetStorageRegistry,
-    graph::NodeDefinition,
+    graph::{LegacyWorkflowGraph, NodeDefinition},
     state::interface::{NodeState, RuntimeState, RuntimeWatchState},
 };
 use axum::{
@@ -41,7 +41,7 @@ pub struct AppState {
     pub runtime_state: Arc<dyn RuntimeState>,
     pub asset_registry: AssetStorageRegistry,
     pub update_receiver: watch::Receiver<RuntimeWatchState>,
-    pub display_graph: Option<Arc<serde_json::Value>>,
+    pub display_graph: Option<Arc<LegacyWorkflowGraph>>,
 }
 
 /// Runtime metadata returned by `/api/info`.
