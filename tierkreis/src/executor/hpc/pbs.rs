@@ -130,7 +130,7 @@ impl SchedulerWrapper for PbsWrapper {
         parse_job_id(&output.stdout).ok_or_else(|| miette!("qsub returned no job id"))
     }
 
-    async fn check(&self, job_ids: Vec<String>) -> Result<HashMap<String, SchedulerStatus>> {
+    async fn check(&self, job_ids: &[&str]) -> Result<HashMap<String, SchedulerStatus>> {
         let scheduler = self;
         if job_ids.is_empty() {
             return Ok(HashMap::new());
@@ -141,7 +141,7 @@ impl SchedulerWrapper for PbsWrapper {
                 "-f", // Long format
                 "-F", "json", // Output in JSON format
             ])
-            .args(&job_ids)
+            .args(job_ids)
             .output()
             .await
             .into_diagnostic()

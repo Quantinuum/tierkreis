@@ -122,7 +122,7 @@ impl SchedulerWrapper for PjsubWrapper {
         parse_job_id(&output.stdout).ok_or_else(|| miette!("pjsub returned no job id"))
     }
 
-    async fn check(&self, job_ids: Vec<String>) -> Result<HashMap<String, SchedulerStatus>> {
+    async fn check(&self, job_ids: &[&str]) -> Result<HashMap<String, SchedulerStatus>> {
         let scheduler = self;
         if job_ids.is_empty() {
             return Ok(HashMap::new());
@@ -135,7 +135,7 @@ impl SchedulerWrapper for PjsubWrapper {
                 "--delimiter",
                 "|", // Use | as delimiter
             ])
-            .args(&job_ids)
+            .args(job_ids)
             .output()
             .await
             .into_diagnostic()

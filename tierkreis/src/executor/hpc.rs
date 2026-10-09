@@ -230,7 +230,12 @@ async fn check_jobs<T: SchedulerWrapper>(
     }
 
     let statuses = scheduler
-        .check(jobs.iter().map(|(_, job_id)| job_id.clone()).collect())
+        .check(
+            &jobs
+                .iter()
+                .map(|(_, job_id)| job_id.as_str())
+                .collect::<Vec<_>>(),
+        )
         .await?;
     for (key, job_id) in jobs {
         let Some(status) = statuses.get(&job_id).cloned() else {
@@ -517,12 +522,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
     }
 
     async fn is_job_active(&self, job_id: &str) -> miette::Result<String> {
-        match self
-            .scheduler
-            .check(vec![job_id.to_string()])
-            .await?
-            .get(job_id)
-        {
+        match self.scheduler.check(&[job_id]).await?.get(job_id) {
             Some(
                 SchedulerStatus::Queued | SchedulerStatus::Complete | SchedulerStatus::Running,
             ) => Ok(job_id.to_string()),
