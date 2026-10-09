@@ -19,6 +19,9 @@ test-workers:
 test-slow:
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
 
+typos:
+  typos
+    
 lint:
   cargo fmt --check
   cargo clippy --all-features --all-targets -- -D warnings
