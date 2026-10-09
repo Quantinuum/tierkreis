@@ -101,28 +101,48 @@ const fn default_poll_interval_secs() -> u64 {
     1
 }
 
-#[derive(Debug, Deserialize)]
+/// A vendor-neutral task payload accepted by [`QrmiExecutor`].
+///
+/// This serializes as a JSON object tagged by a snake-case `type` field and
+/// otherwise uses the same fields as [`Payload`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum QrmiPayload {
+pub enum QrmiPayload {
+    /// A Qiskit primitive request for IBM resources.
     QiskitPrimitive {
+        /// Serialized Qiskit primitive input.
         input: String,
+        /// Qiskit Runtime program identifier.
         program_id: String,
     },
+    /// A Pasqal Cloud or Pasqal Local request.
     PasqalCloud {
+        /// Serialized Pulser sequence.
         sequence: String,
+        /// Number of job runs.
         job_runs: i32,
     },
+    /// An Alice & Bob Felis request.
     AliceBobFelis {
+        /// Human-readable QIR program.
         human_qir: String,
+        /// Serialized input parameters.
         input_params: String,
     },
+    /// An IQM Server request.
     IqmServer {
+        /// Serialized IQM request body.
         iqmjson: String,
+        /// IQM job type.
         job_type: String,
+        /// Whether to use the timeslot queue.
         use_timeslot: Option<bool>,
+        /// Optional user-defined job tag.
         tag: Option<String>,
     },
+    /// An OQTOPUS Cloud request.
     Oqtopus {
+        /// Serialized OQTOPUS job specification.
         job_spec: String,
     },
 }
@@ -862,22 +882,64 @@ mod tests {
     }
 
     #[test]
-    fn payloads_are_validated_against_resource_type() -> miette::Result<()> {
-        let payload: QrmiPayload = serde_json::from_value(json!({
-            "type": "iqm_server",
-            "iqmjson": "{}",
-            "job_type": "circuit",
-            "use_timeslot": null,
-            "tag": null
-        }))
-        .into_diagnostic()?;
+    fn payloads_round_trip_and_validate_against_resource_type() -> miette::Result<()> {
+        let cases = [
+            (
+                json!({
+                    "type": "qiskit_primitive",
+                    "input": "{}",
+                    "program_id": "sampler"
+                }),
+                QrmiResourceType::IBMQuantumComputeService,
+            ),
+            (
+                json!({
+                    "type": "pasqal_cloud",
+                    "sequence": "{}",
+                    "job_runs": 100
+                }),
+                QrmiResourceType::PasqalCloud,
+            ),
+            (
+                json!({
+                    "type": "alice_bob_felis",
+                    "human_qir": "",
+                    "input_params": "{}"
+                }),
+                QrmiResourceType::AliceBobFelis,
+            ),
+            (
+                json!({
+                    "type": "iqm_server",
+                    "iqmjson": "{}",
+                    "job_type": "circuit",
+                    "use_timeslot": null,
+                    "tag": null
+                }),
+                QrmiResourceType::IQMServer,
+            ),
+            (
+                json!({
+                    "type": "oqtopus",
+                    "job_spec": "{}"
+                }),
+                QrmiResourceType::Oqtopus,
+            ),
+        ];
 
-        payload.validate_for(QrmiResourceType::IQMServer)?;
-        assert!(
-            payload
-                .validate_for(QrmiResourceType::IBMQuantumComputeService)
-                .is_err()
-        );
+        for (value, resource_type) in cases {
+            let payload: QrmiPayload = serde_json::from_value(value.clone()).into_diagnostic()?;
+            payload.validate_for(resource_type)?;
+            assert_eq!(serde_json::to_value(payload).into_diagnostic()?, value);
+        }
+
+        let payload = QrmiPayload::IqmServer {
+            iqmjson: "{}".to_string(),
+            job_type: "circuit".to_string(),
+            use_timeslot: None,
+            tag: None,
+        };
+        assert!(payload.validate_for(QrmiResourceType::PasqalCloud).is_err());
         Ok(())
     }
 
