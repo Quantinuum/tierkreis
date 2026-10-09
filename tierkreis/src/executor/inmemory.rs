@@ -526,10 +526,10 @@ impl Executor for InMemoryExecutor {
         let fut = async {
             let mut task_sender = self.task_sender.clone();
 
-            for task_plan in task_plans {
+            for mut task_plan in task_plans {
                 let output_storage_name = task_plan
                     .output_storage_name
-                    .clone()
+                    .take()
                     .unwrap_or_else(|| self.output_storage_name.clone());
 
                 task_sender

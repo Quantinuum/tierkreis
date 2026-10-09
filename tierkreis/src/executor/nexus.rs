@@ -226,7 +226,7 @@ async fn monitor_task(
     let task_loc = loc.clone();
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
-    let parent_span = internal_task.parent_span.clone();
+    let parent_span = internal_task.parent_span;
 
     let client = client.clone();
     let mut event_sender = event_sender.clone();
@@ -285,7 +285,7 @@ async fn monitor_task(
             BackgroundTask {
                 workflow_run_id,
                 attempt,
-                loc: background_loc.clone(),
+                loc: background_loc,
                 job_id,
                 outputs,
             },
