@@ -365,7 +365,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
     /// # Errors
     ///
     /// If the specified storage names are not present in the registry.
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         hpc_storage_name: &str,
         output_storage_name: &str,
@@ -373,11 +373,10 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         max_resources: HPCResourceSpec,
         poll_interval: Duration,
     ) -> miette::Result<Self> {
-        let storage = asset_storage_registry.read().await;
-        if !storage.contains_key(hpc_storage_name) {
+        if !asset_storage_registry.contains_key(hpc_storage_name) {
             return Err(miette!("hpc_storage_name not in registry"));
         }
-        if !storage.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
         let tierkreis_dir = crate::config::tierkreis_home_dir().join("tmp");
@@ -390,7 +389,6 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
                 )
             })?;
 
-        drop(storage);
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
@@ -672,10 +670,10 @@ mod tests {
         let file_storage = FileAssetStorage::try_new(&checkpoints_path)?;
         let (registry, input_sets, _dir) =
             test_storage_registry(vec![json!({"value": "Test"})], vec![]).await;
-        registry
-            .write()
-            .await
-            .insert("checkpoints".to_string(), Box::new(file_storage));
+        let mut registry = Arc::try_unwrap(registry)
+            .unwrap_or_else(|_| panic!("test registry should have one owner"));
+        registry.insert("checkpoints".to_string(), Box::new(file_storage));
+        let registry = Arc::new(registry);
         let mut outputs = HashSet::new();
         outputs.insert("value".to_string());
         let mut task_resources = HashMap::new();
@@ -707,8 +705,7 @@ mod tests {
             Arc::new(scheduler),
             resources,
             Duration::from_secs(1),
-        )
-        .await?
+        )?
         .with_worker_command("mpiexec --allow-run-as-root uv run /mpi_worker/main.py");
         // TODO: enable mpi environment, worker on slurm is still old format
 

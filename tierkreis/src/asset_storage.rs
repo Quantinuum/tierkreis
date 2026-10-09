@@ -15,7 +15,6 @@ use std::hash::BuildHasher;
 use std::{collections::HashMap, sync::Arc};
 
 use miette::{Context, IntoDiagnostic, miette};
-use tokio::sync::RwLock;
 
 /// [`AssetStorageRegistry`] is sharable mapping of configured [`AssetStorage`] names
 /// to various implementations.
@@ -23,7 +22,7 @@ use tokio::sync::RwLock;
 /// Note that it is possible to have multiple instances of the same [`AssetStorage`]
 /// implementation with different names in order to further separate the storage
 /// of Assets as required by the user.
-pub type AssetStorageRegistry = Arc<RwLock<HashMap<String, Box<dyn AssetStorage>>>>;
+pub type AssetStorageRegistry = Arc<HashMap<String, Box<dyn AssetStorage>>>;
 
 /// Load assets into a `HashMap` from the various [`AssetStorage`] implementations that
 /// contain them as described in each [`AssetSpec`].
@@ -36,8 +35,6 @@ pub async fn load_assets<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     assets: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
-    let registry = registry.read().await;
-
     let mut loaded = HashMap::new();
     for (k, v) in assets {
         let storage_name = &v.storage_name;
@@ -62,7 +59,6 @@ pub async fn load_asset<S: BuildHasher>(
     assets: &HashMap<String, AssetSpec, S>,
     name: &str,
 ) -> miette::Result<Vec<u8>> {
-    let registry = registry.read().await;
     let asset_spec = assets
         .get(name)
         .ok_or_else(|| miette!("Failed to find asset with name: `{name}`"))?;
@@ -92,7 +88,6 @@ pub async fn unfold_asset<S: BuildHasher>(
     assets: &HashMap<String, AssetSpec, S>,
     name: &str,
 ) -> miette::Result<Vec<AssetSpec>> {
-    let registry = registry.read().await;
     let asset_spec = assets
         .get(name)
         .ok_or_else(|| miette!("Failed to find asset with name: `{name}`"))?;
@@ -136,7 +131,6 @@ pub async fn save_assets<S: BuildHasher>(
     storage_name: &str,
     raw_assets: HashMap<String, Vec<u8>, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
-    let registry = registry.read().await;
     let storage = registry.get(storage_name).ok_or_else(|| {
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
     })?;
@@ -170,7 +164,6 @@ pub async fn save_asset(
     storage_name: &str,
     value: Vec<u8>,
 ) -> miette::Result<AssetSpec> {
-    let registry = registry.read().await;
     let storage = registry.get(storage_name).ok_or_else(|| {
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
     })?;
@@ -197,7 +190,6 @@ pub async fn save_asset_with_spec(
     asset_spec: &AssetSpec,
     value: Vec<u8>,
 ) -> miette::Result<()> {
-    let registry = registry.read().await;
     let storage = registry.get(&asset_spec.storage_name).ok_or_else(|| {
         miette!(
             "Cannot find AssetStorage in AssetStorageRegistry with name: {}",
@@ -223,8 +215,6 @@ pub async fn fold_assets(
     storage_name: &str,
     asset_specs: impl IntoIterator<Item = AssetSpec>,
 ) -> miette::Result<AssetSpec> {
-    let registry = registry.read().await;
-
     let mut asset_values = Vec::new();
     for asset_spec in asset_specs {
         let storage_name = &asset_spec.storage_name;
@@ -265,7 +255,6 @@ pub async fn transfer_assets<S: BuildHasher>(
     storage_name_to: &str,
     assets_from: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
-    let registry = registry.read().await;
     let storage_to = registry.get(storage_name_to).ok_or_else(|| {
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name_to}")
     })?;
@@ -314,8 +303,6 @@ pub async fn reserve_asset_specs(
     storage_name: &str,
     total: usize,
 ) -> miette::Result<Vec<AssetSpec>> {
-    let registry = registry.read().await;
-
     let storage = registry.get(storage_name).ok_or_else(|| {
         miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
     })?;
@@ -407,9 +394,8 @@ pub async fn test_storage_registry(
     let mut registry: HashMap<String, Box<dyn AssetStorage>> = HashMap::new();
     registry.insert(memory_storage_name.clone(), Box::new(memory_storage));
     registry.insert(file_storage_name.clone(), Box::new(file_storage));
-    let registry = Arc::new(RwLock::new(registry));
 
-    (registry, input_asset_sets, temp_dir)
+    (Arc::new(registry), input_asset_sets, temp_dir)
 }
 
 /// Check that an [`AssetStorageRegistry`] contain an expected Asset, for use in tests.
@@ -424,7 +410,6 @@ pub async fn assert_registry_contains_values<S: BuildHasher>(
     outputs: &HashMap<String, AssetSpec, S>,
     expected: serde_json::Value,
 ) {
-    let registry = registry.read().await;
     let storage = registry.get(storage_name).unwrap();
 
     let expected: HashMap<String, serde_json::Value> =

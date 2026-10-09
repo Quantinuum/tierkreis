@@ -482,12 +482,11 @@ impl InMemoryExecutor {
     ///
     /// This function will return Err if the specified `output_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -603,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn inmemory_workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let workers = executor.workers().await?;
 
@@ -635,7 +634,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -688,7 +687,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -755,7 +754,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -841,7 +840,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -887,7 +886,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -930,7 +929,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -963,7 +962,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -988,7 +987,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;

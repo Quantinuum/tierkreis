@@ -11,7 +11,7 @@ use std::{
 use futures::{Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{RwLock, watch};
+use tokio::sync::watch;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -234,8 +234,7 @@ impl Runtime {
             &executor_registry,
             &config.default_storage_name,
             &config.default_executor_name,
-        )
-        .await?;
+        )?;
         let runtime_state: Arc<dyn RuntimeState> = match &config.runtime_state {
             RuntimeStateConfig::Memory {} => Arc::new(InMemoryRuntimeState::new()),
             RuntimeStateConfig::Sqlite { memory: true, .. } => {
@@ -756,23 +755,21 @@ async fn executor_registry_from_config(
                 output_storage_name,
             } => executor_registry.insert(
                 executor_name.clone(),
-                Box::new(
-                    InMemoryExecutor::try_new(asset_storage_registry, output_storage_name).await?,
-                ),
+                Box::new(InMemoryExecutor::try_new(
+                    asset_storage_registry,
+                    output_storage_name,
+                )?),
             ),
             ExecutorConfig::Subprocess {
                 subprocess_storage_name,
                 output_storage_name,
             } => executor_registry.insert(
                 executor_name.clone(),
-                Box::new(
-                    SubprocessExecutor::try_new(
-                        asset_storage_registry,
-                        subprocess_storage_name,
-                        output_storage_name,
-                    )
-                    .await?,
-                ),
+                Box::new(SubprocessExecutor::try_new(
+                    asset_storage_registry,
+                    subprocess_storage_name,
+                    output_storage_name,
+                )?),
             ),
             ExecutorConfig::Nexus {
                 client_config,
@@ -799,51 +796,42 @@ async fn executor_registry_from_config(
                     let scheduler = Arc::new(PbsWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
                         executor_name.clone(),
-                        Box::new(
-                            HPCExecutor::try_new(
-                                asset_storage_registry,
-                                hpc_storage_name,
-                                output_storage_name,
-                                scheduler,
-                                resources.clone(),
-                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            )
-                            .await?,
-                        ),
+                        Box::new(HPCExecutor::try_new(
+                            asset_storage_registry,
+                            hpc_storage_name,
+                            output_storage_name,
+                            scheduler,
+                            resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        )?),
                     )
                 }
                 HpcSchedulerConfig::Pjsub => {
                     let scheduler = Arc::new(PjsubWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
                         executor_name.clone(),
-                        Box::new(
-                            HPCExecutor::try_new(
-                                asset_storage_registry,
-                                hpc_storage_name,
-                                output_storage_name,
-                                scheduler,
-                                resources.clone(),
-                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            )
-                            .await?,
-                        ),
+                        Box::new(HPCExecutor::try_new(
+                            asset_storage_registry,
+                            hpc_storage_name,
+                            output_storage_name,
+                            scheduler,
+                            resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        )?),
                     )
                 }
                 HpcSchedulerConfig::Slurm => {
                     let scheduler = Arc::new(SlurmWrapper::with_templates(templates.clone()));
                     executor_registry.insert(
                         executor_name.clone(),
-                        Box::new(
-                            HPCExecutor::try_new(
-                                asset_storage_registry,
-                                hpc_storage_name,
-                                output_storage_name,
-                                scheduler,
-                                resources.clone(),
-                                std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            )
-                            .await?,
-                        ),
+                        Box::new(HPCExecutor::try_new(
+                            asset_storage_registry,
+                            hpc_storage_name,
+                            output_storage_name,
+                            scheduler,
+                            resources.clone(),
+                            std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
+                        )?),
                     )
                 }
             },
@@ -872,7 +860,7 @@ pub fn asset_storage_registry_from_config(
             ),
         };
     }
-    Ok(Arc::new(RwLock::new(asset_storage_registry)))
+    Ok(Arc::new(asset_storage_registry))
 }
 
 /// Start the runtime until cancelled.
