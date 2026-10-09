@@ -22,7 +22,7 @@ use deadpool::{
 use diesel::{SqliteConnection, sql_query};
 use diesel_async::{
     AsyncConnection, AsyncMigrationHarness, RunQueryDsl,
-    pooled_connection::AsyncDieselConnectionManager, scoped_futures::ScopedFutureExt,
+    pooled_connection::AsyncDieselConnectionManager,
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -322,26 +322,23 @@ impl RuntimeState for SqliteRuntimeState {
             let mut conn = self.get_conn().await?;
             let run_id = Uuid::now_v7();
             let run_id_str = run_id.to_string();
-            conn.transaction(|conn| {
-                async {
-                    let run = NewWorkflowRun {
-                        id: &run_id_str,
-                        workflow_id: &workflow_id.to_string(),
-                    };
-                    insert_workflow_run(conn, &run).await?;
+            conn.transaction(async |conn| {
+                let run = NewWorkflowRun {
+                    id: &run_id_str,
+                    workflow_id: &workflow_id.to_string(),
+                };
+                insert_workflow_run(conn, &run).await?;
 
-                    let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
-                        workflow_run_id: &run_id_str,
-                        name,
-                        asset_kind: asset.kind.to_string(),
-                        storage_name: &asset.storage_name,
-                        asset_key: asset.asset_key.to_string(),
-                    });
+                let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
+                    workflow_run_id: &run_id_str,
+                    name,
+                    asset_kind: asset.kind.to_string(),
+                    storage_name: &asset.storage_name,
+                    asset_key: asset.asset_key.to_string(),
+                });
 
-                    insert_workflow_run_inputs(conn, workflow_inputs).await?;
-                    Ok::<_, diesel::result::Error>(())
-                }
-                .scope_boxed()
+                insert_workflow_run_inputs(conn, workflow_inputs).await?;
+                Ok::<_, diesel::result::Error>(())
             })
             .await
             .into_diagnostic()
@@ -614,7 +611,7 @@ impl WorkflowRunState for SqliteWorkflowRunState {
             let dest_attempt = i32::try_from(self.attempt).into_diagnostic()?;
             copy_node_states(
                 &mut conn,
-                &source.run_id().to_string(),
+                source.run_id().to_string(),
                 source_attempt,
                 dest_attempt,
                 exclude,
