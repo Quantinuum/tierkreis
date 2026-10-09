@@ -15,6 +15,7 @@
 - Try not to encode implicit behavior into unit tests unless asked by the user.
 - Run `just openapi` to regenerate the openapi specification and typescript stubs
   for the server after changing http models and endpoints.
+- Run `just typos` to check for spelling mistakes.
 - Sometimes `typos` will give false positives, add exceptions to `_typos.toml`.
 
 ## PR Instructions
