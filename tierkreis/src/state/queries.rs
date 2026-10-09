@@ -413,6 +413,7 @@ pub async fn read_node_state(
         Ok(crate::state::interface::NodeState {
             name: db_node.name.clone(),
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+            paused_time: db_node.paused_time.map(utc_timestamp),
             queued_time: db_node.queued_time.map(utc_timestamp),
             running_time: db_node.running_time.map(utc_timestamp),
             complete_time: db_node.complete_time.map(utc_timestamp),
@@ -495,6 +496,7 @@ pub async fn read_node_states_by_name(
             crate::state::interface::NodeState {
                 name: db_node.name.clone(),
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                paused_time: db_node.paused_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),
                 running_time: db_node.running_time.map(utc_timestamp),
                 complete_time: db_node.complete_time.map(utc_timestamp),
@@ -578,6 +580,7 @@ pub async fn read_node_states(
             crate::state::interface::NodeState {
                 name: db_node.name.clone(),
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                paused_time: db_node.paused_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),
                 running_time: db_node.running_time.map(utc_timestamp),
                 complete_time: db_node.complete_time.map(utc_timestamp),
@@ -1075,6 +1078,7 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
                     attempt: dest_attempt,
                     node_location: row.node_location.clone(),
                     scheduled_time: row.scheduled_time,
+                    paused_time: row.paused_time,
                     queued_time: row.queued_time,
                     running_time: row.running_time,
                     complete_time: None,
@@ -1095,6 +1099,7 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
                     attempt: dest_attempt,
                     node_location: row.node_location.clone(),
                     scheduled_time: row.scheduled_time,
+                    paused_time: row.paused_time,
                     queued_time: row.queued_time,
                     running_time: row.running_time,
                     complete_time: row.complete_time,

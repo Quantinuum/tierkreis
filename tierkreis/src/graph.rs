@@ -54,12 +54,22 @@ pub enum NodeDefinition {
     },
 }
 
+/// Execution metadata associated with a graph node.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeMetadata {
+    /// Stop before executing this node when breakpoints are enabled.
+    #[serde(default)]
+    pub has_breakpoint: bool,
+}
+
 /// The [`WorkflowGraph`] defines a Workflow that can be evaluated
 /// by the Tierkreis runtime.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowGraph {
     graph: MultiPortGraph,
     node_definitions: BTreeMap<NodeIndex, NodeDefinition>,
+    #[serde(default)]
+    node_metadata: BTreeMap<NodeIndex, NodeMetadata>,
     input_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
     output_port_indices: BTreeMap<NodeIndex, BTreeMap<String, PortIndex>>,
     node_names: BTreeMap<NodeIndex, String>,
@@ -99,6 +109,7 @@ impl WorkflowGraph {
         Self {
             graph,
             node_definitions,
+            node_metadata: BTreeMap::new(),
             input_port_indices,
             output_port_indices,
             port_names,
@@ -123,6 +134,26 @@ impl WorkflowGraph {
     #[must_use]
     pub fn node_definition(&self, node: NodeIndex) -> Option<&NodeDefinition> {
         self.node_definitions.get(&node)
+    }
+
+    /// Whether a node has a breakpoint flag.
+    #[must_use]
+    pub fn has_breakpoint(&self, node: NodeIndex) -> bool {
+        self.node_metadata
+            .get(&node)
+            .is_some_and(|metadata| metadata.has_breakpoint)
+    }
+
+    /// Set a breakpoint flag, returning an error if the node does not exist.
+    ///
+    /// # Errors
+    /// Returns an error if the node does not exist in this graph.
+    pub fn set_breakpoint(&mut self, node: NodeIndex, enabled: bool) -> miette::Result<()> {
+        if self.node_definition(node).is_none() {
+            return Err(miette!("Breakpoint node does not exist: {node:?}"));
+        }
+        self.node_metadata.entry(node).or_default().has_breakpoint = enabled;
+        Ok(())
     }
 
     /// Iterate over the indices of all the nodes in the graph.
@@ -432,6 +463,8 @@ pub struct LegacyWorkflowGraph {
     pub(crate) nodes: Vec<LegacyNodeDef>,
     graph_inputs: Vec<String>,
     graph_output_idx: Option<u32>,
+    #[serde(default)]
+    node_metadata: BTreeMap<u32, NodeMetadata>,
 }
 
 impl LegacyWorkflowGraph {
@@ -451,9 +484,24 @@ impl LegacyWorkflowGraph {
         state.remove_fold_and_unfold()?;
         state.migrate_wildcard_ports();
 
+        let mut node_metadata = BTreeMap::new();
+        for (index, metadata) in self.node_metadata {
+            let node = NodeIndex::new(index as usize);
+            if !state.node_definitions.contains_key(&node) {
+                if metadata.has_breakpoint {
+                    return Err(miette!(
+                        "Breakpoint node {index} was removed during graph conversion"
+                    ));
+                }
+                continue;
+            }
+            node_metadata.insert(node, metadata);
+        }
+
         Ok(WorkflowGraph {
             graph: state.graph,
             node_definitions: state.node_definitions,
+            node_metadata,
             input_port_indices: state.input_port_indices,
             output_port_indices: state.output_port_indices,
             port_names: state.port_names,
@@ -957,6 +1005,23 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+
+    #[test]
+    fn breakpoint_metadata_roundtrip() -> miette::Result<()> {
+        let mut graph = super::WorkflowGraph::new(["value".to_string()]);
+        let node = graph.output_idx();
+        assert!(!graph.has_breakpoint(node));
+        graph.set_breakpoint(node, true)?;
+        let encoded = serde_json::to_value(&graph).unwrap();
+        let decoded: super::WorkflowGraph = serde_json::from_value(encoded.clone()).unwrap();
+        assert!(decoded.has_breakpoint(node));
+        let mut old_graph = encoded;
+        old_graph.as_object_mut().unwrap().remove("node_metadata");
+        let decoded: super::WorkflowGraph = serde_json::from_value(old_graph).unwrap();
+        assert!(!decoded.has_breakpoint(node));
+        Ok(())
+    }
+
 
     #[test]
     fn empty_workflow_graph_roundtrip() -> miette::Result<()> {
