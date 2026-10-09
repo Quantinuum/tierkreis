@@ -751,11 +751,11 @@ pub async fn load_graph(
 
 #[cfg(test)]
 mod graph_data_conversion_tests {
-    use super::{build_graph_data_py_graph, graph_data_outputs};
+    use super::build_graph_data_py_graph;
     use crate::graph::LegacyWorkflowGraph;
     use crate::location::Location;
     use serde_json::json;
-    use std::collections::HashMap;
+    
 
     #[test]
     fn converts_incomplete_graph_without_output() -> miette::Result<()> {
