@@ -14,8 +14,8 @@ use diesel::{
     BelongingToDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
     SelectableHelper, define_sql_function,
 };
-use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use futures::FutureExt;
 use miette::{IntoDiagnostic, WrapErr, miette};
 use serde_json;
 
@@ -233,78 +233,73 @@ pub async fn update_workflow_run(
 ///
 /// Returns an error when the connection pool cannot be accessed or the insert
 /// operation fails.
-pub async fn update_node_state(
-    conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    run_id: &str,
+pub fn update_node_state<'a>(
+    conn: &'a mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &'a str,
     attempt: i32,
     mut node_updates: Vec<UpsertNodeState>,
-    node_outputs: Vec<(Location, NewNodeOutput<'_>)>,
-) -> miette::Result<bool> {
+    node_outputs: Vec<(Location, NewNodeOutput<'a>)>,
+) -> impl Future<Output = miette::Result<bool>> + Send + 'a {
     use crate::state::schema::node_states::dsl as ns;
 
-    conn.transaction(|conn| {
-        async move {
-            merge_map_complete_fields(conn, run_id, attempt, &mut node_updates).await?;
+    conn.transaction(async move |conn| {
+        merge_map_complete_fields(conn, run_id, attempt, &mut node_updates).await?;
 
-            // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
-            let mut rows_affected = 0;
-            for node_update in node_updates {
-                rows_affected += diesel::insert_into(ns::node_states)
-                    .values(node_update)
-                    .on_conflict((ns::run_id, ns::attempt, ns::node_location))
-                    .do_update()
-                    .set((
-                        // ns::name.eq(coalesce_text(ns::name, excluded(ns::name))),
-                        ns::scheduled_time.eq(coalesce_datetime(
-                            ns::scheduled_time,
-                            excluded(ns::scheduled_time),
-                        )),
-                        ns::queued_time.eq(coalesce_datetime(
-                            ns::queued_time,
-                            excluded(ns::queued_time),
-                        )),
-                        ns::running_time.eq(coalesce_datetime(
-                            ns::running_time,
-                            excluded(ns::running_time),
-                        )),
-                        ns::complete_time.eq(coalesce_datetime(
-                            ns::complete_time,
-                            excluded(ns::complete_time),
-                        )),
-                        ns::cancelled_time.eq(coalesce_datetime(
-                            ns::cancelled_time,
-                            excluded(ns::cancelled_time),
-                        )),
-                        ns::error_time
-                            .eq(coalesce_datetime(ns::error_time, excluded(ns::error_time))),
-                        ns::cond.eq(coalesce_bool(ns::cond, excluded(ns::cond))),
-                        // Ordering intentionally reversed as we always want the excluded loop_index
-                        // if it is not NULL.
-                        ns::loop_index.eq(coalesce_int(excluded(ns::loop_index), ns::loop_index)),
-                        ns::map_size.eq(coalesce_int(ns::map_size, excluded(ns::map_size))),
-                        // Ordering intentionally reversed as we always want the excluded map_completed
-                        // if it is not NULL.
-                        ns::map_completed.eq(coalesce_blob(
-                            excluded(ns::map_completed),
-                            ns::map_completed,
-                        )),
-                        ns::handle.eq(coalesce_text(excluded(ns::handle), ns::handle)),
-                        ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
-                        ns::error_detail
-                            .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
-                    ))
-                    .execute(conn)
-                    .await?;
-            }
-
-            insert_outputs(conn, run_id, attempt, node_outputs).await?;
-
-            Ok::<_, diesel::result::Error>(rows_affected > 0)
+        // TODO: We shouldn't need to loop if batch inserts for sqlite and diesel_async are patched.
+        let mut rows_affected = 0;
+        for node_update in node_updates {
+            rows_affected += diesel::insert_into(ns::node_states)
+                .values(node_update)
+                .on_conflict((ns::run_id, ns::attempt, ns::node_location))
+                .do_update()
+                .set((
+                    ns::name.eq(coalesce_text(ns::name, excluded(ns::name))),
+                    ns::scheduled_time.eq(coalesce_datetime(
+                        ns::scheduled_time,
+                        excluded(ns::scheduled_time),
+                    )),
+                    ns::queued_time.eq(coalesce_datetime(
+                        ns::queued_time,
+                        excluded(ns::queued_time),
+                    )),
+                    ns::running_time.eq(coalesce_datetime(
+                        ns::running_time,
+                        excluded(ns::running_time),
+                    )),
+                    ns::complete_time.eq(coalesce_datetime(
+                        ns::complete_time,
+                        excluded(ns::complete_time),
+                    )),
+                    ns::cancelled_time.eq(coalesce_datetime(
+                        ns::cancelled_time,
+                        excluded(ns::cancelled_time),
+                    )),
+                    ns::error_time.eq(coalesce_datetime(ns::error_time, excluded(ns::error_time))),
+                    ns::cond.eq(coalesce_bool(ns::cond, excluded(ns::cond))),
+                    // Ordering intentionally reversed as we always want the excluded loop_index
+                    // if it is not NULL.
+                    ns::loop_index.eq(coalesce_int(excluded(ns::loop_index), ns::loop_index)),
+                    ns::map_size.eq(coalesce_int(ns::map_size, excluded(ns::map_size))),
+                    // Ordering intentionally reversed as we always want the excluded map_completed
+                    // if it is not NULL.
+                    ns::map_completed.eq(coalesce_blob(
+                        excluded(ns::map_completed),
+                        ns::map_completed,
+                    )),
+                    ns::handle.eq(coalesce_text(excluded(ns::handle), ns::handle)),
+                    ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
+                    ns::error_detail
+                        .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
+                ))
+                .execute(conn)
+                .await?;
         }
-        .scope_boxed()
+
+        insert_outputs(conn, run_id, attempt, node_outputs).await?;
+
+        Ok::<_, diesel::result::Error>(rows_affected > 0)
     })
-    .await
-    .into_diagnostic()
+    .map(IntoDiagnostic::into_diagnostic)
 }
 
 async fn merge_map_complete_fields(
@@ -1049,102 +1044,100 @@ pub async fn insert_workflow_run_attempt(
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed or a query fails.
-pub async fn copy_node_states<S: ::std::hash::BuildHasher + std::marker::Sync>(
-    conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    run_id: &str,
+pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
+    conn: &'a mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: String,
     source_attempt: i32,
     dest_attempt: i32,
-    exclude: &HashSet<Location, S>,
-    truncate: &HashSet<Location, S>,
-) -> miette::Result<()> {
+    exclude: &'a HashSet<Location, S>,
+    truncate: &'a HashSet<Location, S>,
+) -> impl Future<Output = miette::Result<()>> + Send + 'a {
     use crate::state::schema::node_outputs::dsl as no;
     use crate::state::schema::node_states::dsl as ns;
 
-    conn.transaction(|conn| {
-        async move {
-            let rows: Vec<NodeState> = ns::node_states
-                .filter(ns::run_id.eq(run_id))
-                .filter(ns::attempt.eq(source_attempt))
-                .get_results(conn)
-                .await?;
+    conn.transaction(async move |conn| {
+        let rows: Vec<NodeState> = ns::node_states
+            .filter(ns::run_id.eq(&run_id))
+            .filter(ns::attempt.eq(source_attempt))
+            .get_results(conn)
+            .await?;
 
-            for row in rows {
-                if exclude.contains(&row.node_location) {
-                    continue;
+        for row in rows {
+            if exclude.contains(&row.node_location) {
+                continue;
+            }
+            let is_truncated = truncate.contains(&row.node_location);
+            // copy over node state TODO: clarify which times to retain.
+            let new_row = if is_truncated {
+                UpsertNodeState {
+                    name: row.name.clone(),
+                    run_id: run_id.clone(),
+                    attempt: dest_attempt,
+                    node_location: row.node_location.clone(),
+                    scheduled_time: row.scheduled_time,
+                    queued_time: row.queued_time,
+                    running_time: row.running_time,
+                    complete_time: None,
+                    cancelled_time: None,
+                    error_time: None,
+                    cond: row.cond, // retained to preserve conditional state even when truncated
+                    loop_index: row.loop_index, // retained to preserve loop index even when truncated
+                    map_size: row.map_size,
+                    map_completed: None, // reset to indicate no progress on the map
+                    handle: None,
+                    error: None,
+                    error_detail: None,
                 }
-                let is_truncated = truncate.contains(&row.node_location);
-                // copy over node state TODO: clarify which times to retain.
-                let new_row = if is_truncated {
-                    UpsertNodeState {
-                        name: row.name.clone(),
-                        run_id: run_id.to_string(),
-                        attempt: dest_attempt,
-                        node_location: row.node_location.clone(),
-                        scheduled_time: row.scheduled_time,
-                        queued_time: row.queued_time,
-                        running_time: row.running_time,
-                        complete_time: None,
-                        cancelled_time: None,
-                        error_time: None,
-                        cond: row.cond, // retained to preserve conditional state even when truncated
-                        loop_index: row.loop_index, // retained to preserve loop index even when truncated
-                        map_size: row.map_size,
-                        map_completed: None, // reset to indicate no progress on the map
-                        handle: None,
-                        error: None,
-                        error_detail: None,
-                    }
-                } else {
-                    UpsertNodeState {
-                        name: row.name.clone(),
-                        run_id: run_id.to_string(),
-                        attempt: dest_attempt,
-                        node_location: row.node_location.clone(),
-                        scheduled_time: row.scheduled_time,
-                        queued_time: row.queued_time,
-                        running_time: row.running_time,
-                        complete_time: row.complete_time,
-                        cancelled_time: row.cancelled_time,
-                        error_time: row.error_time,
-                        cond: row.cond,
-                        loop_index: row.loop_index,
-                        map_size: row.map_size,
-                        map_completed: row.map_completed.clone(),
-                        handle: row.handle.clone(),
-                        error: row.error.clone(),
-                        error_detail: row.error_detail.clone(),
-                    }
-                };
+            } else {
+                UpsertNodeState {
+                    name: row.name.clone(),
+                    run_id: run_id.clone(),
+                    attempt: dest_attempt,
+                    node_location: row.node_location.clone(),
+                    scheduled_time: row.scheduled_time,
+                    queued_time: row.queued_time,
+                    running_time: row.running_time,
+                    complete_time: row.complete_time,
+                    cancelled_time: row.cancelled_time,
+                    error_time: row.error_time,
+                    cond: row.cond,
+                    loop_index: row.loop_index,
+                    map_size: row.map_size,
+                    map_completed: row.map_completed.clone(),
+                    handle: row.handle.clone(),
+                    error: row.error.clone(),
+                    error_detail: row.error_detail.clone(),
+                }
+            };
 
-                let new_id: i32 = diesel::insert_into(ns::node_states)
-                    .values(new_row)
-                    .returning(ns::id)
-                    .get_result(conn)
-                    .await?;
-                // copy over node outputs to the new node state
-                if !is_truncated {
-                    let outputs: Vec<NodeOutput> =
-                        NodeOutput::belonging_to(&row).get_results(conn).await?;
-                    for output in outputs {
-                        diesel::insert_into(no::node_outputs)
-                            .values((
-                                no::node_state_id.eq(new_id),
-                                no::name.eq(output.name),
-                                no::asset_kind.eq(output.asset_kind),
-                                no::storage_name.eq(output.storage_name),
-                                no::asset_key.eq(output.asset_key),
-                            ))
-                            .execute(conn)
-                            .await?;
-                    }
+            let new_id: i32 = diesel::insert_into(ns::node_states)
+                .values(new_row)
+                .returning(ns::id)
+                .get_result(conn)
+                .await?;
+            // copy over node outputs to the new node state
+            if !is_truncated {
+                let outputs: Vec<NodeOutput> =
+                    NodeOutput::belonging_to(&row).get_results(conn).await?;
+                for output in outputs {
+                    diesel::insert_into(no::node_outputs)
+                        .values((
+                            no::node_state_id.eq(new_id),
+                            no::name.eq(output.name),
+                            no::asset_kind.eq(output.asset_kind),
+                            no::storage_name.eq(output.storage_name),
+                            no::asset_key.eq(output.asset_key),
+                        ))
+                        .execute(conn)
+                        .await?;
                 }
             }
-
-            Ok::<_, diesel::result::Error>(())
         }
-        .scope_boxed()
+
+        Ok::<_, diesel::result::Error>(())
     })
-    .await
-    .into_diagnostic()
-    .wrap_err("Failed to copy node states to new attempt")
+    .map(|res| {
+        res.into_diagnostic()
+            .wrap_err("Failed to copy node states to new attempt")
+    })
 }
