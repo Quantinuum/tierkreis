@@ -8,8 +8,15 @@
 ## Testing instructions
 - Run `just lint` and `just test` to run linting and testing for python and rust.
 - `just fix` can be used to automatically fix many lint errors.
-- Prefer parametrized tests using pytest or rstest.
+- Prefer parametrized tests using `pytest` or `rstest`.
 - When possible use property based testing libraries `hypothesis` and `proptest` to
   find edge cases in unit tests.
-- Use pyright to find type errors. When writing new code use strict checking.
+- Use `pyright` to find type errors. When writing new code use strict checking.
 - Try not to encode implicit behavior into unit tests unless asked by the user.
+- Run `just openapi` to regenerate the openapi specification and typescript stubs
+  for the server after changing http models and endpoints.
+- Sometimes `typos` will give false positives, add exceptions to `_typos.toml`.
+
+## PR Instructions
+- Use conventional commits format for all commit messages.
+- MUST include a commit footer attribution in the form `Assisted-by: [Model Name]`.
