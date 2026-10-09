@@ -755,7 +755,6 @@ mod graph_data_conversion_tests {
     use crate::graph::LegacyWorkflowGraph;
     use crate::location::Location;
     use serde_json::json;
-    
 
     #[test]
     fn converts_incomplete_graph_without_output() -> miette::Result<()> {
