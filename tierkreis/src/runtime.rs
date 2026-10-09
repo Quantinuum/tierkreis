@@ -359,7 +359,7 @@ impl Runtime {
                     let workflow_state = state
                         .load_workflow_run_state(workflow_run_id, attempt)
                         .await?;
-                    let workflow_id = workflow_state.workflow_id().to_string();
+                    let workflow_id = workflow_state.workflow_id();
                     match &event {
                         WorkflowRunEvent::Started {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow started");
@@ -386,7 +386,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node scheduled"
                                         );
                                     }
@@ -396,7 +396,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node queued   "
                                         );
                                     }
@@ -406,7 +406,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             ?state_update,
                                             "node running  "
                                         );
@@ -417,7 +417,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node completed"
                                         );
                                     }
@@ -427,7 +427,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             ?error,
                                             "node errored  "
                                         );
@@ -438,7 +438,7 @@ impl Runtime {
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
-                                            loc = node_event.loc.to_string(),
+                                            loc = %node_event.loc,
                                             "node cancelled"
                                         );
                                     }
