@@ -152,6 +152,7 @@ pub struct UpsertNodeState {
 pub struct WorkflowRunInput {
     pub id: i32,
     pub workflow_run_id: String,
+    pub location: String,
     pub name: String,
     pub asset_kind: String,
     pub storage_name: String,
@@ -162,6 +163,7 @@ pub struct WorkflowRunInput {
 #[diesel(table_name = workflow_run_inputs)]
 pub struct NewWorkflowRunInput<'a> {
     pub workflow_run_id: &'a str,
+    pub location: String,
     pub name: &'a str,
     pub asset_kind: String,
     pub storage_name: &'a str,

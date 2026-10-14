@@ -488,8 +488,7 @@ impl Runtime {
                 let context = if let Some(context) = contexts.get(&(run_id, attempt)) {
                     context.clone()
                 } else {
-                    let inputs = workflow_run_state.load_inputs().await?;
-                    let context = OrchestrationContext::new(&workflow_run_state, inputs);
+                    let context = OrchestrationContext::new(&workflow_run_state);
                     contexts.insert((run_id, attempt), context.clone());
                     context
                 };

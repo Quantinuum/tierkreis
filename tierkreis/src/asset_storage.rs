@@ -54,6 +54,27 @@ pub async fn load_assets<S: BuildHasher>(
 ///
 /// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
 /// an [`AssetStorage`] with the specified name does not exist in the registry.
+pub async fn load_asset_from_spec(
+    registry: &AssetStorageRegistry,
+    asset_spec: &AssetSpec,
+) -> miette::Result<Vec<u8>> {
+    let storage_name = &asset_spec.storage_name;
+    let storage = registry.get(storage_name).ok_or_else(|| {
+        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
+    })?;
+
+    let asset = storage.load(&asset_spec.asset_key).await?;
+
+    Ok(asset)
+}
+
+/// Load a single asset by name from the various [`AssetStorage`] implementations that
+/// contain them as described in the corresponding asset [`AssetSpec`].
+///
+/// # Errors
+///
+/// Will return Err if the [`AssetStorageRegistry`] cannot be read from or if
+/// an [`AssetStorage`] with the specified name does not exist in the registry.
 pub async fn load_asset<S: BuildHasher>(
     registry: &AssetStorageRegistry,
     assets: &HashMap<String, AssetSpec, S>,
@@ -63,14 +84,7 @@ pub async fn load_asset<S: BuildHasher>(
         .get(name)
         .ok_or_else(|| miette!("Failed to find asset with name: `{name}`"))?;
 
-    let storage_name = &asset_spec.storage_name;
-    let storage = registry.get(storage_name).ok_or_else(|| {
-        miette!("Cannot find AssetStorage in AssetStorageRegistry with name: {storage_name}")
-    })?;
-
-    let asset = storage.load(&asset_spec.asset_key).await?;
-
-    Ok(asset)
+    load_asset_from_spec(registry, asset_spec).await
 }
 
 /// Load a single asset by name from the various [`AssetStorage`] implementations that

@@ -64,9 +64,11 @@ CREATE TABLE `workflow_run_attempts`(
 CREATE TABLE `workflow_run_inputs` (
 	`id` INTEGER NOT NULL PRIMARY KEY,
 	`workflow_run_id` TEXT NOT NULL,
+	`location` TEXT NOT NULL,
 	`name` TEXT NOT NULL,
 	`asset_kind` TEXT NOT NULL,
 	`storage_name` TEXT NOT NULL,
 	`asset_key` TEXT NOT NULL,
+	UNIQUE (`workflow_run_id`, `location`, `name`)
 	FOREIGN KEY (`workflow_run_id`) REFERENCES `workflow_runs` (`id`)
 )

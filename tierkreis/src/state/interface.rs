@@ -239,6 +239,12 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn summary(&self) -> BoxFuture<'_, miette::Result<WorkflowRunStateSummary>>;
     /// Retrieve the workflow inputs associated with this `WorkflowRunState`.
     fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>>;
+    /// Retrieve the workflow inputs associated with this `WorkflowRunState`.
+    fn load_named_input_from_location<'a>(
+        &'a self,
+        location: &'a Location,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<AssetSpec>>;
     /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the state of a Node at the specified [`Location`].

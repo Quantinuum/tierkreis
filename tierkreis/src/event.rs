@@ -133,6 +133,13 @@ pub enum RunningStateUpdate {
         /// The value that the `pred` port resolved to.
         cond: bool,
     },
+    /// The node is "evalling" a subgraph with the specified inputs.
+    ///
+    /// This state is triggered by an `Eval` node when it starts to run.
+    Evalling {
+        /// The inputs to the `Eval` node to be persisted.
+        inputs: HashMap<String, AssetSpec>,
+    },
     /// The node is "looping" with the specified index.
     ///
     /// This state is triggered by a `Loop` node when it is ready to begin
@@ -140,13 +147,15 @@ pub enum RunningStateUpdate {
     Looping {
         /// The index of the next iteration to perform.
         index: u32,
+        /// The inputs to the `Loop` node to be persisted.
+        inputs: HashMap<String, AssetSpec>,
     },
     /// The node is "mapping" over a data structure of a specified size.
     ///
     /// This state is triggered by a `Map` node when it begins running.
     MapStarted {
-        /// The number of elements in the data structure to be mapped.
-        size: u32,
+        /// The input sets to the `Map` node to be persisted.
+        input_sets: Vec<HashMap<String, AssetSpec>>,
     },
     /// An output for a `Map` node is ready at a specific index.
     MapElemComplete {
@@ -349,12 +358,44 @@ pub async fn send_running_switching(
 /// # Errors
 ///
 /// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_running_eval(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    loc: Location,
+    inputs: HashMap<String, AssetSpec, RandomState>,
+) -> miette::Result<()> {
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+            loc,
+            status: NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Evalling { inputs }),
+            },
+            name: None,
+        }]),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send running loop node event")
+}
+
+/// Utility function to send a new [`Event`] with [`NodeStatus::Running`] and a loop index value
+/// for the current iteration index of the loop
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
 pub async fn send_running_loop(
     event_sender: &mut EventSender,
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
     index: u32,
+    inputs: HashMap<String, AssetSpec, RandomState>,
     name: Option<String>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
@@ -363,7 +404,7 @@ pub async fn send_running_loop(
         event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
             loc,
             status: NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::Looping { index }),
+                state_update: Some(RunningStateUpdate::Looping { index, inputs }),
             },
             name,
         }]),
@@ -387,7 +428,7 @@ pub async fn send_running_map(
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
-    size: usize,
+    input_sets: Vec<HashMap<String, AssetSpec, RandomState>>,
 ) -> miette::Result<()> {
     let event = RuntimeEvent::WorkflowRun {
         workflow_run_id,
@@ -395,9 +436,7 @@ pub async fn send_running_map(
         event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
             loc,
             status: NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapStarted {
-                    size: u32::try_from(size).into_diagnostic()?,
-                }),
+                state_update: Some(RunningStateUpdate::MapStarted { input_sets }),
             },
             name: None,
         }]),

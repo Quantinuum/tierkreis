@@ -39,7 +39,7 @@ use crate::{
 #[derive(Debug, Default)]
 struct RunAttemptState {
     workflow_id: Uuid,
-    inputs: HashMap<String, AssetSpec>,
+    inputs: HashMap<Location, HashMap<String, AssetSpec>>,
     nodes: HashMap<Location, NodeState>,
     metadata: HashMap<String, String>,
     started_time: Option<chrono::DateTime<Utc>>,
@@ -130,7 +130,8 @@ impl RuntimeState for InMemoryRuntimeState {
 
         let mut entry = self.inner.runs.entry((run_id, attempt)).or_default();
         entry.workflow_id = workflow_id;
-        entry.inputs = inputs;
+        entry.inputs = HashMap::new();
+        entry.inputs.insert(Location::root(), inputs);
         entry.started_time = Some(chrono::Utc::now());
 
         self.update_sender.send_modify(|active_runs| {
@@ -217,7 +218,14 @@ impl RuntimeState for InMemoryRuntimeState {
             let mut latest: Option<(u32, Uuid, HashMap<String, AssetSpec>)> = None;
             let mut attempt = 0;
             while let Some(item) = self.inner.runs.get(&(run_id, attempt)) {
-                latest = Some((attempt, item.workflow_id, item.inputs.clone()));
+                latest = Some((
+                    attempt,
+                    item.workflow_id,
+                    item.inputs
+                        .get(&Location::root())
+                        .ok_or_else(|| miette!("No inputs found for previous run"))?
+                        .clone(),
+                ));
                 attempt += 1;
             }
             let (max_attempt, workflow_id, inputs) =
@@ -240,7 +248,8 @@ impl RuntimeState for InMemoryRuntimeState {
             // TODO: same as new_workflow_run_state just with provided run_id and attempt, consolidate?
             let mut entry = self.inner.runs.entry((run_id, next_attempt)).or_default();
             entry.workflow_id = workflow_id;
-            entry.inputs = inputs;
+            entry.inputs = HashMap::new();
+            entry.inputs.insert(Location::root(), inputs);
             entry.started_time = Some(Utc::now());
 
             self.update_sender.send_modify(|active_runs| {
@@ -281,13 +290,21 @@ impl InMemoryWorkflowRunState {
     /// Will panic if `listen` returns an error, but this should be impossible.
     #[cfg(test)]
     #[must_use]
-    pub fn test() -> (Self, watch::Receiver<RuntimeWatchState>) {
+    pub fn test(
+        test_inputs: HashMap<String, AssetSpec>,
+    ) -> (Self, watch::Receiver<RuntimeWatchState>) {
         let global_state = InMemoryRuntimeState::new();
         let events = global_state.listen();
-        global_state
-            .inner
-            .runs
-            .insert((Uuid::nil(), 0), RunAttemptState::default());
+        let mut inputs = HashMap::new();
+        inputs.insert(Location::root(), test_inputs);
+
+        global_state.inner.runs.insert(
+            (Uuid::nil(), 0),
+            RunAttemptState {
+                inputs,
+                ..Default::default()
+            },
+        );
         global_state
             .update_sender
             .send_modify(|run_attempt_updated| {
@@ -374,7 +391,39 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 .runs
                 .get(&(self.run_id, self.attempt))
                 .ok_or_else(|| miette!("Workflow run not found"))?;
-            Ok(run.inputs.clone())
+            Ok(run
+                .inputs
+                .get(&Location::root())
+                .ok_or_else(|| miette!("Workflow inputs not found"))?
+                .clone())
+        }
+        .boxed()
+    }
+
+    fn load_named_input_from_location<'a>(
+        &'a self,
+        location: &'a Location,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<AssetSpec>> {
+        async move {
+            let run = self
+                .global_state
+                .runs
+                .get(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+            Ok(run
+                .inputs
+                .get(location)
+                .ok_or_else(|| miette!("Inputs not found for location: `{}`", location))?
+                .get(name)
+                .ok_or_else(|| {
+                    miette!(
+                        "Input not found with name: `{}` at location: {}",
+                        name,
+                        location
+                    )
+                })?
+                .clone())
         }
         .boxed()
     }
@@ -557,13 +606,16 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
     }
 }
 
+// Difficult to reduce the number of lines here without introducing functions that
+// would cause unnecessary overhead.
+#[allow(clippy::too_many_lines)]
 fn handle_node_events(
     mut run_state: dashmap::mapref::one::RefMut<'_, (Uuid, u32), RunAttemptState>,
     node_events: Vec<NodeEvent>,
 ) {
     let now = Utc::now();
     for node_event in node_events {
-        let node_state = run_state.nodes.entry(node_event.loc).or_default();
+        let node_state = run_state.nodes.entry(node_event.loc.clone()).or_default();
         if node_event.name.is_some() {
             node_state.name.clone_from(&node_event.name);
         }
@@ -592,13 +644,20 @@ fn handle_node_events(
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
-                }
-                if node_state.cond.is_none() {
                     node_state.cond = Some(cond);
                 }
             }
             crate::event::NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::Looping { index }),
+                state_update: Some(RunningStateUpdate::Evalling { inputs }),
+                ..
+            } => {
+                if node_state.running_time.is_none() {
+                    node_state.running_time = Some(now);
+                    run_state.inputs.insert(node_event.loc, inputs);
+                }
+            }
+            crate::event::NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Looping { index, inputs }),
                 ..
             } => {
                 if node_state.running_time.is_none() {
@@ -606,26 +665,27 @@ fn handle_node_events(
                 }
                 if node_state.loop_index != Some(index) {
                     node_state.loop_index = Some(index);
+                    let loop_loc = node_event.loc.with_loop_index(index);
+                    run_state.inputs.insert(loop_loc, inputs);
                 }
             }
             crate::event::NodeStatus::Running {
-                state_update: Some(RunningStateUpdate::MapStarted { size }),
+                state_update: Some(RunningStateUpdate::MapStarted { input_sets }),
                 ..
             } => {
                 if node_state.running_time.is_none() {
                     node_state.running_time = Some(now);
-                }
-                if node_state.map_completed.is_none() {
-                    node_state.map_completed = Some(BitVec::repeat(false, size as usize));
+                    node_state.map_completed = Some(BitVec::repeat(false, input_sets.len()));
+                    for (index, inputs) in input_sets.into_iter().enumerate() {
+                        let map_loc = node_event.loc.with_map_index(index);
+                        run_state.inputs.insert(map_loc, inputs);
+                    }
                 }
             }
             crate::event::NodeStatus::Running {
                 state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
                 ..
             } => {
-                if node_state.running_time.is_none() {
-                    node_state.running_time = Some(now);
-                }
                 if let Some(map_completed) = node_state.map_completed.as_mut() {
                     map_completed.bitor_assign(&bits);
                 }

@@ -7,7 +7,7 @@ use miette::{Context, IntoDiagnostic, miette};
 use portgraph::NodeIndex;
 
 use crate::{
-    asset_storage::{AssetSpec, AssetStorageRegistry, load_asset},
+    asset_storage::{AssetSpec, AssetStorageRegistry, load_asset, load_asset_from_spec},
     graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     location::{Location, LocationComponent},
     state::{WorkflowRunState, interface::NodeState},
@@ -34,6 +34,32 @@ pub async fn load_subgraph<S: ::std::hash::BuildHasher>(
     inputs: &HashMap<String, AssetSpec, S>,
 ) -> miette::Result<WorkflowGraph> {
     let subgraph_bytes = load_asset(asset_storage_registry, inputs, "graph").await?;
+    let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
+        serde_json::from_slice(&subgraph_bytes);
+
+    let subgraph = match subgraph_res {
+        Ok(subgraph) => subgraph,
+        Err(_err) => {
+            let legacy: LegacyWorkflowGraph =
+                serde_json::from_slice(&subgraph_bytes).into_diagnostic()?;
+            legacy.to_workflow_graph()?
+        }
+    };
+
+    Ok(subgraph)
+}
+
+/// Load a subgraph from the `graph` input, accepting current and legacy formats.
+///
+/// # Errors
+///
+/// Returns Err if the graph asset cannot be loaded or decoded.
+#[tracing::instrument(skip_all, err)]
+pub async fn load_subgraph_from_asset(
+    asset_storage_registry: &AssetStorageRegistry,
+    asset_spec: AssetSpec,
+) -> miette::Result<WorkflowGraph> {
+    let subgraph_bytes = load_asset_from_spec(asset_storage_registry, &asset_spec).await?;
     let subgraph_res: Result<WorkflowGraph, serde_json::Error> =
         serde_json::from_slice(&subgraph_bytes);
 
