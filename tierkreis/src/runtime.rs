@@ -721,8 +721,9 @@ impl Runtime {
     /// attempt, copying forward all node state except: `locs` and everything that
     /// (transitively) depends on them, which are fully invalidated and will be
     /// re-run from scratch; and their ancestor container nodes (`Eval`/`Loop`/
-    /// `Map`/`Output`), which are partially invalidated (their aggregated
-    /// completion/outputs are cleared, but they otherwise keep their state).
+    /// `Map`/`Output`), which are partially invalidated. Their lifecycle and
+    /// aggregated outputs are cleared, conditional routing is retained, map
+    /// progress is reset, and loops rewind to the earliest affected iteration.
     ///
     /// # Errors
     ///

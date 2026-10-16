@@ -5,15 +5,12 @@ that can be used by the tierkreis runtime.
 These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
-use std::{
-    collections::{HashMap, HashSet},
-    ops::BitOrAssign,
-    sync::Arc,
-};
+use std::{collections::HashMap, ops::BitOrAssign, sync::Arc};
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 use futures::FutureExt;
 use futures::future::{self, BoxFuture};
 use miette::miette;
@@ -31,7 +28,7 @@ use crate::{
     location::Location,
     state::{
         WorkflowRunState,
-        interface::{NodeState, RuntimeState},
+        interface::{NodeState, RestartPlan, RuntimeState},
     },
 };
 
@@ -265,6 +262,110 @@ impl RuntimeState for InMemoryRuntimeState {
             };
             let state: Arc<dyn WorkflowRunState> = Arc::new(state);
             Ok(state)
+        }
+        .boxed()
+    }
+
+    fn new_attempt_from<'a>(
+        &'a self,
+        source: &'a dyn WorkflowRunState,
+        restart_plan: &'a RestartPlan,
+    ) -> BoxFuture<'a, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut latest_attempt = None;
+            let mut attempt = 0;
+            while self.inner.runs.contains_key(&(source.run_id(), attempt)) {
+                latest_attempt = Some(attempt);
+                attempt = attempt
+                    .checked_add(1)
+                    .ok_or_else(|| miette!("Workflow attempt number overflow"))?;
+            }
+            let latest_attempt = latest_attempt
+                .ok_or_else(|| miette!("No existing run found for run_id: {}", source.run_id()))?;
+            let latest_summary = self
+                .load_workflow_run_state(source.run_id(), latest_attempt)
+                .await?
+                .summary()
+                .await?;
+            if latest_summary.cancelled_time.is_none()
+                && latest_summary.error_time.is_none()
+                && latest_summary.complete_time.is_none()
+            {
+                return Err(miette!(
+                    "Cannot create a new attempt for a run that is still active"
+                ));
+            }
+
+            // Collect an owned snapshot before taking a mutable entry in the same
+            // DashMap. Holding the source guard while inserting the destination can
+            // deadlock when both keys are assigned to the same shard.
+            let (nodes, inputs) = {
+                let source_run = self
+                    .inner
+                    .runs
+                    .get(&(source.run_id(), source.attempt()))
+                    .ok_or_else(|| miette!("Source run attempt not found"))?;
+
+                let nodes: HashMap<Location, NodeState> = source_run
+                    .nodes
+                    .iter()
+                    .filter(|(location, _)| !restart_plan.excludes(location))
+                    .map(|(location, state)| {
+                        let mut state = state.clone();
+                        if restart_plan.truncates(location) {
+                            truncate_node_state(&mut state, restart_plan.loop_restart(location));
+                        }
+                        (location.clone(), state)
+                    })
+                    .collect();
+                let inputs: HashMap<Location, HashMap<String, AssetSpec>> = source_run
+                    .inputs
+                    .iter()
+                    .filter(|(location, _)| !restart_plan.excludes(location))
+                    .map(|(location, inputs)| (location.clone(), inputs.clone()))
+                    .collect();
+                (nodes, inputs)
+            };
+
+            if !inputs.contains_key(&Location::root()) {
+                return Err(miette!("No inputs found for previous run"));
+            }
+
+            let next_attempt = latest_attempt
+                .checked_add(1)
+                .ok_or_else(|| miette!("Workflow attempt number overflow"))?;
+            let entry = RunAttemptState {
+                workflow_id: source.workflow_id(),
+                inputs,
+                nodes,
+                started_time: Some(Utc::now()),
+                ..Default::default()
+            };
+            match self.inner.runs.entry((source.run_id(), next_attempt)) {
+                Entry::Vacant(destination) => {
+                    destination.insert(entry);
+                }
+                Entry::Occupied(_) => {
+                    return Err(miette!(
+                        "Run attempt {next_attempt} already exists for run_id: {}",
+                        source.run_id()
+                    ));
+                }
+            }
+
+            self.update_sender.send_modify(|active_runs| {
+                active_runs
+                    .active_runs
+                    .insert((source.run_id(), next_attempt));
+            });
+
+            Ok(Arc::new(InMemoryWorkflowRunState {
+                global_state: Arc::clone(&self.inner),
+                update_sender: self.update_sender.clone(),
+                workflow_id: source.workflow_id(),
+                run_id: source.run_id(),
+                attempt: next_attempt,
+            }) as Arc<dyn WorkflowRunState>)
         }
         .boxed()
     }
@@ -554,55 +655,22 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         let metadata = entry.or_default().value().metadata.clone();
         future::ok(metadata).boxed()
     }
+}
 
-    fn copy_node_states_from<'a>(
-        &'a self,
-        source: &'a dyn WorkflowRunState,
-        exclude: &'a HashSet<Location>,
-        truncate: &'a HashSet<Location>,
-    ) -> BoxFuture<'a, miette::Result<()>> {
-        async move {
-            let nodes: HashMap<Location, NodeState> = {
-                let source_run = self
-                    .global_state
-                    .runs
-                    .get(&(source.run_id(), source.attempt()))
-                    .ok_or_else(|| miette!("Source run attempt not found"))?;
-
-                source_run
-                    .nodes
-                    .iter()
-                    .filter(|(loc, _)| !exclude.contains(*loc))
-                    .map(|(loc, state)| {
-                        let mut state = state.clone();
-                        if truncate.contains(loc) {
-                            state.scheduled_time = None;
-                            state.queued_time = None;
-                            state.running_time = None;
-                            state.complete_time = None;
-                            state.cancelled_time = None;
-                            state.error_time = None;
-                            state.outputs = None;
-                            state.map_completed = None;
-                            state.error = None;
-                            state.error_detail = None;
-                            state.handle = None;
-                        }
-                        (loc.clone(), state)
-                    })
-                    .collect()
-            };
-
-            self.global_state
-                .runs
-                .entry((self.run_id, self.attempt))
-                .or_default()
-                .nodes
-                .extend(nodes);
-
-            Ok(())
-        }
-        .boxed()
+fn truncate_node_state(state: &mut NodeState, loop_restart: Option<u32>) {
+    state.scheduled_time = None;
+    state.queued_time = None;
+    state.running_time = None;
+    state.complete_time = None;
+    state.cancelled_time = None;
+    state.error_time = None;
+    state.outputs = None;
+    state.map_completed = None;
+    state.error = None;
+    state.error_detail = None;
+    state.handle = None;
+    if let Some(index) = loop_restart {
+        state.loop_index = Some(index);
     }
 }
 

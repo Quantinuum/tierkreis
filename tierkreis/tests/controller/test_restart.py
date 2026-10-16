@@ -9,6 +9,7 @@ from tests.controller.typed_graphdata import (
     LoopBodyInput,
     loop_body,
     typed_doubler_plus,
+    typed_eval,
 )
 from tierkreis import run_graph
 from tierkreis.builder import Graph
@@ -71,7 +72,6 @@ async def test_restart_runtime() -> None:
             run_id, [f"N{plus_one.node_index}"]
         )
         assert new_attempt != 0
-        # In the new implementation roos it not represent by -.
 
         expected = {
             f"N{plus_one.node_index}",
@@ -87,6 +87,40 @@ async def test_restart_runtime() -> None:
 
         # The source attempt must remain untouched.
         assert await runtime.get_outputs(run_id) == 4
+
+
+@pytest.mark.asyncio
+async def test_restart_runtime_eval() -> None:
+    body = typed_doubler_plus()
+    body_task_index = next(
+        index
+        for index, node in enumerate(body.data.nodes)
+        if getattr(node, "function_name", None) == "builtins.iadd"
+    )
+    g = typed_eval()
+    eval_node_index = next(
+        index
+        for index, node in enumerate(g.data.nodes)
+        if getattr(node, "type", None) == "eval"
+    )
+    eval_location = f"N{eval_node_index}.N{body_task_index}"
+
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("restart_eval", g)
+        run_id = await runtime.start_new_run(workflow_id, {})
+        await runtime.wait_for(run_id, timeout=30)
+        assert await runtime.get_outputs(run_id) == {"typed_eval_output": 12}
+
+        new_attempt, invalidated = await runtime.restart_task(run_id, [eval_location])
+        assert eval_location in invalidated
+        assert f"N{g.data.output_idx()}" in invalidated
+
+        await runtime.wait_for(run_id, new_attempt, timeout=30)
+        assert await runtime.get_outputs(run_id, new_attempt) == {
+            "typed_eval_output": 12
+        }
+        assert await runtime.get_outputs(run_id) == {"typed_eval_output": 12}
 
 
 @pytest.mark.asyncio

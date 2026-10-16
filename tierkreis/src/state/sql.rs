@@ -5,13 +5,7 @@ that can be used by the tierkreis runtime.
 These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
-use std::{
-    collections::{HashMap, HashSet},
-    env,
-    fmt::Debug,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, env, fmt::Debug, sync::Arc, time::Duration};
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
@@ -39,12 +33,12 @@ use crate::{
         interface::{RuntimeWatchState, WorkflowRunStateSummary},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
-            add_run_attempt_metadata, copy_node_states, get_workflow_run_summary, insert_workflow,
-            insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs,
-            list_active_runs, list_workflow_run_summaries, max_attempt, read_node_state,
-            read_node_states, read_node_states_by_name, read_run_attempt_metadata, read_workflow,
-            read_workflow_run, read_workflow_run_input_from_location, read_workflow_run_inputs,
-            update_node_state, update_workflow_run,
+            add_run_attempt_metadata, copy_attempt_state, get_workflow_run_summary,
+            insert_workflow, insert_workflow_run, insert_workflow_run_attempt,
+            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries, max_attempt,
+            read_node_state, read_node_states, read_node_states_by_name, read_run_attempt_metadata,
+            read_workflow, read_workflow_run, read_workflow_run_input_from_location,
+            read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
 };
@@ -53,7 +47,7 @@ use crate::{
     location::Location,
     state::{
         WorkflowRunState,
-        interface::{NodeState, RuntimeState},
+        interface::{NodeState, RestartPlan, RuntimeState},
         models::{NewNodeOutput, UpsertNodeState},
     },
 };
@@ -333,6 +327,7 @@ impl RuntimeState for SqliteRuntimeState {
                 let root_location_str = Location::root().to_string();
                 let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
                     workflow_run_id: &run_id_str,
+                    attempt: 0,
                     location: root_location_str.clone(),
                     name,
                     asset_kind: asset.kind.to_string(),
@@ -448,6 +443,59 @@ impl RuntimeState for SqliteRuntimeState {
         }
         .boxed()
     }
+
+    fn new_attempt_from<'a>(
+        &'a self,
+        source: &'a dyn WorkflowRunState,
+        restart_plan: &'a RestartPlan,
+    ) -> BoxFuture<'a, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let run_id = source.run_id();
+            let run_id_str = run_id.to_string();
+            let latest_attempt = max_attempt(&mut conn, &run_id_str)
+                .await?
+                .ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?;
+            let latest_attempt_u32 = u32::try_from(latest_attempt).into_diagnostic()?;
+            let latest_summary =
+                get_workflow_run_summary(&mut conn, run_id, latest_attempt_u32).await?;
+            if latest_summary.cancelled_time.is_none()
+                && latest_summary.error_time.is_none()
+                && latest_summary.complete_time.is_none()
+            {
+                return Err(miette!(
+                    "Cannot create a new attempt for a run that is still active"
+                ));
+            }
+
+            let next_attempt_i32 = latest_attempt
+                .checked_add(1)
+                .ok_or_else(|| miette!("Workflow attempt number overflow"))?;
+            let source_attempt = i32::try_from(source.attempt()).into_diagnostic()?;
+            copy_attempt_state(
+                &mut conn,
+                run_id_str,
+                source_attempt,
+                next_attempt_i32,
+                restart_plan,
+            )
+            .await?;
+
+            let next_attempt = u32::try_from(next_attempt_i32).into_diagnostic()?;
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, next_attempt));
+            });
+
+            Ok(Arc::new(SqliteWorkflowRunState {
+                pool: self.pool.clone(),
+                update_sender: self.update_sender.clone(),
+                workflow_id: source.workflow_id(),
+                run_id,
+                attempt: next_attempt,
+            }) as Arc<dyn WorkflowRunState>)
+        }
+        .boxed()
+    }
 }
 
 /// [`SqlWorkflowRunState`] is an implementation of [`WorkflowRunState`] that shares storage
@@ -486,7 +534,12 @@ impl WorkflowRunState for SqliteWorkflowRunState {
     fn load_inputs(&self) -> BoxFuture<'_, miette::Result<HashMap<String, AssetSpec>>> {
         async move {
             let mut conn = self.get_conn().await?;
-            read_workflow_run_inputs(&mut conn, &self.run_id.to_string()).await
+            read_workflow_run_inputs(
+                &mut conn,
+                &self.run_id.to_string(),
+                self.attempt.try_into().into_diagnostic()?,
+            )
+            .await
         }
         .boxed()
     }
@@ -501,6 +554,7 @@ impl WorkflowRunState for SqliteWorkflowRunState {
             read_workflow_run_input_from_location(
                 &mut conn,
                 &self.run_id.to_string(),
+                self.attempt.try_into().into_diagnostic()?,
                 &location.to_string(),
                 name,
             )
@@ -619,29 +673,6 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         }
         .boxed()
     }
-
-    fn copy_node_states_from<'a>(
-        &'a self,
-        source: &'a dyn WorkflowRunState,
-        exclude: &'a HashSet<Location>,
-        truncate: &'a HashSet<Location>,
-    ) -> BoxFuture<'a, miette::Result<()>> {
-        async move {
-            let mut conn = self.get_conn().await?;
-            let source_attempt = i32::try_from(source.attempt()).into_diagnostic()?;
-            let dest_attempt = i32::try_from(self.attempt).into_diagnostic()?;
-            copy_node_states(
-                &mut conn,
-                source.run_id().to_string(),
-                source_attempt,
-                dest_attempt,
-                exclude,
-                truncate,
-            )
-            .await
-        }
-        .boxed()
-    }
 }
 
 impl SqliteWorkflowRunState {
@@ -701,11 +732,13 @@ impl SqliteWorkflowRunState {
                         ..
                     } => {
                         row.running_time = Some(now);
+                        let attempt = i32::try_from(self.attempt).into_diagnostic()?;
 
                         let location_str = event.loc.to_string();
                         for (port, asset_spec) in inputs {
                             subgraph_inputs.push(NewWorkflowRunInput {
                                 workflow_run_id: &workflow_run_id_str,
+                                attempt,
                                 location: location_str.clone(),
                                 name: port,
                                 asset_kind: asset_spec.kind.to_string(),
@@ -720,11 +753,13 @@ impl SqliteWorkflowRunState {
                     } => {
                         row.running_time = Some(now);
                         row.loop_index = Some(index.try_into().into_diagnostic()?);
+                        let attempt = i32::try_from(self.attempt).into_diagnostic()?;
 
                         let location_str = event.loc.with_loop_index(index).to_string();
                         for (port, asset_spec) in inputs {
                             subgraph_inputs.push(NewWorkflowRunInput {
                                 workflow_run_id: &workflow_run_id_str,
+                                attempt,
                                 location: location_str.clone(),
                                 name: port,
                                 asset_kind: asset_spec.kind.to_string(),
@@ -741,12 +776,14 @@ impl SqliteWorkflowRunState {
                         let size = input_sets.len();
                         row.map_size = Some(size.try_into().into_diagnostic()?);
                         row.map_completed = Some(BitVec::<u8>::repeat(false, size).into_vec());
+                        let attempt = i32::try_from(self.attempt).into_diagnostic()?;
 
                         for (index, inputs) in input_sets.iter().enumerate() {
                             let location_str = event.loc.with_map_index(index).to_string();
                             for (port, asset_spec) in inputs {
                                 subgraph_inputs.push(NewWorkflowRunInput {
                                     workflow_run_id: &workflow_run_id_str,
+                                    attempt,
                                     location: location_str.clone(),
                                     name: port,
                                     asset_kind: asset_spec.kind.to_string(),
@@ -826,6 +863,8 @@ mod tests {
     use std::collections::HashSet;
     use std::ops::BitOr;
 
+    use diesel::connection::SimpleConnection;
+    use diesel::{Connection, QueryableByName};
     use portgraph::NodeIndex;
 
     use crate::{
@@ -834,6 +873,50 @@ mod tests {
     };
 
     use super::*;
+
+    #[derive(QueryableByName)]
+    struct MigratedInput {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        attempt: i32,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        location: String,
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        name: String,
+    }
+
+    #[test]
+    fn attempt_scoped_input_migration_preserves_root_inputs() {
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.batch_execute(include_str!(
+            "../../migrations/2026-06-01-094031-0000_create_tables/up.sql"
+        ))
+        .unwrap();
+        conn.batch_execute(
+            "INSERT INTO workflows (id, definition) VALUES ('workflow', '{}');
+             INSERT INTO workflow_runs (id, workflow_id) VALUES ('run', 'workflow');
+             INSERT INTO workflow_run_attempts (workflow_run_id, attempt) VALUES ('run', 0);
+             INSERT INTO workflow_run_inputs
+                 (workflow_run_id, name, asset_kind, storage_name, asset_key)
+             VALUES ('run', 'value', 'memory', 'memory', 'asset');",
+        )
+        .unwrap();
+
+        conn.batch_execute(include_str!(
+            "../../migrations/2026-10-16-000000_attempt_scoped_inputs/up.sql"
+        ))
+        .unwrap();
+
+        let migrated: MigratedInput = diesel::RunQueryDsl::get_result(
+            diesel::sql_query(
+                "SELECT attempt, location, name FROM workflow_run_inputs WHERE workflow_run_id = 'run'",
+            ),
+            &mut conn,
+        )
+        .unwrap();
+        assert_eq!(migrated.attempt, 0);
+        assert_eq!(migrated.location, Location::root().to_string());
+        assert_eq!(migrated.name, "value");
+    }
 
     /// Test that reading a location returns the default value.
     #[tokio::test(flavor = "multi_thread")]

@@ -2,7 +2,6 @@
 This module defines the queries for reading the workflow state from the `SQlite` database.
 */
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::hash::BuildHasher;
 
 use bitvec::vec::BitVec;
@@ -21,7 +20,7 @@ use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
-use crate::state::interface::WorkflowRunStateSummary;
+use crate::state::interface::{RestartPlan, WorkflowRunStateSummary};
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
     UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
@@ -611,7 +610,14 @@ pub async fn insert_workflow_run_inputs(
 
     for workflow_input in workflow_inputs {
         diesel::insert_into(wri::workflow_run_inputs)
-            .values(workflow_input)
+            .values(&workflow_input)
+            .on_conflict((wri::workflow_run_id, wri::attempt, wri::location, wri::name))
+            .do_update()
+            .set((
+                wri::asset_kind.eq(&workflow_input.asset_kind),
+                wri::storage_name.eq(workflow_input.storage_name),
+                wri::asset_key.eq(&workflow_input.asset_key),
+            ))
             .execute(conn)
             .await?;
     }
@@ -628,12 +634,15 @@ pub async fn insert_workflow_run_inputs(
 pub async fn read_workflow_run_inputs(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     workflow_run_id: &str,
+    attempt: i32,
 ) -> miette::Result<HashMap<String, AssetSpec>> {
     use crate::state::schema::workflow_run_inputs::dsl as wri;
 
     let inputs = wri::workflow_run_inputs
         .select(WorkflowRunInput::as_select())
         .filter(wri::workflow_run_id.eq(workflow_run_id))
+        .filter(wri::attempt.eq(attempt))
+        .filter(wri::location.eq(Location::root().to_string()))
         .get_results(conn)
         .await
         .into_diagnostic()?;
@@ -663,6 +672,7 @@ pub async fn read_workflow_run_inputs(
 pub async fn read_workflow_run_input_from_location(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     workflow_run_id: &str,
+    attempt: i32,
     location: &str,
     name: &str,
 ) -> miette::Result<AssetSpec> {
@@ -671,6 +681,7 @@ pub async fn read_workflow_run_input_from_location(
     let input = wri::workflow_run_inputs
         .select(WorkflowRunInput::as_select())
         .filter(wri::workflow_run_id.eq(workflow_run_id))
+        .filter(wri::attempt.eq(attempt))
         .filter(wri::location.eq(location))
         .filter(wri::name.eq(name))
         .first(conn)
@@ -1064,28 +1075,34 @@ pub async fn insert_workflow_run_attempt(
     Ok(())
 }
 
-/// Copy node states (and their outputs) from `source_attempt` to `dest_attempt` of
-/// the same `run_id`.
-///
-/// Locations in `exclude` are skipped entirely.
-/// Locations in `truncate` are copied with times and outputs cleared.
-/// See `copy_node_states_from` for more details.
+/// Copy reusable node states, outputs, and persisted inputs between attempts.
 ///
 /// # Errors
 ///
 /// Returns an error when the connection pool cannot be accessed or a query fails.
-pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
+#[allow(clippy::too_many_lines)]
+pub fn copy_attempt_state<'a>(
     conn: &'a mut impl AsyncConnection<Backend = Sqlite>,
     run_id: String,
     source_attempt: i32,
     dest_attempt: i32,
-    exclude: &'a HashSet<Location, S>,
-    truncate: &'a HashSet<Location, S>,
+    restart_plan: &'a RestartPlan,
 ) -> impl Future<Output = miette::Result<()>> + Send + 'a {
     use crate::state::schema::node_outputs::dsl as no;
     use crate::state::schema::node_states::dsl as ns;
+    use crate::state::schema::workflow_run_attempts::dsl as wra;
+    use crate::state::schema::workflow_run_inputs::dsl as wri;
 
     conn.transaction(async move |conn| {
+        diesel::insert_into(wra::workflow_run_attempts)
+            .values((
+                wra::workflow_run_id.eq(&run_id),
+                wra::attempt.eq(dest_attempt),
+                wra::started_time.eq(Some(chrono::Utc::now().naive_utc())),
+            ))
+            .execute(conn)
+            .await?;
+
         let rows: Vec<NodeState> = ns::node_states
             .filter(ns::run_id.eq(&run_id))
             .filter(ns::attempt.eq(source_attempt))
@@ -1093,27 +1110,31 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
             .await?;
 
         for row in rows {
-            if exclude.contains(&row.node_location) {
+            if restart_plan.excludes(&row.node_location) {
                 continue;
             }
-            let is_truncated = truncate.contains(&row.node_location);
-            // copy over node state TODO: clarify which times to retain.
+            let is_truncated = restart_plan.truncates(&row.node_location);
+            let restarted_loop_index = restart_plan
+                .loop_restart(&row.node_location)
+                .map(i32::try_from)
+                .transpose()
+                .map_err(|error| diesel::result::Error::SerializationError(error.into()))?;
             let new_row = if is_truncated {
                 UpsertNodeState {
                     name: row.name.clone(),
                     run_id: run_id.clone(),
                     attempt: dest_attempt,
                     node_location: row.node_location.clone(),
-                    scheduled_time: row.scheduled_time,
-                    queued_time: row.queued_time,
-                    running_time: row.running_time,
+                    scheduled_time: None,
+                    queued_time: None,
+                    running_time: None,
                     complete_time: None,
                     cancelled_time: None,
                     error_time: None,
-                    cond: row.cond, // retained to preserve conditional state even when truncated
-                    loop_index: row.loop_index, // retained to preserve loop index even when truncated
+                    cond: row.cond,
+                    loop_index: restarted_loop_index.or(row.loop_index),
                     map_size: row.map_size,
-                    map_completed: None, // reset to indicate no progress on the map
+                    map_completed: None,
                     handle: None,
                     error: None,
                     error_detail: None,
@@ -1164,10 +1185,37 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
             }
         }
 
+        let inputs: Vec<WorkflowRunInput> = wri::workflow_run_inputs
+            .filter(wri::workflow_run_id.eq(&run_id))
+            .filter(wri::attempt.eq(source_attempt))
+            .get_results(conn)
+            .await?;
+        for input in inputs {
+            let location = input
+                .location
+                .parse::<Location>()
+                .map_err(|error| diesel::result::Error::SerializationError(error.into()))?;
+            if restart_plan.excludes(&location) {
+                continue;
+            }
+            diesel::insert_into(wri::workflow_run_inputs)
+                .values((
+                    wri::workflow_run_id.eq(&run_id),
+                    wri::attempt.eq(dest_attempt),
+                    wri::location.eq(input.location),
+                    wri::name.eq(input.name),
+                    wri::asset_kind.eq(input.asset_kind),
+                    wri::storage_name.eq(input.storage_name),
+                    wri::asset_key.eq(input.asset_key),
+                ))
+                .execute(conn)
+                .await?;
+        }
+
         Ok::<_, diesel::result::Error>(())
     })
     .map(|res| {
         res.into_diagnostic()
-            .wrap_err("Failed to copy node states to new attempt")
+            .wrap_err("Failed to copy state to new attempt")
     })
 }
