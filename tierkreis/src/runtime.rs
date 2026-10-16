@@ -385,13 +385,14 @@ impl Runtime {
                             for node_event in node_events {
                                 // Whitespaces are added to align for LogFormat::Compact
                                 match &node_event.status {
-                                    NodeStatus::Scheduled { .. } => {
+                                    NodeStatus::Scheduled { execution_context } => {
                                         tracing::info!(
                                             target: "tierkreis::events",
                                             workflow_id = %workflow_id,
                                             run_id = %workflow_run_id,
                                             attempt,
                                             loc = %node_event.loc,
+                                            ?execution_context,
                                             "node scheduled"
                                         );
                                     }

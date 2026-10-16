@@ -18,14 +18,14 @@ pub(crate) enum Quantity {
     Text(String),
 }
 
-fn to_f64(value: u64) -> Result<f64> {
+pub(crate) fn to_f64(value: u64) -> Result<f64> {
     Ok(Into::<f64>::into(
         TryInto::<u32>::try_into(value).into_diagnostic()?,
     ))
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn downcast(value: f64) -> u32 {
+pub(crate) fn downcast(value: f64) -> u32 {
     (value).clamp(0.0, f64::from(u32::MAX)).trunc() as u32
 }
 
@@ -187,6 +187,8 @@ impl ExecutionContext {
 /// Executor placement and requirements for a single task.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResolvedContext {
+    /// Name of the context selected for the task, if any.
+    pub name: Option<String>,
     /// Executor selected by the profile, if any.
     pub executor: Option<String>,
     /// Resource requirements.
@@ -246,15 +248,37 @@ impl ResourceProfiles {
     ///
     /// # Errors
     /// Fails if the explicitly selected context is absent.
-    pub fn resolve(&self, requested: Option<&str>) -> Result<ResolvedContext> {
-        match requested {
-            Some(name) => self
-                .profiles
-                .get(name)
-                .cloned()
-                .ok_or_else(|| miette!("Unknown execution context `{name}`")),
-            None => Ok(ResolvedContext::default()),
+    pub fn resolve(
+        &self,
+        requested: Option<&str>,
+        executor: Option<&str>,
+    ) -> Result<ResolvedContext> {
+        let mut context = match requested {
+            Some(name) => {
+                let mut context = self
+                    .profiles
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| miette!("Unknown execution context `{name}`"))?;
+                context.name = Some(name.to_owned());
+                context
+            }
+            None => ResolvedContext::default(),
+        };
+        // Override the executor if explicitly requested.
+        if let Some(executor) = executor {
+            context.executor = Some(executor.to_owned());
         }
+        let native_by_executor = context.resources.remove("native").unwrap_or(Value::Null);
+        if let Some(native) = context
+            .executor
+            .as_deref()
+            .and_then(|executor| native_by_executor.get(executor).cloned())
+            && !native.as_object().is_some_and(serde_json::Map::is_empty)
+        {
+            context.resources.insert("native".into(), native);
+        }
+        Ok(context)
     }
 }
 
@@ -284,17 +308,13 @@ fn resolve_context(name: &str, value: toml::Value) -> Result<ResolvedContext> {
         .collect();
     // Escape hatch for native executor fields, e.g. --no-check-directory for pjsub
     let native_by_executor = fields.remove("native").unwrap_or(Value::Null);
-    let native = executor
-        .as_deref()
-        .and_then(|executor| native_by_executor.get(executor).cloned());
     fields.retain(|_, value| !value.is_null());
-    if let Some(native) = native
-        && !native.as_object().is_some_and(serde_json::Map::is_empty)
-    {
-        fields.insert("native".into(), native);
+    if !native_by_executor.is_null() {
+        fields.insert("native".into(), native_by_executor);
     }
 
     Ok(ResolvedContext {
+        name: None,
         executor,
         resources: fields.into_iter().collect(),
         environment,
@@ -374,7 +394,7 @@ mod tests {
         );
 
         let profiles = ResourceProfiles::load(std::slice::from_ref(&root.0), "cluster")?;
-        let context = profiles.resolve(Some("gpu"))?;
+        let context = profiles.resolve(Some("gpu"), None)?;
         assert_eq!(context.executor.as_deref(), Some("slurm"));
         assert_eq!(context.resources["cpu"], "500m");
         assert_eq!(context.resources["memory"], "1536Mi");
@@ -383,7 +403,7 @@ mod tests {
             serde_json::json!({"--exclusive": true})
         );
         assert_eq!(context.environment["TOKEN"], "present");
-        assert!(profiles.resolve(Some("alias")).is_err());
+        assert!(profiles.resolve(Some("alias"), None).is_err());
         Ok(())
     }
 
@@ -394,8 +414,8 @@ mod tests {
         write_context(&profile, "local", "cpu = 2\n");
         let profiles = ResourceProfiles::load(std::slice::from_ref(&root.0), "cluster")?;
 
-        assert_eq!(profiles.resolve(None)?, ResolvedContext::default());
-        assert!(profiles.resolve(Some("missing")).is_err());
+        assert_eq!(profiles.resolve(None, None)?, ResolvedContext::default());
+        assert!(profiles.resolve(Some("missing"), None).is_err());
         Ok(())
     }
 
@@ -413,10 +433,10 @@ mod tests {
             &[high_priority.0.clone(), low_priority.0.clone()],
             "cluster",
         )?;
-        let context = profiles.resolve(Some("shared"))?;
+        let context = profiles.resolve(Some("shared"), None)?;
         assert_eq!(context.resources["cpu"], 8);
         assert!(!context.resources.contains_key("memory"));
-        assert!(profiles.resolve(Some("low_only")).is_err());
+        assert!(profiles.resolve(Some("low_only"), None).is_err());
         Ok(())
     }
 }

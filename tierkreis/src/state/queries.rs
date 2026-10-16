@@ -287,6 +287,10 @@ pub fn update_node_state<'a>(
                         ns::map_completed,
                     )),
                     ns::handle.eq(coalesce_text(excluded(ns::handle), ns::handle)),
+                    ns::execution_context.eq(coalesce_text(
+                        excluded(ns::execution_context),
+                        ns::execution_context,
+                    )),
                     ns::error.eq(coalesce_text(ns::error, excluded(ns::error))),
                     ns::error_detail
                         .eq(coalesce_text(ns::error_detail, excluded(ns::error_detail))),
@@ -425,6 +429,7 @@ pub async fn read_node_state(
             error_detail: db_node.error_detail.clone(),
             outputs,
             handle,
+            execution_context: db_node.execution_context.clone(),
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
@@ -507,6 +512,7 @@ pub async fn read_node_states_by_name(
                 error_detail: db_node.error_detail.clone(),
                 outputs,
                 handle,
+                execution_context: db_node.execution_context.clone(),
             },
         );
     }
@@ -590,6 +596,7 @@ pub async fn read_node_states(
                 error_detail: db_node.error_detail.clone(),
                 outputs,
                 handle,
+                execution_context: db_node.execution_context.clone(),
             },
         );
     }
@@ -1087,6 +1094,7 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
                     handle: None,
                     error: None,
                     error_detail: None,
+                    execution_context: row.execution_context.clone(),
                 }
             } else {
                 UpsertNodeState {
@@ -1107,6 +1115,7 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
                     handle: row.handle.clone(),
                     error: row.error.clone(),
                     error_detail: row.error_detail.clone(),
+                    execution_context: row.execution_context.clone(),
                 }
             };
 

@@ -568,9 +568,14 @@ fn handle_node_events(
             node_state.name.clone_from(&node_event.name);
         }
         match node_event.status {
-            crate::event::NodeStatus::Scheduled {} => {
+            crate::event::NodeStatus::Scheduled {
+                ref execution_context,
+            } => {
                 if node_state.scheduled_time.is_none() {
                     node_state.scheduled_time = Some(now);
+                }
+                if execution_context.is_some() {
+                    node_state.execution_context.clone_from(execution_context);
                 }
             }
             crate::event::NodeStatus::Queued { handle } => {
@@ -694,7 +699,9 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled {},
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
                 name: None,
             }]))
             .await?;
@@ -725,7 +732,9 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled {},
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
                 name: None,
             }]))
             .await?;

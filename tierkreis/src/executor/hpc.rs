@@ -29,12 +29,100 @@ use crate::{
         send_queued, send_running,
     },
     executor::{
-        hpc::spec::{HPCResourceSpec, JobSpec, SchedulerStatus, SchedulerWrapper},
+        hpc::spec::{
+            ContainerSpec, HPCResourceSpec, JobSpec, MpiSpec, SchedulerStatus, SchedulerWrapper,
+            UserSpec,
+        },
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     },
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
+    resource_profiles::downcast,
 };
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct RawResourceRequest {
+    nodes: Option<u32>,
+    cpu: Option<f64>,
+    memory: Option<String>,
+    gpu: Option<u32>,
+    walltime: Option<String>,
+    queue: Option<String>,
+    account: Option<String>,
+    modules: Vec<String>,
+    gres: Vec<String>,
+    qpus: Vec<String>,
+    user: Option<UserSpec>,
+    mpi: Option<MpiSpec>,
+    container: Option<ContainerSpec>,
+    extra_scheduler_args: HashMap<String, Option<String>>,
+    extras: HashMap<String, serde_json::Value>,
+}
+
+struct ResourceRequest {
+    resources: HPCResourceSpec,
+    walltime: Option<String>,
+    queue: Option<String>,
+    account: Option<String>,
+    modules: Vec<String>,
+    user: Option<UserSpec>,
+    mpi: Option<MpiSpec>,
+    container: Option<ContainerSpec>,
+    extra_scheduler_args: HashMap<String, Option<String>>,
+}
+
+impl TryFrom<HashMap<String, serde_json::Value>> for ResourceRequest {
+    type Error = miette::Report;
+
+    fn try_from(resources: HashMap<String, serde_json::Value>) -> Result<Self, Self::Error> {
+        let raw: RawResourceRequest =
+            serde_json::from_value(serde_json::Value::Object(resources.into_iter().collect()))
+                .into_diagnostic()
+                .wrap_err("Invalid HPC resource specification")?;
+        let cores_per_node = raw.cpu.map(downcast);
+        let memory_per_node_gb = raw
+            .memory
+            .as_deref()
+            .map(|memory| {
+                let gib = memory
+                    .strip_suffix("Gi")
+                    .ok_or_else(|| miette!("HPC memory must use Gi units"))?;
+                gib.parse::<u32>()
+                    .into_diagnostic()
+                    .wrap_err("Invalid HPC memory quantity")
+            })
+            .transpose()?;
+        let mut extra_scheduler_args = raw.extra_scheduler_args;
+        if let Some(flags) = raw.extras.get("flags") {
+            let flags: Vec<String> = serde_json::from_value(flags.clone())
+                .into_diagnostic()
+                .wrap_err("HPC extras.flags must be a list of strings")?;
+            for flag in flags {
+                extra_scheduler_args.insert(flag, None);
+            }
+        }
+
+        Ok(Self {
+            resources: HPCResourceSpec {
+                nodes: raw.nodes.unwrap_or_default(),
+                cores_per_node,
+                memory_per_node_gb,
+                gpus_per_node: raw.gpu,
+                qpus: (!raw.qpus.is_empty()).then_some(raw.qpus),
+                gres: (!raw.gres.is_empty()).then_some(raw.gres),
+            },
+            walltime: raw.walltime,
+            queue: raw.queue,
+            account: raw.account,
+            modules: raw.modules,
+            user: raw.user,
+            mpi: raw.mpi,
+            container: raw.container,
+            extra_scheduler_args,
+        })
+    }
+}
 
 #[derive(Serialize, Deserialize, Default)]
 struct WorkerCallArgs {
@@ -484,29 +572,24 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
             .clone()
             .unwrap_or_else(|| format!("tkr-{}", task.worker_name.replace('_', "-")));
         let command = format!("{worker_command} {}", worker_args_path.display());
-        let hpc_resources = serde_json::from_value(task.resources.clone().into_iter().collect())
-            .into_diagnostic()
-            .wrap_err("Invalid HPC resource specification")?;
-        let extra_scheduler_args = task
-            .resources
-            .get("extra_scheduler_args")
-            .map(|value| serde_json::from_value(value.clone()))
-            .transpose()
-            .into_diagnostic()
-            .wrap_err("Invalid HPC extra scheduler arguments")?
-            .unwrap_or_default();
+        let request = ResourceRequest::try_from(task.resources.clone())?;
         let hpc_environment =
             serde_json::from_value(task.environment.clone().into_iter().collect())
                 .into_diagnostic()
                 .wrap_err("Invalid HPC environment specification")?;
-        // TODO get other JobSpec Related fields from the task.resources
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
-            walltime: "01:00:00".to_string(),
-            resources: hpc_resources,
+            walltime: request.walltime.unwrap_or_else(|| "01:00:00".to_string()),
+            resources: request.resources,
             environment: hpc_environment,
-            extra_scheduler_args,
+            queue: request.queue,
+            account: request.account,
+            modules: request.modules,
+            user: request.user,
+            mpi: request.mpi,
+            container: request.container,
+            extra_scheduler_args: request.extra_scheduler_args,
             ..Default::default()
         };
         let context = tracing::Span::current().context();
@@ -653,6 +736,22 @@ mod tests {
         event::{NodeStatus, WorkflowRunEvent},
         executor::{HPCExecutor, PbsWrapper, SlurmWrapper},
     };
+
+    #[test]
+    fn resource_request_ignores_unknown_keys() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::from([
+            ("cpu".to_string(), json!(4)),
+            ("future_resource".to_string(), json!(true)),
+            (
+                "extras".to_string(),
+                json!({"flags": ["--verbose"], "future": ["ignored"]}),
+            ),
+        ]))?;
+
+        assert_eq!(request.resources.cores_per_node, Some(4));
+        assert_eq!(request.extra_scheduler_args["--verbose"], None);
+        Ok(())
+    }
 
     async fn execute_hpc_with_scheduler<T: SchedulerWrapper + 'static>(
         scheduler: T,

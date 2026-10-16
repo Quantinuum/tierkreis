@@ -653,8 +653,11 @@ impl SqliteWorkflowRunState {
                     ..Default::default()
                 };
                 match event.status {
-                    NodeStatus::Scheduled {} => {
+                    NodeStatus::Scheduled {
+                        ref execution_context,
+                    } => {
                         row.scheduled_time = Some(now);
+                        row.execution_context.clone_from(execution_context);
                     }
                     NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
@@ -795,7 +798,9 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled {},
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
                 name: None,
             }]))
             .await?;
@@ -829,7 +834,9 @@ mod tests {
         workflow_run_state
             .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
                 loc: Location::root(),
-                status: NodeStatus::Scheduled {},
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
                 name: None,
             }]))
             .await?;

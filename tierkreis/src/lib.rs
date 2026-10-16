@@ -160,6 +160,8 @@ mod tierkreis {
         pub name: Option<String>,
         #[pyo3(get)]
         pub status: String,
+        #[pyo3(get)]
+        pub execution_context: Option<String>,
     }
 
     #[pyclass(name = "WorkflowSummary")]
@@ -219,6 +221,7 @@ mod tierkreis {
             Self {
                 name: node_state.name,
                 status,
+                execution_context: node_state.execution_context,
             }
         }
     }
