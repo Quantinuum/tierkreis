@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -32,13 +32,26 @@ use crate::{
     graph::WorkflowGraph,
     location::Location,
     monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
-    orchestrator::{OrchestrationContext, Orchestrator},
+    orchestrator::{Action, ActionKind, OrchestrationContext, Orchestrator},
     state::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
     },
     workflow_state_query::find_subgraph_input,
 };
+
+pub use crate::state::interface::RunOptions;
+
+/// The condition that [`Runtime::wait_for`] waits for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WaitUntil {
+    /// Return as soon as one or more breakpoints have been hit.
+    Breakpoint,
+    /// Return after breakpoints have been hit and all pending work has finished.
+    Blocked,
+    /// Return after all work has finished, regardless of breakpoints.
+    Complete,
+}
 
 /// `RuntimeConfig` defines the configuration for the runtime
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -328,6 +341,7 @@ impl Runtime {
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, Vec<u8>, S>,
+        options: Option<RunOptions>,
     ) -> miette::Result<(Uuid, u32)> {
         let inputs = save_assets(
             &self.asset_storage_registry,
@@ -337,7 +351,7 @@ impl Runtime {
         .await?;
         let workflow_run_state = self
             .state
-            .new_workflow_run_state(workflow_id, inputs)
+            .new_workflow_run_state(workflow_id, inputs, options)
             .await?;
         let attempt = workflow_run_state.attempt();
         let run_id = workflow_run_state.run_id();
@@ -371,6 +385,9 @@ impl Runtime {
                         }
                         WorkflowRunEvent::Queued {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow queued");
+                        }
+                        WorkflowRunEvent::Paused { .. } => {
+                            tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow paused");
                         }
                         WorkflowRunEvent::Completed {} => {
                             tracing::info!(workflow_id = %workflow_id, run_id = %workflow_run_id, attempt, "workflow completed");
@@ -467,6 +484,7 @@ impl Runtime {
         let mut state_recv = self.state.listen();
         // TODO: this should probably be part of the runtime state
         let mut contexts: HashMap<(Uuid, u32), OrchestrationContext> = HashMap::new();
+        let mut pending_outputs: HashMap<(Uuid, u32), HashSet<Location>> = HashMap::new();
 
         loop {
             let active_runs: HashSet<(Uuid, u32)> = {
@@ -479,6 +497,7 @@ impl Runtime {
                 updated.active_runs.iter().copied().collect()
             };
             contexts.retain(|key, _| active_runs.contains(key));
+            pending_outputs.retain(|key, _| active_runs.contains(key));
 
             for (run_id, attempt) in active_runs {
                 let workflow_run_state =
@@ -494,7 +513,9 @@ impl Runtime {
                     context.clone()
                 } else {
                     let inputs = workflow_run_state.load_inputs().await?;
-                    let context = OrchestrationContext::new(&workflow_run_state, inputs);
+                    let breakpoints_enabled = workflow_run_state.breakpoints_enabled().await?;
+                    let context =
+                        OrchestrationContext::new(&workflow_run_state, inputs, breakpoints_enabled);
                     contexts.insert((run_id, attempt), context.clone());
                     context
                 };
@@ -502,22 +523,72 @@ impl Runtime {
                 let actions = self
                     .orchestrator
                     .build_actions(context, workflow_graph)
+                    .await?
+                    .try_collect::<Vec<Action>>()
                     .await?;
+
+                // Determine if the workflow run is idle (no actions to perform)
+                let idle = actions.is_empty();
+                let pending = pending_outputs.entry((run_id, attempt)).or_default();
+                for action in &actions {
+                    if matches!(
+                        action.kind,
+                        // Possible actions that indicate the workflow is not idle
+                        ActionKind::PerformTask { .. } | ActionKind::SetComplete { .. }
+                    ) {
+                        pending.insert(action.loc.clone());
+                    }
+                }
                 self.orchestrator
-                    .perform_actions(run_id, attempt, actions)
+                    .perform_actions(
+                        run_id,
+                        attempt,
+                        futures::stream::iter(actions.into_iter().map(Ok)),
+                    )
                     .await?;
+
+                let states = workflow_run_state
+                    .read_many(&mut pending.iter().cloned())
+                    .await?;
+                // Retain only the pending outputs that are not yet completed, errored, or cancelled.
+                pending.retain(|loc| {
+                    states.get(loc).is_none_or(|node| {
+                        node.complete_time.is_none()
+                            && node.error_time.is_none()
+                            && node.cancelled_time.is_none()
+                    })
+                });
+                // Check paused nodes
+                let paused = if idle && pending.is_empty() {
+                    workflow_run_state.paused_nodes().await?
+                } else {
+                    Vec::new()
+                };
+                if !paused.is_empty() && !state_recv.has_changed().into_diagnostic()? {
+                    workflow_run_state
+                        .write(WorkflowRunEvent::Paused { locations: paused })
+                        .await?;
+                }
             }
             state_recv.changed().await.into_diagnostic()?;
         }
     }
 
-    /// Wait for a specific workflow run attempt to finish.
+    /// Wait until `until` is met for a specific workflow run attempt.
+    ///
+    /// Returns the paused locations, or an empty vector if the workflow finishes.
     ///
     /// # Errors
     ///
-    /// Will return Err if the requested run attempt ends in an error state.
-    pub async fn wait_for(&self, run_id: Uuid, attempt: u32) -> miette::Result<()> {
+    /// Returns an error if the attempt cannot be read, fails, or a watch channel closes.
+    pub async fn wait_for(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        until: WaitUntil,
+    ) -> miette::Result<Vec<Location>> {
         let mut state_recv = self.listen();
+        let workflow_state = self.state.load_workflow_run_state(run_id, attempt).await?;
         loop {
             let still_active = {
                 state_recv
@@ -527,7 +598,7 @@ impl Runtime {
             };
 
             if !still_active {
-                let summary = self.read_workflow_run_summary(run_id, attempt).await?;
+                let summary = workflow_state.summary().await?;
                 if summary.error_time.is_some() {
                     let error_node_states = self
                         .read_node_states(
@@ -551,7 +622,19 @@ impl Runtime {
                     return Err(err.into());
                 }
 
-                return Ok::<_, miette::Report>(());
+                if summary.complete_time.is_some() || summary.cancelled_time.is_some() {
+                    return Ok(Vec::new());
+                }
+            }
+
+            if until != WaitUntil::Complete {
+                let paused = workflow_state.paused_nodes().await?;
+                if state_recv.has_changed().into_diagnostic()? {
+                    continue;
+                }
+                if !paused.is_empty() && (until == WaitUntil::Breakpoint || !still_active) {
+                    return Ok(paused);
+                }
             }
 
             state_recv.changed().await.into_diagnostic()?;
@@ -561,6 +644,37 @@ impl Runtime {
     /// Obtain a watch receiver for the runtime.
     pub fn listen(&self) -> watch::Receiver<RuntimeWatchState> {
         self.state.listen()
+    }
+
+    /// List stopped node occurrences.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the attempt cannot be read.
+    pub async fn paused_nodes(&self, run_id: Uuid, attempt: u32) -> miette::Result<Vec<Location>> {
+        self.state
+            .load_workflow_run_state(run_id, attempt)
+            .await?
+            .paused_nodes()
+            .await
+    }
+
+    /// Resume selected stopped occurrences, or all currently stopped occurrences with None.
+    ///
+    /// # Errors
+    ///
+    /// Invalid selections and terminal attempts cannot be resumed.
+    pub async fn resume_breakpoints(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+        locations: Option<Vec<Location>>,
+    ) -> miette::Result<Vec<Location>> {
+        self.state
+            .load_workflow_run_state(run_id, attempt)
+            .await?
+            .resume_breakpoints(locations)
+            .await
     }
 
     /// Fetch the outputs of a workflow run attempt.
@@ -920,7 +1034,9 @@ mod tests {
 
         let background_runtime = Arc::clone(runtime);
         let background_task = tokio::spawn(async move {
-            background_runtime.wait_for(run_id, attempt).await?;
+            background_runtime
+                .wait_for(run_id, attempt, WaitUntil::Complete)
+                .await?;
             handle.abort();
             Ok::<_, miette::Report>(())
         });
@@ -932,6 +1048,144 @@ mod tests {
         background_task.await.expect("Failed to join wait task")?;
 
         Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case(RuntimeConfig::memory())]
+    #[case(RuntimeConfig::sqlite_memory())]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn workflow_pause_event_controls_runnable_attempts(
+        #[case] config: RuntimeConfig,
+    ) -> miette::Result<()> {
+        let runtime = Runtime::from_config(&config).await?;
+        let (graph, location) = sleep_graph_with_task_location()?;
+        let output_location = Location::root().with_node(graph.output_idx());
+        let workflow_id = runtime.save_workflow(None, graph).await?;
+        let (run_id, attempt) = runtime
+            .start_new_run(workflow_id, HashMap::<String, Vec<u8>>::new(), None)
+            .await?;
+        let state = runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?;
+        state.pause_at_breakpoint(&location).await?;
+        state.pause_at_breakpoint(&output_location).await?;
+        let event = WorkflowRunEvent::Paused {
+            locations: state.paused_nodes().await?,
+        };
+        assert!(!event.is_workflow_finished());
+        state.write(event.clone()).await?;
+        assert!(
+            !runtime
+                .listen()
+                .borrow()
+                .active_runs
+                .contains(&(run_id, attempt))
+        );
+        let summary = state.summary().await?;
+        assert!(summary.complete_time.is_none());
+        assert!(summary.error_time.is_none());
+        assert!(summary.cancelled_time.is_none());
+        assert_eq!(
+            state
+                .resume_breakpoints(Some(vec![location.clone()]))
+                .await?,
+            vec![location]
+        );
+        state.write(event).await?;
+        assert!(
+            runtime
+                .listen()
+                .borrow()
+                .active_runs
+                .contains(&(run_id, attempt))
+        );
+        assert_eq!(state.paused_nodes().await?, vec![output_location]);
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case(RuntimeConfig::memory())]
+    #[case(RuntimeConfig::sqlite_memory())]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn paused_workflow_waits_for_resume(#[case] config: RuntimeConfig) -> miette::Result<()> {
+        let runtime = Runtime::from_config(&config).await?;
+        let mut graph = workflow(["left", "right"]);
+        let left = input(&mut graph, "left");
+        let right = input(&mut graph, "right");
+        let left_output = output(&graph, "left");
+        let right_output = output(&graph, "right");
+        link(&mut graph, left, left_output)?;
+        link(&mut graph, right, right_output)?;
+        graph.set_breakpoint(left.0, true)?;
+        graph.set_breakpoint(right.0, true)?;
+        let left_loc = Location::root().with_node(left.0);
+        let right_loc = Location::root().with_node(right.0);
+        let workflow_id = runtime.save_workflow(None, graph).await?;
+        let inputs = HashMap::from([
+            ("left".to_string(), b"1".to_vec()),
+            ("right".to_string(), b"2".to_vec()),
+        ]);
+        let (run_id, attempt) = runtime
+            .start_new_run(
+                workflow_id,
+                inputs.clone(),
+                Some(RunOptions {
+                    enable_breakpoints: true,
+                }),
+            )
+            .await?;
+        timeout(Duration::from_secs(5), async {
+            tokio::select! {
+                result = runtime.run() => {
+                    result?;
+                    Err(miette!("Runtime stopped before workflow completed"))
+                }
+                result = async {
+                    assert_eq!(
+                        runtime.wait_for(run_id, attempt, WaitUntil::Blocked).await?,
+                        vec![left_loc.clone(), right_loc.clone()]
+                    );
+                    assert!(!runtime.listen().borrow().active_runs.contains(&(run_id, attempt)));
+                    assert!(timeout(
+                        Duration::from_millis(20),
+                        runtime.wait_for(run_id, attempt, WaitUntil::Complete),
+                    ).await.is_err());
+                    assert_eq!(
+                        runtime.resume_breakpoints(run_id, attempt, Some(Vec::new())).await?,
+                        Vec::<Location>::new()
+                    );
+                    assert!(!runtime.listen().borrow().active_runs.contains(&(run_id, attempt)));
+
+                    let (other_run, other_attempt) = runtime
+                        .start_new_run(workflow_id, inputs.clone(), None).await?;
+                    assert_eq!(
+                        runtime.wait_for(other_run, other_attempt, WaitUntil::Complete).await?,
+                        Vec::<Location>::new()
+                    );
+                    assert!(!runtime.listen().borrow().active_runs.contains(&(run_id, attempt)));
+                    assert_eq!(runtime.wait_for(run_id, attempt, WaitUntil::Breakpoint).await?, vec![left_loc.clone(), right_loc.clone()]);
+
+                    runtime.resume_breakpoints(run_id, attempt, Some(vec![left_loc.clone()])).await?;
+                    assert_eq!(runtime.wait_for(run_id, attempt, WaitUntil::Blocked).await?, vec![right_loc.clone()]);
+                    let states = runtime.read_node_states(run_id, attempt, [left_loc.clone()].into_iter()).await?;
+                    assert!(states[&left_loc].complete_time.is_some());
+                    runtime.resume_breakpoints(run_id, attempt, None).await?;
+                    assert_eq!(
+                        runtime.wait_for(run_id, attempt, WaitUntil::Complete).await?,
+                        Vec::<Location>::new()
+                    );
+                    for until in [WaitUntil::Breakpoint, WaitUntil::Blocked, WaitUntil::Complete] {
+                        assert_eq!(
+                            runtime.wait_for(run_id, attempt, until).await?,
+                            Vec::<Location>::new()
+                        );
+                    }
+                    assert_eq!(runtime.get_outputs(run_id, attempt).await?, inputs);
+                    Ok(())
+                } => result,
+            }
+        }).await.into_diagnostic()?
     }
 
     async fn test_persistent_runtime(database_filepath: &Path) -> miette::Result<Runtime> {
@@ -973,7 +1227,7 @@ mod tests {
             "delay_seconds".to_string(),
             serde_json::to_vec(&1).into_diagnostic()?,
         )]);
-        let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
+        let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs, None).await?;
         let workflow_run_state = runtime
             .state
             .load_workflow_run_state(run_id, attempt)
@@ -1262,7 +1516,7 @@ mod tests {
 
         let workflow_id = runtime.save_workflow(None, workflow_graph.clone()).await?;
         let inputs = HashMap::from([("hugr_package".to_string(), hugr_package_bytes()?)]);
-        let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs).await?;
+        let (run_id, attempt) = runtime.start_new_run(workflow_id, inputs, None).await?;
         let workflow_run_state = runtime
             .state
             .load_workflow_run_state(run_id, attempt)

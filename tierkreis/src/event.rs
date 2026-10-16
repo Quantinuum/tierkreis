@@ -67,6 +67,11 @@ pub enum WorkflowRunEvent {
     },
     /// The workflow run is waiting to be executed.
     Queued {},
+    /// The workflow run is blocked at breakpoints until resumed.
+    Paused {
+        /// Paused locations.
+        locations: Vec<Location>,
+    },
     /// An event relating to a specific set of nodes in the workflow run.
     NodeEvents(Vec<NodeEvent>),
 }

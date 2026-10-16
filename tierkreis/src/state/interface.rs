@@ -24,6 +24,13 @@ use crate::{
     workflow_state_query::{dependents, resolve_location},
 };
 
+/// Options fixed when a workflow run attempt is created.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RunOptions {
+    /// Stop at breakpoints during this run attempt.
+    pub enable_breakpoints: bool,
+}
+
 /// [`RuntimeWatchState`] is a struct that is updated by the [`RuntimeState`] interface
 /// whenever a run attempt changes, in order to drive further workflow orchestration.
 ///
@@ -32,7 +39,9 @@ use crate::{
 /// what to run next.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RuntimeWatchState {
-    /// The set of runs currently being executed by the runtime.
+    /// The set of runs currently being executed by the runtime
+    /// Excluding terminal attempts and attempts paused at breakpoints.
+    /// Paused attempts are reinserted when a breakpoint is resumed.
     pub active_runs: HashSet<(Uuid, u32)>,
 }
 
@@ -73,6 +82,10 @@ pub struct NodeState {
     pub name: Option<String>,
     /// The time at which the node was scheduled by the [`Orchestrator`] if any.
     pub scheduled_time: Option<DateTime<Utc>>,
+    /// The first time this occurrence hit a breakpoint; retained after release.
+    pub paused_time: Option<DateTime<Utc>>,
+    /// The time this occurrence was released from its breakpoint.
+    pub unpaused_time: Option<DateTime<Utc>>,
     /// The time at which the node was queued by an [`Executor`] if any.
     pub queued_time: Option<DateTime<Utc>>,
     /// The time at which the node started running by an [`Executor`] if any.
@@ -118,6 +131,7 @@ pub trait RuntimeState: Debug + Send + Sync {
         &self,
         workflow_id: Uuid,
     ) -> BoxFuture<'_, miette::Result<(Option<String>, WorkflowGraph)>>;
+
     /// Save a [`WorkflowGraph`] and return a new id.
     fn save_workflow(
         &self,
@@ -132,7 +146,9 @@ pub trait RuntimeState: Debug + Send + Sync {
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, AssetSpec>,
+        options: Option<RunOptions>,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
+
     /// Retrieve a handle to a [`WorkflowRunState`] depending on the `run_id` and attempt number.
     ///
     /// If the backing data for the [`WorkflowRunState`] does not exist, create it.
@@ -157,8 +173,11 @@ pub trait RuntimeState: Debug + Send + Sync {
     ///
     /// attempt(new) = max(attempts) + 1, should always be sequential
     /// This can be a partial restart, e.g., if some nodes errored.
-    fn new_attempt(&self, run_id: Uuid)
-    -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
+    fn new_attempt(
+        &self,
+        run_id: Uuid,
+        options: Option<RunOptions>,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>>;
 
     /// Restart Task nodes in a new attempt, preserving unaffected node state.
     ///
@@ -178,6 +197,7 @@ pub trait RuntimeState: Debug + Send + Sync {
     ) -> BoxFuture<'a, miette::Result<(u32, Vec<Location>)>> {
         async move {
             let source_state = self.load_workflow_run_state(run_id, attempt).await?;
+            let enable_breakpoints = source_state.breakpoints_enabled().await?;
             let locs = if locs.is_empty() {
                 let errored_locations = source_state.summary().await?.errored_locations;
                 if errored_locations.is_empty() {
@@ -213,7 +233,9 @@ pub trait RuntimeState: Debug + Send + Sync {
             }
             truncate.retain(|loc| !exclude.contains(loc));
 
-            let new_state = self.new_attempt(run_id).await?;
+            let new_state = self
+                .new_attempt(run_id, Some(RunOptions { enable_breakpoints }))
+                .await?;
             new_state
                 .copy_node_states_from(&*source_state, &exclude, &truncate)
                 .await?;
@@ -261,6 +283,25 @@ pub trait WorkflowRunState: Debug + Send + Sync {
     fn add_metadata(&self, metadata: HashMap<String, String>) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the metadata for the Workflow run.
     fn read_metadata(&self) -> BoxFuture<'_, miette::Result<HashMap<String, String>>>;
+
+    /// Whether this attempt honors graph breakpoint flags.
+    fn breakpoints_enabled(&self) -> BoxFuture<'_, miette::Result<bool>>;
+
+    /// Pauses a the node at the location (if it hasn't already been paused/ run yet).
+    fn pause_at_breakpoint<'a>(
+        &'a self,
+        location: &'a Location,
+    ) -> BoxFuture<'a, miette::Result<bool>>;
+
+    /// List currently paused nodes:
+    /// Invariant: paused <==> `Some(paused_time)` and `None(unpaused_time)`
+    fn paused_nodes(&self) -> BoxFuture<'_, miette::Result<Vec<Location>>>;
+
+    /// Unpause selected nodes, or all when None.
+    fn resume_breakpoints(
+        &self,
+        locations: Option<Vec<Location>>,
+    ) -> BoxFuture<'_, miette::Result<Vec<Location>>>;
 
     /// Copy node state (and outputs) from `source` into `self`.
     ///

@@ -21,7 +21,7 @@ use tokio::sync::watch;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::state::interface::WorkflowRunStateSummary;
+use crate::state::interface::{RunOptions, WorkflowRunStateSummary};
 use crate::{
     asset_storage::AssetSpec, event::WorkflowRunEvent, graph::WorkflowGraph,
     state::interface::RuntimeWatchState,
@@ -39,6 +39,7 @@ use crate::{
 #[derive(Debug, Default)]
 struct RunAttemptState {
     workflow_id: Uuid,
+    enable_breakpoints: bool,
     inputs: HashMap<String, AssetSpec>,
     nodes: HashMap<Location, NodeState>,
     metadata: HashMap<String, String>,
@@ -124,12 +125,14 @@ impl RuntimeState for InMemoryRuntimeState {
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, AssetSpec>,
+        options: Option<RunOptions>,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         let run_id = Uuid::now_v7();
         let attempt = 0;
 
         let mut entry = self.inner.runs.entry((run_id, attempt)).or_default();
         entry.workflow_id = workflow_id;
+        entry.enable_breakpoints = options.unwrap_or_default().enable_breakpoints;
         entry.inputs = inputs;
         entry.started_time = Some(chrono::Utc::now());
 
@@ -212,6 +215,7 @@ impl RuntimeState for InMemoryRuntimeState {
     fn new_attempt(
         &self,
         run_id: Uuid,
+        options: Option<RunOptions>,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         async move {
             let mut latest: Option<(u32, Uuid, HashMap<String, AssetSpec>)> = None;
@@ -240,6 +244,7 @@ impl RuntimeState for InMemoryRuntimeState {
             // TODO: same as new_workflow_run_state just with provided run_id and attempt, consolidate?
             let mut entry = self.inner.runs.entry((run_id, next_attempt)).or_default();
             entry.workflow_id = workflow_id;
+            entry.enable_breakpoints = options.unwrap_or_default().enable_breakpoints;
             entry.inputs = inputs;
             entry.started_time = Some(Utc::now());
 
@@ -391,6 +396,18 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         let mut send_workflow_stopped = false;
 
         match event {
+            WorkflowRunEvent::Paused { locations } => {
+                let paused: HashSet<_> = run_state
+                    .nodes
+                    .iter()
+                    .filter(|(_, node)| node.paused_time.is_some() && node.unpaused_time.is_none())
+                    .map(|(loc, _)| loc.clone())
+                    .collect();
+                if paused.is_empty() || paused != locations.into_iter().collect() {
+                    return future::ok(()).boxed();
+                }
+                send_workflow_stopped = true;
+            }
             WorkflowRunEvent::Started {} => {
                 if run_state.started_time.is_none() {
                     run_state.started_time = Some(now);
@@ -506,6 +523,110 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         future::ok(metadata).boxed()
     }
 
+    fn breakpoints_enabled(&self) -> BoxFuture<'_, miette::Result<bool>> {
+        future::ready(self.get_run_state().map(|run| run.enable_breakpoints)).boxed()
+    }
+
+    fn pause_at_breakpoint<'a>(
+        &'a self,
+        location: &'a Location,
+    ) -> BoxFuture<'a, miette::Result<bool>> {
+        async move {
+            let mut run = self
+                .global_state
+                .runs
+                .get_mut(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+            let node = run.nodes.entry(location.clone()).or_default();
+            if node.unpaused_time.is_some() {
+                return Ok(false);
+            }
+            let changed = node.paused_time.is_none();
+            if changed {
+                node.paused_time = Some(Utc::now());
+            }
+            drop(run);
+            if changed {
+                self.update_sender.send_modify(|_| {});
+            }
+            Ok(true)
+        }
+        .boxed()
+    }
+
+    fn paused_nodes(&self) -> BoxFuture<'_, miette::Result<Vec<Location>>> {
+        async move {
+            let run = self.get_run_state()?;
+            let mut locations: Vec<_> = run
+                .nodes
+                .iter()
+                .filter(|(_, node)| node.paused_time.is_some() && node.unpaused_time.is_none())
+                .map(|(loc, _)| loc.clone())
+                .collect();
+            locations.sort_by_key(ToString::to_string);
+            Ok(locations)
+        }
+        .boxed()
+    }
+
+    fn resume_breakpoints(
+        &self,
+        locations: Option<Vec<Location>>,
+    ) -> BoxFuture<'_, miette::Result<Vec<Location>>> {
+        async move {
+            let mut run = self
+                .global_state
+                .runs
+                .get_mut(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+            if run.complete_time.is_some()
+                || run.cancelled_time.is_some()
+                || run.error_time.is_some()
+            {
+                return Err(miette!("Cannot resume a terminal workflow attempt"));
+            }
+            // If no specific locations are provided, resume all paused nodes.
+            let locations = locations.unwrap_or_else(|| {
+                run.nodes
+                    .iter()
+                    .filter(|(_, node)| node.paused_time.is_some() && node.unpaused_time.is_none())
+                    .map(|(loc, _)| loc.clone())
+                    .collect()
+            });
+            //
+            for loc in &locations {
+                let node = run
+                    .nodes
+                    .get(loc)
+                    .ok_or_else(|| miette!("Node {loc} has not hit a breakpoint"))?;
+                if node.paused_time.is_none()
+                    || node.complete_time.is_some()
+                    || node.cancelled_time.is_some()
+                    || node.error_time.is_some()
+                {
+                    return Err(miette!("Node {loc} is not resumable"));
+                }
+            }
+            let mut released = Vec::new();
+            for loc in locations {
+                let node = run.nodes.get_mut(&loc).expect("Validated node");
+                if node.unpaused_time.is_none() {
+                    node.unpaused_time = Some(Utc::now());
+                    released.push(loc);
+                }
+            }
+            if !released.is_empty() {
+                self.update_sender.send_modify(|watch| {
+                    watch.active_runs.insert((self.run_id, self.attempt));
+                });
+            }
+            drop(run);
+            released.sort_by_key(ToString::to_string);
+            Ok(released)
+        }
+        .boxed()
+    }
+
     fn copy_node_states_from<'a>(
         &'a self,
         source: &'a dyn WorkflowRunState,
@@ -513,6 +634,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         truncate: &'a HashSet<Location>,
     ) -> BoxFuture<'a, miette::Result<()>> {
         async move {
+            let enable_breakpoints = source.breakpoints_enabled().await?;
             let nodes: HashMap<Location, NodeState> = {
                 let source_run = self
                     .global_state
@@ -528,6 +650,8 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                         let mut state = state.clone();
                         if truncate.contains(loc) {
                             state.scheduled_time = None;
+                            state.paused_time = None;
+                            state.unpaused_time = None;
                             state.queued_time = None;
                             state.running_time = None;
                             state.complete_time = None;
@@ -544,12 +668,13 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                     .collect()
             };
 
-            self.global_state
+            let mut destination = self
+                .global_state
                 .runs
                 .entry((self.run_id, self.attempt))
-                .or_default()
-                .nodes
-                .extend(nodes);
+                .or_default();
+            destination.enable_breakpoints = enable_breakpoints;
+            destination.nodes.extend(nodes);
 
             Ok(())
         }

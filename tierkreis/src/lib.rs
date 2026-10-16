@@ -39,6 +39,7 @@ mod tierkreis {
     use tracing::warn;
     use uuid::Uuid;
 
+    use crate::runtime::RunOptions;
     use crate::{
         config::CONFIG_FILE_NAME,
         graph::{LegacyWorkflowGraph, WorkflowGraph},
@@ -195,6 +196,15 @@ mod tierkreis {
         Running,
         Queued,
         Scheduled,
+        Paused,
+        Unpaused,
+    }
+
+    #[pyclass(name = "WaitUntil")]
+    enum PyWaitUntil {
+        Breakpoint,
+        Blocked,
+        Complete,
     }
 
     impl From<crate::state::interface::NodeState> for PyNodeState {
@@ -209,8 +219,12 @@ mod tierkreis {
                 "Running".to_string()
             } else if node_state.queued_time.is_some() {
                 "Queued".to_string()
+            } else if node_state.paused_time.is_some() && node_state.unpaused_time.is_none() {
+                "Paused".to_string()
             } else if node_state.scheduled_time.is_some() {
                 "Scheduled".to_string()
+            } else if node_state.unpaused_time.is_some() {
+                "Unpaused".to_string()
             } else {
                 "Unknown".to_string()
             };
@@ -317,14 +331,24 @@ mod tierkreis {
             }
         }
 
+        #[pyo3(signature = (workflow_id, inputs, *, enable_breakpoints=false))]
         async fn start_new_run(
             &self,
             workflow_id: Uuid,
             inputs: PyWorkflowInputs,
+            enable_breakpoints: bool,
         ) -> PyResult<Uuid> {
             let inner = self.inner.clone();
             let res = get_runtime()
-                .spawn(async move { inner.start_new_run(workflow_id, inputs.0).await })
+                .spawn(async move {
+                    inner
+                        .start_new_run(
+                            workflow_id,
+                            inputs.0,
+                            Some(RunOptions { enable_breakpoints }),
+                        )
+                        .await
+                })
                 .await
                 .map_err(|err| {
                     Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
@@ -336,24 +360,43 @@ mod tierkreis {
             }
         }
 
-        #[pyo3(signature = (run_id, attempt=0, /, timeout=604_800))]
-        async fn wait_for(&self, run_id: Uuid, attempt: u32, timeout: u64) -> PyResult<()> {
+        #[pyo3(signature = (run_id, attempt=0, /, *, condition=None, timeout=604_800))]
+        async fn wait_for(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            condition: Option<Py<PyAny>>,
+            timeout: u64,
+        ) -> PyResult<Vec<String>> {
+            let until = Python::attach(|py| -> PyResult<_> {
+                let Some(condition) = condition else {
+                    return Ok(crate::runtime::WaitUntil::Complete);
+                };
+                let condition = condition.bind(py).extract::<PyRef<'_, PyWaitUntil>>()?;
+                Ok(match &*condition {
+                    PyWaitUntil::Breakpoint => crate::runtime::WaitUntil::Breakpoint,
+                    PyWaitUntil::Blocked => crate::runtime::WaitUntil::Blocked,
+                    PyWaitUntil::Complete => crate::runtime::WaitUntil::Complete,
+                })
+            })?;
             let inner = self.inner.clone();
-            get_runtime()
+            let locations = get_runtime()
                 .spawn(async move {
-                    let fut = inner.wait_for(run_id, attempt);
-                    tokio::time::timeout(Duration::from_secs(timeout), fut)
-                        .await
-                        .into_diagnostic()??;
-                    Ok(())
+                    tokio::time::timeout(
+                        Duration::from_secs(timeout),
+                        inner.wait_for(run_id, attempt, until),
+                    )
+                    .await
+                    .into_diagnostic()?
                 })
                 .await
                 .map_err(|err| {
                     Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
-                })?
-                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+                })?;
 
-            Ok(())
+            locations
+                .map(|locations| locations.into_iter().map(|loc| loc.to_string()).collect())
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))
         }
 
         #[pyo3(signature = (run_id, attempt=0, /))]
@@ -476,6 +519,46 @@ mod tierkreis {
                     .collect()),
                 Err(err) => Python::attach(|py| Err(convert_err(py, err))),
             }
+        }
+
+        #[pyo3(signature = (run_id, attempt=0))]
+        async fn paused_nodes(&self, run_id: Uuid, attempt: u32) -> PyResult<Vec<String>> {
+            let inner = self.inner.clone();
+            get_runtime()
+                .spawn(async move { inner.paused_nodes(run_id, attempt).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?
+                .map(|locations| locations.into_iter().map(|loc| loc.to_string()).collect())
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))
+        }
+
+        #[pyo3(signature = (run_id, locations=None, attempt=0))]
+        async fn resume_breakpoints(
+            &self,
+            run_id: Uuid,
+            locations: Option<Vec<String>>,
+            attempt: u32,
+        ) -> PyResult<Vec<String>> {
+            let locations = locations
+                .map(|locations| {
+                    locations
+                        .iter()
+                        .map(|loc| Location::new(loc))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+            let inner = self.inner.clone();
+            get_runtime()
+                .spawn(async move { inner.resume_breakpoints(run_id, attempt, locations).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?
+                .map(|locations| locations.into_iter().map(|loc| loc.to_string()).collect())
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))
         }
 
         #[pyo3(signature = (run_id, locations=None, attempt=0))]

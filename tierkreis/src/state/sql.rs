@@ -36,14 +36,15 @@ use crate::{
     event::{NodeEvent, WorkflowRunEvent},
     graph::WorkflowGraph,
     state::{
-        interface::{RuntimeWatchState, WorkflowRunStateSummary},
+        interface::{RunOptions, RuntimeWatchState, WorkflowRunStateSummary},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
             add_run_attempt_metadata, copy_node_states, get_workflow_run_summary, insert_workflow,
             insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs,
-            list_active_runs, list_workflow_run_summaries, max_attempt, read_node_state,
-            read_node_states, read_node_states_by_name, read_run_attempt_metadata, read_workflow,
-            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
+            list_active_runs, list_workflow_run_summaries, max_attempt, pause_at_breakpoint,
+            read_breakpoints_enabled, read_node_state, read_node_states, read_node_states_by_name,
+            read_paused_nodes, read_run_attempt_metadata, read_workflow, read_workflow_run,
+            read_workflow_run_inputs, resume_breakpoints, update_node_state, update_workflow_run,
         },
     },
 };
@@ -317,17 +318,19 @@ impl RuntimeState for SqliteRuntimeState {
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, crate::asset_storage::AssetSpec>,
+        options: Option<RunOptions>,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         async move {
             let mut conn = self.get_conn().await?;
             let run_id = Uuid::now_v7();
             let run_id_str = run_id.to_string();
+            let enable_breakpoints = options.unwrap_or_default().enable_breakpoints;
             conn.transaction(async |conn| {
                 let run = NewWorkflowRun {
                     id: &run_id_str,
                     workflow_id: &workflow_id.to_string(),
                 };
-                insert_workflow_run(conn, &run).await?;
+                insert_workflow_run(conn, &run, enable_breakpoints).await?;
 
                 let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
                     workflow_run_id: &run_id_str,
@@ -401,6 +404,7 @@ impl RuntimeState for SqliteRuntimeState {
     fn new_attempt(
         &self,
         run_id: Uuid,
+        options: Option<RunOptions>,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         async move {
             let mut conn = self.get_conn().await?;
@@ -424,7 +428,14 @@ impl RuntimeState for SqliteRuntimeState {
                 ));
             }
 
-            insert_workflow_run_attempt(&mut conn, &run_id_str, next_attempt_i32).await?;
+            let enable_breakpoints = options.unwrap_or_default().enable_breakpoints;
+            insert_workflow_run_attempt(
+                &mut conn,
+                &run_id_str,
+                next_attempt_i32,
+                enable_breakpoints,
+            )
+            .await?;
 
             let run = read_workflow_run(&mut conn, run_id, next_attempt).await?;
             let workflow_id = run.0.workflow_id.parse().into_diagnostic()?;
@@ -503,6 +514,19 @@ impl WorkflowRunState for SqliteWorkflowRunState {
             let mut workflow_update = UpsertWorkflowRun::default();
 
             match event {
+                WorkflowRunEvent::Paused { ref locations } => {
+                    let updates = self.update_sender.subscribe();
+                    let paused = self.paused_nodes().await?;
+                    if !paused.is_empty() && &paused == locations {
+                        self.update_sender.send_if_modified(|watch| {
+                            if updates.has_changed().unwrap_or(true) {
+                                return false;
+                            }
+                            watch.active_runs.remove(&(self.run_id, self.attempt))
+                        });
+                    }
+                    return Ok(());
+                }
                 WorkflowRunEvent::Started {} => {
                     workflow_update.started_time = Some(now);
                 }
@@ -525,7 +549,10 @@ impl WorkflowRunState for SqliteWorkflowRunState {
                 }
             }
 
-            if !matches!(event, WorkflowRunEvent::NodeEvents(_)) {
+            if !matches!(
+                event,
+                WorkflowRunEvent::NodeEvents(_) | WorkflowRunEvent::Paused { .. }
+            ) {
                 let attempt = self.attempt.try_into().into_diagnostic()?;
                 let mut conn = self.get_conn().await?;
                 update_workflow_run(
@@ -595,6 +622,73 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         async move {
             let mut conn = self.get_conn().await?;
             read_run_attempt_metadata(&mut conn, self.run_id, self.attempt).await
+        }
+        .boxed()
+    }
+
+    fn breakpoints_enabled(&self) -> BoxFuture<'_, miette::Result<bool>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_breakpoints_enabled(
+                &mut conn,
+                &self.run_id.to_string(),
+                i32::try_from(self.attempt).into_diagnostic()?,
+            )
+            .await
+            .into_diagnostic()
+        }
+        .boxed()
+    }
+
+    fn pause_at_breakpoint<'a>(
+        &'a self,
+        location: &'a Location,
+    ) -> BoxFuture<'a, miette::Result<bool>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let attempt = i32::try_from(self.attempt).into_diagnostic()?;
+            let run_id = self.run_id.to_string();
+            let (paused, changed) =
+                pause_at_breakpoint(&mut conn, run_id, attempt, location.clone())
+                    .await
+                    .into_diagnostic()?;
+            if changed {
+                self.update_sender.send_modify(|_| {});
+            }
+            Ok(paused)
+        }
+        .boxed()
+    }
+
+    fn paused_nodes(&self) -> BoxFuture<'_, miette::Result<Vec<Location>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_paused_nodes(
+                &mut conn,
+                &self.run_id.to_string(),
+                i32::try_from(self.attempt).into_diagnostic()?,
+            )
+            .await
+            .into_diagnostic()
+        }
+        .boxed()
+    }
+
+    fn resume_breakpoints(
+        &self,
+        locations: Option<Vec<Location>>,
+    ) -> BoxFuture<'_, miette::Result<Vec<Location>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let run_id = self.run_id.to_string();
+            let attempt = i32::try_from(self.attempt).into_diagnostic()?;
+            let released = resume_breakpoints(&mut conn, run_id, attempt, locations).await?;
+            if !released.is_empty() {
+                self.update_sender.send_modify(|watch| {
+                    watch.active_runs.insert((self.run_id, self.attempt));
+                });
+            }
+            Ok(released)
         }
         .boxed()
     }
@@ -768,7 +862,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -789,7 +883,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         workflow_run_state
@@ -823,7 +917,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         workflow_run_state
@@ -863,7 +957,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         let mut outputs = HashMap::new();
@@ -899,7 +993,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         workflow_run_state
@@ -964,7 +1058,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         let metadata = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);
@@ -985,7 +1079,7 @@ mod tests {
             .save_workflow(None, WorkflowGraph::new([]))
             .await?;
         let workflow_run_state = runtime_state
-            .new_workflow_run_state(workflow_id, HashMap::new())
+            .new_workflow_run_state(workflow_id, HashMap::new(), None)
             .await?;
 
         let mut metadata1 = HashMap::from_iter([("foo".to_string(), "bar".to_string())]);

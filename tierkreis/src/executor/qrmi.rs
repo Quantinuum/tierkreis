@@ -952,7 +952,7 @@ mod tests {
         .into_diagnostic()?;
 
         assert_eq!(config.poll_interval_secs, 1);
-        assert!(config.environment.is_empty());
+        assert_eq!(config.environment, HashMap::new());
         assert_eq!(
             config.resource_type,
             QrmiResourceType::IBMQuantumComputeService

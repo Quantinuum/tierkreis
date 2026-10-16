@@ -136,7 +136,7 @@ pub async fn serve_graph(graph_json: &str, port: u16) -> miette::Result<()> {
         )
         .await?;
     let _run_state = runtime_state
-        .new_workflow_run_state(workflow_id, std::collections::HashMap::new())
+        .new_workflow_run_state(workflow_id, std::collections::HashMap::new(), None)
         .await?;
     let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
     server(

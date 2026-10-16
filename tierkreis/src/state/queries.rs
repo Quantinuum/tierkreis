@@ -112,6 +112,7 @@ pub async fn read_workflow_run(
 pub async fn insert_workflow_run(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run: &NewWorkflowRun<'_>,
+    enable_breakpoints: bool,
 ) -> diesel::result::QueryResult<WorkflowRun> {
     use crate::state::schema::workflow_run_attempts::dsl as wra;
     use crate::state::schema::workflow_runs::dsl as wr;
@@ -131,6 +132,7 @@ pub async fn insert_workflow_run(
         .values((
             wra::workflow_run_id.eq(&workflow_run.id),
             wra::started_time.eq(Some(now)),
+            wra::enable_breakpoints.eq(enable_breakpoints),
         ))
         .execute(conn)
         .await?;
@@ -413,6 +415,8 @@ pub async fn read_node_state(
         Ok(crate::state::interface::NodeState {
             name: db_node.name.clone(),
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+            paused_time: db_node.paused_time.map(utc_timestamp),
+            unpaused_time: db_node.unpaused_time.map(utc_timestamp),
             queued_time: db_node.queued_time.map(utc_timestamp),
             running_time: db_node.running_time.map(utc_timestamp),
             complete_time: db_node.complete_time.map(utc_timestamp),
@@ -495,6 +499,8 @@ pub async fn read_node_states_by_name(
             crate::state::interface::NodeState {
                 name: db_node.name.clone(),
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                paused_time: db_node.paused_time.map(utc_timestamp),
+                unpaused_time: db_node.unpaused_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),
                 running_time: db_node.running_time.map(utc_timestamp),
                 complete_time: db_node.complete_time.map(utc_timestamp),
@@ -578,6 +584,8 @@ pub async fn read_node_states(
             crate::state::interface::NodeState {
                 name: db_node.name.clone(),
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
+                paused_time: db_node.paused_time.map(utc_timestamp),
+                unpaused_time: db_node.unpaused_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),
                 running_time: db_node.running_time.map(utc_timestamp),
                 complete_time: db_node.complete_time.map(utc_timestamp),
@@ -1017,6 +1025,7 @@ pub async fn insert_workflow_run_attempt(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     attempt: i32,
+    enable_breakpoints: bool,
 ) -> miette::Result<()> {
     use crate::state::schema::workflow_run_attempts::dsl as wra;
 
@@ -1025,6 +1034,7 @@ pub async fn insert_workflow_run_attempt(
         .values((
             wra::workflow_run_id.eq(run_id),
             wra::attempt.eq(attempt),
+            wra::enable_breakpoints.eq(enable_breakpoints),
             wra::started_time.eq(Some(now)),
         ))
         .execute(conn)
@@ -1075,6 +1085,8 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
                     attempt: dest_attempt,
                     node_location: row.node_location.clone(),
                     scheduled_time: row.scheduled_time,
+                    paused_time: row.paused_time,
+                    unpaused_time: row.unpaused_time,
                     queued_time: row.queued_time,
                     running_time: row.running_time,
                     complete_time: None,
@@ -1095,6 +1107,8 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
                     attempt: dest_attempt,
                     node_location: row.node_location.clone(),
                     scheduled_time: row.scheduled_time,
+                    paused_time: row.paused_time,
+                    unpaused_time: row.unpaused_time,
                     queued_time: row.queued_time,
                     running_time: row.running_time,
                     complete_time: row.complete_time,
@@ -1140,4 +1154,174 @@ pub fn copy_node_states<'a, S: ::std::hash::BuildHasher + std::marker::Sync>(
         res.into_diagnostic()
             .wrap_err("Failed to copy node states to new attempt")
     })
+}
+
+/// List paused nodes for a given run and attempt.
+///
+/// # Errors
+///
+/// Returns an error if the node-state query fails.
+pub async fn read_paused_nodes(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+) -> diesel::QueryResult<Vec<Location>> {
+    use crate::state::schema::node_states::dsl as ns;
+    let locations: Vec<Location> = ns::node_states
+        .filter(ns::run_id.eq(run_id))
+        .filter(ns::attempt.eq(attempt))
+        .filter(ns::paused_time.is_not_null())
+        .filter(ns::unpaused_time.is_null())
+        .select(ns::node_location)
+        .load(conn)
+        .await?;
+    // could sort for convenience
+    //locations.sort_by_key(ToString::to_string);
+    Ok(locations)
+}
+
+/// Read whether an attempt honors graph breakpoints.
+///
+/// # Errors
+///
+/// Returns an error if the attempt is missing or cannot be read.
+pub async fn read_breakpoints_enabled(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: &str,
+    attempt: i32,
+) -> diesel::QueryResult<bool> {
+    use crate::state::schema::workflow_run_attempts::dsl as attempts;
+    attempts::workflow_run_attempts
+        .filter(attempts::workflow_run_id.eq(run_id))
+        .filter(attempts::attempt.eq(attempt))
+        .select(attempts::enable_breakpoints)
+        .first(conn)
+        .await
+}
+
+///  Check a breakpoint entry, returning (paused, changed).
+///
+/// # Errors
+///
+/// Returns an error if the transaction or a node-state query fails.
+pub fn pause_at_breakpoint(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: String,
+    attempt: i32,
+    location: Location,
+) -> impl Future<Output = diesel::QueryResult<(bool, bool)>> + Send + '_ {
+    use crate::state::schema::node_states::dsl as nodes;
+    conn.transaction(async move |conn| {
+        let node: Option<NodeState> = nodes::node_states
+            .filter(nodes::run_id.eq(&run_id))
+            .filter(nodes::attempt.eq(attempt))
+            .filter(nodes::node_location.eq(location.clone()))
+            .first(conn)
+            .await
+            .optional()?;
+        if let Some(node) = node {
+            if node.unpaused_time.is_some() {
+                return Ok((false, false));
+            }
+            let changed = node.paused_time.is_none();
+            if changed {
+                diesel::update(
+                    nodes::node_states
+                        .filter(nodes::run_id.eq(&run_id))
+                        .filter(nodes::attempt.eq(attempt))
+                        .filter(nodes::node_location.eq(location.clone())),
+                )
+                .set(nodes::paused_time.eq(Some(Utc::now().naive_utc())))
+                .execute(conn)
+                .await?;
+            }
+            return Ok((true, changed));
+        }
+        // If the node did not exist, insert a new paused state.
+        diesel::insert_into(nodes::node_states)
+            .values(crate::state::models::UpsertNodeState {
+                run_id,
+                attempt,
+                node_location: location,
+                paused_time: Some(Utc::now().naive_utc()),
+                ..Default::default()
+            })
+            .execute(conn)
+            .await?;
+
+        Ok((true, true))
+    })
+}
+
+/// Atomically validate and release selected occurrences, or all current pauses.
+///
+/// # Errors
+///
+/// Returns an error for terminal attempts, invalid selections, or failed queries.
+pub fn resume_breakpoints(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    run_id: String,
+    attempt: i32,
+    locations: Option<Vec<Location>>,
+) -> impl Future<Output = miette::Result<Vec<Location>>> + Send + '_ {
+    use crate::state::schema::{node_states::dsl as nodes, workflow_run_attempts::dsl as attempts};
+    conn.transaction(async move |conn| {
+        let run: WorkflowRunAttempt = attempts::workflow_run_attempts
+            .filter(attempts::workflow_run_id.eq(&run_id))
+            .filter(attempts::attempt.eq(attempt))
+            .first(conn)
+            .await?;
+        if run.complete_time.is_some() || run.error_time.is_some() || run.cancelled_time.is_some() {
+            return Ok((
+                Vec::new(),
+                Some("Cannot resume a terminal workflow attempt".to_string()),
+            ));
+        }
+        let rows: Vec<NodeState> = nodes::node_states
+            .filter(nodes::run_id.eq(&run_id))
+            .filter(nodes::attempt.eq(attempt))
+            .load(conn)
+            .await?;
+        let locations = locations.unwrap_or_else(|| {
+            rows.iter()
+                .filter(|node| node.paused_time.is_some() && node.unpaused_time.is_none())
+                .map(|node| node.node_location.clone())
+                .collect()
+        });
+        for loc in &locations {
+            if !rows.iter().any(|node| {
+                &node.node_location == loc
+                    && node.paused_time.is_some()
+                    && node.complete_time.is_none()
+                    && node.error_time.is_none()
+                    && node.cancelled_time.is_none()
+            }) {
+                return Ok((Vec::new(), Some(format!("Node {loc} is not resumable"))));
+            }
+        }
+        let unpaused_time = Utc::now().naive_utc();
+        let released: Vec<Location> = diesel::update(
+            nodes::node_states
+                .filter(nodes::run_id.eq(&run_id))
+                .filter(nodes::attempt.eq(attempt))
+                .filter(nodes::node_location.eq_any(&locations))
+                .filter(nodes::unpaused_time.is_null()),
+        )
+        .set(nodes::unpaused_time.eq(Some(unpaused_time)))
+        .returning(nodes::node_location)
+        .get_results(conn)
+        .await?;
+        Ok::<_, diesel::result::Error>((released, None))
+    })
+    .map(
+        |result: Result<(Vec<Location>, Option<String>), diesel::result::Error>| {
+            let (mut released, invalid) = result.into_diagnostic()?;
+            if let Some(message) = invalid {
+                // TODO: is there a better way of handling invalid nodes than returning an error here?
+                return Err(miette!("{message}"));
+            }
+            released.sort_by_key(ToString::to_string);
+            Ok(released)
+        },
+    )
 }
