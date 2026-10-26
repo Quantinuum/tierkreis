@@ -50,12 +50,12 @@ url = "2.5.8"
 utoipa = { version = "5.4.0", features = ["axum_extras", "debug", "uuid", "chrono"] }
 utoipa-axum = { version = "0.2.0", features = ["debug"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
-uuid = { version = "1.24.0", features = ["serde", "v7"] }
+uuid = { version = "~1.23.0", features = ["serde", "v7"] }
 which = { version = "8.0.2", features = ["regex"] }
 reqwest = { version = "0.13.4", features = ["cookies", "gzip", "json", "query"] }
 serde_with = { version = "3.21.0", features = ["base64"] }
-hugr = "0.29.1"
-hugr-core = "0.29.1"
+hugr = "^0.30.0"
+hugr-core = "^0.30.0"
 reqwest-websocket = { version = "0.6.0", features = ["json"] }
 rand = "0.10.2"
 toml = "1.1.4"
@@ -63,6 +63,8 @@ toml = "1.1.4"
 # changes downstream, so we try to be as permissive as possible."
 petgraph = { version = ">= 0.8.3, < 0.9", default-features = false }
 itertools = "0.15.0"
+# Patch in branch acl/remove_cfg_cycles of tket, https://github.com/Quantinuum/tket2/pull/2113
+tket = { git = "https://github.com/quantinuum/tket2", "rev" = "b2bbd9d3c3e48e4f894b14287b7c1058a1cb5a03" }
 
 [dev-dependencies]
 axum-test = { version = "21.0.0", features = ["ws"] }
