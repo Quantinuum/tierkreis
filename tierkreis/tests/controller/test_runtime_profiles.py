@@ -132,6 +132,7 @@ profiles = ["slurm", "pbs"]
 ## Make sure to start the correct cluster and then select the
 ## appropriate profile name.
 @pytest.mark.skip(reason="HPC setup needed")
+@pytest.mark.timeout(660)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("profile", profiles)
 async def test_profile_routes_task_to_hpc_docker_worker(
