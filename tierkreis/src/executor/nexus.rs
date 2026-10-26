@@ -16,7 +16,7 @@ use futures::{
     future::{self, BoxFuture},
     stream::{BoxStream, FuturesUnordered},
 };
-use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
+use hugr::package::Package;
 use miette::{Context, IntoDiagnostic, miette};
 use tokio::task::AbortHandle;
 use tracing::{Instrument, instrument, warn};
@@ -490,9 +490,7 @@ impl NexusExecutor {
         hugr_name: &str,
         hugr_package: &[u8],
     ) -> miette::Result<Uuid> {
-        // TODO: Requiring Extensions for the enveleope read here might be problematic.
-        let (_, package) = read_envelope(Cursor::new(hugr_package), &ExtensionRegistry::new([]))
-            .into_diagnostic()?;
+        let package = Package::load(Cursor::new(hugr_package), None).into_diagnostic()?;
 
         let hugr_data = self
             .client

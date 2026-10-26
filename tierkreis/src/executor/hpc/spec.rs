@@ -158,7 +158,7 @@ impl ScriptTemplates {
         self.environment
             .get_template(name)
             .into_diagnostic()?
-            .render(minijinja::context! { job => spec })
+            .render(minijinja::context! { job => minijinja::value::Serde(spec) })
             .into_diagnostic()
     }
 }

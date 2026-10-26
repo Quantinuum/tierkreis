@@ -3,15 +3,12 @@ The runtime module defines the entrypoint to running Workflows.
 */
 use std::{
     collections::{HashMap, HashSet},
-    env::temp_dir,
     hash::BuildHasher,
-    path::PathBuf,
     sync::Arc,
 };
 
 use futures::{Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
-use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use tracing::warn;
 use uuid::Uuid;
@@ -21,20 +18,16 @@ use crate::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
         save_assets,
     },
-    config::{TKR_ENV_VAR, resource_profile_search_paths, tierkreis_home_dir},
     event::{NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
         Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, PbsWrapper, PjsubWrapper,
-        SlurmWrapper, SubprocessExecutor,
-        hpc::spec::{HPCResourceSpec, ScriptTemplates},
-        nexus::{NexusClientConfig, NexusExecutor},
-        qrmi::{QrmiExecutor, QrmiExecutorConfig},
+        SlurmWrapper, SubprocessExecutor, hpc::spec::ScriptTemplates, nexus::NexusExecutor,
+        qrmi::QrmiExecutor,
     },
     graph::WorkflowGraph,
     location::Location,
-    monitoring::{LoggingConfig, flush_logs, init_logging_and_tracing},
+    monitoring::{flush_logs, init_logging_and_tracing},
     orchestrator::{OrchestrationContext, Orchestrator},
-    resource_profiles::ResourceProfiles,
     state::{
         InMemoryRuntimeState, RuntimeState, RuntimeWatchState, SqliteRuntimeState,
         interface::{NodeState, WorkflowRunStateSummary},
@@ -42,38 +35,11 @@ use crate::{
     workflow_state_query::find_subgraph_input,
 };
 
-/// `RuntimeConfig` defines the configuration for the runtime
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RuntimeConfig {
-    asset_storage: HashMap<String, AssetStorageConfig>,
-    executors: HashMap<String, ExecutorConfig>,
-    runtime_state: RuntimeStateConfig,
+mod config;
 
-    default_storage_name: String,
-    default_executor_name: String,
-    logging_config: Option<LoggingConfig>,
-    #[serde(default)]
-    resources: ResourceSettings,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-struct ResourceSettings {
-    environment: Option<String>,
-    #[serde(default)]
-    paths: Vec<PathBuf>,
-}
-
-impl ResourceSettings {
-    fn selected_profile(&self) -> Option<String> {
-        self.environment
-            .clone()
-            .or_else(|| std::env::var(TKR_ENV_VAR).ok())
-    }
-
-    fn load_profile(&self, profile: &str) -> miette::Result<ResourceProfiles> {
-        ResourceProfiles::load(&resource_profile_search_paths(&self.paths), profile)
-    }
-}
+use config::ResourceSettings;
+pub use config::RuntimeConfig;
+use config::{AssetStorageConfig, ExecutorConfig, HpcSchedulerConfig, RuntimeStateConfig};
 
 const RUN_PROFILE_METADATA_KEY: &str = "tierkreis.profile";
 
@@ -89,159 +55,6 @@ impl RuntimeConfig {
             )),
         }
     }
-
-    /// Select a deployment profile for this runtime configuration.
-    #[must_use]
-    pub fn with_profile(mut self, profile: String) -> Self {
-        self.resources.environment = Some(profile);
-        self
-    }
-
-    /// Override the configured logging level.
-    pub fn set_log_level(&mut self, log_level: impl Into<String>) {
-        let mut logging_config = self.logging_config.take().unwrap_or_default();
-        logging_config.set_log_level(log_level);
-        self.logging_config = Some(logging_config);
-    }
-
-    /// Construct a pre-defined config that keeps state in memory and uses temporary
-    /// files to mediate with worker subprocesses.
-    #[must_use]
-    pub fn memory() -> Self {
-        let asset_dir = temp_dir().join("tkr_temp_assets");
-        RuntimeConfig {
-            asset_storage: [
-                ("memory".to_string(), AssetStorageConfig::Memory {}),
-                (
-                    "tempfile".to_string(),
-                    AssetStorageConfig::File { asset_dir },
-                ),
-            ]
-            .into_iter()
-            .collect(),
-            executors: [
-                (
-                    "memory".to_string(),
-                    ExecutorConfig::Memory {
-                        output_storage_name: "memory".to_string(),
-                    },
-                ),
-                (
-                    "subprocess".to_string(),
-                    ExecutorConfig::Subprocess {
-                        subprocess_storage_name: "tempfile".to_string(),
-                        output_storage_name: "memory".to_string(),
-                    },
-                ),
-            ]
-            .into_iter()
-            .collect(),
-            runtime_state: RuntimeStateConfig::Memory {},
-            default_storage_name: "memory".to_string(),
-            default_executor_name: "memory".to_string(),
-            logging_config: Some(LoggingConfig::default()),
-            resources: ResourceSettings::default(),
-        }
-    }
-
-    /// Construct a pre-defined config that keeps state in an sqlite database
-    /// in memory and can only run built-in tasks that also run in memory.
-    #[must_use]
-    pub fn sqlite_memory() -> Self {
-        let mut config = Self::memory();
-        config.runtime_state = RuntimeStateConfig::Sqlite {
-            memory: true,
-            url: None,
-        };
-        config
-    }
-}
-
-impl Default for RuntimeConfig {
-    fn default() -> Self {
-        let asset_dir = tierkreis_home_dir().join("assets");
-        RuntimeConfig {
-            asset_storage: [
-                ("memory".to_string(), AssetStorageConfig::Memory {}),
-                ("file".to_string(), AssetStorageConfig::File { asset_dir }),
-            ]
-            .into_iter()
-            .collect(),
-            executors: [
-                (
-                    "memory".to_string(),
-                    ExecutorConfig::Memory {
-                        output_storage_name: "memory".to_string(),
-                    },
-                ),
-                (
-                    "subprocess".to_string(),
-                    ExecutorConfig::Subprocess {
-                        subprocess_storage_name: "file".to_string(),
-                        output_storage_name: "file".to_string(),
-                    },
-                ),
-            ]
-            .into_iter()
-            .collect(),
-            runtime_state: RuntimeStateConfig::Memory {},
-            default_storage_name: "file".to_string(),
-            default_executor_name: "subprocess".to_string(),
-            logging_config: Some(LoggingConfig::default()),
-            resources: ResourceSettings::default(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum AssetStorageConfig {
-    Memory {},
-    File { asset_dir: PathBuf },
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum ExecutorConfig {
-    Memory {
-        output_storage_name: String,
-    },
-    Subprocess {
-        subprocess_storage_name: String,
-        output_storage_name: String,
-    },
-    Nexus {
-        client_config: NexusClientConfig,
-        output_storage_name: String,
-    },
-    Qrmi {
-        config: QrmiExecutorConfig,
-        output_storage_name: String,
-    },
-    Hpc {
-        hpc_storage_name: String,
-        output_storage_name: String,
-        scheduler: HpcSchedulerConfig,
-        poll_interval_secs: Option<u64>,
-        resources: HPCResourceSpec,
-        #[serde(default)]
-        worker_commands: HashMap<String, Vec<String>>,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum HpcSchedulerConfig {
-    Pbs,
-    Pjsub,
-    Slurm,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum RuntimeStateConfig {
-    Memory {},
-    Sqlite { memory: bool, url: Option<String> },
 }
 
 /// A user facing error that occurred on a specific Node at a [`Location`].
@@ -1020,7 +833,7 @@ mod tests {
     use super::*;
     use crate::{
         builder::{constant, input, link, output, task, workflow},
-        executor::nexus::client::TLSMode,
+        executor::nexus::{NexusClientConfig, client::TLSMode},
     };
     use futures::future::{AbortHandle, Abortable};
     use tempfile::NamedTempFile;
