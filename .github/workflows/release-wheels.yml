@@ -16,6 +16,7 @@ jobs:
       - name: Set up dependencies
         uses: ./.github/actions/setup_deps
         with:
+          include_uv: "no"
           include_node: "yes"
       - name: Build frontend
         run: just prod
