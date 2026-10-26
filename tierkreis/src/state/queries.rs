@@ -642,6 +642,7 @@ pub async fn insert_workflow_run_inputs(
     for workflow_input in workflow_inputs {
         diesel::insert_into(wri::workflow_run_inputs)
             .values(workflow_input)
+            .on_conflict_do_nothing() // Assume this is from a duplicate event
             .execute(conn)
             .await?;
     }
