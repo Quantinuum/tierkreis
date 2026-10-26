@@ -8,8 +8,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Auto-correct typos from git history
-- Add Changelog generation from git history
+- Update QRMI and disable pyO3 feature by @johnchildren in [#728](https://github.com/Quantinuum/tierkreis/pull/728)
+- Bump the uv group across 4 directories with 1 update by @dependabot[bot] in [#732](https://github.com/Quantinuum/tierkreis/pull/732)
+- Implement resume by @johnchildren in [#723](https://github.com/Quantinuum/tierkreis/pull/723)
+- Add pausing to the Orchestrator by @johnchildren in [#722](https://github.com/Quantinuum/tierkreis/pull/722)
+- Add node and workflow pause states by @johnchildren in [#721](https://github.com/Quantinuum/tierkreis/pull/721)
+- Add breakpoint metadata to rust graphs by @johnchildren in [#718](https://github.com/Quantinuum/tierkreis/pull/718)
+- Add get_raw_outputs to support bytes outputs by @johnchildren in [#716](https://github.com/Quantinuum/tierkreis/pull/716)
+- Update docs to the new runtime API by @johnchildren in [#714](https://github.com/Quantinuum/tierkreis/pull/714)
+- Fix argument handling and reduce cloning by @johnchildren in [#713](https://github.com/Quantinuum/tierkreis/pull/713)
+- Lazily load subgraph inputs by @johnchildren in [#700](https://github.com/Quantinuum/tierkreis/pull/700)
+- Bump vite from 7.3.5 to 7.3.7 in /tierkreis/frontend in the npm_and_yarn group across 1 directory by @dependabot[bot] in [#711](https://github.com/Quantinuum/tierkreis/pull/711)
+- Context orchestration by @philipp-seitz in [#709](https://github.com/Quantinuum/tierkreis/pull/709)
+- Swap cli code gen to new runtime by @philipp-seitz in [#710](https://github.com/Quantinuum/tierkreis/pull/710)
+- Profile loading by @philipp-seitz in [#702](https://github.com/Quantinuum/tierkreis/pull/702)
+- Update maturin requirement from <2.0,>=1.0 to >=1.15.0,<2.0 by @dependabot[bot] in [#706](https://github.com/Quantinuum/tierkreis/pull/706)
+- Add QRMI support via an executor by @johnchildren in [#697](https://github.com/Quantinuum/tierkreis/pull/697)
+- Execution context by @philipp-seitz in [#701](https://github.com/Quantinuum/tierkreis/pull/701)
+- Remove more allocations by @johnchildren in [#696](https://github.com/Quantinuum/tierkreis/pull/696)
+- Upgrade Guppy version by @philipp-seitz in [#695](https://github.com/Quantinuum/tierkreis/pull/695)
+- Remove lock on AssetStorageRegistry by @johnchildren in [#689](https://github.com/Quantinuum/tierkreis/pull/689)
+- Reduce string clones in HPC wrapper by @johnchildren in [#694](https://github.com/Quantinuum/tierkreis/pull/694)
+- Add loop traces by @johnchildren in [#684](https://github.com/Quantinuum/tierkreis/pull/684)
+- Fix vulnerabilities. by @aidanCQ in [#691](https://github.com/Quantinuum/tierkreis/pull/691)
+- Move frontend into rust by @philipp-seitz in [#679](https://github.com/Quantinuum/tierkreis/pull/679)
+- Update cli by @philipp-seitz in [#667](https://github.com/Quantinuum/tierkreis/pull/667)
+- Refactor restarts by @philipp-seitz in [#682](https://github.com/Quantinuum/tierkreis/pull/682)
+- Refactor NodeEvent -> NodeEvents by @johnchildren in [#683](https://github.com/Quantinuum/tierkreis/pull/683)
+- Migrate restarts by @philipp-seitz in [#670](https://github.com/Quantinuum/tierkreis/pull/670)
+- Port hpc executors by @philipp-seitz in [#666](https://github.com/Quantinuum/tierkreis/pull/666)
+- Python runtime interface by @johnchildren in [#651](https://github.com/Quantinuum/tierkreis/pull/651)
+- Remove use of reserved port in tests by @johnchildren in [#658](https://github.com/Quantinuum/tierkreis/pull/658)
+- Wrap test workers for tests by @johnchildren in [#657](https://github.com/Quantinuum/tierkreis/pull/657)
+- Expand workflow state methods by @johnchildren in [#655](https://github.com/Quantinuum/tierkreis/pull/655)
+- Change-up monitoring setup code by @johnchildren in [#653](https://github.com/Quantinuum/tierkreis/pull/653)
+- New hpc executors by @philipp-seitz in [#637](https://github.com/Quantinuum/tierkreis/pull/637)
+- Upgrade dependencies by @johnchildren in [#640](https://github.com/Quantinuum/tierkreis/pull/640)
+- Add workflow names to RuntimeState by @johnchildren in [#636](https://github.com/Quantinuum/tierkreis/pull/636)
+- Config files by @philipp-seitz in [#631](https://github.com/Quantinuum/tierkreis/pull/631)
+- Simplify and fix race condition in tests by @johnchildren in [#625](https://github.com/Quantinuum/tierkreis/pull/625)
+- Add Changelog generation from git history by @johnchildren in [#615](https://github.com/Quantinuum/tierkreis/pull/615)
+- Refactor AssetStorage for better AssetKind by @johnchildren in [#628](https://github.com/Quantinuum/tierkreis/pull/628)
+- Use assert_matches in tests by @johnchildren in [#608](https://github.com/Quantinuum/tierkreis/pull/608)
+- Delay initial websocket ping by @johnchildren in [#606](https://github.com/Quantinuum/tierkreis/pull/606)
+- Add missing builtin functions by @johnchildren in [#616](https://github.com/Quantinuum/tierkreis/pull/616)
+- Add state restoration on runtime restart by @philipp-seitz in [#591](https://github.com/Quantinuum/tierkreis/pull/591)
 - Upgrade devenv by @johnchildren in [#607](https://github.com/Quantinuum/tierkreis/pull/607)
 - Update ruff and fix errors by @johnchildren in [#603](https://github.com/Quantinuum/tierkreis/pull/603)
 - Reorganise imports in codegen by @johnchildren in [#601](https://github.com/Quantinuum/tierkreis/pull/601)
@@ -33,8 +76,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prepare for 2.1.0 release by @johnchildren in [#550](https://github.com/Quantinuum/tierkreis/pull/550)
 
 ### Fixed
+- Frontend websocket by @philipp-seitz in [#719](https://github.com/Quantinuum/tierkreis/pull/719)
+- Ruff check by @philipp-seitz in [#698](https://github.com/Quantinuum/tierkreis/pull/698)
+- Abort workflows on failure by @johnchildren in [#656](https://github.com/Quantinuum/tierkreis/pull/656)
+- Correct error message for file saving by @johnchildren in [#654](https://github.com/Quantinuum/tierkreis/pull/654)
+- Set stdout to null in subprocess executor by @johnchildren in [#639](https://github.com/Quantinuum/tierkreis/pull/639)
+- Improve error handling for subprocess exec by @johnchildren in [#618](https://github.com/Quantinuum/tierkreis/pull/618)
+- Abort background tasks on Executor drop by @johnchildren in [#624](https://github.com/Quantinuum/tierkreis/pull/624)
+- Remove extra lock in SqlRuntimeState by @johnchildren in [#623](https://github.com/Quantinuum/tierkreis/pull/623)
 - Flush files in FileAssetStorage on write by @johnchildren in [#605](https://github.com/Quantinuum/tierkreis/pull/605)
 - Increase default n_iterations by @johnchildren in [#570](https://github.com/Quantinuum/tierkreis/pull/570)
+
+### Removed
+- Remove python server by @philipp-seitz in [#685](https://github.com/Quantinuum/tierkreis/pull/685)
 
 ## [2.1.0] - 2026-07-07
 
