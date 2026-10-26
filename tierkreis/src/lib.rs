@@ -23,7 +23,7 @@ pub mod workflow_state_query;
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::IpAddr;
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use chrono::{TimeDelta, Utc};
@@ -48,10 +48,25 @@ mod tierkreis {
     };
 
     #[pyfunction]
-    #[pyo3(signature = (port=3000))]
-    fn serve(py: Python<'_>, port: u16) -> PyResult<()> {
-        let result = py.detach(move || crate::server::serve(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
+    #[pyo3(signature = (port=3000, host="127.0.0.1", config=None))]
+    fn serve(
+        py: Python<'_>,
+        port: u16,
+        host: &str,
+        config: Option<std::path::PathBuf>,
+    ) -> PyResult<()> {
+        let host: IpAddr = host
+            .parse()
+            .map_err(|err| PyValueError::new_err(format!("Invalid bind address: {err}")))?;
+        let result =
+            py.detach(move || crate::server::serve_with_config(host, port, config.as_deref()));
         result.map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
+
+    #[pyfunction]
+    fn flush_traces(py: Python<'_>) -> PyResult<()> {
+        py.detach(crate::monitoring::flush_traces)
+            .map_err(|err| convert_err(py, err))
     }
 
     #[pyfunction]

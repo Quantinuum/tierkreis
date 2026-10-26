@@ -9,7 +9,7 @@ The main `tkr` command has three primary subcommands:
 
 - **`init`** — Initialize and manage Tierkreis project resources
 - **`run`** — Execute workflow graphs
-- **`vis`** — Visualize and inspect graphs
+- **`serve`** — View persisted workflows without executing them
 
 Use `--help` on any of the commands for a quick overview, or consult the sections below for detailed information about each command.
 
@@ -147,6 +147,17 @@ uv run tkr run [OPTIONS]
 Runs a Tierkreis workflow graph. By default, it loads the graph from `./tkr/graphs/main.py:workflow` and reads inputs from `workflow_inputs.json`.
 You can specify a different graph location or load from a JSON file, and provide inputs either as a JSON file or as binary files with key-value pairs.
 
+Use `--profile NAME` to select a resource profile for named execution contexts.
+Without this option, the runtime's default profile selection is preserved.
+Use `--timeout SECONDS` to change the completion wait limit (default: 30 seconds);
+the value is an integer number of seconds. A wait timeout does not cancel the run.
+Pending telemetry is flushed before the CLI exits, including after failures.
+
+```bash
+uv run tkr run -g my_project.graphs.he:workflow -i he_input.json \
+  --config runtime.toml --profile local --timeout 86400 -o
+```
+
 **Graph Specification:**
 
 You can specify the graph in two ways:
@@ -229,52 +240,48 @@ uv run tkr run \
 
 ---
 
-## tkr vis
+## tkr serve
 
-Visualize and interact with Tierkreis graphs.
+View persisted Tierkreis workflows without starting or resuming execution.
 
 **Usage:**
 ```bash
-uv run tkr vis [OPTIONS]
+uv run tkr serve [OPTIONS]
 ```
 
 **Description:**
-Launches the Tierkreis visualizer, which provides an interactive web interface for viewing and debugging graphs.
- This is useful for understanding workflow structure, inspecting node connections, and debugging execution flow.
-
-**Modes:**
-
-The visualization tool has t main modes:
-
-1. **Default Mode:** Start the visualization server showing all workflows run in the past.
-w. **Graph Mode:** Visualize a specific graph object that has was not run.
+Launches the Rust visualization server using the discovered runtime configuration.
+The server opens the configured persistent SQLite database and asset storage;
+it does not initialize executors or run the orchestrator. In-memory runtime
+state is rejected because it cannot contain persisted runs. An explicit
+`runtime_state.url` takes precedence over `DATABASE_URL`, matching `tkr run`.
+Relative configuration paths resolve from the current working directory.
 
 **Options:**
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `--dev` | FLAG | Run in development mode with hot reload on code changes |
-| `--graph` | STRING | Visualize a specific graph: `<path_to_python_file>:<variable_name>` similar to `tkr run --g` |
+| `--host` | IP ADDRESS | Bind address; defaults to `127.0.0.1` |
+| `--port` | INTEGER | HTTP port; defaults to `3000` |
+| `--config` | PATH | Runtime TOML file; defaults to standard configuration discovery |
 | `-h, --help` | FLAG | Show help message |
 
 **Examples:**
 
 ```bash
 # Start the visualization server (interactive web UI)
-uv run tkr vis
+uv run tkr serve
 
-# Start in development mode (with hot reload)
-uv run tkr vis --dev
+# Use an explicit configuration and port
+uv run tkr serve --config runtime.toml --port 3001
 
-# Visualize a specific graph
-uv run tkr vis --graph ./my_graphs/workflow.py:main_workflow
-
-# Visualize a graph from a module
-uv run tkr vis --graph my_module.graphs:visualization_graph
+# Bind on a coordinator's network interface (secure access externally)
+uv run tkr serve --host 0.0.0.0
 ```
 
 **Access the UI:**
 
-After running `uv run tkr vis`, the server starts at `http://localhost:8000` .
+After running `uv run tkr serve`, the server starts at `http://localhost:3000`.
 Open this URL in your web browser to access the visualization.
+The viewer has no authentication; use loopback binding or an authenticated tunnel.
 More info on the [visualizer](visualization.md) page.

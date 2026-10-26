@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from tierkreis.cli.project import TierkreisInitCli
 from tierkreis.cli.run import TierkreisRunCli
@@ -11,7 +12,7 @@ from tierkreis.viz import serve
 
 
 def _serve(args: argparse.Namespace) -> None:
-    serve(args.port)
+    serve(args.port, host=args.host, config=args.config)
 
 
 def main() -> None:
@@ -26,6 +27,12 @@ def main() -> None:
     TierkreisInitCli.add_subcommand(subparser)
     serve_parser = subparser.add_parser("serve", help="Start the visualization server.")
     serve_parser.add_argument("--port", type=int, default=3000)
+    serve_parser.add_argument("--host", default="127.0.0.1", help="IP address to bind.")
+    serve_parser.add_argument(
+        "--config",
+        type=Path,
+        help="Runtime configuration, including the persistent database.",
+    )
     serve_parser.set_defaults(func=_serve)
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
     args.func(args)

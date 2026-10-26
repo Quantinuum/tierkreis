@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import webbrowser
+from pathlib import Path
 from threading import Event, Thread
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -16,11 +17,13 @@ from tierkreis.controller.data.graph import GraphData
 from tierkreis.models import Workflow
 
 
-def serve(port: int = 3000) -> None:
+def serve(
+    port: int = 3000, *, host: str = "127.0.0.1", config: Path | None = None
+) -> None:
     """Start the Rust visualization server and block until it exits."""
-    print(f"Starting Tierkreis visualization at http://127.0.0.1:{port}", flush=True)
+    print(f"Starting Tierkreis visualization at http://{host}:{port}", flush=True)
     try:
-        _serve(port)
+        _serve(port, host, config)
     except KeyboardInterrupt:
         pass
     print("Tierkreis visualization server stopped.", flush=True)

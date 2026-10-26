@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import importlib
 import json
@@ -15,10 +16,9 @@ from tierkreis.builder import Graph
 from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType, Workflow, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
-from tierkreis.runtime import load_runtime_config, new_from_config
+from tierkreis.runtime import flush_traces, load_runtime_config, new_from_config
 
 if TYPE_CHECKING:
-    import argparse
     import types
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,17 @@ def parse_args(
     )
     parser.add_argument("--name", default=None, type=str, help="Set a workflow name")
     parser.add_argument(
+        "--profile",
+        type=str,
+        help="Resource profile to use for named execution contexts.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Maximum time to wait for completion in whole seconds (default: 30).",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         help="Path to the runtime configuration file."
@@ -172,8 +183,8 @@ async def run_workflow(args: argparse.Namespace) -> None:
     runtime = await new_from_config(config)
     with runtime:
         workflow_id = await runtime.save_workflow(args.name, graph)
-        run_id = await runtime.start_new_run(workflow_id, inputs)
-        await runtime.wait_for(run_id, timeout=30)
+        run_id = await runtime.start_new_run(workflow_id, inputs, profile=args.profile)
+        await runtime.wait_for(run_id, timeout=args.timeout)
         if args.print_output:
             actual_output = await runtime.get_outputs(run_id)
             print(actual_output)
@@ -196,4 +207,7 @@ class TierkreisRunCli:
     @staticmethod
     def execute(args: argparse.Namespace) -> None:
         """Execute the run subcommand."""
-        asyncio.run(run_workflow(args))
+        try:
+            asyncio.run(run_workflow(args))
+        finally:
+            flush_traces()

@@ -42,7 +42,7 @@ impl FileAssetStorage {
             create_dir_all(path).into_diagnostic()?;
         }
         Ok(Self {
-            base_dir: path.to_path_buf(),
+            base_dir: path.canonicalize().into_diagnostic()?,
         })
     }
 
@@ -109,5 +109,26 @@ impl AssetStorage for FileAssetStorage {
             Ok(value)
         }
         .boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FileAssetStorage;
+
+    #[test]
+    fn relative_storage_root_is_absolute() {
+        let directory = tempfile::tempdir_in(".").expect("create test directory");
+        let relative = directory
+            .path()
+            .strip_prefix(std::env::current_dir().expect("current directory"))
+            .unwrap_or(directory.path());
+        assert!(relative.is_relative());
+        let storage = FileAssetStorage::try_new(relative).expect("create storage");
+        assert!(storage.base_dir.is_absolute());
+        assert_eq!(
+            storage.base_dir,
+            directory.path().canonicalize().expect("canonical root")
+        );
     }
 }

@@ -77,6 +77,18 @@ impl ResourceSettings {
 const RUN_PROFILE_METADATA_KEY: &str = "tierkreis.profile";
 
 impl RuntimeConfig {
+    pub(crate) async fn persistent_viewer_state(&self) -> miette::Result<Arc<dyn RuntimeState>> {
+        match &self.runtime_state {
+            RuntimeStateConfig::Sqlite { memory: false, url } => match url {
+                Some(url) => Ok(Arc::new(SqliteRuntimeState::try_new_with_url(url).await?)),
+                None => Ok(Arc::new(SqliteRuntimeState::try_new().await?)),
+            },
+            _ => Err(miette!(
+                "The visualization server requires persistent SQLite runtime state"
+            )),
+        }
+    }
+
     /// Select a deployment profile for this runtime configuration.
     #[must_use]
     pub fn with_profile(mut self, profile: String) -> Self {
@@ -329,8 +341,8 @@ impl Runtime {
                     match res {
                         Ok(()) => {},
                         Err(err) => {
-                            tracing::error!("Error while processing events: {err}");
-                            eprintln!("{err}");
+                            tracing::error!("Error while processing events: {err:?}");
+                            eprintln!("{err:?}");
                         }
                     }
                 }

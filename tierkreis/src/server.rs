@@ -20,7 +20,7 @@ use crate::{
     asset_storage::AssetStorageRegistry,
     graph::{LegacyWorkflowGraph, WorkflowGraph},
     runtime::{RuntimeConfig, asset_storage_registry_from_config},
-    state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
+    state::{InMemoryRuntimeState, RuntimeState},
 };
 use std::net::Ipv4Addr;
 
@@ -110,10 +110,31 @@ async fn server(
 /// # Panics
 ///
 /// Panics if the tokio runtime cannot be started.
+pub fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
+    serve_with_config(host, port, None)
+}
+
+/// Serve persisted workflow state using an explicit or discovered runtime configuration.
+///
+/// # Errors
+///
+/// Returns an error for invalid configuration, nonpersistent state or server failures.
+///
+/// # Panics
+///
+/// Panics if the Tokio runtime cannot be started.
 #[tokio::main]
-pub async fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
-    let runtime_state: Arc<dyn RuntimeState> = Arc::new(SqliteRuntimeState::try_new().await?);
-    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::load()?)?;
+pub async fn serve_with_config(
+    host: IpAddr,
+    port: u16,
+    config_path: Option<&std::path::Path>,
+) -> miette::Result<()> {
+    let config = match config_path {
+        Some(path) => RuntimeConfig::from_file(path)?,
+        None => RuntimeConfig::load()?,
+    };
+    let runtime_state = config.persistent_viewer_state().await?;
+    let asset_registry = asset_storage_registry_from_config(&config)?;
     server(runtime_state, asset_registry, host, port, None).await
 }
 

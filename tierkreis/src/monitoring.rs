@@ -73,6 +73,24 @@ static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 static TRACER_PROVIDER: Mutex<Option<SdkTracerProvider>> = Mutex::new(None);
 
+/// Export completed trace spans without shutting down the process-wide provider.
+///
+/// # Errors
+///
+/// Returns an error if the provider lock is poisoned or exporting spans fails.
+pub fn flush_traces() -> miette::Result<()> {
+    let provider = TRACER_PROVIDER
+        .lock()
+        .map_err(|error| miette::miette!("Failed to lock tracer provider: {error}"))?
+        .clone();
+    if let Some(provider) = provider {
+        provider
+            .force_flush()
+            .map_err(|error| miette::miette!("Failed to flush trace spans: {error}"))?;
+    }
+    Ok(())
+}
+
 /// Flush buffered log lines to the log file and shut down OpenTelemetry.
 ///
 /// The non-blocking appender only drains when its guard is dropped, so this
