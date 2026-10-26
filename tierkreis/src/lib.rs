@@ -202,6 +202,9 @@ mod tierkreis {
         pub error_time: Option<chrono::DateTime<Utc>>,
         /// Locations of nodes that have errored in this run.
         #[pyo3(get)]
+        pub paused_locations: Vec<String>,
+        /// Locations of nodes that have errored in this run.
+        #[pyo3(get)]
         pub errored_locations: Vec<String>,
     }
 
@@ -212,6 +215,7 @@ mod tierkreis {
         Error,
         Running,
         Queued,
+        Paused,
         Scheduled,
     }
 
@@ -223,6 +227,8 @@ mod tierkreis {
                 "Cancelled".to_string()
             } else if node_state.error_time.is_some() {
                 "Error".to_string()
+            } else if node_state.paused_time.is_some() && node_state.unpaused_time.is_none() {
+                "Paused".to_string()
             } else if node_state.running_time.is_some() {
                 "Running".to_string()
             } else if node_state.queued_time.is_some() {
@@ -413,6 +419,11 @@ mod tierkreis {
                         complete_time: summary.complete_time,
                         cancelled_time: summary.cancelled_time,
                         error_time: summary.error_time,
+                        paused_locations: summary
+                            .paused_locations
+                            .into_iter()
+                            .map(|loc| loc.to_string())
+                            .collect(),
                         errored_locations: summary
                             .errored_locations
                             .into_iter()
@@ -526,6 +537,34 @@ mod tierkreis {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.into()))
                     .collect()),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        #[pyo3(signature = (run_id, locations=None, attempt=0))]
+        async fn unpause_nodes(
+            &self,
+            run_id: Uuid,
+            locations: Option<Vec<String>>,
+            attempt: u32,
+        ) -> PyResult<Vec<String>> {
+            let locations = locations.unwrap_or_default();
+            let inner = self.inner.clone();
+            let locations = locations
+                .iter()
+                .map(|s| Location::new(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            let res = get_runtime()
+                .spawn(async move { inner.unpause_nodes(run_id, attempt, locations).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(unpaused) => Ok(unpaused.into_iter().map(|loc| loc.to_string()).collect()),
                 Err(err) => Python::attach(|py| Err(convert_err(py, err))),
             }
         }

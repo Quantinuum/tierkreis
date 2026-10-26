@@ -3,6 +3,7 @@ The runtime module defines the entrypoint to running Workflows.
 */
 use std::{
     collections::{HashMap, HashSet},
+    env::temp_dir,
     hash::BuildHasher,
     path::PathBuf,
     sync::Arc,
@@ -103,20 +104,36 @@ impl RuntimeConfig {
         self.logging_config = Some(logging_config);
     }
 
-    /// Construct a pre-defined config that keeps state in memory and can only
-    /// run built-in tasks that also run in memory.
+    /// Construct a pre-defined config that keeps state in memory and uses temporary
+    /// files to mediate with worker subprocesses.
     #[must_use]
     pub fn memory() -> Self {
+        let asset_dir = temp_dir().join("tkr_temp_assets");
         RuntimeConfig {
-            asset_storage: [("memory".to_string(), AssetStorageConfig::Memory {})]
-                .into_iter()
-                .collect(),
-            executors: [(
-                "memory".to_string(),
-                ExecutorConfig::Memory {
-                    output_storage_name: "memory".to_string(),
-                },
-            )]
+            asset_storage: [
+                ("memory".to_string(), AssetStorageConfig::Memory {}),
+                (
+                    "tempfile".to_string(),
+                    AssetStorageConfig::File { asset_dir },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            executors: [
+                (
+                    "memory".to_string(),
+                    ExecutorConfig::Memory {
+                        output_storage_name: "memory".to_string(),
+                    },
+                ),
+                (
+                    "subprocess".to_string(),
+                    ExecutorConfig::Subprocess {
+                        subprocess_storage_name: "tempfile".to_string(),
+                        output_storage_name: "memory".to_string(),
+                    },
+                ),
+            ]
             .into_iter()
             .collect(),
             runtime_state: RuntimeStateConfig::Memory {},
@@ -807,7 +824,7 @@ impl Runtime {
     /// # Errors
     ///
     /// Will return Err if there are no paused nodes or if access to the state fails.
-    pub async fn unpause_node(
+    pub async fn unpause_nodes(
         &self,
         run_id: Uuid,
         attempt: u32,

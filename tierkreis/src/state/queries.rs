@@ -275,6 +275,14 @@ pub fn update_node_state<'a>(
                         ns::running_time,
                         excluded(ns::running_time),
                     )),
+                    ns::paused_time.eq(coalesce_datetime(
+                        ns::paused_time,
+                        excluded(ns::paused_time),
+                    )),
+                    ns::unpaused_time.eq(coalesce_datetime(
+                        ns::unpaused_time,
+                        excluded(ns::unpaused_time),
+                    )),
                     ns::complete_time.eq(coalesce_datetime(
                         ns::complete_time,
                         excluded(ns::complete_time),
