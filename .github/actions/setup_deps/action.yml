@@ -1,8 +1,13 @@
 name: Set up dependencies for tasks
 
 inputs:
+  include_uv:
+    description: "Setup uv and a python venv"
+    type: string
+    required: false
+    default: "yes"
   python_version:
-    description: "Python version to use."
+    description: "Python version to use with uv."
     required: false
     default: "3.12"
     type: string
@@ -21,6 +26,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up uv & venv
+      if: inputs.include_uv == 'yes'
       uses: astral-sh/setup-uv@v5
       with:
         version: "0.13.4"
