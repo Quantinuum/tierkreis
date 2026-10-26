@@ -58,6 +58,7 @@ output_storage_name = "memory"
 type = "Subprocess"
 subprocess_storage_name = "file"
 output_storage_name = "file"
+max_concurrency = 4
 ```
 
 Use graph metadata and resource profiles to select a non-default executor.

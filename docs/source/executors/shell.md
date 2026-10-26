@@ -21,7 +21,15 @@ asset_dir = "/shared/tierkreis/assets"
 type = "Subprocess"
 subprocess_storage_name = "shared"
 output_storage_name = "shared"
+max_concurrency = 4
 ```
+
+`max_concurrency` limits the number of worker processes started by this executor.
+When it is omitted, the runtime uses the parallelism available to the process
+(including CPU affinity and container limits where supported), falling back to
+one process if it cannot be detected. Tasks beyond the limit wait in submission
+order. Limits belong to each named subprocess executor, so multiple subprocess
+executors have additive capacity.
 
 The legacy `ShellExecutor` and `StdInOut` adapters are not part of the Rust
 runtime. Package external programs behind the Tierkreis worker protocol, or

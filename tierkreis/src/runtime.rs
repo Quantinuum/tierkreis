@@ -150,6 +150,7 @@ impl Default for RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "file".to_string(),
                         output_storage_name: "file".to_string(),
+                        max_concurrency: None,
                     },
                 ),
             ]
@@ -180,6 +181,8 @@ enum ExecutorConfig {
     Subprocess {
         subprocess_storage_name: String,
         output_storage_name: String,
+        #[serde(default)]
+        max_concurrency: Option<usize>,
     },
     Nexus {
         client_config: NexusClientConfig,
@@ -852,14 +855,18 @@ async fn executor_registry_from_config(
             ExecutorConfig::Subprocess {
                 subprocess_storage_name,
                 output_storage_name,
-            } => executor_registry.insert(
-                executor_name.clone(),
-                Box::new(SubprocessExecutor::try_new(
+                max_concurrency,
+            } => {
+                let mut builder = SubprocessExecutor::builder(
                     asset_storage_registry,
                     subprocess_storage_name,
                     output_storage_name,
-                )?),
-            ),
+                );
+                if let Some(max_concurrency) = max_concurrency {
+                    builder = builder.max_concurrency(*max_concurrency);
+                }
+                executor_registry.insert(executor_name.clone(), Box::new(builder.build()?))
+            }
             ExecutorConfig::Nexus {
                 client_config,
                 output_storage_name,
@@ -1031,6 +1038,41 @@ mod tests {
         };
         let runtime = Runtime::from_config(&config).await?;
         Ok(runtime)
+    }
+
+    #[test]
+    fn subprocess_max_concurrency_round_trips_through_toml() -> miette::Result<()> {
+        let mut config = RuntimeConfig::default();
+        let Some(ExecutorConfig::Subprocess {
+            max_concurrency, ..
+        }) = config.executors.get_mut("subprocess")
+        else {
+            panic!("Default subprocess executor is missing");
+        };
+        *max_concurrency = Some(3);
+
+        let serialized = config.to_toml_string()?;
+        assert!(serialized.contains("max_concurrency = 3"));
+        assert_eq!(RuntimeConfig::from_toml_str(&serialized)?, config);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn subprocess_max_concurrency_must_be_positive() {
+        let mut config = RuntimeConfig::default();
+        let Some(ExecutorConfig::Subprocess {
+            max_concurrency, ..
+        }) = config.executors.get_mut("subprocess")
+        else {
+            panic!("Default subprocess executor is missing");
+        };
+        *max_concurrency = Some(0);
+
+        let error = Runtime::from_config(&config)
+            .await
+            .err()
+            .expect("zero concurrency should be rejected");
+        assert!(error.to_string().contains("greater than zero"));
     }
 
     fn sleep_graph_with_task_location() -> miette::Result<(WorkflowGraph, Location)> {

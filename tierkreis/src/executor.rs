@@ -20,7 +20,7 @@ pub use crate::executor::inmemory::InMemoryExecutor;
 pub use crate::executor::interface::Executor;
 pub use crate::executor::nexus::NexusExecutor;
 pub use crate::executor::qrmi::{QrmiExecutor, QrmiExecutorConfig, QrmiPayload, QrmiResourceType};
-pub use crate::executor::subprocess::SubprocessExecutor;
+pub use crate::executor::subprocess::{SubprocessExecutor, SubprocessExecutorBuilder};
 
 use std::{collections::HashMap, sync::Arc};
 
