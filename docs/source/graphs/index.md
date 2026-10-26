@@ -43,4 +43,14 @@ Higher-order in this context means that the node expects one of the inputs to be
 
 ## Node Metadata
 
-Each node can be annotated with metadata. Currently this is only used to enable breakpoints.
+Each node can be annotated with metadata. Set `has_breakpoint=True` while
+adding a node to pause the Rust runtime before that node executes:
+
+```python
+output = graph.task(worker_task(...), has_breakpoint=True)
+```
+
+After `wait_for` returns, inspect `get_summary(run_id).paused_locations` and
+resume execution with `unpause_nodes`. See
+[logging, errors, and breakpoints](../tutorial/logging_and_errors.md)
+for the complete runtime flow.

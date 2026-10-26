@@ -200,7 +200,7 @@ mod tierkreis {
         /// The time that the workflow errored.
         #[pyo3(get)]
         pub error_time: Option<chrono::DateTime<Utc>>,
-        /// Locations of nodes that have errored in this run.
+        /// Locations of nodes that are paused at breakpoints in this run.
         #[pyo3(get)]
         pub paused_locations: Vec<String>,
         /// Locations of nodes that have errored in this run.

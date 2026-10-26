@@ -21,8 +21,8 @@ except ValueError as error:
     print(summary.errored_locations)
 ```
 
-`get_summary(run_id, attempt)` reports timestamps, duration, and errored
-locations. For lower-level debugging,
+`get_summary(run_id, attempt)` reports timestamps, duration, errored locations,
+and locations paused at breakpoints. For lower-level debugging,
 `debug_read_node_states(run_id, attempt, locations)` returns the state, task
 name, and execution context for the requested location strings.
 
@@ -50,6 +50,35 @@ Locations may identify nodes nested inside Eval, Loop, or Map. Their containing
 nodes are partially invalidated as needed, while unaffected work is reused.
 See the [restart example](../examples/restart.ipynb) for a complete workflow.
 
+## Pausing and resuming at breakpoints
+
+Set `has_breakpoint=True` when adding a node to pause it immediately before
+execution. `wait_for` returns when the run pauses, allowing the run state to be
+inspected. The summary contains the exact paused locations:
+
+```python
+task_output = graph.task(worker_task(...), has_breakpoint=True)
+
+await runtime.wait_for(run_id)
+summary = await runtime.get_summary(run_id)
+print(summary.paused_locations)
+```
+
+Calling `unpause_nodes` without locations resumes every currently paused node.
+Pass location strings to resume only selected nodes. After resuming, call
+`wait_for` again; it returns at the next breakpoint or when execution finishes:
+
+```python
+unpaused = await runtime.unpause_nodes(run_id)
+await runtime.wait_for(run_id)
+
+# Or resume selected nodes in a particular attempt.
+unpaused = await runtime.unpause_nodes(run_id, ["N3"], attempt=1)
+```
+
+Input and output nodes can also be breakpoints by constructing `Graph` with
+`breakpoints_on_inputs=True` or `breakpoints_on_outputs=True`.
+
 ## Recovering after the runtime stops
 
 With persistent SQLite state, starting another runtime over the same
@@ -58,8 +87,6 @@ state database, asset storage, and worker configuration. This process recovery
 is distinct from `restart_task`: recovery continues the current attempt,
 whereas a task restart creates a new attempt after a failure or manual choice.
 
-## Current limitations
-
-The Rust runtime does not currently implement graph breakpoints or the legacy
-interactive `debug_graph` helper. Use run summaries, node states, executor
-logs, and targeted restarts instead.
+The legacy interactive `debug_graph` helper is not part of the Rust runtime.
+Use breakpoints together with run summaries and `debug_read_node_states` to
+build an interactive debugging flow.
