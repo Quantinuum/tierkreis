@@ -3589,7 +3589,7 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "2.1.1"
+version = "3.0.0rc0"
 source = { editable = "tierkreis" }
 dependencies = [
     { name = "hugr" },
