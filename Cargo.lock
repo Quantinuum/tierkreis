@@ -29,7 +29,7 @@ dependencies = [
 [[package]]
 name = "alice-bob-felis"
 version = "0.1.0"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1821,7 +1821,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 [[package]]
 name = "felis-generated"
 version = "0.1.0"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -2699,7 +2699,7 @@ checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 [[package]]
 name = "iqm-server-api"
 version = "1.0.0"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "bytes",
  "chrono",
@@ -3436,7 +3436,7 @@ dependencies = [
 [[package]]
 name = "pasqal-cloud-api"
 version = "0.1.0"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3449,7 +3449,6 @@ dependencies = [
  "reqwest-middleware",
  "reqwest-retry",
  "retry-policies",
- "rhexdump",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3460,7 +3459,7 @@ dependencies = [
 [[package]]
 name = "pasqal-local-api"
 version = "0.0.1"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3468,12 +3467,12 @@ dependencies = [
  "chrono",
  "env_logger",
  "http 1.5.0",
+ "libloading",
  "log",
  "reqwest 0.12.28",
  "reqwest-middleware",
  "reqwest-retry",
  "retry-policies",
- "rhexdump",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3872,8 +3871,8 @@ dependencies = [
 
 [[package]]
 name = "qrmi"
-version = "0.26.0"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+version = "0.26.4"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "alice-bob-felis",
  "anyhow",
@@ -3892,7 +3891,6 @@ dependencies = [
  "log",
  "pasqal-cloud-api",
  "pasqal-local-api",
- "pythonize",
  "quantum-system-api",
  "quantum_compute_client",
  "reqwest-retry",
@@ -3906,7 +3904,7 @@ dependencies = [
 [[package]]
 name = "quantum-system-api"
 version = "0.15.0"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3921,7 +3919,6 @@ dependencies = [
  "reqwest-middleware",
  "reqwest-retry",
  "retry-policies",
- "rhexdump",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -3932,7 +3929,7 @@ dependencies = [
 [[package]]
 name = "quantum_compute_client"
 version = "0.31.10"
-source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.0#d489dbdd60658e9eeee18441b24f008a9078d57a"
+source = "git+https://github.com/qiskit-community/qrmi?tag=0.26.4#ab289a81912f0778e5c8659f86ad650b8c5462c2"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -4387,12 +4384,6 @@ dependencies = [
  "hmac 0.12.1",
  "subtle",
 ]
-
-[[package]]
-name = "rhexdump"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a92cbe1a3dd221e3777fef339115d3b85e17a538668e03a0f3ae9c6a98351c7"
 
 [[package]]
 name = "ring"
