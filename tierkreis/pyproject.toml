@@ -52,6 +52,9 @@ include = ["."]
 exclude = []
 ignore = []
 
+[tool.pytest.ini_options]
+timeout = 60
+
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
 

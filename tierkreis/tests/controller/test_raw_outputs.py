@@ -14,7 +14,7 @@ async def test_get_raw_outputs() -> None:
     with runtime:
         workflow_id = await runtime.save_workflow("raw outputs", workflow)
         run_id = await runtime.start_new_run(workflow_id, 3)
-        await runtime.wait_for(run_id)
+        await runtime.wait_for(run_id, timeout=30)
         outputs = await runtime.get_raw_outputs(run_id)
 
     assert outputs == {"value": b"3"}
