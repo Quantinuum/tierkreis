@@ -184,7 +184,10 @@ impl Default for RuntimeConfig {
             ]
             .into_iter()
             .collect(),
-            runtime_state: RuntimeStateConfig::Memory {},
+            runtime_state: RuntimeStateConfig::Sqlite {
+                memory: false,
+                url: None,
+            },
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
             logging_config: Some(LoggingConfig::default()),
