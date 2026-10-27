@@ -13,6 +13,8 @@ use tokio::sync::watch;
 use tracing::warn;
 use uuid::Uuid;
 
+#[cfg(unix)]
+use crate::executor::qrmi::QrmiExecutor;
 use crate::{
     asset_storage::{
         AssetStorage, AssetStorageRegistry, FileAssetStorage, InMemoryStorage, load_assets,
@@ -22,7 +24,6 @@ use crate::{
     executor::{
         Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, PbsWrapper, PjsubWrapper,
         SlurmWrapper, SubprocessExecutor, hpc::spec::ScriptTemplates, nexus::NexusExecutor,
-        qrmi::QrmiExecutor,
     },
     graph::WorkflowGraph,
     location::Location,
@@ -716,6 +717,7 @@ async fn executor_registry_from_config(
                     .await?,
                 ),
             ),
+            #[cfg(unix)]
             ExecutorConfig::Qrmi {
                 config,
                 output_storage_name,

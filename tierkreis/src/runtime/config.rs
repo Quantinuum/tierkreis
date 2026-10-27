@@ -2,9 +2,11 @@ use std::{collections::HashMap, env::temp_dir, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(unix)]
+use crate::executor::qrmi::QrmiExecutorConfig;
 use crate::{
     config::{TKR_ENV_VAR, resource_profile_search_paths, tierkreis_home_dir},
-    executor::{hpc::spec::HPCResourceSpec, nexus::NexusClientConfig, qrmi::QrmiExecutorConfig},
+    executor::{hpc::spec::HPCResourceSpec, nexus::NexusClientConfig},
     monitoring::LoggingConfig,
     resource_profiles::ResourceProfiles,
 };
@@ -167,6 +169,7 @@ pub(super) enum ExecutorConfig {
         client_config: NexusClientConfig,
         output_storage_name: String,
     },
+    #[cfg(unix)]
     Qrmi {
         config: QrmiExecutorConfig,
         output_storage_name: String,
