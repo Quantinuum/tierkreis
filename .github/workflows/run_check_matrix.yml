@@ -22,11 +22,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Rust Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ inputs.command_name }}-${{ matrix.python-version }}
-
       - name: Setup Kache
         uses: kunobi-ninja/kache-action@v1
         with:
