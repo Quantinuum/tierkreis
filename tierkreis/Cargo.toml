@@ -73,6 +73,8 @@ reqwest-websocket = { version = "0.6.0", features = ["json"] }
 rand = "0.10.2"
 toml = "1.1.4"
 rust-embed = { version = "8.12.0", features = ["mime-guess"] }
+
+[target.'cfg(unix)'.dependencies]
 qrmi = { git = "https://github.com/qiskit-community/qrmi", tag = "0.26.4", default-features = false }
 
 [dev-dependencies]
