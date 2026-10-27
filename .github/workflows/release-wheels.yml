@@ -57,6 +57,10 @@ jobs:
           python-version: |
             3.14
             3.14t
+      - name: Install SQLite
+        run: |
+          sudo apt-get update
+          sudo apt-get install sqlite
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -97,6 +101,10 @@ jobs:
           python-version: |
             3.14
             3.14t
+      - name: Install SQLite
+        run: |
+          sudo apt-get update
+          sudo apt-get install sqlite
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -136,6 +144,9 @@ jobs:
         with:
           python-version: "3.14"
           architecture: ${{ matrix.platform.python_arch }}
+      - name: Install SQLite
+        run: |
+          choco install sqlite
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -180,6 +191,10 @@ jobs:
           python-version: |
             3.14
             3.14t
+      - name: Install SQLite
+        run: |
+          brew update
+          brew install sqlite
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -203,4 +218,5 @@ jobs:
           name: frontend-dist
           path: tierkreis/frontend/dist
       - name: Verify frontend is included in the Cargo package
-        run: cargo package --list --manifest-path tierkreis/Cargo.toml | grep -Fx 'frontend/dist/index.html'
+        # We have to --allow-dirty here as the frontend bundle is not in source control.
+        run: cargo package --list --allow-dirty --manifest-path tierkreis/Cargo.toml | grep -Fx 'frontend/dist/index.html'
