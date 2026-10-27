@@ -24,8 +24,6 @@ jobs:
 
       - name: Setup Kache
         uses: kunobi-ninja/kache-action@v1
-        with:
-          cache-key-prefix: ${{ inputs.command_name }}-${{ matrix.python-version }}
 
       - name: Setup deps
         uses: ./.github/actions/setup_deps
