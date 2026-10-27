@@ -11,7 +11,7 @@
       "name": "MIT OR Apache-2.0",
       "identifier": "MIT OR Apache-2.0"
     },
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "paths": {
     "/api/info": {
@@ -19,7 +19,6 @@
         "operationId": "get_info",
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -38,7 +37,6 @@
         "operationId": "list_workflows",
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -84,7 +82,6 @@
         ],
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -122,6 +119,39 @@
           },
           "500": {
             "description": "Error loading log detail"
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}": {
+      "get": {
+        "summary": "Notify the frontend to refresh graph state, including changes from another process.",
+        "description": "# Errors\n\nReturns an error if the node location string cannot be parsed or the workflow run is unknown.",
+        "operationId": "subscribe_node_updates",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Graph refresh notifications"
           }
         }
       }
@@ -352,7 +382,6 @@
         ],
         "responses": {
           "200": {
-            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -504,6 +533,20 @@
           "finished_time"
         ],
         "properties": {
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Execution context requested for this node."
+          },
+          "executor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Executor requested for this node."
+          },
           "finished_time": {
             "type": "string",
             "description": "ISO-8601 timestamp when the node finished, or `\"\"` if not finished."

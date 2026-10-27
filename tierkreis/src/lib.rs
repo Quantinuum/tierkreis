@@ -20,6 +20,7 @@ pub mod server;
 pub mod state;
 pub mod workflow_state_query;
 
+#[cfg(feature = "pyo3")]
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
@@ -30,11 +31,12 @@ mod tierkreis {
     use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
     use pyo3::{
-        Borrowed, FromPyObject, PyErr, PyResult, Python, exceptions::PyValueError, prelude::*,
-        types::PyBytes,
+        Borrowed, FromPyObject, PyErr, PyResult, Python,
+        exceptions::{PyTypeError, PyValueError},
+        prelude::*,
+        types::{PyBytes, PyMapping},
     };
     use pyo3_async_runtimes::tokio::get_runtime;
-    use pythonize::depythonize;
     use serde::{Deserialize, Serialize};
     use tokio::{runtime::Builder, sync::oneshot};
     use tracing::warn;
@@ -668,7 +670,35 @@ mod tierkreis {
             if let Ok(config) = obj.extract::<PyRef<'_, PyRuntimeConfig>>() {
                 return Ok(PyRuntimeConfig(config.0.clone()));
             }
-            let config = depythonize(&obj)?;
+            let obj = obj.to_owned();
+            let py = obj.py();
+            let config_json: String = if obj.hasattr("model_dump_json")? {
+                obj.call_method0("model_dump_json")?.extract()?
+            } else if obj.cast::<PyMapping>().is_ok() {
+                let dict = py.import("builtins")?.getattr("dict")?.call1((&obj,))?;
+                py.import("json")?
+                    .getattr("dumps")?
+                    .call1((dict,))?
+                    .extract()?
+            } else {
+                return Err(PyTypeError::new_err(
+                    "runtime configuration must be a RuntimeConfig, a Pydantic model, or a JSON-compatible mapping",
+                ));
+            };
+
+            let mut deserializer = serde_json::Deserializer::from_str(&config_json);
+            let config = serde_path_to_error::deserialize(&mut deserializer).map_err(|error| {
+                let path = error.path().to_string();
+                let location = if path.is_empty() {
+                    String::new()
+                } else {
+                    format!(" at {path}")
+                };
+                PyValueError::new_err(format!(
+                    "invalid runtime configuration{location}: {}",
+                    error.inner()
+                ))
+            })?;
 
             Ok(PyRuntimeConfig(config))
         }

@@ -57,6 +57,7 @@ timeout = 60
 
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
+features = ["pyo3"]
 
 [tool.maturin.generate-ci.github]
 # generate-ci has been modified a bit so this isn't going to re-create the
