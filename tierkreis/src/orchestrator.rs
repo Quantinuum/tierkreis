@@ -28,10 +28,9 @@ use crate::{
         unfold_asset,
     },
     event::{
-        EventReceiver, EventSender, RuntimeEvent, send_complete, send_map_elem_complete,
-        send_paused, send_running_eval, send_running_loop, send_running_map,
-        send_running_switching, send_scheduled, send_workflow_run_complete,
-        send_workflow_run_errored, send_workflow_run_paused,
+        EventReceiver, EventSender, NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent,
+        send_node_events, send_workflow_run_complete, send_workflow_run_errored,
+        send_workflow_run_paused,
     },
     executor::{
         ExecutorRegistry,
@@ -122,6 +121,7 @@ pub enum ActionKind {
 type EvallingActions = (Location, HashMap<String, AssetSpec>);
 type LoopingActions = (Location, u32, HashMap<String, AssetSpec>, Option<String>);
 type MappingActions = (Location, Vec<HashMap<String, AssetSpec>>);
+type ExecutorTaskPlans = HashMap<String, Vec<TaskPlan>>;
 
 #[derive(Debug, Clone)]
 enum SetWorkflowState {
@@ -133,7 +133,7 @@ enum SetWorkflowState {
 #[derive(Debug, Clone, Default)]
 struct ActionPlan {
     // map executor -> tasks
-    tasks: HashMap<String, Vec<TaskPlan>>,
+    tasks: ExecutorTaskPlans,
     pause: Vec<Location>,
     switching: Vec<(Location, bool)>,
     evalling: Vec<EvallingActions>,
@@ -142,6 +142,99 @@ struct ActionPlan {
     map_elem_complete: HashMap<Location, BitVec<u8>>,
     node_complete: Vec<(Location, HashMap<String, AssetSpec>)>,
     set_workflow_state: Option<SetWorkflowState>,
+}
+
+impl ActionPlan {
+    fn into_parts(
+        self,
+    ) -> (
+        impl Iterator<Item = NodeEvent>,
+        ExecutorTaskPlans,
+        Option<SetWorkflowState>,
+    ) {
+        let Self {
+            tasks,
+            pause,
+            switching,
+            evalling,
+            looping,
+            mapping,
+            map_elem_complete,
+            node_complete,
+            set_workflow_state,
+        } = self;
+
+        let complete = node_complete.into_iter().map(|(loc, outputs)| NodeEvent {
+            loc,
+            status: NodeStatus::Complete { outputs },
+            name: None,
+        });
+        let paused = pause.into_iter().map(|loc| NodeEvent {
+            loc,
+            status: NodeStatus::Paused {},
+            name: None,
+        });
+        let evalling = evalling.into_iter().map(|(loc, inputs)| NodeEvent {
+            loc,
+            status: NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Evalling { inputs }),
+            },
+            name: None,
+        });
+        let mapping = mapping.into_iter().map(|(loc, input_sets)| NodeEvent {
+            loc,
+            status: NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::MapStarted { input_sets }),
+            },
+            name: None,
+        });
+        let map_elem_complete = map_elem_complete.into_iter().map(|(loc, bits)| NodeEvent {
+            loc,
+            status: NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::MapElemComplete { bits }),
+            },
+            name: None,
+        });
+        let looping = looping
+            .into_iter()
+            .map(|(loc, index, inputs, name)| NodeEvent {
+                loc,
+                status: NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::Looping { index, inputs }),
+                },
+                name,
+            });
+        let switching = switching.into_iter().map(|(loc, cond)| NodeEvent {
+            loc,
+            status: NodeStatus::Running {
+                state_update: Some(RunningStateUpdate::Switching { cond }),
+            },
+            name: None,
+        });
+        let scheduled = tasks
+            .values()
+            .flatten()
+            .map(|task| NodeEvent {
+                loc: task.loc.clone(),
+                status: NodeStatus::Scheduled {
+                    execution_context: task.execution_context.clone(),
+                },
+                name: None,
+            })
+            .collect::<Vec<_>>()
+            .into_iter();
+
+        let node_events = complete
+            .chain(paused)
+            .chain(evalling)
+            .chain(mapping)
+            .chain(map_elem_complete)
+            .chain(looping)
+            .chain(switching)
+            .chain(scheduled);
+
+        (node_events, tasks, set_workflow_state)
+    }
 }
 
 /// The context state for the orchestration
@@ -1300,56 +1393,17 @@ impl Orchestrator {
         plan: ActionPlan,
     ) -> miette::Result<()> {
         let mut event_sender = self.event_sender.clone();
+        let (node_events, tasks, set_workflow_state) = plan.into_parts();
 
-        if !plan.node_complete.is_empty() {
-            send_complete(
-                &mut event_sender,
-                workflow_run_id,
-                attempt,
-                plan.node_complete,
-            )
-            .await?;
-        }
-        if !plan.pause.is_empty() {
-            send_paused(&mut event_sender, workflow_run_id, attempt, plan.pause).await?;
-        }
+        send_node_events(
+            &mut event_sender,
+            workflow_run_id,
+            attempt,
+            node_events.collect(),
+        )
+        .await?;
 
-        for (loc, inputs) in plan.evalling {
-            send_running_eval(&mut event_sender, workflow_run_id, attempt, loc, inputs).await?;
-        }
-        for (loc, input_sets) in plan.mapping {
-            send_running_map(&mut event_sender, workflow_run_id, attempt, loc, input_sets).await?;
-        }
-        for (loc, bits) in plan.map_elem_complete {
-            send_map_elem_complete(&mut event_sender, workflow_run_id, attempt, loc, bits).await?;
-        }
-        for (loc, index, inputs, name) in plan.looping {
-            send_running_loop(
-                &mut event_sender,
-                workflow_run_id,
-                attempt,
-                loc,
-                index,
-                inputs,
-                name,
-            )
-            .await?;
-        }
-        for (loc, cond) in plan.switching {
-            send_running_switching(&mut event_sender, workflow_run_id, attempt, loc, cond).await?;
-        }
-
-        for (name, tasks) in plan.tasks {
-            for task in &tasks {
-                send_scheduled(
-                    &mut event_sender,
-                    workflow_run_id,
-                    attempt,
-                    task.loc.clone(),
-                    task.execution_context.clone(),
-                )
-                .await?;
-            }
+        for (name, tasks) in tasks {
             self.executor_registry
                 .get(&name)
                 .ok_or_else(|| miette!("Unknown executor `{name}` selected by execution context"))?
@@ -1358,7 +1412,7 @@ impl Orchestrator {
                 .wrap_err_with(|| format!("Could not run Task Nodes on `{name}`"))?;
         }
 
-        if let Some(set_workflow_state) = plan.set_workflow_state {
+        if let Some(set_workflow_state) = set_workflow_state {
             match set_workflow_state {
                 SetWorkflowState::Paused => {
                     send_workflow_run_paused(&mut event_sender, workflow_run_id, attempt).await?;
@@ -1817,6 +1871,52 @@ mod tests {
         assert_eq!(actions.len(), 2);
         assert_matches!(actions[0].kind, ActionKind::SetComplete { .. });
         assert_matches!(actions[1].kind, ActionKind::SetComplete { .. });
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn apply_plan_batches_mixed_node_events() -> miette::Result<()> {
+        let (registry, _input_sets, _dir) = test_storage_registry(vec![], vec![]).await;
+        let executor_registry = test_executor_registry(&registry);
+        let orchestrator =
+            Orchestrator::try_new(&registry, &executor_registry, "memory", "memory")?;
+        let mut stream = orchestrator.listen()?;
+
+        let mut plan = ActionPlan::default();
+        plan.node_complete
+            .push((Location::new("N1")?, HashMap::new()));
+        plan.pause.push(Location::new("N2")?);
+        plan.evalling.push((Location::new("N3")?, HashMap::new()));
+        plan.switching.push((Location::new("N4")?, true));
+
+        orchestrator.apply_plan(Uuid::nil(), 0, plan).await?;
+
+        assert_matches!(
+            stream.next().await,
+            Some(RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(node_events),
+                ..
+            }) if matches!(
+                node_events.as_slice(),
+                [
+                    NodeEvent { status: NodeStatus::Complete { .. }, .. },
+                    NodeEvent { status: NodeStatus::Paused {}, .. },
+                    NodeEvent {
+                        status: NodeStatus::Running {
+                            state_update: Some(RunningStateUpdate::Evalling { .. }),
+                        },
+                        ..
+                    },
+                    NodeEvent {
+                        status: NodeStatus::Running {
+                            state_update: Some(RunningStateUpdate::Switching { cond: true }),
+                        },
+                        ..
+                    },
+                ]
+            )
+        );
 
         Ok(())
     }
