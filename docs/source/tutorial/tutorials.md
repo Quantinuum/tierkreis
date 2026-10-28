@@ -47,10 +47,8 @@ at breakpoints. Simulator-heavy parallelism, credentialed Nexus, and HPC
 examples require deployment-specific resources and are not executed by the
 documentation build.
 
-Two examples remain on the legacy controller for a specific reason:
+One example remains on the legacy controller:
 
-- `scipy` compares binary NumPy serializers and still needs typed or raw output
-  handling in the example;
 - `signing_graph` uses arbitrary shell and stdin/stdout adapters that do not
   have Rust-runtime equivalents.
 
