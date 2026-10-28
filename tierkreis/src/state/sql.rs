@@ -33,12 +33,13 @@ use crate::{
         interface::{RuntimeWatchState, WorkflowRunStateSummary},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
-            add_run_attempt_metadata, copy_inputs, copy_node_states, get_workflow_run_summary,
-            insert_workflow, insert_workflow_run, insert_workflow_run_attempt,
-            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries, max_attempt,
-            read_node_state, read_node_states, read_node_states_by_name, read_run_attempt_metadata,
-            read_workflow, read_workflow_run, read_workflow_run_input_from_location,
-            read_workflow_run_inputs, update_node_state, update_workflow_run,
+            add_run_attempt_metadata, copy_inputs, copy_node_states,
+            find_workflow_run_input_from_location, get_workflow_run_summary, insert_workflow,
+            insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs,
+            list_active_runs, list_workflow_run_summaries, max_attempt, read_node_state,
+            read_node_states, read_node_states_by_name, read_run_attempt_metadata, read_workflow,
+            read_workflow_run, read_workflow_run_input_from_location, read_workflow_run_inputs,
+            update_node_state, update_workflow_run,
         },
     },
     workflow_state_query::NodeCopyFilter,
@@ -504,6 +505,25 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         async move {
             let mut conn = self.get_conn().await?;
             read_workflow_run_input_from_location(
+                &mut conn,
+                &self.run_id.to_string(),
+                self.attempt.try_into().into_diagnostic()?,
+                &location.to_string(),
+                name,
+            )
+            .await
+        }
+        .boxed()
+    }
+
+    fn find_named_input_from_location<'a>(
+        &'a self,
+        location: &'a Location,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<Option<AssetSpec>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            find_workflow_run_input_from_location(
                 &mut conn,
                 &self.run_id.to_string(),
                 self.attempt.try_into().into_diagnostic()?,

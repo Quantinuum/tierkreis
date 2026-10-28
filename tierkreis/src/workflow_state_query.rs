@@ -293,15 +293,15 @@ pub(crate) fn collect_inputs(
             .outputs
             .as_ref()
             .ok_or_else(|| miette!("Could not find node outputs for node: {linked_node:?}"))?;
-        let output_asset_spec = outputs.get(output_name).ok_or_else(|| {
+        if let Some(output_asset_spec) = outputs.get(output_name) {
+            inputs.insert(input_name.clone(), output_asset_spec.clone());
+        } else if !workflow_graph.input_is_omittable(node, input_name) {
             let output_keys: Vec<_> = outputs.keys().collect();
-            miette!(
+            return Err(miette!(
                 help = format!("Available outputs: {output_keys:?}"),
-                "Could not get node output for node: {linked_node:?} and port name: {output_name}",
-            )
-        })?;
-
-        inputs.insert(input_name.clone(), output_asset_spec.clone());
+                "Required input `{input_name}` has no value from node {linked_node:?} port `{output_name}`",
+            ));
+        }
     }
     Ok(inputs)
 }

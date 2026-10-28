@@ -186,9 +186,6 @@ async def test_resume(
     workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    if "defaults" in name:
-        pytest.skip("default arguments not supported")
-
     runtime = await runtime_fn()
     with runtime:
         workflow_id = await runtime.save_workflow(name, graph)
@@ -252,3 +249,31 @@ async def test_resume_with_worker(
         actual_output = await runtime.get_outputs(run_id)
 
     assert actual_output == output
+
+
+@pytest.mark.asyncio
+async def test_missing_required_input_is_rejected() -> None:
+    runtime = await new_in_memory()
+    workflow_id = await runtime.save_workflow("missing_required", factorial())
+    with pytest.raises(ValueError, match="Missing required workflow inputs: value"):
+        await runtime.start_new_run(workflow_id, {})
+
+
+@pytest.mark.asyncio
+async def test_omitted_and_explicit_null_remain_distinct_in_raw_outputs() -> None:
+    runtime = await new_in_memory()
+    with runtime:
+        workflow_id = await runtime.save_workflow("presence", defaults_passthru())
+
+        omitted_run = await runtime.start_new_run(workflow_id, {"start": 1, "stop": 4})
+        await runtime.wait_for(omitted_run, timeout=10)
+        omitted = await runtime.get_raw_outputs(omitted_run)
+
+        null_run = await runtime.start_new_run(
+            workflow_id, {"start": 1, "stop": 4, "step": None}
+        )
+        await runtime.wait_for(null_run, timeout=10)
+        explicit_null = await runtime.get_raw_outputs(null_run)
+
+    assert "extra_output" not in omitted
+    assert explicit_null["extra_output"] == b"null"

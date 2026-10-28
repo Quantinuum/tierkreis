@@ -326,7 +326,7 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "2.1.1"
+version = "3.0.0rc0"
 source = { editable = "../../../" }
 dependencies = [
     { name = "hugr" },
@@ -340,11 +340,10 @@ requires-dist = [
     { name = "hugr" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.44.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.44.0" },
-    { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
     { name = "pydantic", specifier = "~=2.5" },
     { name = "ruff", marker = "extra == 'stubs'", specifier = ">=0.16.10" },
 ]
-provides-extras = ["stubs", "hpc"]
+provides-extras = ["stubs"]
 
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]

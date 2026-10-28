@@ -86,6 +86,7 @@ impl RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "tempfile".to_string(),
                         output_storage_name: "memory".to_string(),
+                        worker_commands: HashMap::new(),
                     },
                 ),
             ]
@@ -134,6 +135,7 @@ impl Default for RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "file".to_string(),
                         output_storage_name: "file".to_string(),
+                        worker_commands: HashMap::new(),
                     },
                 ),
             ]
@@ -164,6 +166,8 @@ pub(super) enum ExecutorConfig {
     Subprocess {
         subprocess_storage_name: String,
         output_storage_name: String,
+        #[serde(default)]
+        worker_commands: HashMap<String, Vec<String>>,
     },
     Nexus {
         client_config: NexusClientConfig,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tierkreis.consts import TKR_DIR_KEY
 from tierkreis.controller.data.location import WorkerCallArgs
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
+from tierkreis.worker.storage.exceptions import EntryNotFoundError
 
 
 class WorkerFileStorage:

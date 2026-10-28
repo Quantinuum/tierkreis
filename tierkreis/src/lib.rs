@@ -180,7 +180,7 @@ mod tierkreis {
         #[pyo3(transparent, annotation = "Mapping")]
         Mapping(HashMap<String, Option<Value>>),
         #[pyo3(transparent)]
-        Value(Value),
+        Value(Option<Value>),
     }
 
     #[derive(Debug, FromPyObject, IntoPyObject, Serialize, Deserialize)]
@@ -474,7 +474,13 @@ mod tierkreis {
         async fn get_outputs(&self, run_id: Uuid, attempt: u32) -> PyResult<ValueOrMapping> {
             let inner = self.inner.clone();
             let res = get_runtime()
-                .spawn(async move { inner.get_outputs(run_id, attempt).await })
+                .spawn(async move {
+                    let mut outputs = inner.get_outputs(run_id, attempt).await?;
+                    for name in inner.get_omittable_output_names(run_id, attempt).await? {
+                        outputs.entry(name).or_insert_with(|| b"null".to_vec());
+                    }
+                    Ok::<_, miette::Report>(outputs)
+                })
                 .await
                 .map_err(|err| {
                     Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
@@ -817,12 +823,7 @@ mod tierkreis {
             .map_err(|err| convert_err(py, err))?;
 
         if outputs.len() == 1 && outputs.contains_key("value") {
-            Ok(ValueOrMapping::Value(
-                outputs
-                    .remove("value")
-                    .flatten()
-                    .expect("No single output value"),
-            ))
+            Ok(ValueOrMapping::Value(outputs.remove("value").flatten()))
         } else {
             Ok(ValueOrMapping::Mapping(outputs))
         }

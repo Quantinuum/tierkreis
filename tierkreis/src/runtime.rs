@@ -212,6 +212,15 @@ impl Runtime {
         inputs: HashMap<String, Vec<u8>, S>,
         profile: Option<String>,
     ) -> miette::Result<(Uuid, u32)> {
+        let (_, workflow_graph) = self.state.load_workflow(workflow_id).await?;
+        let missing_inputs =
+            workflow_graph.missing_required_inputs(inputs.keys().map(String::as_str));
+        if !missing_inputs.is_empty() {
+            return Err(miette!(
+                "Missing required workflow inputs: {}",
+                missing_inputs.join(", ")
+            ));
+        }
         let profile = profile.or_else(|| self.resources.selected_profile());
         if let Some(profile) = &profile {
             self.resources.load_profile(profile)?;
@@ -509,6 +518,24 @@ impl Runtime {
         Ok(outputs)
     }
 
+    /// Return root output names which may be absent for a run.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the run, its attempt, or its workflow cannot be loaded.
+    pub async fn get_omittable_output_names(
+        &self,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> miette::Result<Vec<String>> {
+        let workflow_run_state = self.state.load_workflow_run_state(run_id, attempt).await?;
+        let (_, workflow_graph) = self
+            .state
+            .load_workflow(workflow_run_state.workflow_id())
+            .await?;
+        Ok(workflow_graph.omittable_inputs(workflow_graph.output_idx()))
+    }
+
     /// Fetch the outputs of a workflow run attempt.
     ///
     /// # Errors
@@ -695,12 +722,14 @@ async fn executor_registry_from_config(
             ExecutorConfig::Subprocess {
                 subprocess_storage_name,
                 output_storage_name,
+                worker_commands,
             } => executor_registry.insert(
                 executor_name.clone(),
-                Box::new(SubprocessExecutor::try_new(
+                Box::new(SubprocessExecutor::try_new_with_commands(
                     asset_storage_registry,
                     subprocess_storage_name,
                     output_storage_name,
+                    worker_commands.clone(),
                 )?),
             ),
             ExecutorConfig::Nexus {

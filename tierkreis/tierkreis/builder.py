@@ -7,7 +7,6 @@ from contextlib import nullcontext
 from contextvars import ContextVar, Token
 from copy import copy
 from dataclasses import dataclass
-from functools import partial
 from inspect import isclass
 from types import TracebackType
 from typing import (
@@ -84,6 +83,9 @@ def _node_context(
     executor = executor if executor is not None else _current_executor.get()
     if executor is not None:
         metadata["executor"] = executor
+    for key in ("input_presence", "output_presence"):
+        if not metadata.get(key):
+            metadata.pop(key, None)
     return metadata
 
 
@@ -130,6 +132,25 @@ class TypedGraphRef[Ins: TModel, Outs: TModel]:
 
     graph_ref: TKR[Workflow[Ins, Outs]]
     outputs_type: type[Outs]
+    inputs_type: type[Ins] | None = None
+
+
+def _omittable_fields(model: type[TModel]) -> set[str]:
+    """Return model fields which may be omitted at runtime.
+
+    Presence follows Python default semantics, not nullability: a ``T | None``
+    field without a default remains required.
+    """
+    origin = getattr(model, "__origin__", None) or model
+    return set(getattr(origin, "_field_defaults", {}))
+
+
+def _input_presence(
+    model: type[TModel] | None, ports: Mapping[str, object]
+) -> dict[str, str]:
+    if model is None:
+        return {}
+    return {name: "omittable" for name in _omittable_fields(model) if name in ports}
 
 
 class LoopOutput(TNamedModel, Protocol):
@@ -199,7 +220,12 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
-        input_fn = partial(self.data.input, has_breakpoint=breakpoints_on_inputs)
+        omittable = _omittable_fields(self.inputs_type)
+        input_fn = lambda name: self.data.input(
+            name,
+            has_breakpoint=breakpoints_on_inputs,
+            **({"output_presence": {name: "omittable"}} if name in omittable else {}),
+        )
         self.inputs = init_tmodel(self.inputs_type, input_fn)
         self._breakpoints_on_outputs = breakpoints_on_outputs
 
@@ -217,7 +243,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :return: The ref of the typed graph.
         :rtype: TypedGraphRef[Inputs, Outputs]
         """
-        return TypedGraphRef(TKR(-1, "body"), self.outputs_type)
+        return TypedGraphRef(TKR(-1, "body"), self.outputs_type, self.inputs_type)
 
     def finish_with_outputs(self, outputs: Outputs) -> Workflow[Inputs, Outputs]:
         """Set output nodes of a graph.
@@ -225,11 +251,18 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         :param outputs: The output nodes.
         :type outputs: Outputs
         """
+        output_values = dict_from_tmodel(outputs)
+        presence = _input_presence(self.outputs_type, output_values)
         self.data.output(
-            inputs=dict_from_tmodel(outputs),
+            inputs=output_values,
             has_breakpoint=self._breakpoints_on_outputs,
+            **({"input_presence": presence} if presence else {}),
         )
-        return Workflow(self.data, self.outputs_type)
+        return Workflow(
+            self.data,
+            outputs_type=self.outputs_type,
+            inputs_type=self.inputs_type,
+        )
 
     def embed[A: TModel, B: TModel](
         self, other_fg: Workflow[A, B], inputs: A, outputs_type: type[B]
@@ -355,6 +388,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         return TypedGraphRef(
             self.const(graph),
             graph.outputs_type,
+            graph.inputs_type,
         )
 
     def task[Out: TModel](
@@ -376,7 +410,13 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         name = f"{func.namespace}.{func.__class__.__name__}"
         inputs = dict_from_tmodel(func)
         idx, _ = self.data.func(
-            name, inputs, **_node_context(context, executor, kwargs)
+            name,
+            inputs,
+            **_node_context(
+                context,
+                executor,
+                kwargs | {"input_presence": _input_presence(func.__class__, inputs)},
+            ),
         )("dummy")
         OutModel = func.out()
         return init_tmodel(OutModel, lambda p: (idx, p))
@@ -409,7 +449,16 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.eval(
             body.graph_ref.value_ref(),
             dict_from_tmodel(eval_inputs),
-            **_node_context(context, executor, kwargs),
+            **_node_context(
+                context,
+                executor,
+                kwargs
+                | {
+                    "input_presence": _input_presence(
+                        body.inputs_type, dict_from_tmodel(eval_inputs)
+                    )
+                },
+            ),
         )("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
@@ -448,7 +497,16 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             dict_from_tmodel(loop_inputs),
             "should_continue",
             name,
-            **_node_context(context, executor, kwargs),
+            **_node_context(
+                context,
+                executor,
+                kwargs
+                | {
+                    "input_presence": _input_presence(
+                        body.inputs_type, dict_from_tmodel(loop_inputs)
+                    )
+                },
+            ),
         )(
             "dummy",
         )
@@ -492,7 +550,11 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         **kwargs,
     ) -> TList[B]:
         ins = dict_from_tmodel(map_inputs._value)
-        idx, _ = self.data.map(body.graph_ref.value_ref(), ins, **kwargs)("x")
+        idx, _ = self.data.map(
+            body.graph_ref.value_ref(),
+            ins,
+            **(kwargs | {"input_presence": _input_presence(body.inputs_type, ins)}),
+        )("x")
 
         return TList(init_tmodel(body.outputs_type, lambda s: (idx, s + "-*")))
 

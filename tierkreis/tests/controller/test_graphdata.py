@@ -1,5 +1,6 @@
 import pytest
 
+from tests.controller.defaults_graphs import defaults_passthru
 from tests.controller.typed_graphdata import DoublerInput, typed_doubler_plus
 from tierkreis.builder import ExecutionContext, Graph
 from tierkreis.builtins import iadd
@@ -77,3 +78,26 @@ def test_executor_contexs() -> None:
     assert metadata[nested.node_index].executor == "subprocess"
     assert metadata[outer.node_index].executor == "inmemory"
     assert unscoped.node_index not in metadata
+
+
+def test_port_presence_metadata_roundtrip() -> None:
+    required_nullable_graph = Graph(TKR[int | None], TKR[int | None])
+    required_nullable = required_nullable_graph.finish_with_outputs(
+        required_nullable_graph.inputs
+    )
+    assert required_nullable.data.node_metadata[0].output_presence == {}
+    assert required_nullable.data.node_metadata[1].input_presence == {}
+
+    workflow = defaults_passthru()
+    assert workflow.data.node_metadata[2].output_presence == {"step": "omittable"}
+    output_index = workflow.data.output_idx()
+    assert workflow.data.node_metadata[output_index].input_presence == {
+        "extra_output": "omittable"
+    }
+
+    serialized = workflow.data.model_dump_json()
+    restored = GraphData.model_validate_json(serialized)
+    assert restored.node_metadata[2].output_presence == {"step": "omittable"}
+    assert restored.node_metadata[restored.output_idx()].input_presence == {
+        "extra_output": "omittable"
+    }

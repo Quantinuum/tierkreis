@@ -80,6 +80,17 @@ pub enum NodeDefinition {
     },
 }
 
+/// Whether a port must carry an asset or may be absent for a particular run.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PortPresence {
+    /// The port must carry an asset.
+    #[default]
+    Required,
+    /// The port may be absent. Downstream executors omit the corresponding argument.
+    Omittable,
+}
+
 /// The [`WorkflowGraph`] defines a Workflow that can be evaluated
 /// by the Tierkreis runtime.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -100,6 +111,12 @@ struct NodeMetadata {
     /// Stop before executing this node when breakpoints are enabled.
     #[serde(default)]
     pub has_breakpoint: bool,
+    /// Presence policy for inputs whose absence is meaningful.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub input_presence: BTreeMap<String, PortPresence>,
+    /// Presence policy for outputs whose absence is meaningful.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub output_presence: BTreeMap<String, PortPresence>,
 }
 
 impl WorkflowGraph {
@@ -171,6 +188,61 @@ impl WorkflowGraph {
         self.node_metadata
             .get(&node)
             .is_some_and(|metadata| metadata.has_breakpoint)
+    }
+
+    /// Return whether a named input may be absent.
+    #[must_use]
+    pub fn input_is_omittable(&self, node: NodeIndex, name: &str) -> bool {
+        self.node_metadata
+            .get(&node)
+            .and_then(|metadata| metadata.input_presence.get(name))
+            == Some(&PortPresence::Omittable)
+    }
+
+    /// Return the names of omittable inputs on a node.
+    #[must_use]
+    pub fn omittable_inputs(&self, node: NodeIndex) -> Vec<String> {
+        self.node_metadata
+            .get(&node)
+            .map(|metadata| {
+                metadata
+                    .input_presence
+                    .iter()
+                    .filter(|(_, presence)| **presence == PortPresence::Omittable)
+                    .map(|(name, _)| name.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Return required root workflow inputs missing from the provided names.
+    #[must_use]
+    pub fn missing_required_inputs<'a>(
+        &self,
+        provided: impl IntoIterator<Item = &'a str>,
+    ) -> Vec<String> {
+        let provided: HashSet<&str> = provided.into_iter().collect();
+        self.node_definitions
+            .iter()
+            .filter_map(|(node, definition)| match definition {
+                NodeDefinition::Input { name }
+                    if !provided.contains(name.as_str())
+                        && !self.output_is_omittable(*node, name) =>
+                {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Return whether a named output may be absent.
+    #[must_use]
+    pub fn output_is_omittable(&self, node: NodeIndex, name: &str) -> bool {
+        self.node_metadata
+            .get(&node)
+            .and_then(|metadata| metadata.output_presence.get(name))
+            == Some(&PortPresence::Omittable)
     }
 
     /// Iterate over the indices of all the nodes in the graph.
@@ -500,6 +572,10 @@ pub(crate) struct LegacyNodeMetadata {
     /// Stop before executing this node when breakpoints are enabled.
     #[serde(default)]
     pub has_breakpoint: bool,
+    #[serde(default)]
+    pub input_presence: BTreeMap<String, PortPresence>,
+    #[serde(default)]
+    pub output_presence: BTreeMap<String, PortPresence>,
 }
 
 impl LegacyWorkflowGraph {
@@ -1075,6 +1151,8 @@ impl ConversionState {
                 node_index,
                 NodeMetadata {
                     has_breakpoint: metadata.has_breakpoint,
+                    input_presence: metadata.input_presence.clone(),
+                    output_presence: metadata.output_presence.clone(),
                 },
             );
         }

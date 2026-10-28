@@ -25,9 +25,6 @@ dependencies = [
 stubs = [
     "ruff>=0.16.10",
 ]
-hpc = [
-    "psij-python>=0.9.11",
-]
 
 [dependency-groups]
 dev = [

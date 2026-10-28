@@ -1975,21 +1975,6 @@ wheels = [
 ]
 
 [[package]]
-name = "psij-python"
-version = "0.9.11"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-    { name = "psutil" },
-    { name = "pystache" },
-    { name = "typeguard" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/9e/8dc7a406b6f052c336c5a6b9a536b366f34d5be3ad08bdfbe6f03709d2c0/psij-python-0.9.11.tar.gz", hash = "sha256:de069062d96e6a75a646594cecac67dfa090ab9a0f13a112c0efb97526286e37", size = 68091, upload-time = "2025-05-30T21:44:40.989Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/2d/4e3116628ac2d2ee7cce1d03207c47469d4f1736257d2632d75ca7f1bc7c/psij_python-0.9.11-py3-none-any.whl", hash = "sha256:2087b69d4a4858ad1c5ae038e17662da3f8c241c5b74c86b675db5b3fa23fae8", size = 89155, upload-time = "2025-05-30T21:44:39.447Z" },
-]
-
-[[package]]
 name = "psutil"
 version = "7.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2435,15 +2420,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4b/58/d7c9cfdf1394a8b4d85ac488888814b28d26c4bd732191bd4169687cbfdd/pyspnego-0.12.4.tar.gz", hash = "sha256:acb314d6ca5c9ce87994b1eebbe2d8b687e0d564f9d650b306afb4c8f9c2ffd5", size = 235376, upload-time = "2026-10-06T03:46:23.105Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/4e/f6c1bb147890f246c3a24ce836be4f6cfc44fd7be08e0a229e3a1c08b560/pyspnego-0.12.4-py3-none-any.whl", hash = "sha256:a29a34de1abe9e9b30d9aa1d363f8e49fc159eb7355b1f2ee86ccb3a2ce3bba9", size = 131003, upload-time = "2026-10-06T03:46:21.509Z" },
-]
-
-[[package]]
-name = "pystache"
-version = "0.6.8"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/85/89/0a712ca22930b8c71bced8703e5bb45669c31690ea81afe15f6cb284550c/pystache-0.6.8.tar.gz", hash = "sha256:3707518e6a4d26dd189b07c10c669b1fc17df72684617c327bd3550e7075c72c", size = 101892, upload-time = "2025-03-18T11:54:47.595Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/78/ffd13a516219129cef6a754a11ba2a1c0d69f1e281af4f6bca9ed5327219/pystache-0.6.8-py3-none-any.whl", hash = "sha256:7211e000974a6e06bce2d4d5cad8df03bcfffefd367209117376e4527a1c3cb8", size = 82051, upload-time = "2025-03-18T11:54:45.813Z" },
 ]
 
 [[package]]
@@ -3613,9 +3589,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-hpc = [
-    { name = "psij-python" },
-]
 stubs = [
     { name = "ruff" },
 ]
@@ -3636,11 +3609,10 @@ requires-dist = [
     { name = "hugr" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.44.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.44.0" },
-    { name = "psij-python", marker = "extra == 'hpc'", specifier = ">=0.9.11" },
     { name = "pydantic", specifier = "~=2.5" },
     { name = "ruff", marker = "extra == 'stubs'", specifier = ">=0.16.10" },
 ]
-provides-extras = ["stubs", "hpc"]
+provides-extras = ["stubs"]
 
 [package.metadata.requires-dev]
 build = [{ name = "build", extras = ["uv"] }]
@@ -4221,18 +4193,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2c/2e/a7fbfe268c8a3b32546930c0297c101d65a4a14c304ad5790a9f478f0e4e/traitlets-5.16.1.tar.gz", hash = "sha256:ed900c2b631aa3a112811139fa97b8d2c3bad5e989656bba4b7e52c7852c18c1", size = 166137, upload-time = "2026-08-03T08:32:36.848Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ad/66/0d785f0bc5e4315a96c989bb476d0fc07ea4f85132550c7b156ca2035d52/traitlets-5.16.1-py3-none-any.whl", hash = "sha256:f775618166caa0396c8e337099240f2bd3e5e917d203b2e6fbe21a58d3cb1f6b", size = 86211, upload-time = "2026-08-03T08:32:34.48Z" },
-]
-
-[[package]]
-name = "typeguard"
-version = "4.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/de/4420db493fa8fc0856d5e5c1b159c63a323d2de2317babe36b01568928e8/typeguard-4.6.0.tar.gz", hash = "sha256:e7414f09111317de3e335de92cd397c5c0ca00b1cc1676de12e1d444a79b3f21", size = 82330, upload-time = "2026-07-26T08:40:23.207Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/eb/461d5f167b6f5c7d97696f397c82f82e3480e003fce3f0a1cd1dd26e2eb2/typeguard-4.6.0-py3-none-any.whl", hash = "sha256:79878165bb86f2cf5d41d159a0ff1792a796cf496882d2fe1b1c6c7049b9cdd7", size = 36884, upload-time = "2026-07-26T08:40:21.868Z" },
 ]
 
 [[package]]

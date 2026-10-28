@@ -153,8 +153,6 @@ from typing import NamedTuple
 from tierkreis.runtime import load_runtime_config, new_from_config
 from tierkreis.builder import Graph
 from tierkreis.models import OpaqueType, TKR, Workflow
-from tierkreis.storage import FileStorage, read_outputs
-
 from {worker_name} import your_worker_task
 
 class GraphInputs(NamedTuple):

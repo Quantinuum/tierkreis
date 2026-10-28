@@ -28,10 +28,10 @@ from tierkreis.controller.data.types import (
     has_default,
     ptype_from_bytes,
 )
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.exceptions import TierkreisError
 from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
+from tierkreis.worker.storage.exceptions import EntryNotFoundError
 from tierkreis.worker.storage.filestorage import WorkerFileStorage
 from tierkreis.worker.storage.protocol import WorkerStorage
 
@@ -51,9 +51,7 @@ class Worker:
     """A worker bundles a set of functionality under a common namespace.
 
     The main usage of a worker is to convert python functions into atomic tasks,
-    which can then be executed by the
-    :py:class:`tierkreis.controller.executor.uv_executor.UvExecutor`
-    or similar Executors.
+    which can then be executed by the native runtime's subprocess executor.
     From the worker type stubs can be generated to statically check the function calls.
 
     Example snippet for wrapping a python function:

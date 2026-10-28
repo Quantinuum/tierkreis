@@ -460,6 +460,26 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         .boxed()
     }
 
+    fn find_named_input_from_location<'a>(
+        &'a self,
+        location: &'a Location,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<Option<AssetSpec>>> {
+        async move {
+            let run = self
+                .global_state
+                .runs
+                .get(&(self.run_id, self.attempt))
+                .ok_or_else(|| miette!("Workflow run not found"))?;
+            Ok(run
+                .inputs
+                .get(location)
+                .and_then(|inputs| inputs.get(name))
+                .cloned())
+        }
+        .boxed()
+    }
+
     #[instrument]
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>> {
         let global_state = &self.global_state;

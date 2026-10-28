@@ -500,6 +500,7 @@ impl Orchestrator {
                         context.parent_loc.clone(),
                         n,
                         name.clone(),
+                        workflow_graph.output_is_omittable(n, name),
                     )
                     .into_stream()
                     .boxed(),
@@ -859,12 +860,19 @@ impl Orchestrator {
         parent_location: Location,
         n: NodeIndex,
         name: String,
+        omittable: bool,
     ) -> miette::Result<Action> {
         let input_asset_spec = workflow_run_state
-            .load_named_input_from_location(&parent_location, &name)
+            .find_named_input_from_location(&parent_location, &name)
             .await?;
         let mut outputs = HashMap::new();
-        outputs.insert(name, input_asset_spec);
+        if let Some(input_asset_spec) = input_asset_spec {
+            outputs.insert(name.clone(), input_asset_spec);
+        } else if !omittable {
+            return Err(miette!(
+                "Required input `{name}` was not provided at location `{parent_location}`"
+            ));
+        }
 
         Ok(Action {
             loc: parent_location.with_node(n),

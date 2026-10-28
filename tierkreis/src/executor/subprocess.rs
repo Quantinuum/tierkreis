@@ -58,6 +58,8 @@ struct BackgroundTaskPlan {
     attempt: u32,
     loc: Location,
     worker_name: String,
+    worker_command: Vec<String>,
+    stdio_paths: Option<(PathBuf, PathBuf)>,
     environment: HashMap<String, String>,
     output_storage_name: String,
     worker_args: NamedTempFile,
@@ -157,7 +159,7 @@ async fn start_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
     running: &mut RunningFutures<'_>,
-    internal_task: BackgroundTaskPlan,
+    mut internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
     let loc = internal_task.loc;
     let workflow_run_id = internal_task.workflow_run_id;
@@ -193,12 +195,18 @@ async fn start_task(
     }
 
     let worker_args_path = worker_args.path();
+    internal_task.environment.insert(
+        "worker_call_args_file".to_string(),
+        worker_args_path.display().to_string(),
+    );
     let res = {
         let _enter = parent_span.enter();
         spawn_worker(
             &internal_task.worker_name,
+            &internal_task.worker_command,
             worker_args_path,
             &internal_task.environment,
+            internal_task.stdio_paths.as_ref(),
         )
     };
     let mut child = match res {
@@ -349,6 +357,7 @@ pub struct SubprocessExecutor {
     // no copying will occur.
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+    worker_commands: HashMap<String, Vec<String>>,
 }
 
 impl Drop for SubprocessExecutor {
@@ -376,6 +385,30 @@ impl SubprocessExecutor {
         subprocess_storage_name: &str,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
+        Self::try_new_with_commands(
+            asset_storage_registry,
+            subprocess_storage_name,
+            output_storage_name,
+            HashMap::new(),
+        )
+    }
+
+    /// Create a subprocess executor with per-worker command overrides.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a command is empty or a named storage is missing or unsuitable.
+    pub fn try_new_with_commands(
+        asset_storage_registry: &AssetStorageRegistry,
+        subprocess_storage_name: &str,
+        output_storage_name: &str,
+        worker_commands: HashMap<String, Vec<String>>,
+    ) -> miette::Result<Self> {
+        for (worker, command) in &worker_commands {
+            if command.first().is_none_or(String::is_empty) {
+                return Err(miette!("Worker command for `{worker}` has no executable"));
+            }
+        }
         if let Some(subprocess_storage) = asset_storage_registry.get(subprocess_storage_name) {
             let subprocess_storage: &dyn Any = subprocess_storage as &dyn Any;
             if subprocess_storage.is::<FileAssetStorage>() {
@@ -413,6 +446,7 @@ impl SubprocessExecutor {
             subprocess_storage_name: subprocess_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
+            worker_commands,
         })
     }
 
@@ -466,19 +500,41 @@ impl SubprocessExecutor {
 
 fn spawn_worker(
     worker_name: &str,
+    worker_command: &[String],
     worker_args_path: &Path,
     environment: &HashMap<String, String>,
+    stdio_paths: Option<&(PathBuf, PathBuf)>,
 ) -> miette::Result<tokio::process::Child> {
-    let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
-    let mut command = Command::new(&cmd);
+    let default_cmd = if stdio_paths.is_some() {
+        worker_name.to_string()
+    } else {
+        format!("tkr-{}", worker_name.replace('_', "-"))
+    };
+    let (cmd, command_args) = worker_command
+        .split_first()
+        .map_or((default_cmd.as_str(), &[][..]), |(cmd, args)| {
+            (cmd.as_str(), args)
+        });
+    let mut command = Command::new(cmd);
+    command.args(command_args);
     command.envs(environment);
     let cx = tracing::Span::current().context();
     inject_trace_context(&cx, &mut CommandEnvCarrier(&mut command));
 
-    command
-        .arg(worker_args_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
+    if let Some((input, output)) = stdio_paths {
+        let input = std::fs::File::open(input)
+            .into_diagnostic()
+            .wrap_err("Could not open script input")?;
+        let output = std::fs::File::create(output)
+            .into_diagnostic()
+            .wrap_err("Could not open script output")?;
+        command
+            .stdin(Stdio::from(input))
+            .stdout(Stdio::from(output));
+    } else {
+        command.arg(worker_args_path).stdout(Stdio::null());
+    }
+    command.stderr(Stdio::piped());
 
     let child = command
         .spawn()
@@ -559,6 +615,36 @@ fn write_input_paths(
     Ok(input_paths)
 }
 
+fn prepare_process_protocol(
+    task_name: &str,
+    environment: &mut HashMap<String, String>,
+    inputs: &HashMap<String, PathBuf>,
+    outputs: &HashMap<String, PathBuf>,
+) -> miette::Result<Option<(PathBuf, PathBuf)>> {
+    environment.extend(
+        inputs
+            .iter()
+            .map(|(name, path)| (format!("input_{name}_file"), path.display().to_string())),
+    );
+    environment.extend(
+        outputs
+            .iter()
+            .map(|(name, path)| (format!("output_{name}_file"), path.display().to_string())),
+    );
+    environment.insert("function_name".to_string(), task_name.to_string());
+
+    if task_name != "exec_script" {
+        return Ok(None);
+    }
+    if inputs.len() != 1 || outputs.len() != 1 {
+        return Err(miette!("Script task requires exactly one input and output"));
+    }
+    Ok(Some((
+        inputs.values().next().expect("length checked").clone(),
+        outputs.values().next().expect("length checked").clone(),
+    )))
+}
+
 impl Executor for SubprocessExecutor {
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
@@ -572,7 +658,7 @@ impl Executor for SubprocessExecutor {
                 if !task_plan.resources.is_empty() {
                     tracing::warn!("Subprocess executor does not implement resources");
                 }
-                let environment: HashMap<String, String> = task_plan
+                let mut environment: HashMap<String, String> = task_plan
                     .environment
                     .iter()
                     .map(|(key, value)| {
@@ -592,6 +678,13 @@ impl Executor for SubprocessExecutor {
                     .build_outputs(task_plan.outputs)
                     .await
                     .wrap_err("Failed to build task outputs")?;
+
+                let stdio_paths = prepare_process_protocol(
+                    &task_plan.task_name,
+                    &mut environment,
+                    &inputs,
+                    &output_paths,
+                )?;
 
                 let worker_args = NamedTempFile::new()
                     .into_diagnostic()
@@ -632,7 +725,13 @@ impl Executor for SubprocessExecutor {
                         workflow_run_id: task_plan.workflow_run_id,
                         attempt: task_plan.attempt,
                         loc: task_plan.loc,
-                        worker_name: task_plan.worker_name,
+                        worker_name: task_plan.worker_name.clone(),
+                        worker_command: self
+                            .worker_commands
+                            .get(&task_plan.worker_name)
+                            .cloned()
+                            .unwrap_or_default(),
+                        stdio_paths,
                         environment,
                         output_storage_name,
                         worker_args,
@@ -784,6 +883,43 @@ mod tests {
         )
         .await;
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn execute_configured_stdio_script() -> miette::Result<()> {
+        let (registry, input_sets, _dir) =
+            test_storage_registry(vec![json!({"input": "world"})], vec![]).await;
+        let script =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/workers/stdinout_worker/main.sh");
+        let executor = SubprocessExecutor::try_new_with_commands(
+            &registry,
+            "file",
+            "memory",
+            HashMap::from([(
+                "greeting-script".to_string(),
+                vec!["bash".to_string(), script.display().to_string()],
+            )]),
+        )?;
+        let stream = executor.listen()?;
+        executor
+            .execute(vec![TaskPlan {
+                worker_name: "greeting-script".to_string(),
+                task_name: "exec_script".to_string(),
+                inputs: input_sets[0].clone(),
+                outputs: HashSet::from(["value".to_string()]),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(3).collect::<Vec<_>>().await;
+        assert_registry_contains_values(
+            &registry,
+            "memory",
+            &events[2].clone().outputs()[0],
+            json!({"value": "Hello world"}),
+        )
+        .await;
         Ok(())
     }
 

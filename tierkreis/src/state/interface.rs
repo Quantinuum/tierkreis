@@ -306,6 +306,12 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         location: &'a Location,
         name: &'a str,
     ) -> BoxFuture<'a, miette::Result<AssetSpec>>;
+    /// Retrieve an input if it exists at the specified nested location.
+    fn find_named_input_from_location<'a>(
+        &'a self,
+        location: &'a Location,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<Option<AssetSpec>>>;
     /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the state of a Node at the specified [`Location`].

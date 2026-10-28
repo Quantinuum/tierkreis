@@ -31,6 +31,8 @@ class NodeMetaData(BaseModel):
     is_hidden: bool = False
     context: str | None = None
     executor: str | None = None
+    input_presence: dict[PortID, Literal["omittable"]] = {}
+    output_presence: dict[PortID, Literal["omittable"]] = {}
 
 
 @dataclass

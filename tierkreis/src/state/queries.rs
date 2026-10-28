@@ -717,6 +717,42 @@ pub async fn read_workflow_run_input_from_location(
     })
 }
 
+/// Read an optional persisted workflow input at a location.
+///
+/// # Errors
+///
+/// Returns an error when the query fails or the stored asset specification is invalid.
+pub async fn find_workflow_run_input_from_location(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    workflow_run_id: &str,
+    attempt: i32,
+    location: &str,
+    name: &str,
+) -> miette::Result<Option<AssetSpec>> {
+    use crate::state::schema::workflow_run_inputs::dsl as wri;
+
+    let input = wri::workflow_run_inputs
+        .select(WorkflowRunInput::as_select())
+        .filter(wri::workflow_run_id.eq(workflow_run_id))
+        .filter(wri::attempt.eq(attempt))
+        .filter(wri::location.eq(location))
+        .filter(wri::name.eq(name))
+        .first(conn)
+        .await
+        .optional()
+        .into_diagnostic()?;
+
+    input
+        .map(|input| {
+            Ok(AssetSpec {
+                asset_key: input.asset_key.parse().into_diagnostic()?,
+                kind: input.asset_kind.parse()?,
+                storage_name: input.storage_name,
+            })
+        })
+        .transpose()
+}
+
 async fn insert_outputs(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
