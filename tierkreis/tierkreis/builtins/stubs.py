@@ -1,4 +1,4 @@
-"""Code generated from builtins namespace. Please do not edit."""
+"""Typed graph-building stubs for the Rust builtin worker."""
 
 from collections.abc import Sequence
 from typing import NamedTuple
@@ -724,3 +724,210 @@ class at[T: PType](NamedTuple):
     @property
     def namespace(self) -> str:
         return "builtins"
+
+
+# Rust-native builtin names and legacy aliases. Subclassing the generated
+# signatures preserves their static constructor and output types while giving
+# each task the class name used to construct its worker call.
+class ieq(igt):
+    pass
+
+
+class ine(igt):
+    pass
+
+
+class ilt_s(igt):
+    pass
+
+
+class igt_s(igt):
+    pass
+
+
+class ilte_s(igt):
+    pass
+
+
+class igte_s(igt):
+    pass
+
+
+class imax_s(iadd):
+    pass
+
+
+class imin_s(iadd):
+    pass
+
+
+class isub(iadd):
+    pass
+
+
+class ineg(NamedTuple):
+    a: TKR[int]
+
+    @staticmethod
+    def out() -> type[TKR[int]]:
+        return TKR[int]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class imul(iadd):
+    pass
+
+
+class idiv_s(iadd):
+    pass
+
+
+class imod_s(iadd):
+    pass
+
+
+class iabs(ineg):
+    pass
+
+
+class iand(iadd):
+    pass
+
+
+class ior(iadd):
+    pass
+
+
+class ixor(iadd):
+    pass
+
+
+class itostring_s(NamedTuple):
+    a: TKR[int]
+
+    @staticmethod
+    def out() -> type[TKR[str]]:
+        return TKR[str]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class fadd(NamedTuple):
+    a: TKR[float]
+    b: TKR[float]
+
+    @staticmethod
+    def out() -> type[TKR[float]]:
+        return TKR[float]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class fsub(fadd):
+    pass
+
+
+class fmul(fadd):
+    pass
+
+
+class fmax(fadd):
+    pass
+
+
+class fmin(fadd):
+    pass
+
+
+class idiv(fadd):
+    pass
+
+
+class feq(gt):
+    pass
+
+
+class fne(gt):
+    pass
+
+
+class flt(gt):
+    pass
+
+
+class fgt(gt):
+    pass
+
+
+class flte(gt):
+    pass
+
+
+class fgte(gt):
+    pass
+
+
+class fneg(NamedTuple):
+    a: TKR[float]
+
+    @staticmethod
+    def out() -> type[TKR[float]]:
+        return TKR[float]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class fabs(fneg):
+    pass
+
+
+class ffloor(fneg):
+    pass
+
+
+class fceil(fneg):
+    pass
+
+
+class ftostring(NamedTuple):
+    a: TKR[float]
+
+    @staticmethod
+    def out() -> type[TKR[str]]:
+        return TKR[str]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+class ne(neq):
+    pass
+
+
+class _str(tkr_str):
+    pass
+
+
+_str.__name__ = "str"
+
+
+class tuple[U: PType, V: PType](tkr_tuple[U, V]):
+    pass
+
+
+class range(tkr_range):
+    pass
+
+
+class sleep(tkr_sleep):
+    pass

@@ -20,6 +20,10 @@ include = [
 [lib]
 crate-type = ["rlib", "cdylib"]
 
+[[bin]]
+name = "tkr-builtins"
+path = "src/bin/tkr-builtins.rs"
+
 [features]
 default = []
 pyo3 = ["dep:pyo3", "dep:pyo3-async-runtimes"]

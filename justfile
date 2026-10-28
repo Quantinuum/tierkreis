@@ -64,7 +64,6 @@ stubs-generate-api dir:
   uv run --all-extras main.py --stubs-path ../api/api.py
 
 generate: 
-  just stubs-generate 'tierkreis/tierkreis/builtins'
   just stubs-generate 'tierkreis/tests/workers/graph'
 
   just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'

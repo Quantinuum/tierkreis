@@ -6,6 +6,7 @@ import logging
 from importlib.machinery import ModuleSpec
 from pathlib import Path
 
+from tierkreis._tierkreis import execute_builtin  # pyright: ignore[reportMissingImports]
 from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.storage.data import ExecutorDebugData
@@ -42,6 +43,18 @@ class InMemoryExecutor:
         call_args = WorkerCallArgs(
             **json.loads(self.storage.read(worker_call_args_path)),
         )
+        if launcher_name == "builtins":
+            inputs = {
+                name: self.storage.read(path) for name, path in call_args.inputs.items()
+            }
+            outputs = execute_builtin(call_args.function_name, inputs)
+            for name, path in call_args.outputs.items():
+                self.storage.write(path, outputs[name])
+            self.storage.touch(call_args.done_path)
+            return ExecutorDebugData(
+                executor=str(__class__),
+                launch_command="Rust builtins",
+            )
         launcher_path = check_and_set_launcher(
             self.registry_path, launcher_name, ".py", check_shell=True
         )

@@ -7,6 +7,7 @@ Workflow Management system.
 pub mod asset_storage;
 #[cfg(test)]
 pub mod builder;
+pub mod builtins;
 pub mod config;
 pub mod event;
 pub mod executor;
@@ -43,11 +44,43 @@ mod tierkreis {
     use uuid::Uuid;
 
     use crate::{
+        builtins,
         config::CONFIG_FILE_NAME,
         graph::{LegacyWorkflowGraph, WorkflowGraph},
         location::Location,
         runtime::RuntimeConfig,
     };
+
+    #[pyfunction]
+    fn builtin_task_names() -> Vec<String> {
+        builtins::supported_tasks()
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect()
+    }
+
+    #[pyfunction]
+    #[allow(clippy::needless_pass_by_value)]
+    fn execute_builtin(
+        py: Python<'_>,
+        task_name: String,
+        inputs: HashMap<String, Vec<u8>>,
+    ) -> PyResult<HashMap<String, Py<PyBytes>>> {
+        builtins::execute(&task_name, &inputs)
+            .map(|outputs| {
+                outputs
+                    .into_iter()
+                    .map(|(name, value)| (name, PyBytes::new(py, &value).unbind()))
+                    .collect()
+            })
+            .map_err(|err| convert_err(py, err))
+    }
+
+    #[pyfunction]
+    fn run_builtin_worker(py: Python<'_>, call_args: std::path::PathBuf) -> PyResult<()> {
+        py.detach(move || builtins::run_worker_call(&call_args))
+            .map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
 
     #[pyfunction]
     #[pyo3(signature = (port=3000, host="127.0.0.1", config=None))]

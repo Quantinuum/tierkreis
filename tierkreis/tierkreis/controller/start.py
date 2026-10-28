@@ -2,11 +2,9 @@
 
 import logging
 import subprocess
-import sys
 from pathlib import Path
 from typing import assert_never
 
-from tierkreis.consts import PACKAGE_PATH
 from tierkreis.controller.data.core import PortID
 from tierkreis.controller.data.graph import Eval, GraphData
 from tierkreis.controller.data.location import Loc, OutputLoc
@@ -59,15 +57,14 @@ def run_builtin(call_args_path: Path, logs_path: Path) -> ExecutorDebugData:
     logger.info("START builtin %s", call_args_path)
     with Path.open(logs_path, "a") as fh:
         subprocess.Popen(
-            [sys.executable, "main.py", call_args_path],
+            ["tkr-builtins", call_args_path],
             start_new_session=True,
-            cwd=PACKAGE_PATH / "tierkreis" / "builtins",
             stderr=fh,
             stdout=fh,
         )
     return ExecutorDebugData(
         executor="builtin",
-        launch_command=f"cd {PACKAGE_PATH / 'tierkreis' / 'builtins'} && {sys.executable} main.py {call_args_path}",
+        launch_command=f"tkr-builtins {call_args_path}",
     )
 
 
