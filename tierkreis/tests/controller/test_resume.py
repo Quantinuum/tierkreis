@@ -174,9 +174,6 @@ async def test_resume(
     workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    # if "defaults" in name:
-    #     pytest.skip("default arguments not supported")
-
     runtime = await runtime_fn()
     with runtime:
         workflow_id = await runtime.save_workflow(name, graph)
