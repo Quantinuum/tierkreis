@@ -7,7 +7,6 @@ from contextlib import nullcontext
 from contextvars import ContextVar, Token
 from copy import copy
 from dataclasses import dataclass
-from functools import partial
 from inspect import isclass
 from types import TracebackType
 from typing import (
@@ -85,6 +84,15 @@ def _node_context(
     if executor is not None:
         metadata["executor"] = executor
     return metadata
+
+
+def _default_input(model: type[TModel], name: str) -> tuple[PType, bool]:
+    origin = getattr(model, "__origin__", None) or model
+    field_defaults = getattr(origin, "_field_defaults", {})
+    if name not in field_defaults:
+        return (None, False)
+    else:
+        return (field_defaults.get(name), True)
 
 
 @dataclass
@@ -187,6 +195,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
     inputs_type: type[Inputs]
     outputs_type: type[Outputs]
     inputs: Inputs
+    _breakpoints_on_inputs: bool
     _breakpoints_on_outputs: bool
 
     def __init__(
@@ -199,9 +208,19 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self.data = GraphData()
         self.inputs_type = inputs_type
         self.outputs_type = outputs_type
-        input_fn = partial(self.data.input, has_breakpoint=breakpoints_on_inputs)
-        self.inputs = init_tmodel(self.inputs_type, input_fn)
+
+        self._breakpoints_on_inputs = breakpoints_on_inputs
         self._breakpoints_on_outputs = breakpoints_on_outputs
+        self.inputs = init_tmodel(self.inputs_type, self._input_fn)
+
+    def _input_fn(self, name: str) -> ValueRef:
+        (default_value, default_none) = _default_input(self.inputs_type, name)
+        return self.data.input(
+            name,
+            default_value,
+            default_none,
+            has_breakpoint=self._breakpoints_on_inputs,
+        )
 
     def get_data(self) -> GraphData:
         """Return the underlying graph from the builder.
@@ -229,7 +248,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             inputs=dict_from_tmodel(outputs),
             has_breakpoint=self._breakpoints_on_outputs,
         )
-        return Workflow(self.data, self.outputs_type)
+        return Workflow(self.data, self.outputs_type, self.inputs_type)
 
     def embed[A: TModel, B: TModel](
         self, other_fg: Workflow[A, B], inputs: A, outputs_type: type[B]

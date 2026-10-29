@@ -500,7 +500,7 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         &'a self,
         location: &'a Location,
         name: &'a str,
-    ) -> BoxFuture<'a, miette::Result<AssetSpec>> {
+    ) -> BoxFuture<'a, miette::Result<Option<AssetSpec>>> {
         async move {
             let mut conn = self.get_conn().await?;
             read_workflow_run_input_from_location(
@@ -1304,7 +1304,7 @@ mod tests {
         let input_res = workflow_run_state1
             .load_named_input_from_location(&Location::new("N1")?, "foo")
             .await;
-        assert!(input_res.is_ok());
+        assert!(input_res.is_ok_and(|value| value.is_some()));
 
         let workflow_run_state2 = runtime_state
             .new_attempt(workflow_run_state1.run_id())
@@ -1316,7 +1316,7 @@ mod tests {
         let input_res = workflow_run_state2
             .load_named_input_from_location(&Location::new("N1")?, "foo")
             .await;
-        assert!(input_res.is_ok());
+        assert!(input_res.is_ok_and(|value| value.is_some()));
 
         Ok(())
     }
@@ -1382,7 +1382,7 @@ mod tests {
         let input_res = workflow_run_state1
             .load_named_input_from_location(&Location::new("N1")?, "foo")
             .await;
-        assert!(input_res.is_ok());
+        assert!(input_res.is_ok_and(|value| value.is_some()));
 
         let workflow_run_state2 = runtime_state
             .new_attempt(workflow_run_state1.run_id())
@@ -1398,7 +1398,7 @@ mod tests {
         let input_res = workflow_run_state2
             .load_named_input_from_location(&Location::new("N1")?, "foo")
             .await;
-        assert!(input_res.is_err());
+        assert!(input_res.is_ok_and(|value| value.is_none()));
 
         Ok(())
     }
@@ -1450,13 +1450,13 @@ mod tests {
             workflow_run_state
                 .load_named_input_from_location(&map_loc.with_map_index(0), "a")
                 .await?,
-            first_input
+            Some(first_input)
         );
         assert_eq!(
             workflow_run_state
                 .load_named_input_from_location(&map_loc.with_map_index(1), "a")
                 .await?,
-            second_input
+            Some(second_input)
         );
 
         let node_state = workflow_run_state.read(&map_loc).await?;

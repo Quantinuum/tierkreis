@@ -151,7 +151,7 @@ impl NodeDefinition {
     #[must_use]
     pub fn function_name(&self) -> String {
         match self {
-            NodeDefinition::Input { name } => name.clone(),
+            NodeDefinition::Input { name, .. } => name.clone(),
             NodeDefinition::Output {} => "output".to_string(),
             NodeDefinition::Const { .. } => "const".to_string(),
             NodeDefinition::IfElse {} => "ifelse".to_string(),

@@ -79,23 +79,27 @@ where
     Ok(val)
 }
 
-fn extract_optional_value<'a, T>(
+// Extract an value if set or return a default value if not set.
+fn extract_value_with_default<'a, T>(
     inputs: &'a HashMap<String, Vec<u8>>,
     name: &str,
-) -> miette::Result<Option<T>>
+    default: T,
+) -> miette::Result<T>
 where
     T: Deserialize<'a>,
 {
     let val = inputs
         .get(name)
         .map(|asset| {
-            let val: Option<T> = serde_json::from_slice(asset).into_diagnostic()?;
+            let val: T = serde_json::from_slice(asset).into_diagnostic()?;
             Ok::<_, miette::Report>(val)
         })
-        .transpose()?
-        .flatten();
+        .transpose()?;
 
-    Ok(val)
+    match (val, default) {
+        (Some(val), _) => Ok(val),
+        (None, default) => Ok(default),
+    }
 }
 
 fn output_value(
@@ -268,17 +272,13 @@ fn range_impl(
     inputs: &HashMap<String, Vec<u8>>,
     outputs: &mut HashMap<String, Vec<u8>>,
 ) -> Result<(), miette::Error> {
-    let start: i64 = extract_value(inputs, "start")?;
-    let stop: i64 = extract_value(inputs, "stop")?;
-    let maybe_step: Option<i64> = extract_optional_value(inputs, "step")?;
+    let start: usize = extract_value(inputs, "start")?;
+    let stop: usize = extract_value(inputs, "stop")?;
+    let range_step: usize = extract_value_with_default(inputs, "step", 1)?;
+
     let range = start..stop;
-    let out = if let Some(step) = maybe_step {
-        range
-            .step_by(step.try_into().into_diagnostic()?)
-            .collect::<Vec<_>>()
-    } else {
-        range.collect::<Vec<_>>()
-    };
+    let out = range.step_by(range_step).collect::<Vec<_>>();
+
     output_value(outputs, out)?;
     Ok(())
 }

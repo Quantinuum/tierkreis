@@ -6,7 +6,7 @@ use miette::IntoDiagnostic;
 use portgraph::NodeIndex;
 use serde::Serialize;
 
-use crate::graph::{NodeDefinition, WorkflowGraph};
+use crate::graph::{NodeDefinition, ValuePresence, WorkflowGraph};
 
 pub(crate) fn workflow<'a>(outputs: impl IntoIterator<Item = &'a str>) -> WorkflowGraph {
     WorkflowGraph::new(outputs.into_iter().map(ToString::to_string))
@@ -16,6 +16,7 @@ pub(crate) fn input<'a>(graph: &mut WorkflowGraph, name: &'a str) -> (NodeIndex,
     let node = graph.add_node(
         NodeDefinition::Input {
             name: name.to_string(),
+            presence: ValuePresence::Required,
         },
         [],
         [name.to_string()],
