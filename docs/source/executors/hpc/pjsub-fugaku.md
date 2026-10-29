@@ -8,6 +8,9 @@ login, pre/post, and compute nodes.
 default_storage_name = "fugaku"
 default_executor_name = "local"
 
+[worker_commands.aarch64]
+compute_node_worker = ["uv", "run", "/shared/workers/compute/main.py"]
+
 [asset_storage.fugaku]
 type = "File"
 asset_dir = "/shared/tierkreis/assets"
@@ -16,6 +19,7 @@ asset_dir = "/shared/tierkreis/assets"
 type = "Subprocess"
 subprocess_storage_name = "fugaku"
 output_storage_name = "fugaku"
+worker_architecture = "x86_64"
 
 [executors.pjsub]
 type = "Hpc"
@@ -23,9 +27,7 @@ hpc_storage_name = "fugaku"
 output_storage_name = "fugaku"
 scheduler = "pjsub"
 poll_interval_secs = 10
-
-[executors.pjsub.worker_commands]
-compute_node_worker = ["uv", "run", "/shared/workers/compute/main.py"]
+worker_architecture = "aarch64"
 
 [executors.pjsub.resources]
 nodes = 1

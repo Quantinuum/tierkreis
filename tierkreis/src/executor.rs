@@ -9,6 +9,7 @@ pub mod nexus;
 #[cfg(unix)]
 pub mod qrmi;
 pub mod subprocess;
+pub(crate) mod worker_command;
 
 pub use crate::executor::hpc::HPCExecutor;
 pub use crate::executor::hpc::{

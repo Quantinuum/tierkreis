@@ -198,9 +198,9 @@ runtime locates it on `PATH` and invokes it with the generated task definition:
 tkr-worker-name-worker ...
 ```
 
-For deployments that need an alternate command, configure `worker_commands`
-on an HPC executor or install a protocol-compatible wrapper under the expected
-name. See [Runtime storage and executors](../executors/index.md).
+For deployments that need an alternate command, configure the architecture's
+`worker_commands` registry and select that architecture on a subprocess or HPC
+executor. See [Runtime storage and executors](../executors/index.md).
 
 ## Prepackaged workers
 

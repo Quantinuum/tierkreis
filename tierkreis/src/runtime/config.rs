@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::executor::qrmi::QrmiExecutorConfig;
 use crate::{
     config::{TKR_ENV_VAR, resource_profile_search_paths, tierkreis_home_dir},
-    executor::{hpc::spec::HPCResourceSpec, nexus::NexusClientConfig},
+    executor::{
+        hpc::spec::HPCResourceSpec, nexus::NexusClientConfig,
+        worker_command::ArchitectureWorkerCommands,
+    },
     monitoring::LoggingConfig,
     resource_profiles::ResourceProfiles,
 };
@@ -20,6 +23,8 @@ pub struct RuntimeConfig {
 
     pub(super) default_storage_name: String,
     pub(super) default_executor_name: String,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub(super) worker_commands: ArchitectureWorkerCommands,
     pub(super) logging_config: Option<LoggingConfig>,
     #[serde(default)]
     pub(super) resources: ResourceSettings,
@@ -86,6 +91,7 @@ impl RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "tempfile".to_string(),
                         output_storage_name: "memory".to_string(),
+                        worker_architecture: None,
                     },
                 ),
             ]
@@ -94,6 +100,7 @@ impl RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "memory".to_string(),
             default_executor_name: "memory".to_string(),
+            worker_commands: ArchitectureWorkerCommands::new(),
             logging_config: Some(LoggingConfig::default()),
             resources: ResourceSettings::default(),
         }
@@ -134,6 +141,7 @@ impl Default for RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "file".to_string(),
                         output_storage_name: "file".to_string(),
+                        worker_architecture: None,
                     },
                 ),
             ]
@@ -142,6 +150,7 @@ impl Default for RuntimeConfig {
             runtime_state: RuntimeStateConfig::Memory {},
             default_storage_name: "file".to_string(),
             default_executor_name: "subprocess".to_string(),
+            worker_commands: ArchitectureWorkerCommands::new(),
             logging_config: Some(LoggingConfig::default()),
             resources: ResourceSettings::default(),
         }
@@ -164,6 +173,8 @@ pub(super) enum ExecutorConfig {
     Subprocess {
         subprocess_storage_name: String,
         output_storage_name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worker_architecture: Option<String>,
     },
     Nexus {
         client_config: NexusClientConfig,
@@ -180,8 +191,8 @@ pub(super) enum ExecutorConfig {
         scheduler: HpcSchedulerConfig,
         poll_interval_secs: Option<u64>,
         resources: HPCResourceSpec,
-        #[serde(default)]
-        worker_commands: HashMap<String, Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worker_architecture: Option<String>,
     },
 }
 
@@ -198,4 +209,51 @@ pub(super) enum HpcSchedulerConfig {
 pub(super) enum RuntimeStateConfig {
     Memory {},
     Sqlite { memory: bool, url: Option<String> },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_architecture_specific_worker_commands() -> miette::Result<()> {
+        let config = RuntimeConfig::from_toml_str(
+            r#"
+default_storage_name = "file"
+default_executor_name = "local"
+
+[worker_commands.x86_64]
+simulation_worker = ["uv", "run", "/workers/x86/main.py"]
+
+[worker_commands.aarch64]
+simulation_worker = ["uv", "run", "/workers/arm/main.py"]
+
+[asset_storage.file]
+type = "File"
+asset_dir = "/tmp/assets"
+
+[executors.local]
+type = "Subprocess"
+subprocess_storage_name = "file"
+output_storage_name = "file"
+worker_architecture = "x86_64"
+
+[runtime_state]
+type = "Memory"
+"#,
+        )?;
+
+        assert_eq!(
+            config.worker_commands["aarch64"]["simulation_worker"],
+            ["uv", "run", "/workers/arm/main.py"]
+        );
+        assert!(matches!(
+            &config.executors["local"],
+            ExecutorConfig::Subprocess {
+                worker_architecture: Some(architecture),
+                ..
+            } if architecture == "x86_64"
+        ));
+        Ok(())
+    }
 }
