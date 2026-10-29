@@ -54,5 +54,5 @@ Two examples remain on the legacy controller for a specific reason:
 - `signing_graph` uses arbitrary shell and stdin/stdout adapters that do not
   have Rust-runtime equivalents.
 
-The default-argument portion of `types_and_defaults` supplies the value
-explicitly because runtime support for omitted worker defaults is still pending.
+The `types_and_defaults` example demonstrates that omitted graph inputs use the
+defaults captured by the typed graph builder.
