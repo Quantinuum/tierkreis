@@ -7,6 +7,7 @@ Workflow Management system.
 pub mod asset_storage;
 #[cfg(test)]
 pub mod builder;
+pub mod builtins;
 pub mod config;
 pub mod event;
 pub mod executor;
@@ -18,6 +19,7 @@ pub mod resource_profiles;
 pub mod runtime;
 pub mod server;
 pub mod state;
+pub mod worker;
 pub mod workflow_state_query;
 
 #[cfg(feature = "pyo3")]

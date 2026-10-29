@@ -19,7 +19,6 @@ use futures::{
 };
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use tokio::{
     io::AsyncReadExt,
@@ -42,6 +41,7 @@ use crate::{
     executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     location::Location,
     monitoring::{CommandEnvCarrier, inject_trace_context},
+    worker::WorkerCallArgs,
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -585,18 +585,6 @@ fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<Str
         let _ = stderr.read_to_string(&mut stderr_out).await;
         stderr_out
     })
-}
-
-// Json format expected for subprocess workers.
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct WorkerCallArgs {
-    function_name: String,
-    inputs: HashMap<String, PathBuf>,
-    outputs: HashMap<String, PathBuf>,
-    output_dir: PathBuf,
-    done_path: PathBuf,
-    error_path: PathBuf,
-    logs_path: Option<PathBuf>,
 }
 
 // Write the paths of the inputs to the worker.
