@@ -65,9 +65,8 @@ features = ["pyo3"]
 trusted-publishing = true
 publishing-environment = "pypi"
 
-[project.scripts]
-tkr-builtins = "tierkreis.builtins.main:main"
-tkr = "tierkreis.cli.tkr:main"
+#[project.scripts]
+#tkr = "tierkreis.cli.tkr:main"
 
 [project.urls]
 repository = "https://github.com/Quantinuum/tierkreis"

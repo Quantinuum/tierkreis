@@ -125,8 +125,6 @@ def start(
             InMemoryExecutor,
         ):
             exec_data = executor.run(launcher_name, call_args_path)
-        elif launcher_name == "builtins":
-            exec_data = run_builtin(call_args_path, storage.logs_path)
         else:
             exec_data = executor.run(launcher_name, call_args_path)
 
