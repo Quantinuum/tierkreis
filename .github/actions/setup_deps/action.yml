@@ -30,6 +30,12 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up maturin
+      if: inputs.include_maturin == 'yes'
+      uses: PyO3/maturin-action@v1
+      with:
+        working-directory: tierkreis/
+
     - name: Set up uv & venv
       if: inputs.include_uv == 'yes'
       uses: astral-sh/setup-uv@v5
@@ -38,13 +44,7 @@ runs:
         enable-cache: true
         cache-suffix: ${{ inputs.python_version }}
         python-version: ${{ inputs.python_version }}
-        cache-dependency-glob: uv.lock
-        
-    - name: Set up maturin
-      if: inputs.include_maturin == 'yes'
-      uses: PyO3/maturin-action@v1
-      with:
-        working-directory: tierkreis/
+        cache-dependency-glob: uv.lock        
 
     - name: Set up just
       if: inputs.include_just == 'yes'
