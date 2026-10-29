@@ -60,7 +60,7 @@ jobs:
       - name: Install SQLite
         run: |
           sudo apt-get update
-          sudo apt-get install sqlite3
+          sudo apt-get install libsqlite3-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -104,7 +104,7 @@ jobs:
       - name: Install SQLite
         run: |
           sudo apt-get update
-          sudo apt-get install sqlite3
+          sudo apt-get install libsqlite3-dev
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
