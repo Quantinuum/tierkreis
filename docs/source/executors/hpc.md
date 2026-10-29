@@ -7,6 +7,9 @@ runtime and compute nodes must share the configured file asset storage.
 default_storage_name = "file"
 default_executor_name = "slurm"
 
+[worker_commands.aarch64]
+mpi_worker = ["uv", "run", "/shared/workers/mpi_worker/main.py"]
+
 [asset_storage.file]
 type = "File"
 asset_dir = "/shared/tierkreis/assets"
@@ -17,9 +20,7 @@ hpc_storage_name = "file"
 output_storage_name = "file"
 scheduler = "slurm"
 poll_interval_secs = 5
-
-[executors.slurm.worker_commands]
-mpi_worker = ["uv", "run", "/shared/workers/mpi_worker/main.py"]
+worker_architecture = "aarch64"
 
 [executors.slurm.resources]
 nodes = 2
@@ -48,6 +49,12 @@ OMP_NUM_THREADS = "8"
 Select the profile with `new_default("cluster")`, the `TKR_ENV` environment
 variable, or `profile="cluster"` on `start_new_run`. Scheduler-specific queue,
 account, MPI, and extra arguments can also be supplied by the profile.
+
+Worker commands are shared by architecture rather than scheduler. This allows
+PBS, PJSUB, and Slurm executors for the same compute architecture to reuse the
+same commands. Set `worker_architecture` whenever compute nodes differ from the
+runtime host; otherwise it defaults to the runtime's architecture. A worker
+without an explicit command uses the standard `tkr-<worker-name>` executable.
 
 The legacy PSI/J executor is not supported by the Rust runtime. Existing PSI/J
 documentation is retained only as legacy reference and should not be used for

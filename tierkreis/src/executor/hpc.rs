@@ -34,44 +34,12 @@ use crate::{
             UserSpec,
         },
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+        worker_command::{WorkerCommands, WorkerInvocation, validate_commands},
     },
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
     resource_profiles::downcast,
 };
-
-fn shell_quote(argument: &str) -> String {
-    format!("'{}'", argument.replace('\'', "'\"'\"'"))
-}
-
-/// Builds the worker invocation command escaping each argument for the shell.
-/// Falls back to `tkr-<worker_name>` if no command is specified.
-/// Otherwise uses the command specified for the worker in the commands map.
-/// For example:
-///
-/// ```toml
-/// [executors.slurm.worker_commands]
-/// mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
-/// ```
-///
-/// This invokes `["uv", "run", "/mpi_worker/main.py", "<worker_args_path>"]`.
-fn worker_invocation(
-    commands: &HashMap<String, Vec<String>>,
-    worker_name: &str,
-    worker_args_path: &Path,
-) -> String {
-    let default = vec![format!("tkr-{}", worker_name.replace('_', "-"))];
-    commands
-        .get(worker_name)
-        .unwrap_or(&default)
-        .iter()
-        .map(|argument| shell_quote(argument))
-        .chain(std::iter::once(shell_quote(
-            &worker_args_path.to_string_lossy(),
-        )))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
 
 #[derive(serde::Deserialize, Default)]
 #[serde(default)]
@@ -466,7 +434,7 @@ pub struct HPCExecutor<T: SchedulerWrapper> {
     asset_storage_registry: AssetStorageRegistry,
     /// Available HPC resources for this executor.
     pub max_resources: HPCResourceSpec,
-    worker_commands: HashMap<String, Vec<String>>,
+    worker_commands: WorkerCommands,
     tkr_tmp_dir: PathBuf,
 }
 
@@ -490,10 +458,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         scheduler: Arc<T>,
         max_resources: HPCResourceSpec,
         poll_interval: Duration,
-        // Specific commands to invoke e.g.
-        // [executors.slurm.worker_commands]
-        // mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
-        worker_commands: HashMap<String, Vec<String>>,
+        worker_commands: WorkerCommands,
     ) -> miette::Result<Self> {
         if !asset_storage_registry.contains_key(hpc_storage_name) {
             return Err(miette!("hpc_storage_name not in registry"));
@@ -501,11 +466,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
-        for (worker, command) in &worker_commands {
-            if command.first().is_none_or(std::string::String::is_empty) {
-                return Err(miette!("Worker `{worker}` requires a nonempty executable"));
-            }
-        }
+        validate_commands(&worker_commands)?;
         let tierkreis_dir = crate::config::tierkreis_home_dir().join("tmp");
         std::fs::create_dir_all(&tierkreis_dir)
             .into_diagnostic()
@@ -607,7 +568,9 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
             serde_json::from_value(task.environment.clone().into_iter().collect())
                 .into_diagnostic()
                 .wrap_err("Invalid HPC environment specification")?;
-        let command = worker_invocation(&self.worker_commands, &task.worker_name, worker_args_path);
+        let command =
+            WorkerInvocation::resolve(&self.worker_commands, &task.worker_name, worker_args_path)
+                .shell_command();
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,

@@ -21,8 +21,23 @@ asset_dir = "/shared/tierkreis/assets"
 type = "Subprocess"
 subprocess_storage_name = "shared"
 output_storage_name = "shared"
+worker_architecture = "x86_64"
 ```
 
+Worker launch commands can be selected by architecture. The command is an argv
+prefix; the runtime appends the generated worker call-definition path.
+
+```toml
+[worker_commands.x86_64]
+simulation_worker = ["uv", "run", "/workers/x86/main.py"]
+
+[worker_commands.aarch64]
+simulation_worker = ["uv", "run", "/workers/arm/main.py"]
+```
+
+`worker_architecture` defaults to the architecture of the runtime process. An
+unlisted worker continues to use its standard `tkr-<worker-name>` command.
+
 The legacy `ShellExecutor` and `StdInOut` adapters are not part of the Rust
-runtime. Package external programs behind the Tierkreis worker protocol, or
-configure an explicit worker command on an HPC executor.
+runtime. Package external programs behind the Tierkreis worker protocol; a
+worker command override changes how that protocol-compatible worker is launched.

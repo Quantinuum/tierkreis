@@ -1,6 +1,9 @@
 default_storage_name = "file"
 default_executor_name = "slurm"
 
+[worker_commands.x86_64]
+mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
+
 [asset_storage.file]
 type = "File"
 asset_dir = "$HOME/.tierkreis/assets"
@@ -11,9 +14,7 @@ hpc_storage_name = "file"
 output_storage_name = "file"
 scheduler = "slurm"
 poll_interval_secs = 1
-
-[executors.slurm.worker_commands]
-mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
+worker_architecture = "x86_64"
 
 # max available resources
 [executors.slurm.resources]
@@ -27,9 +28,7 @@ hpc_storage_name = "file"
 output_storage_name = "file"
 scheduler = "pbs"
 poll_interval_secs = 1
-
-[executors.pbs.worker_commands]
-mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
+worker_architecture = "x86_64"
 
 [executors.pbs.resources]
 nodes = 2
