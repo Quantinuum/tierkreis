@@ -1,10 +1,11 @@
 //! Functions for converting a [Hugr] into a [WorkflowGraph]
 use std::collections::HashMap;
+use std::iter::once;
 
 use super::{NodeDefinition, WorkflowGraph};
 use hugr::core::HugrNode;
 use hugr::extension::prelude::{ConstUsize, TupleOpDef};
-use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Tag, Value, constant::Sum};
+use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Tag, TailLoop, Value, constant::Sum};
 use hugr::std_extensions::arithmetic::{float_types::ConstF64, int_types::ConstInt};
 use hugr::std_extensions::collections::list::ListValue;
 use hugr::types::{Signature, SumType};
@@ -120,6 +121,7 @@ fn convert_dataflow_op<H: HugrView>(
     match hugr.get_optype(node) {
         OpType::DFG(_) => convert_dfg(hugr, node, graph, inputs),
         OpType::CFG(_) => convert_cfg(hugr, node, graph, inputs),
+        OpType::TailLoop(_) => convert_tail_loop(hugr, node, graph, inputs),
         OpType::Const(_) => Ok(vec![]), // Ignore on its own, will be converted as part of any LoadConstant
         OpType::LoadConstant(_) => {
             let cst = hugr.static_source(node).ok_or_else(|| {
@@ -224,6 +226,100 @@ fn convert_dataflow_op<H: HugrView>(
         }
         other => todo!("{other:?}"),
     }
+}
+
+fn convert_tail_loop<H: HugrView>(
+    hugr: &H,
+    node: H::Node,
+    graph: &mut GraphWithFuncs<H::Node>,
+    inputs: Vec<(NodeIndex, String)>,
+) -> miette::Result<Vec<(NodeIndex, String)>> {
+    // Implement the conversion of TailLoop here
+    let TailLoop {
+        just_inputs,
+        just_outputs,
+        rest,
+    } = hugr.get_optype(node).as_tail_loop().unwrap();
+    // Body of loop (below) will produce a sum value plus `rest`.`
+    // We'll break the tag off and use for the Tierkreis "should_continue" result of the body graph.
+    // The tuple of just_inputs / just_outputs will form the first Tierkreis port, followed by `rest`.
+    let rest_names = rest
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("rest{i}"))
+        .collect::<Vec<_>>();
+    let inout_names = once("inout_tuple".to_string())
+        .chain(rest_names.clone())
+        .collect::<Vec<_>>();
+    let body_graph = {
+        let (mut g, mut inps) = GraphWithFuncs::new_with_names(
+            inout_names.clone(),
+            once("should_continue".to_string()).chain(inout_names.clone()),
+        );
+        let mut just_inputs = unpack_tuple(&mut g.graph, inps.remove(0), just_inputs.len());
+        just_inputs.extend(inps);
+        let mut outs = convert_dfg(hugr, node, &mut g, just_inputs)?;
+        let [tag, just_inouts] = unpack_pair(&mut g.graph, outs.remove(0));
+        let [continue_tag] = g.add_node::<String, _, _>(
+            NodeDefinition::Const {
+                value: serde_json::Value::Number(Number::from(TailLoop::CONTINUE_TAG)),
+            },
+            [],
+            ["value"],
+        );
+        let [should_continue] = g.add_node(
+            NodeDefinition::Task {
+                worker_name: "builtins".to_string(),
+                task_name: "eq".to_string(),
+            },
+            [("a", tag), ("b", continue_tag)],
+            ["value"],
+        );
+        g.graph.link_nodes_by_port_name(
+            should_continue.0,
+            &should_continue.1,
+            g.graph.output_idx(),
+            "should_continue",
+        )?;
+        for ((src_node, src_port), output_name) in once(just_inouts).chain(outs).zip(&inout_names) {
+            g.graph.link_nodes_by_port_name(
+                src_node,
+                &src_port,
+                g.graph.output_idx(),
+                output_name,
+            )?;
+        }
+
+        let [g] = graph.add_node::<String, _, _>(graph_const(g.graph)?, [], ["value"]);
+        g
+    };
+    // Now the loop node. To begin the loop, we must first prepare the initial values to fit
+    // this format expected by the body, i.e. make a Tierkreis tuple of just_inputs.
+    let (just_input_vals, rest_inputs) = inputs.split_at(just_inputs.len());
+    let just_inputs_tuple = make_tuple(graph, just_input_vals);
+    let loop_in_names = once("graph".to_string())
+        .chain(inout_names.clone())
+        .collect::<Vec<_>>();
+    let loop_node =
+        graph
+            .graph
+            .add_node(NodeDefinition::Loop {}, loop_in_names.clone(), inout_names);
+    wire_up(
+        &mut graph.graph,
+        [body_graph, just_inputs_tuple].iter().chain(rest_inputs),
+        loop_node,
+        &loop_in_names,
+    );
+
+    // Finally unpack the `just_inputs` value output from the loop
+    Ok(unpack_tuple(
+        &mut graph.graph,
+        (loop_node, "inout_tuple".to_string()),
+        just_outputs.len(),
+    )
+    .into_iter()
+    .chain(rest_names.into_iter().map(|n| (loop_node, n)))
+    .collect())
 }
 
 fn make_tuple<N: HugrNode>(
