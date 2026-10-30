@@ -2073,6 +2073,7 @@ mod tests {
     #[case::simple_if_else_false(simple_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
+    #[case::hugr_tuple1(crate::graph::hugr::test::hugr_tuple1(), json!({"a": 1, "b": 7, "c": 11}), json!({"x": 1, "y": 7, "z": 11}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_workflows(

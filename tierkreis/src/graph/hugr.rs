@@ -1,13 +1,10 @@
 //! Functions for converting a [Hugr] into a [WorkflowGraph]
 use std::collections::HashMap;
 
-use super::NodeDefinition;
-use super::WorkflowGraph;
+use super::{NodeDefinition, WorkflowGraph};
 use hugr::core::HugrNode;
-use hugr::extension::prelude::ConstUsize;
-use hugr::extension::prelude::TupleOpDef;
-use hugr::ops::Tag;
-use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Value, constant::Sum};
+use hugr::extension::prelude::{ConstUsize, TupleOpDef};
+use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Tag, Value, constant::Sum};
 use hugr::std_extensions::arithmetic::{float_types::ConstF64, int_types::ConstInt};
 use hugr::std_extensions::collections::list::ListValue;
 use hugr::types::{Signature, SumType};
@@ -75,7 +72,26 @@ impl<N: HugrNode> GraphWithFuncs<N> {
         self.funcs.insert(node, new_node);
         Ok(new_node)
     }
+
+    fn add_node<INP: ToString, OUT: ToString, const N_OUTS: usize>(
+        &mut self,
+        def: NodeDefinition,
+        inputs: impl IntoIterator<Item = (INP, (NodeIndex, String))>,
+        outputs: [OUT; N_OUTS],
+    ) -> [(NodeIndex, String); N_OUTS] {
+        let (inport_names, inputs): (Vec<String>, Vec<(NodeIndex, String)>) = inputs
+            .into_iter()
+            .map(|(pn, val)| (pn.to_string(), val))
+            .unzip();
+        let outport_names = outputs.map(|o| o.to_string());
+        let new_node =
+            self.graph
+                .add_node(def, inport_names.clone(), outport_names.iter().cloned());
+        wire_up(&mut self.graph, &inputs, new_node, &inport_names);
+        outport_names.map(|o| (new_node, o))
+    }
 }
+
 fn graph_const(graph: WorkflowGraph) -> miette::Result<NodeDefinition> {
     Ok(NodeDefinition::Const {
         value: serde_json::to_value(graph).into_diagnostic()?,
@@ -181,25 +197,9 @@ fn convert_dataflow_op<H: HugrView>(
             return Ok(vec![(func_node, "value".to_string())]);
         }
         OpType::Tag(Tag { tag, variants, .. }) => {
-            if variants.len() == 1 && variants[0].is_empty() {
-                let node = graph
-                    .graph
-                    .add_node(unit_const(), vec![], vec!["value".to_string()]);
-                return Ok(vec![(node, "value".to_string())]);
-            }
-            if variants.len() == 1 && variants[0].len() == 2 {
-                // make a tuple - we only support pairs in Tierkreis.
-                assert!(inputs.len() == 2);
-                let node = graph.graph.add_node(
-                    NodeDefinition::Task {
-                        worker_name: "builtins".to_string(),
-                        task_name: "tuple".to_string(),
-                    },
-                    vec![],
-                    vec!["value".to_string()],
-                );
-                wire_up(&mut graph.graph, &inputs, node, ["a", "b"]);
-                return Ok(vec![(node, "value".to_string())]);
+            if variants.len() == 1 {
+                assert_eq!(inputs.len(), variants[0].len());
+                return Ok(vec![make_tuple(graph, &inputs)]);
             }
             if variants.len() == 2 && variants[0].is_empty() && variants[1].is_empty() {
                 // boolean type represented as two empty variants
@@ -212,11 +212,69 @@ fn convert_dataflow_op<H: HugrView>(
                 );
                 return Ok(vec![(node, "value".to_string())]);
             }
-            Err(miette::miette!(
-                "Unsupported tag variant structure: {variants:?}"
-            ))
+            let [tag] = graph.add_node::<String, _, _>(
+                NodeDefinition::Const {
+                    value: serde_json::Value::Number(serde_json::Number::from(*tag)),
+                },
+                vec![],
+                ["value"],
+            );
+            let contents = make_tuple(graph, &inputs);
+            Ok(vec![make_tuple(graph, &[tag, contents])])
         }
         other => todo!("{other:?}"),
+    }
+}
+
+fn make_tuple<N: HugrNode>(
+    graph: &mut GraphWithFuncs<N>,
+    inputs: &[(NodeIndex, String)],
+) -> (NodeIndex, String) {
+    let [np] = match inputs {
+        [] => graph.add_node::<String, _, _>(unit_const(), vec![], ["value"]),
+        [inp] => [inp.clone()],
+        _ => {
+            let rest = make_tuple(graph, &inputs[1..]);
+            graph.add_node(
+                NodeDefinition::Task {
+                    worker_name: "builtins".to_string(),
+                    task_name: "tuple".to_string(),
+                },
+                vec![("a", inputs[0].clone()), ("b", rest)],
+                ["value"],
+            )
+        }
+    };
+    np
+}
+
+fn unpack_pair(graph: &mut WorkflowGraph, input: (NodeIndex, String)) -> [(NodeIndex, String); 2] {
+    unpack_tuple(graph, input, 2).try_into().unwrap()
+}
+
+fn unpack_tuple(
+    graph: &mut WorkflowGraph,
+    input: (NodeIndex, String),
+    num_elements: usize,
+) -> Vec<(NodeIndex, String)> {
+    match num_elements {
+        0 => vec![],
+        1 => vec![input],
+        _ => {
+            let mut elements = unpack_tuple(graph, input, num_elements - 1);
+            let untuple = graph.add_node(
+                NodeDefinition::Task {
+                    worker_name: "builtins".to_string(),
+                    task_name: "untuple".to_string(),
+                },
+                ["value".to_string()],
+                ["a".to_string(), "b".to_string()],
+            );
+            wire_up(graph, &[elements.pop().unwrap()], untuple, &["value"]);
+            elements.push((untuple, "a".to_string()));
+            elements.push((untuple, "b".to_string()));
+            elements
+        }
     }
 }
 
@@ -438,10 +496,13 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
 
 #[cfg(test)]
 pub(crate) mod test {
-    use super::WorkflowGraph;
-    use hugr::Hugr;
+    use std::collections::HashMap;
     use std::fs::File;
     use std::io::BufReader;
+
+    use hugr::{Hugr, Node};
+
+    use super::{GraphWithFuncs, NodeDefinition, WorkflowGraph, make_tuple, unpack_tuple};
 
     #[test]
     fn convert_map() {
@@ -455,5 +516,27 @@ pub(crate) mod test {
         let f = File::open("../tierkreis_map_minopt.hugr").unwrap();
         let hugr = Hugr::load(BufReader::new(f), None).unwrap();
         WorkflowGraph::try_from(hugr).unwrap();
+    }
+
+    pub fn hugr_tuple1() -> WorkflowGraph {
+        let mut wg = WorkflowGraph::new(["x", "y", "z"].map(ToString::to_string));
+        let [a, b, c] = ["a", "b", "c"].map(ToString::to_string).map(|n| {
+            (
+                wg.add_node(NodeDefinition::Input { name: n.clone() }, [], [n.clone()]),
+                n,
+            )
+        });
+        let mut gwf = GraphWithFuncs::<Node> {
+            graph: wg,
+            funcs: HashMap::new(),
+        };
+        let tup = make_tuple(&mut gwf, &[a, b, c]);
+        let mut wg = gwf.graph;
+        let [a, b, c] = unpack_tuple(&mut wg, tup, 3).try_into().unwrap();
+        let ou = wg.output_idx();
+        wg.link_nodes_by_port_name(a.0, &a.1, ou, "x").unwrap();
+        wg.link_nodes_by_port_name(b.0, &b.1, ou, "y").unwrap();
+        wg.link_nodes_by_port_name(c.0, &c.1, ou, "z").unwrap();
+        wg
     }
 }
