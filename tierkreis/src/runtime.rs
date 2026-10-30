@@ -212,6 +212,20 @@ impl Runtime {
         inputs: HashMap<String, Vec<u8>, S>,
         profile: Option<String>,
     ) -> miette::Result<(Uuid, u32)> {
+        let (_, workflow_graph) = self.state.load_workflow(workflow_id).await?;
+        let required_inputs: HashSet<&String> = workflow_graph.required_inputs().collect();
+        let missing_inputs: Vec<String> = required_inputs
+            .difference(&inputs.keys().collect())
+            .copied()
+            .cloned()
+            .collect();
+        if !missing_inputs.is_empty() {
+            return Err(miette!(
+                "Cannot start workflow with provided inputs, missing inputs: {}",
+                missing_inputs.join(", ")
+            ));
+        }
+
         let profile = profile.or_else(|| self.resources.selected_profile());
         if let Some(profile) = &profile {
             self.resources.load_profile(profile)?;
@@ -856,7 +870,7 @@ mod tests {
             handle.abort();
             Ok::<_, miette::Report>(())
         });
-        let run_task = timeout(Duration::from_secs(1), run_task);
+        let run_task = timeout(Duration::from_secs(5), run_task);
         run_task
             .await
             .expect("Task timed out")

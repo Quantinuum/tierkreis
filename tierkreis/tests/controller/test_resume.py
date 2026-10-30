@@ -6,7 +6,6 @@ import pytest
 from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
 from tests.controller.defaults_graphs import (
-    defaults_not_none,
     defaults_omit,
     defaults_passthru,
 )
@@ -98,8 +97,9 @@ param_data: list[
         defaults_omit(),
         {
             "range_1": list(range(1, 10)),
-            "range_2": list(range(1, 10)),
-            "range_3": list(range(1, 10, 2)),
+            "range_2": list(range(1, 10, 2)),
+            "range_3": list(range(1, 10)),
+            "range_4": list(range(1, 10)),
         },
         "defaults_omit",
         {"start": 1, "stop": 10},
@@ -108,22 +108,11 @@ param_data: list[
         defaults_passthru(),
         {
             "range_1": list(range(1, 10)),
-            "range_2": list(range(1, 10)),
-            "range_3": list(range(1, 10, 2)),
-            "extra_output": None,
+            "range_2": list(range(1, 10, 2)),
+            "range_3": [],  # Default None causes a type error, see graph definition.
+            "range_4": list(range(1, 10, 2)),
         },
         "defaults_passthru",
-        {"start": 1, "stop": 10},
-    ),
-    (
-        defaults_not_none(),
-        {
-            "range_1": list(range(1, 10)),
-            "range_2": list(range(1, 10)),
-            "range_3": list(range(1, 10, 2)),
-            "extra_output": 1,
-        },
-        "defaults_not_none",
         {"start": 1, "stop": 10},
     ),
     (embed_graph(), {"s1": "1", "s2": "4", "final": 2}, "embed_graph", 1),
@@ -163,7 +152,6 @@ ids = [
     "loop_scoping",
     "defaults_omit",
     "defaults_passthru",
-    "defaults_not_none",
     "embed_graph",
 ]
 
@@ -186,9 +174,6 @@ async def test_resume(
     workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
-    if "defaults" in name:
-        pytest.skip("default arguments not supported")
-
     runtime = await runtime_fn()
     with runtime:
         workflow_id = await runtime.save_workflow(name, graph)

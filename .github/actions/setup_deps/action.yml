@@ -11,6 +11,11 @@ inputs:
     required: false
     default: "3.12"
     type: string
+  include_maturin:
+    description: "Setup Maturin"
+    type: string
+    required: false
+    default: "yes"
   include_node:
     description: "Install node, bun etc.."
     type: string
@@ -25,6 +30,12 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up maturin
+      if: inputs.include_maturin == 'yes'
+      uses: PyO3/maturin-action@v1
+      with:
+        working-directory: tierkreis/
+
     - name: Set up uv & venv
       if: inputs.include_uv == 'yes'
       uses: astral-sh/setup-uv@v5

@@ -188,6 +188,10 @@ class Input(NodeDefBase):
 
     :fields:
         name (str): The name of the input value.
+        default_value (Optional[Any]): A default value to use if no input is provided.
+            If None, check the value of default_none to see if it is meaningfully None
+        default_none (bool): Whether a None default_value is explicitly None
+            Distinguishes between having a default of None and not being set to None.
         inputs (dict[PortID, ValueRef]): The mapping of inputs to their values,
             typically a single element.
         outputs (dict[PortID, NodeIndex]): Typically not used on inputs,
@@ -195,6 +199,8 @@ class Input(NodeDefBase):
     """
 
     name: str
+    default_value: Any = None
+    default_none: bool = False
     inputs: dict[PortID, ValueRef] = field(default_factory=dict)
     type: Literal["input"] = field(default="input")
 
@@ -296,7 +302,13 @@ class GraphData(BaseModel):
     named_nodes: dict[str, NodeIndex] = {}
     node_metadata: dict[NodeIndex, NodeMetaData] = {}
 
-    def input(self, name: str, **kwargs) -> ValueRef:
+    def input(
+        self,
+        name: str,
+        default_value: PType = None,
+        default_none: bool = False,
+        **kwargs,
+    ) -> ValueRef:
         """Add an input name.
 
         :param name: The name of the input.
@@ -306,7 +318,7 @@ class GraphData(BaseModel):
         :return: The reference to that value.
         :rtype: ValueRef
         """
-        return self.add(Input(name), **kwargs)(name)
+        return self.add(Input(name, default_value, default_none), **kwargs)(name)
 
     def const(self, value: PType, **kwargs) -> ValueRef:
         """Add a constant value.

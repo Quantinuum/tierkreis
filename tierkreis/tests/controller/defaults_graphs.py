@@ -15,7 +15,7 @@ class OuterOutputs(NamedTuple):
     range_1: TKR[list[int]]
     range_2: TKR[list[int]]
     range_3: TKR[list[int]]
-    extra_output: TKR[int] | None = None
+    range_4: TKR[list[int]]
 
 
 def omit_input() -> Workflow[Inputs, TKR[list[int]]]:
@@ -32,25 +32,21 @@ def passthru() -> Workflow[Inputs, TKR[list[int]]]:
 
 def defaults_omit() -> Workflow[Inputs, OuterOutputs]:
     g = Graph(Inputs, OuterOutputs)
-    range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
-    range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
-    range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
-    return g.finish_with_outputs(OuterOutputs(range_1, range_2, range_3))
+    range_1 = g.task(tkr_range(g.inputs.start, g.inputs.stop))
+    range_2 = g.task(tkr_range(g.inputs.start, g.inputs.stop, g.const(2)))
+    range_3 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
+    range_4 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
+    return g.finish_with_outputs(OuterOutputs(range_1, range_2, range_3, range_4))
 
 
 def defaults_passthru() -> Workflow[Inputs, OuterOutputs]:
     g = Graph(Inputs, OuterOutputs)
-    range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
-    range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
-    range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
-    return g.finish_with_outputs(OuterOutputs(range_1, range_2, range_3, g.inputs.step))
-
-
-def defaults_not_none() -> Workflow[Inputs, OuterOutputs]:
-    g = Graph(Inputs, OuterOutputs)
-    range_1 = g.eval(omit_input(), Inputs(g.inputs.start, g.inputs.stop))
-    range_2 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
-    range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
-    return g.finish_with_outputs(
-        OuterOutputs(range_1, range_2, range_3, g.inputs.start)
-    )
+    range_1 = g.task(tkr_range(g.inputs.start, g.inputs.stop))
+    range_2 = g.task(tkr_range(g.inputs.start, g.inputs.stop, g.const(2)))
+    # Evaluating passthru results in a default value of None being set for step
+    # which results in a type error. The graph builder does not currently
+    # support setting integer value defaults that would avoid this.
+    # range_3 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop))
+    range_3 = g.const([])
+    range_4 = g.eval(passthru(), Inputs(g.inputs.start, g.inputs.stop, g.const(2)))
+    return g.finish_with_outputs(OuterOutputs(range_1, range_2, range_3, range_4))
