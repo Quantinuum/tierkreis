@@ -18,6 +18,8 @@ use serde_json::Number;
 
 mod cfg;
 use cfg::convert_cfg;
+use tket::passes::ComposablePass;
+use tket::passes::cfg::remove_cycles::RemoveCFGCyclesPass;
 
 struct GraphWithFuncs<N: HugrNode> {
     graph: WorkflowGraph,
@@ -311,7 +313,7 @@ fn convert_tail_loop<H: HugrView>(
         &loop_in_names,
     );
 
-    // Finally unpack the `just_inputs` value output from the loop
+    // Finally unpack the tuple (body of hugr Sum type if of BREAK variant) output from the loop
     Ok(unpack_tuple(
         &mut graph.graph,
         (loop_node, "inout_tuple".to_string()),
@@ -557,7 +559,10 @@ fn wrapper_graph<N: HugrNode>(sig: &Signature) -> (GraphWithFuncs<N>, Vec<(NodeI
 impl TryFrom<Hugr> for WorkflowGraph {
     type Error = Report;
 
-    fn try_from(hugr: Hugr) -> miette::Result<Self> {
+    fn try_from(mut hugr: Hugr) -> miette::Result<Self> {
+        RemoveCFGCyclesPass::default()
+            .run(&mut hugr)
+            .map_err(|e| miette::miette!("Failed to remove CFG cycles: {e}"))?;
         graph_from_hugr(&hugr, hugr.entrypoint())
     }
 }
