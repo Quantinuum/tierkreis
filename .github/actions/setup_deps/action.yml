@@ -44,7 +44,7 @@ runs:
         enable-cache: true
         cache-suffix: ${{ inputs.python_version }}
         python-version: ${{ inputs.python_version }}
-        cache-dependency-glob: uv.lock        
+        cache-dependency-glob: uv.lock
 
     - name: Set up just
       if: inputs.include_just == 'yes'

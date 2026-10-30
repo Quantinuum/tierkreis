@@ -12,6 +12,7 @@ use portgraph::{
     multiportgraph::SubportIndex,
 };
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 /// Whether an asset must be present for a computation.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -882,6 +883,13 @@ impl ConversionState {
         metadata: Option<&LegacyNodeMetadata>,
     ) {
         let node_index = self.graph.add_node(0, 1);
+
+        if default_value.is_some() && default_none {
+            warn!(
+                "`default_value` is `Some` but `default_none` is `false`, ignoring `default_none` and using the provided `default_value`"
+            )
+        }
+
         let presence = default_value.map_or_else(
             || {
                 if default_none {
