@@ -619,7 +619,7 @@ pub(crate) mod test {
     use std::io::BufReader;
 
     use hugr::ops::{DFG, DataflowParent, Input, Output, Tag, TailLoop};
-    use hugr::std_extensions::arithmetic::int_types;
+    use hugr::std_extensions::arithmetic::{float_types, int_types};
     use hugr::types::Signature;
     use hugr::{Hugr, HugrView, Node};
 
@@ -698,5 +698,50 @@ pub(crate) mod test {
         eprintln!("{}", h.mermaid_string());
         h.validate().unwrap();
         h.try_into().unwrap()
+    }
+
+    pub fn never_loop2() -> WorkflowGraph {
+        let int_ty = || int_types::INT_TYPES[6].to_owned();
+        use hugr::std_extensions::arithmetic::float_types::float64_type;
+        let mut h = Hugr::new_with_entrypoint(DFG {
+            signature: Signature::new_endo([int_ty(), float64_type()]),
+        })
+        .unwrap();
+        let ep = h.entrypoint();
+        let inp = h.add_node_with_parent(
+            ep,
+            Input {
+                types: [int_ty(), float64_type()].into(),
+            },
+        );
+        let out = h.add_node_with_parent(
+            ep,
+            Output {
+                types: [int_ty(), float64_type()].into(),
+            },
+        );
+        let tl = TailLoop {
+            just_inputs: [int_ty(), float64_type()].into(),
+            just_outputs: [int_ty(), float64_type()].into(),
+            rest: [].into(),
+        };
+        let Signature { input, output } = tl.inner_signature().into_owned();
+        //eprintln!("TAILLOOP SIGNATURE: {}   -->   {}", input, output);
+        let loop_ = h.add_node_with_parent(ep, tl);
+        for i in 0..=1 {
+            h.connect(inp, i, loop_, i);
+            h.connect(loop_, i, out, i);
+        }
+        let inp = h.add_node_with_parent(loop_, Input { types: input });
+        let out = h.add_node_with_parent(loop_, Output { types: output });
+        let tag = h.add_node_with_parent(loop_, Tag::new(TailLoop::BREAK_TAG, vec![[int_ty(), float64_type()].into(); 2]));
+        h.connect(tag, 0, out, 0);
+        h.connect(inp, 0, tag, 0);
+        h.connect(inp, 1, tag, 1);
+        //eprintln!("{}", h.mermaid_string());
+        h.validate().unwrap();
+        let wg: WorkflowGraph = h.try_into().unwrap();
+        wg.print("").unwrap();
+        wg
     }
 }

@@ -2075,6 +2075,7 @@ mod tests {
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::hugr_tuple1(crate::graph::hugr::test::hugr_tuple1(), json!({"a": 1, "b": 7, "c": 11}), json!({"x": 1, "y": 7, "z": 11}))]
     #[case::hugr_never_loop(crate::graph::hugr::test::never_loop(), json!({"in0": 3}), json!({"out0": 3}))]
+    #[case::hugr_never_loop2(crate::graph::hugr::test::never_loop2(), json!({"in0": 3, "in1": 4.13}), json!({"out0": 3, "out1": 4.13}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_workflows(
@@ -2082,6 +2083,7 @@ mod tests {
         #[case] inputs: serde_json::Value,
         #[case] expected_outputs: serde_json::Value,
     ) -> miette::Result<()> {
+        workflow_graph.print("")?;
         let default_storage_name = "memory";
         let workflow_graph = Arc::new(workflow_graph);
 
