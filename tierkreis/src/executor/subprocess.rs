@@ -6,7 +6,7 @@ use std::{
     any::Any,
     collections::{HashMap, HashSet, VecDeque},
     num::NonZero,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex},
 };
@@ -39,7 +39,10 @@ use crate::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
         send_cancelled, send_complete, send_error, send_queued, send_running,
     },
-    executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    executor::{
+        interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+        worker_command::{WorkerCommands, WorkerInvocation, validate_commands},
+    },
     location::Location,
     monitoring::{CommandEnvCarrier, inject_trace_context},
 };
@@ -58,7 +61,7 @@ struct BackgroundTaskPlan {
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
-    worker_name: String,
+    worker_invocation: WorkerInvocation,
     environment: HashMap<String, String>,
     output_storage_name: String,
     worker_args: NamedTempFile,
@@ -203,14 +206,9 @@ async fn start_task(
         }
     }
 
-    let worker_args_path = worker_args.path();
     let res = {
         let _enter = parent_span.enter();
-        spawn_worker(
-            &internal_task.worker_name,
-            worker_args_path,
-            &internal_task.environment,
-        )
+        spawn_worker(&internal_task.worker_invocation, &internal_task.environment)
     };
     let mut child = match res {
         Ok(child) => child,
@@ -390,6 +388,7 @@ pub struct SubprocessExecutor {
     // no copying will occur.
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
+    worker_commands: WorkerCommands,
 }
 
 impl Drop for SubprocessExecutor {
@@ -417,6 +416,26 @@ impl SubprocessExecutor {
         subprocess_storage_name: &str,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
+        Self::try_new_with_commands(
+            asset_storage_registry,
+            subprocess_storage_name,
+            output_storage_name,
+            WorkerCommands::new(),
+        )
+    }
+
+    /// Create a subprocess executor with explicit worker command overrides.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if either named storage does not exist.
+    pub(crate) fn try_new_with_commands(
+        asset_storage_registry: &AssetStorageRegistry,
+        subprocess_storage_name: &str,
+        output_storage_name: &str,
+        worker_commands: WorkerCommands,
+    ) -> miette::Result<Self> {
+        validate_commands(&worker_commands)?;
         if let Some(subprocess_storage) = asset_storage_registry.get(subprocess_storage_name) {
             let subprocess_storage: &dyn Any = subprocess_storage as &dyn Any;
             if subprocess_storage.is::<FileAssetStorage>() {
@@ -455,6 +474,7 @@ impl SubprocessExecutor {
             subprocess_storage_name: subprocess_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
+            worker_commands,
         })
     }
 
@@ -507,25 +527,24 @@ impl SubprocessExecutor {
 }
 
 fn spawn_worker(
-    worker_name: &str,
-    worker_args_path: &Path,
+    invocation: &WorkerInvocation,
     environment: &HashMap<String, String>,
 ) -> miette::Result<tokio::process::Child> {
-    let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
-    let mut command = Command::new(&cmd);
+    let (program, args) = invocation.program_and_args();
+    let mut command = Command::new(program);
     command.envs(environment);
     let cx = tracing::Span::current().context();
     inject_trace_context(&cx, &mut CommandEnvCarrier(&mut command));
 
     command
-        .arg(worker_args_path)
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
     let child = command
         .spawn()
         .into_diagnostic()
-        .wrap_err_with(|| miette!("Could not spawn worker `{cmd}`"))?;
+        .wrap_err_with(|| miette!("Could not spawn worker `{program}`"))?;
     Ok(child)
 }
 
@@ -686,7 +705,11 @@ impl Executor for SubprocessExecutor {
                         workflow_run_id: task_plan.workflow_run_id,
                         attempt: task_plan.attempt,
                         loc: task_plan.loc,
-                        worker_name: task_plan.worker_name,
+                        worker_invocation: WorkerInvocation::resolve(
+                            &self.worker_commands,
+                            &task_plan.worker_name,
+                            worker_args.path(),
+                        ),
                         environment,
                         output_storage_name,
                         worker_args,
@@ -845,6 +868,44 @@ mod tests {
         )
         .await;
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn execute_subprocess_with_worker_command_override() -> miette::Result<()> {
+        let (registry, input_sets, _dir) = test_storage_registry(
+            vec![json!({"greeting": "hello ", "subject": "override"})],
+            vec![],
+        )
+        .await;
+        let executor = SubprocessExecutor::try_new_with_commands(
+            &registry,
+            "file",
+            "memory",
+            WorkerCommands::from([(
+                "hello-world-worker".to_string(),
+                vec!["env".to_string(), "tkr-hello-world-worker".to_string()],
+            )]),
+        )?;
+        let stream = executor.listen()?;
+        executor
+            .execute(vec![TaskPlan {
+                worker_name: "hello-world-worker".to_string(),
+                task_name: "greet".to_string(),
+                inputs: input_sets[0].clone(),
+                outputs: HashSet::from(["value".to_string()]),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_registry_contains_values(
+            &registry,
+            "memory",
+            &events[3].clone().outputs()[0],
+            json!({"value": "hello override"}),
+        )
+        .await;
         Ok(())
     }
 

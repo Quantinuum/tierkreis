@@ -60,6 +60,20 @@ subprocess_storage_name = "file"
 output_storage_name = "file"
 ```
 
+Both subprocess and HPC executors select overrides from the same
+architecture-indexed registry. Executors default to the runtime host
+architecture, while heterogeneous HPC deployments set it explicitly:
+
+```toml
+[worker_commands.aarch64]
+simulation_worker = ["uv", "run", "/shared/workers/arm/main.py"]
+
+[executors.compute]
+type = "Hpc"
+worker_architecture = "aarch64"
+# scheduler and storage settings omitted
+```
+
 Use graph metadata and resource profiles to select a non-default executor.
 Profiles can also provide environment variables and resource requests, and a
 profile can be selected for an individual run:

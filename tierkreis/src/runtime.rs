@@ -693,6 +693,7 @@ async fn executor_registry_from_config(
     asset_storage_registry: &AssetStorageRegistry,
     config: &RuntimeConfig,
 ) -> Result<ExecutorRegistry, miette::Error> {
+    crate::executor::worker_command::validate_registry(&config.worker_commands)?;
     let mut executor_registry: HashMap<String, Box<dyn Executor>> = HashMap::new();
     let templates = ScriptTemplates::default();
     for (executor_name, executor_config) in &config.executors {
@@ -709,12 +710,17 @@ async fn executor_registry_from_config(
             ExecutorConfig::Subprocess {
                 subprocess_storage_name,
                 output_storage_name,
+                worker_architecture,
             } => executor_registry.insert(
                 executor_name.clone(),
-                Box::new(SubprocessExecutor::try_new(
+                Box::new(SubprocessExecutor::try_new_with_commands(
                     asset_storage_registry,
                     subprocess_storage_name,
                     output_storage_name,
+                    crate::executor::worker_command::select_architecture(
+                        &config.worker_commands,
+                        worker_architecture.as_deref(),
+                    )?,
                 )?),
             ),
             ExecutorConfig::Nexus {
@@ -749,7 +755,7 @@ async fn executor_registry_from_config(
                 scheduler,
                 poll_interval_secs,
                 resources,
-                worker_commands,
+                worker_architecture,
             } => match scheduler {
                 HpcSchedulerConfig::Pbs => {
                     let scheduler = Arc::new(PbsWrapper::with_templates(templates.clone()));
@@ -762,7 +768,10 @@ async fn executor_registry_from_config(
                             scheduler,
                             resources.clone(),
                             std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            worker_commands.clone(),
+                            crate::executor::worker_command::select_architecture(
+                                &config.worker_commands,
+                                worker_architecture.as_deref(),
+                            )?,
                         )?),
                     )
                 }
@@ -777,7 +786,10 @@ async fn executor_registry_from_config(
                             scheduler,
                             resources.clone(),
                             std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            worker_commands.clone(),
+                            crate::executor::worker_command::select_architecture(
+                                &config.worker_commands,
+                                worker_architecture.as_deref(),
+                            )?,
                         )?),
                     )
                 }
@@ -792,7 +804,10 @@ async fn executor_registry_from_config(
                             scheduler,
                             resources.clone(),
                             std::time::Duration::from_secs(poll_interval_secs.unwrap_or(1)),
-                            worker_commands.clone(),
+                            crate::executor::worker_command::select_architecture(
+                                &config.worker_commands,
+                                worker_architecture.as_deref(),
+                            )?,
                         )?),
                     )
                 }
