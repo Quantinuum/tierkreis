@@ -124,7 +124,6 @@ fn build_graph<N: HugrNode>(
         &body_outputs,
         &block_outputs,
         body_preds,
-        inputs,
     );
     let input_port_names = iter::once("graph".to_string())
         .chain(loop_val_names.iter().cloned())
@@ -222,7 +221,6 @@ fn build_loop_repeat_val<N: HugrNode>(
     body_outputs: &Vec<String>,
     block_outputs: &HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
     body_preds: HashMap<N, (NodeIndex, String)>,
-    inputs: Vec<(NodeIndex, String)>,
 ) {
     let loop_in_tys = &bb.inputs;
     let [((loop_exit_src, loop_exit_port), _)] = loop_.exit_path.leaves().collect_array().unwrap();
