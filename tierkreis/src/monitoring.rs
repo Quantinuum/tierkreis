@@ -63,6 +63,15 @@ impl Default for LoggingConfig {
 }
 
 impl LoggingConfig {
+    /// Create a new [`LoggingConfig`] with a custom service name.
+    #[must_use]
+    pub fn new_with_custom_name(name: &str) -> Self {
+        Self {
+            service_name: Some(name.to_string()),
+            ..Default::default()
+        }
+    }
+
     /// Override the configured logging level.
     pub fn set_log_level(&mut self, log_level: impl Into<String>) {
         self.log_level = Some(log_level.into());
