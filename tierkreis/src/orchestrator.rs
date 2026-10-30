@@ -2045,8 +2045,8 @@ mod tests {
     #[case::loop_minopt2("../tierkreis_loop_minopt.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
     #[tokio::test]
     #[test_log::test]
-    async fn run_hugr(
-        #[case] workflow_graph: String,
+    async fn run_hugr_file(
+        #[case] filename: String,
         #[case] inputs: serde_json::Value,
         #[case] expected_outputs: serde_json::Value,
     ) -> miette::Result<()> {
@@ -2054,7 +2054,7 @@ mod tests {
         use std::fs::File;
         use std::io::BufReader;
 
-        let hugr = Hugr::load(BufReader::new(File::open(workflow_graph).unwrap()), None).unwrap();
+        let hugr = Hugr::load(BufReader::new(File::open(filename).unwrap()), None).unwrap();
         let workflow_graph = WorkflowGraph::try_from(hugr).unwrap();
         workflow_graph.print("")?;
         run_workflows(workflow_graph, inputs, expected_outputs).await
@@ -2074,6 +2074,7 @@ mod tests {
     #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::hugr_tuple1(crate::graph::hugr::test::hugr_tuple1(), json!({"a": 1, "b": 7, "c": 11}), json!({"x": 1, "y": 7, "z": 11}))]
+    #[case::hugr_never_loop(crate::graph::hugr::test::never_loop(), json!({"in0": 3}), json!({"out0": 3}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_workflows(

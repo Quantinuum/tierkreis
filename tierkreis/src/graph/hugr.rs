@@ -254,6 +254,7 @@ fn convert_tail_loop<H: HugrView>(
         .chain(rest_names.clone())
         .collect::<Vec<_>>();
     let body_graph = {
+        let predicate_is_bool = just_inputs.len() + just_outputs.len() == 0;
         let (mut g, mut inps) = GraphWithFuncs::new_with_names(
             inout_names.clone(),
             once("should_continue".to_string()).chain(inout_names.clone()),
@@ -261,10 +262,25 @@ fn convert_tail_loop<H: HugrView>(
         let mut just_inputs = unpack_tuple(&mut g.graph, inps.remove(0), just_inputs.len());
         just_inputs.extend(inps);
         let mut outs = convert_dfg(hugr, node, &mut g, just_inputs)?;
-        let [tag, just_inouts] = unpack_pair(&mut g.graph, outs.remove(0));
-        let [continue_tag] = g.add_node::<String, _, _>(
+        // First value delivered to Hugr Output node is a sum whose tag tells us which way to branch
+        let (tag, continue_val, just_inouts) = if predicate_is_bool {
+            let bool_value = outs.remove(0);
+            (
+                bool_value.clone(),
+                serde_json::Value::Bool(TailLoop::CONTINUE_TAG == 1),
+                bool_value,
+            )
+        } else {
+            let [tag, just_inouts] = unpack_pair(&mut g.graph, outs.remove(0));
+            (
+                tag,
+                serde_json::Value::Number(Number::from(TailLoop::CONTINUE_TAG)),
+                just_inouts,
+            )
+        };
+        let [continue_const] = g.add_node::<String, _, _>(
             NodeDefinition::Const {
-                value: serde_json::Value::Number(Number::from(TailLoop::CONTINUE_TAG)),
+                value: continue_val,
             },
             [],
             ["value"],
@@ -274,7 +290,7 @@ fn convert_tail_loop<H: HugrView>(
                 worker_name: "builtins".to_string(),
                 task_name: "eq".to_string(),
             },
-            [("a", tag), ("b", continue_tag)],
+            [("a", tag), ("b", continue_const)],
             ["value"],
         );
         g.graph.link_nodes_by_port_name(
@@ -597,11 +613,15 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
 
 #[cfg(test)]
 pub(crate) mod test {
+    use hugr::hugr::hugrmut::HugrMut;
     use std::collections::HashMap;
     use std::fs::File;
     use std::io::BufReader;
 
-    use hugr::{Hugr, Node};
+    use hugr::ops::{DFG, DataflowParent, Input, Output, Tag, TailLoop};
+    use hugr::std_extensions::arithmetic::int_types;
+    use hugr::types::Signature;
+    use hugr::{Hugr, HugrView, Node};
 
     use super::{GraphWithFuncs, NodeDefinition, WorkflowGraph, make_tuple, unpack_tuple};
 
@@ -639,5 +659,44 @@ pub(crate) mod test {
         wg.link_nodes_by_port_name(b.0, &b.1, ou, "y").unwrap();
         wg.link_nodes_by_port_name(c.0, &c.1, ou, "z").unwrap();
         wg
+    }
+
+    pub fn never_loop() -> WorkflowGraph {
+        let int_ty = || int_types::INT_TYPES[6].to_owned();
+        let mut h = Hugr::new_with_entrypoint(DFG {
+            signature: Signature::new_endo([int_ty()]),
+        })
+        .unwrap();
+        let ep = h.entrypoint();
+        let inp = h.add_node_with_parent(
+            ep,
+            Input {
+                types: [int_ty()].into(),
+            },
+        );
+        let out = h.add_node_with_parent(
+            ep,
+            Output {
+                types: [int_ty()].into(),
+            },
+        );
+        let tl = TailLoop {
+            just_inputs: [].into(),
+            just_outputs: [].into(),
+            rest: [int_ty()].into(),
+        };
+        let Signature { input, output } = tl.inner_signature().into_owned();
+        eprintln!("TAILLOOP SIGNATURE: {}   -->   {}", input, output);
+        let loop_ = h.add_node_with_parent(ep, tl);
+        h.connect(inp, 0, loop_, 0);
+        h.connect(loop_, 0, out, 0);
+        let inp = h.add_node_with_parent(loop_, Input { types: input });
+        let out = h.add_node_with_parent(loop_, Output { types: output });
+        let tag = h.add_node_with_parent(loop_, Tag::new(TailLoop::BREAK_TAG, vec![[].into(); 2]));
+        h.connect(tag, 0, out, 0);
+        h.connect(inp, 0, out, 1);
+        eprintln!("{}", h.mermaid_string());
+        h.validate().unwrap();
+        h.try_into().unwrap()
     }
 }
