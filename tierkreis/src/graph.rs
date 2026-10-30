@@ -5,11 +5,11 @@ This module defines the Workflow graph representation.
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use bitvec::vec::BitVec;
-use miette::{miette, Context, IntoDiagnostic};
+use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{
-    algorithms::{postorder, toposort_filtered, PostOrder, TopoSort},
-    multiportgraph::SubportIndex,
     Direction, LinkMut, LinkView, MultiPortGraph, NodeIndex, PortIndex, PortMut, PortView,
+    algorithms::{PostOrder, TopoSort, postorder, toposort_filtered},
+    multiportgraph::SubportIndex,
 };
 use serde::{Deserialize, Serialize};
 use tracing::warn;
