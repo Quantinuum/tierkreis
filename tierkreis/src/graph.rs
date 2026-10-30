@@ -5,11 +5,11 @@ This module defines the Workflow graph representation.
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use bitvec::vec::BitVec;
-use miette::{Context, IntoDiagnostic, miette};
+use miette::{miette, Context, IntoDiagnostic};
 use portgraph::{
-    Direction, LinkMut, LinkView, MultiPortGraph, NodeIndex, PortIndex, PortMut, PortView,
-    algorithms::{PostOrder, TopoSort, postorder, toposort_filtered},
+    algorithms::{postorder, toposort_filtered, PostOrder, TopoSort},
     multiportgraph::SubportIndex,
+    Direction, LinkMut, LinkView, MultiPortGraph, NodeIndex, PortIndex, PortMut, PortView,
 };
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -887,7 +887,7 @@ impl ConversionState {
         if default_value.is_some() && default_none {
             warn!(
                 "`default_value` is `Some` but `default_none` is `false`, ignoring `default_none` and using the provided `default_value`"
-            )
+            );
         }
 
         let presence = default_value.map_or_else(
