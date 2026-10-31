@@ -1,0 +1,12 @@
+executor = "hpc"
+nodes = 2
+cpu = 1
+walltime = "01:05:00"
+
+[mpi]
+max_proc_per_node = "1"
+
+[env]
+OMPI_ALLOW_RUN_AS_ROOT = "1"
+OMPI_ALLOW_RUN_AS_ROOT_CONFIRM = "1"
+PATH = "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/usr/lib64/openmpi/bin"

@@ -10,11 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     asset_storage::AssetStorageRegistry,
-    graph::NodeDefinition,
-    state::{
-        SqliteRuntimeState,
-        interface::{NodeState, RuntimeWatchState},
-    },
+    graph::{LegacyWorkflowGraph, NodeDefinition},
+    state::interface::{NodeState, RuntimeState, RuntimeWatchState},
 };
 use axum::{
     http::StatusCode,
@@ -41,9 +38,10 @@ pub type HandlerResult<T> = Result<T, AppError>;
 /// Server state shared across all requests.
 #[derive(Clone)]
 pub struct AppState {
-    pub runtime_state: Arc<SqliteRuntimeState>,
+    pub runtime_state: Arc<dyn RuntimeState>,
     pub asset_registry: AssetStorageRegistry,
     pub update_receiver: watch::Receiver<RuntimeWatchState>,
+    pub display_graph: Option<Arc<LegacyWorkflowGraph>>,
 }
 
 /// Runtime metadata returned by `/api/info`.
@@ -112,6 +110,29 @@ pub fn node_status_from_state(state: &NodeState) -> NodeStatus {
 }
 
 impl NodeDefinition {
+    /// Return the portable execution context explicitly attached to this node.
+    #[must_use]
+    pub fn context(&self) -> Option<&str> {
+        match self {
+            NodeDefinition::Task { context, .. }
+            | NodeDefinition::Eval { context, .. }
+            | NodeDefinition::Loop { context, .. }
+            | NodeDefinition::Map { context, .. } => context.as_deref(),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn executor(&self) -> Option<&str> {
+        match self {
+            NodeDefinition::Task { executor, .. }
+            | NodeDefinition::Eval { executor, .. }
+            | NodeDefinition::Loop { executor, .. }
+            | NodeDefinition::Map { executor, .. } => executor.as_deref(),
+            _ => None,
+        }
+    }
+
     #[must_use]
     pub fn node_type(&self) -> String {
         match self {
@@ -119,7 +140,11 @@ impl NodeDefinition {
             NodeDefinition::Const { .. } => "const".to_string(),
             NodeDefinition::Task { .. } => "function".to_string(),
             NodeDefinition::Map { .. } => "map".to_string(),
-            _ => serde_plain::to_string(self).unwrap_or_else(|_| "unknown".to_string()),
+            NodeDefinition::Eval { .. } => "eval".to_string(),
+            NodeDefinition::Loop { .. } => "loop".to_string(),
+            NodeDefinition::Output {} => "output".to_string(),
+            NodeDefinition::IfElse {} => "ifelse".to_string(),
+            NodeDefinition::EagerIfElse {} => "eifelse".to_string(),
         }
     }
 
@@ -134,9 +159,10 @@ impl NodeDefinition {
             NodeDefinition::Task {
                 worker_name,
                 task_name,
+                ..
             } => format!("{worker_name}.{task_name}"),
-            NodeDefinition::Eval {} => "eval".to_string(),
-            NodeDefinition::Loop {} => "loop".to_string(),
+            NodeDefinition::Eval { .. } => "eval".to_string(),
+            NodeDefinition::Loop { .. } => "loop".to_string(),
             NodeDefinition::Map { .. } => "map".to_string(),
         }
     }
@@ -175,6 +201,10 @@ pub struct PyNode {
     pub started_time: String,
     /// ISO-8601 timestamp when the node finished, or `""` if not finished.
     pub finished_time: String,
+    /// Execution context requested for this node.
+    pub context: Option<String>,
+    /// Executor requested for this node.
+    pub executor: Option<String>,
 }
 
 /// A directed edge in the workflow graph.

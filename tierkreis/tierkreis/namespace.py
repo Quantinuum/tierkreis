@@ -184,6 +184,8 @@ from tierkreis.controller.data.types import PType, Struct, Workflow
                 [
                     ruff_binary,
                     "check",
+                    "--extend-select",
+                    "RUF100",
                     "--fix",
                     "--unsafe-fixes",
                     stubs_path,

@@ -325,14 +325,7 @@ async fn process_finished_task(
     let outputs = save_assets(asset_storage_registry, &output_storage_name, outputs).await;
     match outputs {
         Ok(outputs) => {
-            send_complete(
-                event_sender,
-                workflow_run_id,
-                attempt,
-                vec![loc],
-                vec![outputs],
-            )
-            .await?;
+            send_complete(event_sender, workflow_run_id, attempt, vec![(loc, outputs)]).await?;
         }
         Err(err) => send_error(event_sender, workflow_run_id, attempt, loc, &err).await?,
     }
@@ -489,12 +482,11 @@ impl InMemoryExecutor {
     ///
     /// This function will return Err if the specified `output_storage_name` does not exist
     /// inside the [`AssetStorageRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -534,10 +526,10 @@ impl Executor for InMemoryExecutor {
         let fut = async {
             let mut task_sender = self.task_sender.clone();
 
-            for task_plan in task_plans {
+            for mut task_plan in task_plans {
                 let output_storage_name = task_plan
                     .output_storage_name
-                    .clone()
+                    .take()
                     .unwrap_or_else(|| self.output_storage_name.clone());
 
                 task_sender
@@ -610,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn inmemory_workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let workers = executor.workers().await?;
 
@@ -642,7 +634,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -652,22 +644,16 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
@@ -701,7 +687,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -711,22 +697,16 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
@@ -774,7 +754,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = InMemoryExecutor::try_new(&registry, default_storage_name).await?;
+        let executor = InMemoryExecutor::try_new(&registry, default_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -783,18 +763,20 @@ mod tests {
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc1.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
+            event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: loc1.clone(),
+                status: NodeStatus::Running { state_update: None },
+                name: None,
+            }])
         }));
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc2.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
+            event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: loc2.clone(),
+                status: NodeStatus::Running { state_update: None },
+                name: None,
+            }])
         }));
 
         // These may complete out of order, so find the correct events.
@@ -804,11 +786,10 @@ mod tests {
                 matches!(
                     event,
                     RuntimeEvent::WorkflowRun {
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs,
-                            status: NodeStatus::Complete { .. }
-                        }), ..
-                    } if locs == &vec![loc1.clone()]
+                        event: WorkflowRunEvent::NodeEvents(node_events),
+                        ..
+                    } if node_events[0].loc == loc1
+                    && matches!(node_events[0].status, NodeStatus::Complete { .. })
                 )
             })
             .unwrap();
@@ -825,11 +806,10 @@ mod tests {
                 matches!(
                     event,
                     RuntimeEvent::WorkflowRun {
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs,
-                            status: NodeStatus::Complete { .. }
-                        }), ..
-                    } if locs == &vec![loc2.clone()]
+                        event: WorkflowRunEvent::NodeEvents(node_events),
+                        ..
+                    } if node_events[0].loc == loc2
+                    && matches!(node_events[0].status, NodeStatus::Complete { .. })
                 )
             })
             .unwrap();
@@ -860,7 +840,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -870,22 +850,16 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
@@ -912,7 +886,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -922,22 +896,17 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Error { ref error, .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            } if error == "Unknown task: `backflip`"
+            } if matches!(node_events[0].status, NodeStatus::Error { ref error, .. }
+            if error == "Unknown task: `backflip`")
         );
 
         Ok(())
@@ -960,7 +929,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -969,12 +938,9 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -983,12 +949,9 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Cancelled,
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Cancelled)
         );
 
         Ok(())
@@ -999,7 +962,7 @@ mod tests {
     #[tokio::test]
     async fn execute_inmemory_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -1024,7 +987,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = InMemoryExecutor::try_new(&registry, "memory").await?;
+        let executor = InMemoryExecutor::try_new(&registry, "memory")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1034,22 +997,16 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,

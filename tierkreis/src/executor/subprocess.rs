@@ -4,7 +4,8 @@ by running subprocesses.
 */
 use std::{
     any::Any,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
+    num::NonZero,
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex},
@@ -40,6 +41,7 @@ use crate::{
     },
     executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     location::Location,
+    monitoring::{CommandEnvCarrier, inject_trace_context},
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -57,6 +59,7 @@ struct BackgroundTaskPlan {
     attempt: u32,
     loc: Location,
     worker_name: String,
+    environment: HashMap<String, String>,
     output_storage_name: String,
     worker_args: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
@@ -91,6 +94,7 @@ type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
+    pending: &mut VecDeque<BackgroundTaskPlan>,
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
@@ -99,6 +103,15 @@ async fn process_cancelled_task(
     if let Some(handle) = handle {
         handle.abort();
         send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
+    } else {
+        // Try to handle cancelling pending tasks, not completely foolproof
+        // if the task is still in the task channel however.
+        if let Some((idx, _)) = pending.iter().enumerate().find(|(_idx, task)| {
+            task.workflow_run_id == workflow_run_id && task.attempt == attempt && task.loc == loc
+        }) {
+            pending.remove(idx);
+            send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
+        }
     }
     Ok(())
 }
@@ -122,14 +135,7 @@ async fn process_finished_task(
         let outputs = transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
         match outputs {
             Ok(outputs) => {
-                send_complete(
-                    event_sender,
-                    workflow_run_id,
-                    attempt,
-                    vec![loc],
-                    vec![outputs],
-                )
-                .await?;
+                send_complete(event_sender, workflow_run_id, attempt, vec![(loc, outputs)]).await?;
             }
             Err(err) => {
                 send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
@@ -141,13 +147,14 @@ async fn process_finished_task(
             .send(RuntimeEvent::WorkflowRun {
                 workflow_run_id,
                 attempt,
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    locs: vec![loc],
+                event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                    loc,
                     status: NodeStatus::Error {
                         error: format!("Subprocess failed with error code: {exit_status}"),
                         detail: stderr,
                     },
-                }),
+                    name: None,
+                }]),
             })
             .await
             .map_err(|err| miette!("Failed to send error event: {err}"))?;
@@ -199,7 +206,11 @@ async fn start_task(
     let worker_args_path = worker_args.path();
     let res = {
         let _enter = parent_span.enter();
-        spawn_worker(&internal_task.worker_name, worker_args_path)
+        spawn_worker(
+            &internal_task.worker_name,
+            worker_args_path,
+            &internal_task.environment,
+        )
     };
     let mut child = match res {
         Ok(child) => child,
@@ -254,17 +265,25 @@ async fn start_task(
     Ok(())
 }
 
+const MAX_PENDING_TASKS: usize = 64;
+
 async fn process_tasks(
     mut task_receiver: TaskReceiver,
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
     mut abort_handles: AbortHandles,
+    max_concurrency: NonZero<usize>,
 ) {
+    let max_concurrency: usize = max_concurrency.into();
     let mut running: RunningFutures = FuturesUnordered::new();
+    let mut pending: VecDeque<BackgroundTaskPlan> = VecDeque::with_capacity(MAX_PENDING_TASKS);
 
     loop {
         tokio::select! {
+            biased; // Prefer to deal with futures in the defined order.
+            // Conditional guards on branches are always evaluated before evaluating their pattern.
+
             // A task has been cancelled
             Some((workflow_run_id, attempt, loc)) = cancel_receiver.next() => {
                 tracing::debug!(
@@ -273,9 +292,16 @@ async fn process_tasks(
                     loc = %loc,
                     "Received cancel request"
                 );
-                process_cancelled_task(&mut event_sender, &mut abort_handles, workflow_run_id, attempt, loc)
-                    .await
-                    .expect("Failed to cancel task");
+                process_cancelled_task(
+                    &mut event_sender,
+                    &mut abort_handles,
+                    &mut pending,
+                    workflow_run_id,
+                    attempt,
+                    loc
+                )
+                .await
+                .expect("Failed to cancel task");
             }
             // A task has completed
             Some((task, result)) = running.next() => {
@@ -311,22 +337,37 @@ async fn process_tasks(
                 .await
                 .expect("Failed to complete task");
             }
-            // A task has been submitted
-            Some(internal_task) = task_receiver.next() => {
+            // We have space for a new task and there is at least one task pending.
+            () = std::future::ready(()), if running.len() < max_concurrency && !pending.is_empty() => {
+                let task = pending.pop_front().expect("Pending queue was unexpectedly empty");
+                start_task(
+                    &mut event_sender,
+                    &mut abort_handles,
+                    &mut running,
+                    task,
+                )
+                .await
+                .expect("Failed to start task");
+            }
+            // A task has been submitted, don't accept it unless we have space for pending tasks.
+            Some(internal_task) = task_receiver.next(), if pending.len() < MAX_PENDING_TASKS => {
                 tracing::debug!(
                     workflow_run_id = %internal_task.workflow_run_id,
                     attempt = %internal_task.attempt,
                     loc = %internal_task.loc,
                     "Received task to monitor"
                 );
-                start_task(
+                send_queued(
                     &mut event_sender,
-                    &mut abort_handles,
-                    &mut running,
-                    internal_task,
+                    internal_task.workflow_run_id,
+                    internal_task.attempt,
+                    internal_task.loc.clone(),
+                    None,
                 )
                 .await
-                .expect("Failed to start task");
+                .expect("Failed to queue task");
+
+                pending.push_back(internal_task);
             }
             else => break
         }
@@ -371,13 +412,12 @@ impl SubprocessExecutor {
     ///
     /// This function will return Err if the specified `subprocess_storage_name` or
     /// `output_storage_name` does not exist inside the [`AssetStorageRegistry`].
-    pub async fn try_new(
+    pub fn try_new(
         asset_storage_registry: &AssetStorageRegistry,
         subprocess_storage_name: &str,
         output_storage_name: &str,
     ) -> miette::Result<Self> {
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if let Some(subprocess_storage) = asset_storage_registry_lock.get(subprocess_storage_name) {
+        if let Some(subprocess_storage) = asset_storage_registry.get(subprocess_storage_name) {
             let subprocess_storage: &dyn Any = subprocess_storage as &dyn Any;
             if subprocess_storage.is::<FileAssetStorage>() {
                 return Err(miette!(
@@ -388,7 +428,7 @@ impl SubprocessExecutor {
             return Err(miette!("subprocess_storage_name not in registry"));
         }
 
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -403,6 +443,7 @@ impl SubprocessExecutor {
             event_sender,
             background_asset_storage_registry,
             abort_handles,
+            std::thread::available_parallelism().into_diagnostic()?,
         ));
 
         let asset_storage_registry = Arc::clone(asset_storage_registry);
@@ -465,27 +506,20 @@ impl SubprocessExecutor {
     }
 }
 
-struct CommandEnvCarrier<'a>(&'a mut Command);
-impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
-    fn set(&mut self, key: &str, value: String) {
-        self.0.env(key.to_uppercase().replace('_', "-"), value);
-    }
-}
-
 fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
+    environment: &HashMap<String, String>,
 ) -> miette::Result<tokio::process::Child> {
     let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
     let mut command = Command::new(&cmd);
+    command.envs(environment);
     let cx = tracing::Span::current().context();
-    opentelemetry::global::get_text_map_propagator(|p| {
-        p.inject_context(&cx, &mut CommandEnvCarrier(&mut command));
-    });
+    inject_trace_context(&cx, &mut CommandEnvCarrier(&mut command));
 
     command
         .arg(worker_args_path)
-        .stdout(Stdio::piped())
+        .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
     let child = command
@@ -589,6 +623,21 @@ impl Executor for SubprocessExecutor {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
+                if !task_plan.resources.is_empty() {
+                    tracing::warn!("Subprocess executor does not implement resources");
+                }
+                let environment: HashMap<String, String> = task_plan
+                    .environment
+                    .iter()
+                    .map(|(key, value)| {
+                        value
+                            .as_str()
+                            .map(|value| (key.clone(), value.to_owned()))
+                            .ok_or_else(|| {
+                                miette!("Subprocess environment `{key}` must be a string")
+                            })
+                    })
+                    .collect::<miette::Result<_>>()?;
                 let inputs = self
                     .build_inputs(&task_plan.inputs)
                     .await
@@ -638,6 +687,7 @@ impl Executor for SubprocessExecutor {
                         attempt: task_plan.attempt,
                         loc: task_plan.loc,
                         worker_name: task_plan.worker_name,
+                        environment,
                         output_storage_name,
                         worker_args,
                         outputs,
@@ -707,7 +757,7 @@ mod tests {
     #[tokio::test]
     async fn subprocess_workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let workers = executor.workers().await?;
 
@@ -752,47 +802,45 @@ mod tests {
             outputs,
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: None })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: Some(_) })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
+                ..
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;
@@ -827,47 +875,45 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: None })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: Some(_) })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
+                ..
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
             output_storage_name,
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;
@@ -917,28 +963,30 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name).await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(6).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 6);
+        let events = stream.take(8).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 8);
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc1.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
+            event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: loc1.clone(),
+                status: NodeStatus::Running { state_update: None },
+                name: None,
+            }])
         }));
         assert!(events.contains(&RuntimeEvent::WorkflowRun {
             workflow_run_id: Uuid::nil(),
             attempt: 0,
-            event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![loc2.clone()],
-                status: NodeStatus::Running { state_update: None }
-            })
+            event: WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: loc2.clone(),
+                status: NodeStatus::Running { state_update: None },
+                name: None,
+            }])
         }));
 
         // These may complete out of order, so find the correct events.
@@ -948,11 +996,10 @@ mod tests {
                 matches!(
                     event,
                     RuntimeEvent::WorkflowRun {
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs,
-                            status: NodeStatus::Complete { .. }
-                        }), ..
-                    } if locs == &vec![loc1.clone()]
+                        event: WorkflowRunEvent::NodeEvents(node_events),
+                        ..
+                    } if node_events[0].loc == loc1
+                    && matches!(node_events[0].status, NodeStatus::Complete { .. })
                 )
             })
             .unwrap();
@@ -969,11 +1016,10 @@ mod tests {
                 matches!(
                     event,
                     RuntimeEvent::WorkflowRun {
-                        event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                            locs,
-                            status: NodeStatus::Complete { .. }
-                        }), ..
-                    } if locs == &vec![loc2.clone()]
+                        event: WorkflowRunEvent::NodeEvents(node_events),
+                        ..
+                    } if node_events[0].loc == loc2
+                    && matches!(node_events[0].status, NodeStatus::Complete { .. })
                 )
             })
             .unwrap();
@@ -1010,47 +1056,45 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: None })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: Some(_) })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
+                ..
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;
@@ -1072,42 +1116,41 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: None })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: Some(_) })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Error { ref error, .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            } if error == "Subprocess failed with error code: exit status: 1"
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
+                ..
+            } if matches!(node_events[0].status, NodeStatus::Error { ref error, .. }
+            if error == "Subprocess failed with error code: exit status: 1")
         );
 
         Ok(())
@@ -1136,7 +1179,7 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1145,23 +1188,27 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: None })
         );
+
         let event = stream.next().await.unwrap();
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: Some(_) })
+        );
+
+        let event = stream.next().await.unwrap();
+        assert_matches!(
+            event,
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
+                ..
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -1170,12 +1217,9 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Cancelled,
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Cancelled)
         );
 
         Ok(())
@@ -1186,7 +1230,7 @@ mod tests {
     #[tokio::test]
     async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -1217,47 +1261,45 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file").await?;
+        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
 
-        let events = stream.take(3).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 3);
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_eq!(events.len(), 4);
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: None })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { handle: Some(_) })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
+        );
+        assert_matches!(
+            events[3],
+            RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
+                ..
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
         assert_registry_contains_values(
             &registry,
             "file",
-            &events[2].clone().outputs()[0],
+            &events[3].clone().outputs()[0],
             json!({"value": "hello dave"}),
         )
         .await;

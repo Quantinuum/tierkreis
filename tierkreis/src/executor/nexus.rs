@@ -16,7 +16,7 @@ use futures::{
     future::{self, BoxFuture},
     stream::{BoxStream, FuturesUnordered},
 };
-use hugr::{envelope::read_envelope, extension::ExtensionRegistry};
+use hugr::package::Package;
 use miette::{Context, IntoDiagnostic, miette};
 use tokio::task::AbortHandle;
 use tracing::{Instrument, instrument, warn};
@@ -61,9 +61,9 @@ struct BackgroundTask {
     outputs: HashMap<String, AssetSpec>,
 }
 
-enum InternalJobMonitoringStatus {
+enum TaskRegistration {
     Watching { job_id: Uuid },
-    Cancelling,
+    CancelBeforeRegistration,
 }
 
 type TaskSender = mpsc::Sender<BackgroundTaskPlan>;
@@ -73,7 +73,7 @@ type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 
 type RunningFutures<'a> = FuturesUnordered<BoxFuture<'a, (BackgroundTask, miette::Result<()>)>>;
 // Mapping of Node to the internal monitoring status of the Node..
-type JobHandles = HashMap<(Uuid, u32, Location), InternalJobMonitoringStatus>;
+type JobHandles = HashMap<(Uuid, u32, Location), TaskRegistration>;
 
 #[instrument(skip_all, err)]
 async fn process_cancelled_task(
@@ -87,16 +87,16 @@ async fn process_cancelled_task(
     let handle = job_handles.remove(&key);
     match handle {
         // We know the job id, cancel the job.
-        Some(InternalJobMonitoringStatus::Watching { job_id }) => {
+        Some(TaskRegistration::Watching { job_id }) => {
             tracing::info!("Cancelling job for node: {key:?}");
             client.cancel_job(job_id).await?;
         }
         // We are already planning to cancel the job if we see this node.
-        Some(InternalJobMonitoringStatus::Cancelling) => {}
+        Some(TaskRegistration::CancelBeforeRegistration) => {}
         // Register that the node needs to be cancelled if we see it.
         None => {
             warn!("Got cancel request before registering job_id for node: {key:?}");
-            job_handles.insert(key, InternalJobMonitoringStatus::Cancelling);
+            job_handles.insert(key, TaskRegistration::CancelBeforeRegistration);
         }
     }
     Ok(())
@@ -150,14 +150,7 @@ async fn process_finished_task(
                 .await?;
             }
 
-            send_complete(
-                event_sender,
-                workflow_run_id,
-                attempt,
-                vec![loc],
-                vec![outputs],
-            )
-            .await?;
+            send_complete(event_sender, workflow_run_id, attempt, vec![(loc, outputs)]).await?;
         }
         StatusEnum::Cancelled => {
             send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
@@ -233,7 +226,7 @@ async fn monitor_task(
     let task_loc = loc.clone();
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
-    let parent_span = internal_task.parent_span.clone();
+    let parent_span = internal_task.parent_span;
 
     let client = client.clone();
     let mut event_sender = event_sender.clone();
@@ -292,7 +285,7 @@ async fn monitor_task(
             BackgroundTask {
                 workflow_run_id,
                 attempt,
-                loc: background_loc.clone(),
+                loc: background_loc,
                 job_id,
                 outputs,
             },
@@ -304,10 +297,10 @@ async fn monitor_task(
 
     let key = (workflow_run_id, attempt, loc.clone());
     // If we are meant to cancel this job, signal this to the cancellation routine.
-    if let Some(InternalJobMonitoringStatus::Cancelling) = job_handles.get(&key) {
+    if let Some(TaskRegistration::CancelBeforeRegistration) = job_handles.get(&key) {
         cancel_sender.send(key.clone()).await.into_diagnostic()?;
     }
-    job_handles.insert(key, InternalJobMonitoringStatus::Watching { job_id });
+    job_handles.insert(key, TaskRegistration::Watching { job_id });
     running.push(task.boxed());
     Ok(())
 }
@@ -447,8 +440,7 @@ impl NexusExecutor {
     ) -> miette::Result<Self> {
         let client = NexusClient::try_new(client_config).await?;
 
-        let asset_storage_registry_lock = asset_storage_registry.read().await;
-        if !asset_storage_registry_lock.contains_key(output_storage_name) {
+        if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
 
@@ -498,9 +490,7 @@ impl NexusExecutor {
         hugr_name: &str,
         hugr_package: &[u8],
     ) -> miette::Result<Uuid> {
-        // TODO: Requiring Extensions for the enveleope read here might be problematic.
-        let (_, package) = read_envelope(Cursor::new(hugr_package), &ExtensionRegistry::new([]))
-            .into_diagnostic()?;
+        let package = Package::load(Cursor::new(hugr_package), None).into_diagnostic()?;
 
         let hugr_data = self
             .client
@@ -687,7 +677,7 @@ mod tests {
 
     use crate::{
         asset_storage::{assert_registry_contains_values, save_asset, test_storage_registry},
-        event::{NodeEvent, NodeStatus, WorkflowRunEvent},
+        event::{NodeStatus, WorkflowRunEvent},
         executor::nexus::client::TLSMode,
     };
 
@@ -891,42 +881,30 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[2],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Running { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Running { .. })
         );
         assert_matches!(
             events[3],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Complete { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
         );
 
         assert_registry_contains_values(
@@ -1031,22 +1009,17 @@ mod tests {
         assert_matches!(
             events[0],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
         assert_matches!(
             events[1],
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Error { ref error, .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            } if error == "Job failed with message: job has errored"
+            } if matches!(node_events[0].status, NodeStatus::Error { ref error, .. }
+            if error == "Job failed with message: job has errored")
         );
 
         Ok(())
@@ -1160,24 +1133,18 @@ mod tests {
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Queued { .. },
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
         );
 
         let event = stream.next().await.unwrap();
         assert_matches!(
             event,
             RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvent(NodeEvent {
-                    status: NodeStatus::Cancelled,
-                    ..
-                }),
+                event: WorkflowRunEvent::NodeEvents(ref node_events),
                 ..
-            }
+            } if matches!(node_events[0].status, NodeStatus::Cancelled)
         );
 
         Ok(())

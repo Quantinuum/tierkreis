@@ -14,9 +14,50 @@ use miette::{Context, IntoDiagnostic};
 use crate::runtime::RuntimeConfig;
 
 /// Default file name
-pub const CONFIG_FILE_NAME: &str = "tierkreis.toml";
+pub const CONFIG_FILE_NAME: &str = "runtime.toml";
 /// Fallback env var
-pub const CONFIG_ENV_VAR: &str = "TIERKREIS_CONFIG";
+pub const CONFIG_ENV_VAR: &str = "TKR_CONFIG";
+/// Fallback file name for the runtime configuration.
+pub const TKR_ENV_VAR: &str = "TKR_ENV";
+/// Name of the directory containing resource profiles.
+const RESOURCE_PROFILES_DIR_NAME: &str = "resource_profiles";
+/// Environment variable containing additional resource profile search paths.
+const RESOURCE_PATH_ENV_VAR: &str = "TKR_RESOURCE_PATH";
+/// Name of the temporary files directory under the Tierkreis home directory.
+pub const TMP_DIR_NAME: &str = "tmp";
+/// Name of the default file asset storage directory un                                      der the Tierkreis home directory.
+pub const ASSETS_DIR_NAME: &str = "assets";
+
+/// Return the canonical Tierkreis home directory (`~/.tierkreis`), falling back
+/// to `/tmp/tierkreis` if the user's home directory cannot be determined.
+#[must_use]
+pub fn tierkreis_home_dir() -> PathBuf {
+    if let Some(home_dir) = home_dir() {
+        home_dir.join(".tierkreis")
+    } else {
+        "/tmp/tierkreis".into()
+    }
+}
+
+/// Build the resource profile search roots from project, runtime, and environment settings.
+pub(crate) fn resource_profile_search_paths(configured_paths: &[PathBuf]) -> Vec<PathBuf> {
+    let project_root = discover_config_path()
+        .and_then(|path| path.parent().map(PathBuf::from))
+        .or_else(|| env::current_dir().ok());
+    let mut roots = Vec::new();
+    if let Some(project_root) = &project_root {
+        roots.push(project_root.join(RESOURCE_PROFILES_DIR_NAME));
+    }
+    roots.extend(configured_paths.iter().map(|path| match &project_root {
+        Some(root) if path.is_relative() => root.join(path),
+        _ => path.clone(),
+    }));
+    roots.push(tierkreis_home_dir());
+    if let Some(paths) = env::var_os(RESOURCE_PATH_ENV_VAR) {
+        roots.extend(env::split_paths(&paths));
+    }
+    roots
+}
 
 /// Locate a `RuntimeConfig` TOML file, searching:
 ///
@@ -40,11 +81,49 @@ pub fn discover_config_path() -> Option<PathBuf> {
         }
     }
 
-    let default = home_dir()
-        .unwrap_or_else(|| "/tmp".into())
-        .join(".tierkreis")
-        .join(CONFIG_FILE_NAME);
+    let default = tierkreis_home_dir().join(CONFIG_FILE_NAME);
     default.is_file().then_some(default)
+}
+
+/// Create the default Tierkreis directories (`~/.tierkreis` and its `tmp` and
+/// `assets` subdirectories) if they do not already exist.
+///
+/// # Errors
+///
+/// Returns an error if any of the directories cannot be created.
+pub fn create_default_directories() -> miette::Result<()> {
+    let home = tierkreis_home_dir();
+    for dir in [home.join(TMP_DIR_NAME), home.join(ASSETS_DIR_NAME)] {
+        std::fs::create_dir_all(&dir)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to create directory at {}", dir.display()))?;
+    }
+    Ok(())
+}
+
+/// Write a default [`RuntimeConfig`] to the canonical config file location
+/// (`~/.tierkreis/tierkreis.toml`) if one does not already exist there.
+///
+/// Returns the path to the config file, whether or not it was just created.
+///
+/// # Errors
+///
+/// Returns an error if the directory or file cannot be created, or if the
+/// default config cannot be serialized.
+pub fn create_default_config(config_path: Option<PathBuf>) -> miette::Result<PathBuf> {
+    let path = config_path.unwrap_or_else(|| tierkreis_home_dir().join(CONFIG_FILE_NAME));
+    if !path.is_file() {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Failed to create directory at {}", parent.display()))?;
+        }
+        let toml_str = RuntimeConfig::default().to_toml_string()?;
+        std::fs::write(&path, toml_str)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to write default config at {}", path.display()))?;
+    }
+    Ok(path)
 }
 
 /// Walk up from `start`, looking for a file named `name` in each directory.

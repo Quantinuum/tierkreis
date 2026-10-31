@@ -11,25 +11,36 @@ Tierkreis combines task-based workers with context dependent execution on variou
 
 Tierkreis allows users to define hybrid workflows as computational graphs
 ```python
+from typing import NamedTuple
+
+from tierkreis.builder import Graph
+from tierkreis.builtins import iadd
+from tierkreis.models import TKR
+from tierkreis.runtime import new_default
+
+
 class InParams(NamedTuple):
-    a: TKR[float]
-    b: TKR[float]
-    c: TKR[float]
+    a: TKR[int]
+    b: TKR[int]
+    c: TKR[int]
 
 
-g = Graph(InParams, TKR[float])
-x = g.task(add(g.inputs.a, g.inputs.b))
-y = g.task(add(x, g.inputs.c))
+g = Graph(InParams, TKR[int])
+x = g.task(iadd(g.inputs.a, g.inputs.b))
+y = g.task(iadd(x, g.inputs.c))
 workflow = g.finish_with_outputs(y)
 ```
-and run them on different execution platforms
+and run them on different execution platforms with the Rust runtime:
 
 ```python
-storage = FileStorage(workflow_id=UUID(int=12345), name="Hello World Graph")
-executor = ShellExecutor(registry_path=None, workflow_dir=storage.workflow_dir)
-inputs = InParams(0, 0.25, 0.5)._asdict()
-run_graph(storage, executor, workflow, inputs)
-result = read_outputs(workflow, storage)
+inputs = InParams(1, 2, 3)._asdict()
+
+runtime = await new_default()
+with runtime:
+    workflow_id = await runtime.save_workflow("Hello World Graph", workflow)
+    run_id = await runtime.start_new_run(workflow_id, inputs)
+    await runtime.wait_for(run_id)
+    result = await runtime.get_outputs(run_id)
 ```
 
 ## Quick Start

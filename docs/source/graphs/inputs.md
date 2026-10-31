@@ -133,29 +133,21 @@ g = Graph(MultiPortInputData, TKR[str])
 
 ## Execution
 
-Since we still only use built-in functions, we execute the graph in the same way as before.
-For the examples with graph inputs, we provide the input in the third argument of `run_graph`.
+Since these graphs only use builtins, one in-memory runtime can execute all of
+them. Each saved workflow receives its own UUID.
 
 ```{code-cell} ipython3
-from uuid import UUID
-from pathlib import Path
+from tierkreis.runtime import new_in_memory
 
-from tierkreis import run_graph
-from tierkreis.storage import FileStorage, read_outputs
-from tierkreis.executor import ShellExecutor
-
-storage = FileStorage(UUID(int=99), name="Graph inputs and outputs")
-executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
-
-storage.clean_graph_files()
-run_graph(storage, executor, f, 10)
-print(read_outputs(f, storage))
-
-storage.clean_graph_files()
-run_graph(storage, executor, init_workflow, {})
-print(read_outputs(init_workflow, storage))
-
-storage.clean_graph_files()
-run_graph(storage, executor, fib_step, {'a': 0, 'b': 1})
-print(read_outputs(fib_step, storage))
+runtime = await new_in_memory()
+with runtime:
+    for name, graph, inputs in [
+        ("single input", f, 10),
+        ("initial values", init_workflow, {}),
+        ("fibonacci step", fib_step, {"a": 0, "b": 1}),
+    ]:
+        workflow_id = await runtime.save_workflow(name, graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id)
+        print(await runtime.get_outputs(run_id))
 ```

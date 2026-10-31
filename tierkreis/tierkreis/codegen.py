@@ -38,10 +38,10 @@ def format_ptype(
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     if ptype is NoneType or ptype is None:
         return "NoneType"
-    if has_serialization:
-        return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     if isinstance(ptype, ForwardRef):
         return ptype.__forward_arg__
+    if has_serialization:
+        return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     return ptype.__qualname__
 
 

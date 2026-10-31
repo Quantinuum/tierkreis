@@ -19,6 +19,9 @@ test-workers:
 test-slow:
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
 
+typos:
+  typos
+    
 lint:
   cargo fmt --check
   cargo clippy --all-features --all-targets -- -D warnings
@@ -35,14 +38,20 @@ fix:
 docs:
   just docs/build
 
-[working-directory:'tierkreis_visualization']
 serve:
-	{{uvrun}} python tierkreis_visualization/main.py
+	cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
 
-[working-directory:'tierkreis_visualization/frontend']
+[working-directory:'tierkreis/frontend']
 prod:
-	pnpm i
-	pnpm run build
+  pnpm i
+  pnpm run build
+
+openapi:
+    cargo run --manifest-path tierkreis/Cargo.toml --bin tkr -- openapi tierkreis/openapi.json
+
+wheel:
+    just prod
+    maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
 
 stubs-generate dir:
   #!/usr/bin/env bash

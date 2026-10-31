@@ -6,12 +6,12 @@ from tierkreis.controller.data.models import TKR
 
 
 class greet(NamedTuple):
-    greeting: TKR[str]  # fmt: skip
-    subject: TKR[str]  # fmt: skip
+    greeting: TKR[str]
+    subject: TKR[str]
 
     @staticmethod
-    def out() -> type[TKR[str]]:  # fmt: skip
-        return TKR[str]  # fmt: skip
+    def out() -> type[TKR[str]]:
+        return TKR[str]
 
     @property
     def namespace(self) -> str:

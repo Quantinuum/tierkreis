@@ -27,6 +27,8 @@ pub struct TaskPlan {
     pub attempt: u32,
     /// The location of the Node which this Task was created for.
     pub loc: Location,
+    /// The selected execution context, if any.
+    pub execution_context: Option<String>,
     /// The name of the Worker to invoke.
     pub worker_name: String,
     /// The name of the Worker's task to invoke.

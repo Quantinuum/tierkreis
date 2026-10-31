@@ -63,6 +63,7 @@ nb_execution_excludepatterns = [
     "polling_and_dir.ipynb",
     "storage_and_executors.ipynb",
     "hpc.ipynb",
+    "parallelism.ipynb",
 ]
 myst_enable_extensions = ["dollarmath", "amsmath"]
 

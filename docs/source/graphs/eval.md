@@ -66,17 +66,12 @@ In the [next tutorial](./loop.md) we will see how to iterate programmatically.
 Since we still only use built-in functions, we execute the graph in the same way as before.
 
 ```{code-cell} ipython3
-from uuid import UUID
-from pathlib import Path
+from tierkreis.runtime import new_in_memory
 
-from tierkreis import run_graph
-from tierkreis.storage import FileStorage, read_outputs
-from tierkreis.executor import ShellExecutor
-
-storage = FileStorage(UUID(int=99), name="Nested graphs using Eval")
-executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
-
-storage.clean_graph_files()
-run_graph(storage, executor, workflow, {})
-print(read_outputs(workflow, storage))
+runtime = await new_in_memory()
+with runtime:
+    workflow_id = await runtime.save_workflow("Nested graphs using Eval", workflow)
+    run_id = await runtime.start_new_run(workflow_id, {})
+    await runtime.wait_for(run_id)
+    print(await runtime.get_outputs(run_id))
 ```

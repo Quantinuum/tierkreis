@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# Hack to get around installing the directory.
+
+# Source - https://stackoverflow.com/a/24114056
+# Posted by mklement0, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-09-14, License - CC BY-SA 4.0
+
+scriptDir=$(dirname -- "$(readlink -f -- "$BASH_SOURCE")")
+echo $scriptDir
+python "$scriptDir/sleep_worker/main.py" $1

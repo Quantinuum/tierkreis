@@ -1,0 +1,40 @@
+default_storage_name = "file"
+default_executor_name = "slurm"
+
+[asset_storage.file]
+type = "File"
+asset_dir = "$HOME/.tierkreis/assets"
+
+[executors.slurm]
+type = "Hpc"
+hpc_storage_name = "file"
+output_storage_name = "file"
+scheduler = "slurm"
+poll_interval_secs = 1
+
+[executors.slurm.worker_commands]
+mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
+
+# max available resources
+[executors.slurm.resources]
+nodes = 2
+cores_per_node = 1
+gpus_per_node = 0
+
+[executors.pbs]
+type = "Hpc"
+hpc_storage_name = "file"
+output_storage_name = "file"
+scheduler = "pbs"
+poll_interval_secs = 1
+
+[executors.pbs.worker_commands]
+mpi_worker = ["uv", "run", "/mpi_worker/main.py"]
+
+[executors.pbs.resources]
+nodes = 2
+cores_per_node = 1
+gpus_per_node = 0
+
+[runtime_state]
+type = "Memory"

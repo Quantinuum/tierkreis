@@ -9,7 +9,7 @@ The main `tkr` command has three primary subcommands:
 
 - **`init`** — Initialize and manage Tierkreis project resources
 - **`run`** — Execute workflow graphs
-- **`vis`** — Visualize and inspect graphs
+- **`serve`** — View persisted workflows without executing them
 
 Use `--help` on any of the commands for a quick overview, or consult the sections below for detailed information about each command.
 
@@ -147,6 +147,17 @@ uv run tkr run [OPTIONS]
 Runs a Tierkreis workflow graph. By default, it loads the graph from `./tkr/graphs/main.py:workflow` and reads inputs from `workflow_inputs.json`.
 You can specify a different graph location or load from a JSON file, and provide inputs either as a JSON file or as binary files with key-value pairs.
 
+Use `--profile NAME` to select a resource profile for named execution contexts.
+Without this option, the runtime's default profile selection is preserved.
+Use `--timeout SECONDS` to change the completion wait limit (default: 30 seconds);
+the value is an integer number of seconds. A wait timeout does not cancel the run.
+Pending telemetry is flushed before the CLI exits, including after failures.
+
+```bash
+uv run tkr run -g my_project.graphs.he:workflow -i he_input.json \
+  --config runtime.toml --profile local --timeout 86400 -o
+```
+
 **Graph Specification:**
 
 You can specify the graph in two ways:
@@ -155,7 +166,7 @@ You can specify the graph in two ways:
    - Example: `examples.hello_world:hello_graph`
    - Example: `./my_graphs/workflow.py:my_workflow`
 
-2. **JSON file:** Use `-f/--from-file` to load a serialized graph
+2. **Serialized graph file:** Use `-f/--from-file` to load a graph
 
 **Input Specification:**
 
@@ -178,25 +189,18 @@ You can provide inputs in two ways:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `-g, --graph-location` | STRING | `./tkr/graphs/main.py:workflow` | Load graph from Python module or file |
-| `-f, --from-file` | PATH | `workflow_inputs.json` | Load a serialized graph from a `.json` file |
-| `-i, --input-files` | LIST | - | Input sources: `key:path` pairs |
+| `-f, --from-file` | PATH | — | Load a serialized graph from a file |
+| `-i, --input-files` | LIST | `workflow_inputs.json` | One JSON file, `key:path` pairs, or `None` |
 | `-o, --print-output` | FLAG | False | Print the outputs of the top-level graph node |
 | `--name` | STRING | — | Workflow name (for identification in logs) |
-| `--run-id` | INT | — | Numeric run ID for tracking |
-| `-n, --n-iterations` | INT | — | Maximum number of iterations for the workflow |
-| `-p, --polling-interval-seconds` | FLOAT | — | Controller polling interval (tick rate) |
-| `-r, --do-clean-restart` | FLAG | False | Clear all graph files before running |
-| `--uv` | FLAG | False | Use `uv` as the executor |
-| `--registry-path` | PATH | None | Location of executable tasks/binaries |
+| `--config` | PATH | discovered default | Runtime TOML configuration |
 | `-l, --loglevel` | {CRITICAL, FATAL, ERROR, WARN, WARNING, INFO, DEBUG, NOTSET} | WARNING | Set logging level |
 | `-v, --verbose` | FLAG | False | Enable verbose output |
 
 
-```{note}
-The `--registry-path` resolve the namespace for workers automatically.
-For example, if you have custom task `my_task` from an external worker `my_worker`, Tierkreis will invoke
-`<registry_path>/my_task/main.sh`. See more [here](../worker/index.md)
-```
+Installed subprocess workers are discovered as `tkr-<worker-name>-worker`.
+Alternative commands, executors, asset stores, and resource profiles belong in
+the runtime configuration; see [Executors](../executors/index.md).
 
 **Examples:**
 
@@ -222,77 +226,62 @@ uv run tkr run -i value:input count:count
 uv run tkr run \
   -g examples.quantum:circuit \
   -i inputs.json \
+  --config ./tierkreis.toml \
   --name "quantum-run-001" \
   -o -v
-
-# Clean restart and run with custom tick rate
-uv run tkr run -r -p 0.5 --uv
-
-# Set logging level and run ID
-uv run tkr run \
-  -l DEBUG \
-  --run-id 42 \
-  --n-iterations 100
-
-# Use custom registry path
-uv run tkr run --registry-path ./path/to/custom_workers
 ```
 
 **What happens:**
 1. The graph is loaded from the specified location
 2. Inputs are loaded from the specified files
-3. The workflow is executed by the Tierkreis controller
+3. The graph is saved and executed by the Rust runtime
 4. If `-o` is specified, outputs are printed to console
-5. Checkpoints are saved to `TKR_DIR` (default: `~/.tierkreis/checkpoints`)
+5. State and assets are stored according to the runtime configuration
 
 ---
 
-## tkr vis
+## tkr serve
 
-Visualize and interact with Tierkreis graphs.
+View persisted Tierkreis workflows without starting or resuming execution.
 
 **Usage:**
 ```bash
-uv run tkr vis [OPTIONS]
+uv run tkr serve [OPTIONS]
 ```
 
 **Description:**
-Launches the Tierkreis visualizer, which provides an interactive web interface for viewing and debugging graphs.
- This is useful for understanding workflow structure, inspecting node connections, and debugging execution flow.
-
-**Modes:**
-
-The visualization tool has t main modes:
-
-1. **Default Mode:** Start the visualization server showing all workflows run in the past.
-w. **Graph Mode:** Visualize a specific graph object that has was not run.
+Launches the Rust visualization server using the discovered runtime configuration.
+The server opens the configured persistent SQLite database and asset storage;
+it does not initialize executors or run the orchestrator. In-memory runtime
+state is rejected because it cannot contain persisted runs. An explicit
+`runtime_state.url` takes precedence over `DATABASE_URL`, matching `tkr run`.
+Relative configuration paths resolve from the current working directory.
 
 **Options:**
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `--dev` | FLAG | Run in development mode with hot reload on code changes |
-| `--graph` | STRING | Visualize a specific graph: `<path_to_python_file>:<variable_name>` similar to `tkr run --g` |
+| `--host` | IP ADDRESS | Bind address; defaults to `127.0.0.1` |
+| `--port` | INTEGER | HTTP port; defaults to `3000` |
+| `--config` | PATH | Runtime TOML file; defaults to standard configuration discovery |
 | `-h, --help` | FLAG | Show help message |
 
 **Examples:**
 
 ```bash
 # Start the visualization server (interactive web UI)
-uv run tkr vis
+uv run tkr serve
 
-# Start in development mode (with hot reload)
-uv run tkr vis --dev
+# Use an explicit configuration and port
+uv run tkr serve --config runtime.toml --port 3001
 
-# Visualize a specific graph
-uv run tkr vis --graph ./my_graphs/workflow.py:main_workflow
-
-# Visualize a graph from a module
-uv run tkr vis --graph my_module.graphs:visualization_graph
+# Bind on a coordinator's network interface (secure access externally)
+uv run tkr serve --host 0.0.0.0
 ```
 
 **Access the UI:**
 
-After running `uv run tkr vis`, the server starts at `http://localhost:8000` .
+After running `uv run tkr serve`, the server starts at `http://localhost:3000`.
 Open this URL in your web browser to access the visualization.
+The viewer has no authentication; use loopback binding or an authenticated tunnel.
 More info on the [visualizer](visualization.md) page.

@@ -14,26 +14,87 @@ pub mod graph;
 pub mod location;
 pub mod monitoring;
 pub mod orchestrator;
+pub mod resource_profiles;
 pub mod runtime;
 pub mod server;
 pub mod state;
+pub mod workflow_state_query;
 
+#[cfg(feature = "pyo3")]
 #[pyo3::pymodule]
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
-    use std::collections::HashMap;
+    use std::net::IpAddr;
+    use std::{collections::HashMap, sync::Arc, time::Duration};
 
-    use miette::{Diagnostic, IntoDiagnostic};
+    use chrono::{TimeDelta, Utc};
+    use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
-    use pyo3::{FromPyObject, PyErr, Python, exceptions::PyValueError, prelude::*, types::PyBytes};
+    use pyo3::{
+        Borrowed, FromPyObject, PyErr, PyResult, Python,
+        exceptions::{PyTypeError, PyValueError},
+        prelude::*,
+        types::{PyBytes, PyMapping},
+    };
+    use pyo3_async_runtimes::tokio::get_runtime;
     use serde::{Deserialize, Serialize};
-    use tracing::info;
+    use tokio::{runtime::Builder, sync::oneshot};
+    use tracing::warn;
+    use uuid::Uuid;
 
-    use crate::{graph::LegacyWorkflowGraph, runtime};
+    use crate::{
+        config::CONFIG_FILE_NAME,
+        graph::{LegacyWorkflowGraph, WorkflowGraph},
+        location::Location,
+        runtime::RuntimeConfig,
+    };
+
+    #[pyfunction]
+    #[pyo3(signature = (port=3000, host="127.0.0.1", config=None))]
+    fn serve(
+        py: Python<'_>,
+        port: u16,
+        host: &str,
+        config: Option<std::path::PathBuf>,
+    ) -> PyResult<()> {
+        let host: IpAddr = host
+            .parse()
+            .map_err(|err| PyValueError::new_err(format!("Invalid bind address: {err}")))?;
+        let result =
+            py.detach(move || crate::server::serve_with_config(host, port, config.as_deref()));
+        result.map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
+
+    #[pyfunction]
+    fn flush_traces(py: Python<'_>) -> PyResult<()> {
+        py.detach(crate::monitoring::flush_traces)
+            .map_err(|err| convert_err(py, err))
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (graph, port=3000))]
+    fn serve_graph(py: Python<'_>, graph: &Bound<'_, PyAny>, port: u16) -> PyResult<()> {
+        let graph_json: String = if graph.hasattr("data")? {
+            graph
+                .getattr("data")?
+                .call_method0("model_dump_json")?
+                .extract()?
+        } else {
+            graph.call_method0("model_dump_json")?.extract()?
+        };
+        let result = py.detach(move || crate::server::serve_graph(&graph_json, port));
+        result.map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
+
+    #[pymodule_export]
+    pub const DEFAULT_CONFIG_FILE_NAME: &str = CONFIG_FILE_NAME;
 
     #[allow(clippy::unnecessary_wraps)]
     #[pymodule_init]
     fn init(_m: &Bound<'_, PyModule>) -> PyResult<()> {
+        let mut builder = Builder::new_multi_thread();
+        builder.enable_all();
+        pyo3_async_runtimes::tokio::init(builder);
         Ok(())
     }
 
@@ -51,11 +112,15 @@ mod tierkreis {
             py_err.set_cause(py, Some(convert_stderr(py, source)));
         }
         if let Some(help) = err.help() {
-            py_err.add_note(py, format!("\thelp: {help}")).unwrap();
+            py_err
+                .add_note(py, format!("\thelp: {help}"))
+                .expect("Failed to add help annotation to exception");
         }
         if let Some(related) = err.related() {
             for related in related {
-                py_err.add_note(py, format!("related: {related}")).unwrap();
+                py_err
+                    .add_note(py, format!("related: {related}"))
+                    .expect("Failed to add related note to exception");
             }
         }
         py_err
@@ -104,61 +169,620 @@ mod tierkreis {
         Dict(HashMap<String, Value>),
     }
 
-    #[pyfunction]
-    fn run_workflow(
-        py: Python<'_>,
-        name: &str,
-        workflow: &Bound<'_, PyAny>,
-        inputs: ValueOrMappingOrBytes,
-    ) -> PyResult<ValueOrMapping> {
-        info!("starting workflow: '{name}'");
-        let workflow_dump: String = workflow
-            .call_method0("model_dump_json")
-            .into_diagnostic()
-            .map_err(|err| convert_err(py, err))?
-            .to_string();
+    #[pyclass(name = "NodeState")]
+    #[derive(Debug)]
+    struct PyNodeState {
+        #[pyo3(get)]
+        pub name: Option<String>,
+        #[pyo3(get)]
+        pub status: String,
+        #[pyo3(get)]
+        pub execution_context: Option<String>,
+    }
 
-        let legacy_workflow: LegacyWorkflowGraph = serde_json::from_str(&workflow_dump)
-            .into_diagnostic()
-            .map_err(|err| convert_err(py, err))?;
-        let workflow_graph = legacy_workflow
-            .to_workflow_graph()
-            .map_err(|err| convert_err(py, err))?;
+    #[pyclass(name = "WorkflowSummary")]
+    #[derive(Debug)]
+    pub struct PyWorkflowRunStateSummary {
+        #[pyo3(get)]
+        pub name: Option<String>,
+        #[pyo3(get)]
+        pub duration: Option<TimeDelta>,
+        /// The time that the workflow started.
+        #[pyo3(get)]
+        pub started_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow was queued.
+        #[pyo3(get)]
+        pub queued_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow completed.
+        #[pyo3(get)]
+        pub complete_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow was cancelled.
+        #[pyo3(get)]
+        pub cancelled_time: Option<chrono::DateTime<Utc>>,
+        /// The time that the workflow errored.
+        #[pyo3(get)]
+        pub error_time: Option<chrono::DateTime<Utc>>,
+        /// Locations of nodes that are paused at breakpoints in this run.
+        #[pyo3(get)]
+        pub paused_locations: Vec<String>,
+        /// Locations of nodes that have errored in this run.
+        #[pyo3(get)]
+        pub errored_locations: Vec<String>,
+    }
 
-        let inputs = match inputs {
-            ValueOrMappingOrBytes::BytesMapping(bytes_mapping) => bytes_mapping
-                .into_iter()
-                .map(|(k, v)| Ok::<_, miette::Report>((k, v.extract().into_diagnostic()?)))
-                .collect::<Result<HashMap<String, Vec<u8>>, _>>()
-                .map_err(|err| convert_err(py, err))?,
-            ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Value(value)) => {
-                let mut inputs = HashMap::new();
-                inputs.insert(
-                    "value".to_string(),
-                    serde_json::to_vec(&value)
-                        .into_diagnostic()
-                        .map_err(|err| convert_err(py, err))?,
-                );
-                inputs
+    #[pyclass]
+    enum NodeStatus {
+        Complete,
+        Cancelled,
+        Error,
+        Running,
+        Queued,
+        Paused,
+        Scheduled,
+    }
+
+    impl From<crate::state::interface::NodeState> for PyNodeState {
+        fn from(node_state: crate::state::interface::NodeState) -> Self {
+            let status = if node_state.complete_time.is_some() {
+                "Complete".to_string()
+            } else if node_state.cancelled_time.is_some() {
+                "Cancelled".to_string()
+            } else if node_state.error_time.is_some() {
+                "Error".to_string()
+            } else if node_state.paused_time.is_some() && node_state.unpaused_time.is_none() {
+                "Paused".to_string()
+            } else if node_state.running_time.is_some() {
+                "Running".to_string()
+            } else if node_state.queued_time.is_some() {
+                "Queued".to_string()
+            } else if node_state.scheduled_time.is_some() {
+                "Scheduled".to_string()
+            } else {
+                "Unknown".to_string()
+            };
+            Self {
+                name: node_state.name,
+                status,
+                execution_context: node_state.execution_context,
             }
-            ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Mapping(inputs)) => inputs
-                .into_iter()
-                .map(|(k, v)| serde_json::to_vec(&v).map(|b| (k, b)))
-                .collect::<Result<HashMap<_, _>, _>>()
-                .into_diagnostic()
-                .map_err(|err| convert_err(py, err))?,
+        }
+    }
+
+    #[pyclass(name = "Runtime")]
+    struct PyRuntime {
+        inner: Arc<crate::runtime::Runtime>,
+        cancel: Option<oneshot::Sender<()>>,
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (profile=None))]
+    async fn new_default(profile: Option<String>) -> PyResult<PyRuntime> {
+        let config = match profile {
+            Some(profile) => RuntimeConfig::default().with_profile(profile),
+            None => RuntimeConfig::default(),
         };
+        new_from_config(PyRuntimeConfig(config)).await
+    }
 
-        let outputs = runtime::run_workflow_in_memory(workflow_graph, inputs)
-            .map_err(|err| convert_err(py, err))?;
+    #[pyfunction]
+    async fn new_in_memory() -> PyResult<PyRuntime> {
+        new_from_config(PyRuntimeConfig(RuntimeConfig::memory())).await
+    }
 
+    #[pyfunction]
+    async fn new_sqlite_memory() -> PyResult<PyRuntime> {
+        new_from_config(PyRuntimeConfig(RuntimeConfig::sqlite_memory())).await
+    }
+
+    /// Create the default Tierkreis directories (`~/.tierkreis/tmp` and
+    /// `~/.tierkreis/assets`) if they do not already exist.
+    #[pyfunction]
+    fn create_default_directories(py: Python<'_>) -> PyResult<()> {
+        crate::config::create_default_directories().map_err(|err| convert_err(py, err))
+    }
+
+    /// Write a default `RuntimeConfig` to `~/.tierkreis/tierkreis.toml` if one
+    /// does not already exist there. Returns the path to the config file.
+    #[pyfunction]
+    #[pyo3(signature = (path=None))]
+    fn create_default_config(
+        py: Python<'_>,
+        path: Option<std::path::PathBuf>,
+    ) -> PyResult<std::path::PathBuf> {
+        crate::config::create_default_config(path).map_err(|err| convert_err(py, err))
+    }
+
+    /// Load a runtime config, creating the default config when none exists.
+    #[pyfunction]
+    #[pyo3(signature = (path=None))]
+    fn load_runtime_config(
+        py: Python<'_>,
+        path: Option<std::path::PathBuf>,
+    ) -> PyResult<PyRuntimeConfig> {
+        // Check if path is some, if not try to discover one, if that fails create the default config
+        let path = match path {
+            Some(path) if path.is_file() => Ok(path),
+            None if let Some(discovered) = crate::config::discover_config_path() => Ok(discovered),
+            _ => crate::config::create_default_config(path),
+        };
+        path.and_then(|p| RuntimeConfig::from_file(&p))
+            .map(PyRuntimeConfig)
+            .map_err(|err| convert_err(py, err))
+    }
+
+    #[pyfunction]
+    async fn new_from_config(config: PyRuntimeConfig) -> PyResult<PyRuntime> {
+        let res = get_runtime()
+            .spawn(async move { crate::runtime::Runtime::from_config(&config.0).await })
+            .await
+            .map_err(|err| {
+                Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+            })?;
+
+        match res {
+            Ok(runtime) => Ok(PyRuntime {
+                inner: Arc::new(runtime),
+                cancel: None,
+            }),
+            Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+        }
+    }
+
+    #[pymethods]
+    impl PyRuntime {
+        async fn save_workflow(
+            &self,
+            name: Option<String>,
+            workflow: PyWorkflowGraph,
+        ) -> PyResult<Uuid> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.save_workflow(name, workflow.0).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(id) => Ok(id),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        #[pyo3(signature = (workflow_id, inputs, *, profile=None))]
+        async fn start_new_run(
+            &self,
+            workflow_id: Uuid,
+            inputs: PyWorkflowInputs,
+            profile: Option<String>,
+        ) -> PyResult<Uuid> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.start_new_run(workflow_id, inputs.0, profile).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok((id, _attempt)) => Ok(id),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        #[pyo3(signature = (run_id, attempt=0, /, timeout=604_800))]
+        async fn wait_for(&self, run_id: Uuid, attempt: u32, timeout: u64) -> PyResult<()> {
+            let inner = self.inner.clone();
+            get_runtime()
+                .spawn(async move {
+                    let fut = inner.wait_for(run_id, attempt);
+                    tokio::time::timeout(Duration::from_secs(timeout), fut)
+                        .await
+                        .into_diagnostic()??;
+                    Ok(())
+                })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            Ok(())
+        }
+
+        #[pyo3(signature = (run_id, attempt=0, /))]
+        async fn get_summary(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+        ) -> PyResult<PyWorkflowRunStateSummary> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.read_workflow_run_summary(run_id, attempt).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(summary) => {
+                    let duration = summary.started_time.and_then(|started_time| {
+                        let finished_time = summary
+                            .complete_time
+                            .or(summary.error_time)
+                            .or(summary.cancelled_time);
+                        finished_time.map(|finished_time| finished_time - started_time)
+                    });
+                    Ok(PyWorkflowRunStateSummary {
+                        name: summary.name,
+                        duration,
+                        started_time: summary.started_time,
+                        queued_time: summary.queued_time,
+                        complete_time: summary.complete_time,
+                        cancelled_time: summary.cancelled_time,
+                        error_time: summary.error_time,
+                        paused_locations: summary
+                            .paused_locations
+                            .into_iter()
+                            .map(|loc| loc.to_string())
+                            .collect(),
+                        errored_locations: summary
+                            .errored_locations
+                            .into_iter()
+                            .map(|loc| loc.to_string())
+                            .collect(),
+                    })
+                }
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        #[pyo3(signature = (run_id, attempt=0, /))]
+        async fn get_outputs(&self, run_id: Uuid, attempt: u32) -> PyResult<ValueOrMapping> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.get_outputs(run_id, attempt).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(outputs) => Python::attach(|py| convert_outputs(py, outputs)),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        /// Fetch the serialized outputs of a workflow run without decoding them.
+        #[pyo3(signature = (run_id, attempt=0, /))]
+        async fn get_raw_outputs(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+        ) -> PyResult<HashMap<String, Py<PyBytes>>> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move { inner.get_outputs(run_id, attempt).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(outputs) => Python::attach(|py| {
+                    Ok(outputs
+                        .into_iter()
+                        .map(|(name, value)| (name, PyBytes::new(py, &value).unbind()))
+                        .collect())
+                }),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        /// Same as `get_loop_trace_by_name`, but shaped as one dict per iteration
+        /// E.g. `[
+        ///     {"output1": val1, "output2": val3},
+        ///     {"output1": val2}
+        /// ]`
+        #[pyo3(signature = (run_id, attempt, name, output_name=None))]
+        async fn get_loop_iterations(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            name: String,
+            output_name: Option<String>,
+        ) -> PyResult<ValueOrMapping> {
+            let inner = self.inner.clone();
+            let res = get_runtime()
+                .spawn(async move {
+                    inner
+                        .read_loop_trace_by_name(run_id, attempt, &name, output_name.as_deref())
+                        .await
+                })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(trace) => Python::attach(|py| convert_loop_trace(py, trace)),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        async fn debug_read_node_states(
+            &self,
+            run_id: Uuid,
+            attempt: u32,
+            locations: Vec<String>,
+        ) -> PyResult<HashMap<String, PyNodeState>> {
+            let inner = self.inner.clone();
+            let locations = locations
+                .iter()
+                .map(|s| Location::new(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            let res = get_runtime()
+                .spawn(async move {
+                    inner
+                        .read_node_states(run_id, attempt, locations.into_iter())
+                        .await
+                })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(states) => Ok(states
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.into()))
+                    .collect()),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        #[pyo3(signature = (run_id, locations=None, attempt=0))]
+        async fn unpause_nodes(
+            &self,
+            run_id: Uuid,
+            locations: Option<Vec<String>>,
+            attempt: u32,
+        ) -> PyResult<Vec<String>> {
+            let locations = locations.unwrap_or_default();
+            let inner = self.inner.clone();
+            let locations = locations
+                .iter()
+                .map(|s| Location::new(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            let res = get_runtime()
+                .spawn(async move { inner.unpause_nodes(run_id, attempt, locations).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok(unpaused) => Ok(unpaused.into_iter().map(|loc| loc.to_string()).collect()),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        #[pyo3(signature = (run_id, locations=None, attempt=0))]
+        async fn restart_task(
+            &self,
+            run_id: Uuid,
+            locations: Option<Vec<String>>,
+            attempt: u32,
+        ) -> PyResult<(u32, Vec<String>)> {
+            let locations = locations.unwrap_or_default();
+            let inner = self.inner.clone();
+            let locations = locations
+                .iter()
+                .map(|s| Location::new(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+
+            let res = get_runtime()
+                .spawn(async move { inner.restart_task(run_id, attempt, locations).await })
+                .await
+                .map_err(|err| {
+                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                })?;
+
+            match res {
+                Ok((new_attempt, invalidated)) => Ok((
+                    new_attempt,
+                    invalidated.into_iter().map(|loc| loc.to_string()).collect(),
+                )),
+                Err(err) => Python::attach(|py| Err(convert_err(py, err))),
+            }
+        }
+
+        fn __enter__(&mut self) {
+            // We are already running a background runtime. Do nothing.
+            if self.cancel.is_some() {
+                return;
+            }
+
+            let (send, recv) = oneshot::channel::<()>();
+            let runtime = self.inner.clone();
+            let rt = pyo3_async_runtimes::tokio::get_runtime();
+            std::thread::spawn(move || {
+                rt.block_on(async move {
+                    tokio::select! {
+                        _ = recv => {}
+                        Err(err) = runtime.run() => {
+                            tracing::error!("Error while processing events: {err}");
+                            eprintln!("{err}");
+                        }
+                        else => {},
+                    }
+                });
+            });
+
+            self.cancel = Some(send);
+        }
+
+        fn __exit__(
+            &mut self,
+            _exc_type: &Bound<'_, PyAny>,
+            _exc_value: &Bound<'_, PyAny>,
+            _traceback: &Bound<'_, PyAny>,
+        ) {
+            if let Some(cancel) = self.cancel.take()
+                && cancel.send(()).is_err()
+            {
+                warn!("Failed to cancel background Runtime thread, it may have already terminated");
+            }
+        }
+    }
+
+    impl Drop for PyRuntime {
+        fn drop(&mut self) {
+            if let Some(cancel) = self.cancel.take()
+                && cancel.send(()).is_err()
+            {
+                warn!("Failed to cancel background Runtime thread, it may have already terminated");
+            }
+        }
+    }
+
+    // TODO: I'm not sure how debuggable this is
+    #[pyclass(name = "RuntimeConfig")]
+    struct PyRuntimeConfig(pub RuntimeConfig);
+
+    #[pymethods]
+    impl PyRuntimeConfig {
+        /// Override the configured logging level.
+        fn set_log_level(&mut self, log_level: String) {
+            self.0.set_log_level(log_level);
+        }
+    }
+
+    impl<'a, 'py> FromPyObject<'a, 'py> for PyRuntimeConfig {
+        type Error = PyErr;
+
+        fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+            if let Ok(config) = obj.extract::<PyRef<'_, PyRuntimeConfig>>() {
+                return Ok(PyRuntimeConfig(config.0.clone()));
+            }
+            let obj = obj.to_owned();
+            let py = obj.py();
+            let config_json: String = if obj.hasattr("model_dump_json")? {
+                obj.call_method0("model_dump_json")?.extract()?
+            } else if obj.cast::<PyMapping>().is_ok() {
+                let dict = py.import("builtins")?.getattr("dict")?.call1((&obj,))?;
+                py.import("json")?
+                    .getattr("dumps")?
+                    .call1((dict,))?
+                    .extract()?
+            } else {
+                return Err(PyTypeError::new_err(
+                    "runtime configuration must be a RuntimeConfig, a Pydantic model, or a JSON-compatible mapping",
+                ));
+            };
+
+            let mut deserializer = serde_json::Deserializer::from_str(&config_json);
+            let config = serde_path_to_error::deserialize(&mut deserializer).map_err(|error| {
+                let path = error.path().to_string();
+                let location = if path.is_empty() {
+                    String::new()
+                } else {
+                    format!(" at {path}")
+                };
+                PyValueError::new_err(format!(
+                    "invalid runtime configuration{location}: {}",
+                    error.inner()
+                ))
+            })?;
+
+            Ok(PyRuntimeConfig(config))
+        }
+    }
+
+    // TODO: I'm not sure how debuggable this is
+    #[pyclass(name = "WorkflowGraph")]
+    struct PyWorkflowGraph(pub WorkflowGraph);
+
+    impl<'a, 'py> FromPyObject<'a, 'py> for PyWorkflowGraph {
+        type Error = PyErr;
+
+        fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+            let py = obj.py();
+            let workflow_dump: String = if obj.hasattr("data")? {
+                let graph = obj.getattr("data")?;
+                graph
+                    .call_method0("model_dump_json")
+                    .into_diagnostic()
+                    .map_err(|err| convert_err(py, err))?
+                    .to_string()
+            } else {
+                obj.call_method0("model_dump_json")
+                    .into_diagnostic()
+                    .map_err(|err| convert_err(py, err))?
+                    .to_string()
+            };
+
+            let legacy_workflow: LegacyWorkflowGraph = serde_json::from_str(&workflow_dump)
+                .into_diagnostic()
+                .map_err(|err| convert_err(py, err))?;
+            let workflow_graph = legacy_workflow
+                .to_workflow_graph()
+                .map_err(|err| convert_err(py, err))?;
+
+            Ok(PyWorkflowGraph(workflow_graph))
+        }
+    }
+
+    // TODO: I'm not sure how debuggable this is
+    #[pyclass]
+    struct PyWorkflowInputs(pub HashMap<String, Vec<u8>>);
+
+    impl<'a, 'py> FromPyObject<'a, 'py> for PyWorkflowInputs {
+        type Error = PyErr;
+
+        fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+            let py = obj.py();
+            Ok(Self(match obj.extract()? {
+                ValueOrMappingOrBytes::BytesMapping(bytes_mapping) => bytes_mapping
+                    .into_iter()
+                    .map(|(k, v)| Ok::<_, miette::Report>((k, v.extract().into_diagnostic()?)))
+                    .collect::<Result<HashMap<String, Vec<u8>>, _>>()
+                    .map_err(|err| convert_err(py, err))?,
+                ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Value(value)) => {
+                    let mut inputs = HashMap::new();
+                    inputs.insert(
+                        "value".to_string(),
+                        serde_json::to_vec(&value)
+                            .into_diagnostic()
+                            .map_err(|err| convert_err(py, err))?,
+                    );
+                    inputs
+                }
+                ValueOrMappingOrBytes::ValueOrBytes(ValueOrMapping::Mapping(inputs)) => inputs
+                    .into_iter()
+                    .map(|(k, v)| serde_json::to_vec(&v).map(|b| (k, b)))
+                    .collect::<Result<HashMap<_, _>, _>>()
+                    .into_diagnostic()
+                    .map_err(|err| convert_err(py, err))?,
+            }))
+        }
+    }
+
+    fn convert_outputs(
+        py: Python<'_>,
+        outputs: HashMap<String, Vec<u8>>,
+    ) -> PyResult<ValueOrMapping> {
         let mut outputs: HashMap<String, Option<Value>> = outputs
             .into_iter()
-            .map(|(k, v)| Ok((k.clone(), serde_json::from_slice(&v).into_diagnostic()?)))
+            .map(|(k, v)| Ok((k, serde_json::from_slice(&v).into_diagnostic()?)))
             .collect::<miette::Result<_>>()
             .map_err(|err| convert_err(py, err))?;
 
-        info!("done with outputs: {outputs:?}");
         if outputs.len() == 1 && outputs.contains_key("value") {
             Ok(ValueOrMapping::Value(
                 outputs
@@ -169,5 +793,25 @@ mod tierkreis {
         } else {
             Ok(ValueOrMapping::Mapping(outputs))
         }
+    }
+
+    fn convert_loop_trace(
+        py: Python<'_>,
+        outputs: HashMap<String, Vec<Vec<u8>>>,
+    ) -> PyResult<ValueOrMapping> {
+        let outputs: HashMap<String, Option<Value>> = outputs
+            .into_iter()
+            .map(|(k, trace)| {
+                let values: Vec<Value> = trace
+                    .into_iter()
+                    .map(|v| serde_json::from_slice(&v))
+                    .collect::<Result<_, _>>()
+                    .into_diagnostic()?;
+                Ok((k, Some(Value::List(values))))
+            })
+            .collect::<miette::Result<_>>()
+            .map_err(|err| convert_err(py, err))?;
+
+        Ok(ValueOrMapping::Mapping(outputs))
     }
 }

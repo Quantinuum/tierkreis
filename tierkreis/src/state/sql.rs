@@ -5,13 +5,7 @@ that can be used by the tierkreis runtime.
 These implementations are intended to be used for testing and debugging as their
 state is not persisted beyond the lifetime of the process.
 */
-use std::{
-    collections::HashMap,
-    env::{self, home_dir},
-    fmt::Debug,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, env, fmt::Debug, sync::Arc, time::Duration};
 
 use bitvec::vec::BitVec;
 use chrono::Utc;
@@ -22,7 +16,7 @@ use deadpool::{
 use diesel::{SqliteConnection, sql_query};
 use diesel_async::{
     AsyncConnection, AsyncMigrationHarness, RunQueryDsl,
-    pooled_connection::AsyncDieselConnectionManager, scoped_futures::ScopedFutureExt,
+    pooled_connection::AsyncDieselConnectionManager,
     sync_connection_wrapper::SyncConnectionWrapper,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -36,15 +30,18 @@ use crate::{
     event::{NodeEvent, WorkflowRunEvent},
     graph::WorkflowGraph,
     state::{
-        interface::RuntimeWatchState,
+        interface::{RuntimeWatchState, WorkflowRunStateSummary},
         models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
         queries::{
-            WorkflowRunSummary, add_run_attempt_metadata, insert_workflow, insert_workflow_run,
-            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries,
-            read_node_state, read_node_states, read_run_attempt_metadata, read_workflow,
-            read_workflow_run, read_workflow_run_inputs, update_node_state, update_workflow_run,
+            add_run_attempt_metadata, copy_inputs, copy_node_states, get_workflow_run_summary,
+            insert_workflow, insert_workflow_run, insert_workflow_run_attempt,
+            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries, max_attempt,
+            read_node_state, read_node_states, read_node_states_by_name, read_run_attempt_metadata,
+            read_workflow, read_workflow_run, read_workflow_run_input_from_location,
+            read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
     },
+    workflow_state_query::NodeCopyFilter,
 };
 use crate::{
     event::{NodeStatus, RunningStateUpdate},
@@ -94,13 +91,13 @@ pub async fn build_conn_pool_with_url(
     let mut builder = diesel_async::pooled_connection::deadpool::Pool::builder(manager)
         .runtime(Runtime::Tokio1)
         .wait_timeout(Some(default_wait))
-        .post_create(Hook::async_fn(move |mut conn, _metrics| {
+        .post_create(Hook::async_fn(move |conn, _metrics| {
             Box::pin(async move {
                 let res: diesel::QueryResult<_> = sql_query(format!(
                     "PRAGMA busy_timeout = {}",
                     default_wait.as_millis()
                 ))
-                .execute(&mut conn)
+                .execute(&mut *conn)
                 .await;
                 res.into_diagnostic()
                     .map_err(|err| HookError::message(err.to_string()))?;
@@ -151,9 +148,7 @@ pub async fn build_conn_pool(max_size: Option<usize>) -> miette::Result<ConnPool
 }
 
 fn resolve_default_db_path() -> Result<std::path::PathBuf, miette::Error> {
-    let fallback = home_dir()
-        .unwrap_or_else(|| "/tmp".into())
-        .join(".tierkreis/checkpoints/tierkreis.sqlite");
+    let fallback = crate::config::tierkreis_home_dir().join("state.sqlite");
     if let Some(parent) = fallback.parent()
         && !parent.exists()
     {
@@ -259,12 +254,12 @@ impl SqliteRuntimeState {
         &self,
     ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
     {
-        let conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
+        let conn = self.pool.get().await.into_diagnostic().wrap_err_with(|| {
+            format!(
+                "Error acquiring connection from pool: {:?}",
+                self.pool.status()
+            )
+        })?;
         Ok(conn)
     }
 }
@@ -314,35 +309,37 @@ impl RuntimeState for SqliteRuntimeState {
         .boxed()
     }
 
-    fn new_workflow_run_state(
+    fn new_workflow_run_state_with_metadata(
         &self,
         workflow_id: Uuid,
         inputs: HashMap<String, crate::asset_storage::AssetSpec>,
+        metadata: HashMap<String, String>,
     ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
         async move {
             let mut conn = self.get_conn().await?;
             let run_id = Uuid::now_v7();
             let run_id_str = run_id.to_string();
-            conn.transaction(|conn| {
-                async {
-                    let run = NewWorkflowRun {
-                        id: &run_id_str,
-                        workflow_id: &workflow_id.to_string(),
-                    };
-                    insert_workflow_run(conn, &run).await?;
+            let metadata = serde_json::to_vec(&metadata).into_diagnostic()?;
+            conn.transaction(async |conn| {
+                let run = NewWorkflowRun {
+                    id: &run_id_str,
+                    workflow_id: &workflow_id.to_string(),
+                };
+                insert_workflow_run(conn, &run, &metadata).await?;
 
-                    let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
-                        workflow_run_id: &run_id_str,
-                        name,
-                        asset_kind: asset.kind.to_string(),
-                        storage_name: &asset.storage_name,
-                        asset_key: asset.asset_key.to_string(),
-                    });
+                let root_location_str = Location::root().to_string();
+                let workflow_inputs = inputs.iter().map(|(name, asset)| NewWorkflowRunInput {
+                    workflow_run_id: &run_id_str,
+                    attempt: 0,
+                    location: root_location_str.clone(),
+                    name,
+                    asset_kind: asset.kind.to_string(),
+                    storage_name: &asset.storage_name,
+                    asset_key: asset.asset_key.to_string(),
+                });
 
-                    insert_workflow_run_inputs(conn, workflow_inputs).await?;
-                    Ok::<_, diesel::result::Error>(())
-                }
-                .scope_boxed()
+                insert_workflow_run_inputs(conn, workflow_inputs).await?;
+                Ok::<_, diesel::result::Error>(())
             })
             .await
             .into_diagnostic()
@@ -394,10 +391,65 @@ impl RuntimeState for SqliteRuntimeState {
 
     fn list_workflow_run_summaries(
         &self,
-    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunSummary>>> {
+    ) -> BoxFuture<'_, miette::Result<Vec<WorkflowRunStateSummary>>> {
         async move {
             let mut conn = self.get_conn().await?;
             list_workflow_run_summaries(&mut conn).await
+        }
+        .boxed()
+    }
+
+    fn new_attempt(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, miette::Result<Arc<dyn WorkflowRunState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let run_id_str = run_id.to_string();
+            let last_attempt_i32 = max_attempt(&mut conn, &run_id_str)
+                .await?
+                .ok_or_else(|| miette!("No existing run found for run_id: {run_id}"))?;
+            let last_attempt = u32::try_from(last_attempt_i32).into_diagnostic()?;
+
+            let next_attempt_i32 = last_attempt_i32 + 1;
+            let next_attempt = u32::try_from(next_attempt_i32).into_diagnostic()?;
+
+            let (run, attempt) = read_workflow_run(&mut conn, run_id, last_attempt).await?;
+            if attempt.cancelled_time.is_none()
+                && attempt.error_time.is_none()
+                && attempt.complete_time.is_none()
+            {
+                return Err(miette!(
+                    "Cannot create a new attempt for a run that is still active"
+                ));
+            }
+
+            insert_workflow_run_attempt(&mut conn, &run_id_str, next_attempt_i32).await?;
+            copy_inputs(
+                &mut conn,
+                &run_id_str,
+                last_attempt_i32,
+                next_attempt_i32,
+                &Location::root(),
+            )
+            .await
+            .into_diagnostic()?;
+
+            let workflow_id = run.workflow_id.parse().into_diagnostic()?;
+
+            self.update_sender.send_modify(|active_runs| {
+                active_runs.active_runs.insert((run_id, next_attempt));
+            });
+
+            let state = SqliteWorkflowRunState {
+                pool: self.pool.clone(),
+                update_sender: self.update_sender.clone(),
+                workflow_id,
+                run_id,
+                attempt: next_attempt,
+            };
+            let state: Arc<dyn WorkflowRunState> = Arc::new(state);
+            Ok(state)
         }
         .boxed()
     }
@@ -444,6 +496,33 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         .boxed()
     }
 
+    fn load_named_input_from_location<'a>(
+        &'a self,
+        location: &'a Location,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<AssetSpec>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_workflow_run_input_from_location(
+                &mut conn,
+                &self.run_id.to_string(),
+                self.attempt.try_into().into_diagnostic()?,
+                &location.to_string(),
+                name,
+            )
+            .await
+        }
+        .boxed()
+    }
+
+    fn summary(&self) -> BoxFuture<'_, miette::Result<super::interface::WorkflowRunStateSummary>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            get_workflow_run_summary(&mut conn, self.run_id, self.attempt).await
+        }
+        .boxed()
+    }
+
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut send_workflow_stopped = false;
@@ -453,6 +532,10 @@ impl WorkflowRunState for SqliteWorkflowRunState {
             match event {
                 WorkflowRunEvent::Started {} => {
                     workflow_update.started_time = Some(now);
+                }
+                WorkflowRunEvent::Paused {} => {
+                    workflow_update.paused_time = Some(now);
+                    send_workflow_stopped = true;
                 }
                 WorkflowRunEvent::Queued {} => workflow_update.queued_time = Some(now),
                 WorkflowRunEvent::Cancelled {} => {
@@ -467,13 +550,15 @@ impl WorkflowRunState for SqliteWorkflowRunState {
                     workflow_update.complete_time = Some(now);
                     send_workflow_stopped = true;
                 }
-                WorkflowRunEvent::NodeEvent(ref node_event) => {
+                WorkflowRunEvent::NodeEvents(ref node_events) => {
                     // TODO: can we receive node events before start is set?
-                    self.handle_node_event(node_event).await?;
+                    self.handle_node_events(node_events)
+                        .await
+                        .wrap_err("Failed to handle Node event")?;
                 }
             }
 
-            if !matches!(event, WorkflowRunEvent::NodeEvent(_)) {
+            if !matches!(event, WorkflowRunEvent::NodeEvents(_)) {
                 let attempt = self.attempt.try_into().into_diagnostic()?;
                 let mut conn = self.get_conn().await?;
                 update_workflow_run(
@@ -509,6 +594,17 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         .boxed()
     }
 
+    fn read_by_name<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> BoxFuture<'a, miette::Result<HashMap<Location, NodeState>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            read_node_states_by_name(&mut conn, self.run_id, self.attempt, name).await
+        }
+        .boxed()
+    }
+
     fn read_many<'a>(
         &'a self,
         locations: &'a mut (dyn Iterator<Item = Location> + Send),
@@ -535,6 +631,66 @@ impl WorkflowRunState for SqliteWorkflowRunState {
         }
         .boxed()
     }
+
+    fn unpause<'a>(&'a self, locations: &'a [Location]) -> BoxFuture<'a, miette::Result<()>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let attempt = self.attempt.try_into().into_diagnostic()?;
+            let now = Utc::now().naive_utc();
+
+            let node_updates = locations
+                .iter()
+                .map(|location| UpsertNodeState {
+                    run_id: self.run_id.to_string(),
+                    attempt,
+                    node_location: location.clone(),
+                    unpaused_time: Some(now),
+                    ..Default::default()
+                })
+                .collect();
+            update_node_state(
+                &mut conn,
+                &self.run_id.to_string(),
+                attempt,
+                node_updates,
+                Vec::new(),
+            )
+            .await
+            .wrap_err("Failed to update node state")?;
+
+            if !locations.is_empty() {
+                self.update_sender.send_modify(|run_attempt_updated| {
+                    run_attempt_updated
+                        .active_runs
+                        .insert((self.run_id, self.attempt));
+                });
+            }
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn copy_node_states_from<'a>(
+        &'a self,
+        source: &'a dyn WorkflowRunState,
+        node_copy_filter: &'a NodeCopyFilter,
+    ) -> BoxFuture<'a, miette::Result<()>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            let source_attempt = i32::try_from(source.attempt()).into_diagnostic()?;
+            let dest_attempt = i32::try_from(self.attempt).into_diagnostic()?;
+            copy_node_states(
+                &mut conn,
+                &source.run_id().to_string(),
+                source_attempt,
+                dest_attempt,
+                node_copy_filter,
+            )
+            .await
+        }
+        .boxed()
+    }
 }
 
 impl SqliteWorkflowRunState {
@@ -542,38 +698,46 @@ impl SqliteWorkflowRunState {
         &self,
     ) -> miette::Result<Object<AsyncDieselConnectionManager<SyncConnectionWrapper<SqliteConnection>>>>
     {
-        let conn = self
-            .pool
-            .get()
-            .await
-            .into_diagnostic()
-            .wrap_err("Error acquiring connection from pool")?;
+        let conn = self.pool.get().await.into_diagnostic().wrap_err_with(|| {
+            format!(
+                "Error acquiring connection from pool: {:?}",
+                self.pool.status()
+            )
+        })?;
         Ok(conn)
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn handle_node_event(&self, event: &NodeEvent) -> miette::Result<()> {
+    async fn handle_node_events(&self, events: &[NodeEvent]) -> miette::Result<()> {
+        let workflow_run_id_str = self.run_id.to_string();
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
+
+        let mut subgraph_inputs = Vec::new();
         let mut node_outputs = Vec::new();
-        let node_updates = event
-            .locs
+        let node_updates = events
             .iter()
-            .enumerate()
-            .map(|(index, loc)| {
+            .map(|event| {
                 let mut row = UpsertNodeState {
                     run_id: self.run_id.to_string(),
                     attempt,
-                    node_location: loc.clone(),
+                    node_location: event.loc.clone(),
+                    name: event.name.clone(),
                     ..Default::default()
                 };
                 match event.status {
-                    NodeStatus::Scheduled => {
+                    NodeStatus::Scheduled {
+                        ref execution_context,
+                    } => {
                         row.scheduled_time = Some(now);
+                        row.execution_context.clone_from(execution_context);
                     }
                     NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
                         row.handle.clone_from(handle);
+                    }
+                    NodeStatus::Paused {} => {
+                        row.paused_time = Some(now);
                     }
                     NodeStatus::Running {
                         state_update: None, ..
@@ -588,22 +752,70 @@ impl SqliteWorkflowRunState {
                         row.cond = Some(cond);
                     }
                     NodeStatus::Running {
-                        state_update: Some(RunningStateUpdate::Looping { index }),
+                        state_update: Some(RunningStateUpdate::Evalling { ref inputs }),
+                        ..
+                    } => {
+                        row.running_time = Some(now);
+                        let attempt = i32::try_from(self.attempt).into_diagnostic()?;
+
+                        let location_str = event.loc.to_string();
+                        for (port, asset_spec) in inputs {
+                            subgraph_inputs.push(NewWorkflowRunInput {
+                                workflow_run_id: &workflow_run_id_str,
+                                attempt,
+                                location: location_str.clone(),
+                                name: port,
+                                asset_kind: asset_spec.kind.to_string(),
+                                storage_name: &asset_spec.storage_name,
+                                asset_key: asset_spec.asset_key.to_string(),
+                            });
+                        }
+                    }
+                    NodeStatus::Running {
+                        state_update: Some(RunningStateUpdate::Looping { index, ref inputs }),
                         ..
                     } => {
                         row.running_time = Some(now);
                         row.loop_index = Some(index.try_into().into_diagnostic()?);
+                        let attempt = i32::try_from(self.attempt).into_diagnostic()?;
+
+                        let location_str = event.loc.with_loop_index(index).to_string();
+                        for (port, asset_spec) in inputs {
+                            subgraph_inputs.push(NewWorkflowRunInput {
+                                workflow_run_id: &workflow_run_id_str,
+                                attempt,
+                                location: location_str.clone(),
+                                name: port,
+                                asset_kind: asset_spec.kind.to_string(),
+                                storage_name: &asset_spec.storage_name,
+                                asset_key: asset_spec.asset_key.to_string(),
+                            });
+                        }
                     }
                     NodeStatus::Running {
-                        state_update: Some(RunningStateUpdate::MapStarted { size }),
+                        state_update: Some(RunningStateUpdate::MapStarted { ref input_sets }),
                         ..
                     } => {
                         row.running_time = Some(now);
+                        let size = input_sets.len();
                         row.map_size = Some(size.try_into().into_diagnostic()?);
-                        row.map_completed = Some(
-                            BitVec::<u8>::repeat(false, size.try_into().into_diagnostic()?)
-                                .into_vec(),
-                        );
+                        row.map_completed = Some(BitVec::<u8>::repeat(false, size).into_vec());
+                        let attempt = i32::try_from(self.attempt).into_diagnostic()?;
+
+                        for (index, inputs) in input_sets.iter().enumerate() {
+                            let location_str = event.loc.with_map_index(index).to_string();
+                            for (port, asset_spec) in inputs {
+                                subgraph_inputs.push(NewWorkflowRunInput {
+                                    workflow_run_id: &workflow_run_id_str,
+                                    attempt,
+                                    location: location_str.clone(),
+                                    name: port,
+                                    asset_kind: asset_spec.kind.to_string(),
+                                    storage_name: &asset_spec.storage_name,
+                                    asset_key: asset_spec.asset_key.to_string(),
+                                });
+                            }
+                        }
                     }
                     NodeStatus::Running {
                         state_update: Some(RunningStateUpdate::MapElemComplete { ref bits }),
@@ -614,18 +826,16 @@ impl SqliteWorkflowRunState {
                     }
                     NodeStatus::Complete { ref outputs } => {
                         row.complete_time = Some(now);
-                        if let Some(output) = outputs.get(index) {
-                            for (port, asset_spec) in output {
-                                node_outputs.push((
-                                    loc.clone(),
-                                    NewNodeOutput {
-                                        name: port,
-                                        asset_kind: asset_spec.kind.to_string(),
-                                        storage_name: &asset_spec.storage_name,
-                                        asset_key: asset_spec.asset_key.to_string(),
-                                    },
-                                ));
-                            }
+                        for (port, asset_spec) in outputs {
+                            node_outputs.push((
+                                event.loc.clone(),
+                                NewNodeOutput {
+                                    name: port,
+                                    asset_kind: asset_spec.kind.to_string(),
+                                    storage_name: &asset_spec.storage_name,
+                                    asset_key: asset_spec.asset_key.to_string(),
+                                },
+                            ));
                         }
                     }
                     NodeStatus::Cancelled => {
@@ -652,6 +862,13 @@ impl SqliteWorkflowRunState {
             .into_diagnostic()
             .wrap_err("Error acquiring connection from pool")?;
 
+        if !subgraph_inputs.is_empty() {
+            insert_workflow_run_inputs(&mut conn, subgraph_inputs.into_iter())
+                .await
+                .into_diagnostic()
+                .wrap_err("Failed to insert subgraph inputs")?;
+        }
+
         update_node_state(
             &mut conn,
             &self.run_id.to_string(),
@@ -659,7 +876,8 @@ impl SqliteWorkflowRunState {
             node_updates,
             node_outputs,
         )
-        .await?;
+        .await
+        .wrap_err("Failed to update node state")?;
         Ok(())
     }
 }
@@ -668,6 +886,8 @@ impl SqliteWorkflowRunState {
 mod tests {
     use std::collections::HashSet;
     use std::ops::BitOr;
+
+    use portgraph::NodeIndex;
 
     use crate::{
         asset_storage::{AssetKey, AssetKind, AssetSpec},
@@ -710,10 +930,13 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
-                status: NodeStatus::Scheduled,
-            }))
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
+                name: None,
+            }]))
             .await?;
 
         let updated = recv.borrow_and_update();
@@ -743,10 +966,13 @@ mod tests {
             .await?;
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
-                status: NodeStatus::Scheduled,
-            }))
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
+                status: NodeStatus::Scheduled {
+                    execution_context: None,
+                },
+                name: None,
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -754,10 +980,11 @@ mod tests {
         assert!(node_state.scheduled_time.is_some());
 
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
                 status: NodeStatus::Queued { handle: None },
-            }))
+                name: None,
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -790,12 +1017,11 @@ mod tests {
             },
         );
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
-                status: NodeStatus::Complete {
-                    outputs: vec![outputs],
-                },
-            }))
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root(),
+                status: NodeStatus::Complete { outputs },
+                name: None,
+            }]))
             .await?;
 
         let node_state = workflow_run_state.read(&Location::root()).await?;
@@ -805,8 +1031,381 @@ mod tests {
         Ok(())
     }
 
+    /// Test that we can read and write workflow run state.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn copy_node_states() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
+        let workflow_run_state1 = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![
+                NodeEvent {
+                    loc: Location::new("N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1.N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1")?,
+                    status: NodeStatus::Complete { outputs },
+                    name: None,
+                },
+            ]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::Completed {})
+            .await?;
+
+        let workflow_run_state2 = runtime_state
+            .new_attempt(workflow_run_state1.run_id())
+            .await?;
+        workflow_run_state2
+            .copy_node_states_from(&*workflow_run_state1, &NodeCopyFilter::default())
+            .await?;
+
+        let node_state = workflow_run_state1.read(&Location::new("N1")?).await?;
+
+        assert!(node_state.outputs.is_some());
+
+        let node_state = workflow_run_state1.read(&Location::new("N1.N0")?).await?;
+
+        assert!(node_state.outputs.is_some());
+
+        Ok(())
+    }
+
+    /// Test that we can read and write workflow run state.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn copy_node_states_invalidated() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
+        let workflow_run_state1 = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![
+                NodeEvent {
+                    loc: Location::new("N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1.N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1")?,
+                    status: NodeStatus::Complete { outputs },
+                    name: None,
+                },
+            ]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::Completed {})
+            .await?;
+
+        let workflow_run_state2 = runtime_state
+            .new_attempt(workflow_run_state1.run_id())
+            .await?;
+        let mut invalidated_locations = NodeCopyFilter::default();
+        invalidated_locations
+            .clear_roots
+            .insert(Location::new("N1")?);
+        workflow_run_state2
+            .copy_node_states_from(&*workflow_run_state1, &invalidated_locations)
+            .await?;
+
+        let node_state = workflow_run_state2.read(&Location::new("N0")?).await?;
+
+        assert!(node_state.outputs.is_some());
+
+        let node_state = workflow_run_state2.read(&Location::new("N1")?).await?;
+
+        assert!(node_state.outputs.is_none());
+
+        let node_state = workflow_run_state2.read(&Location::new("N1.N0")?).await?;
+
+        assert!(node_state.outputs.is_none());
+
+        Ok(())
+    }
+
+    /// Test that we can read and write workflow run state.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn copy_node_states_truncate() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
+        let workflow_run_state1 = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![
+                NodeEvent {
+                    loc: Location::new("N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1.N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1")?,
+                    status: NodeStatus::Complete { outputs },
+                    name: None,
+                },
+            ]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::Completed {})
+            .await?;
+
+        let node_state = workflow_run_state1.read(&Location::new("N1")?).await?;
+
+        assert!(node_state.complete_time.is_some());
+
+        let workflow_run_state2 = runtime_state
+            .new_attempt(workflow_run_state1.run_id())
+            .await?;
+        let mut invalidated_locations = NodeCopyFilter::default();
+
+        // Truncate an eval node
+        invalidated_locations
+            .truncate_exact
+            .insert(Location::new("N1")?);
+        workflow_run_state2
+            .copy_node_states_from(&*workflow_run_state1, &invalidated_locations)
+            .await?;
+
+        let node_state = workflow_run_state2.read(&Location::new("N1")?).await?;
+
+        assert!(node_state.complete_time.is_none());
+
+        Ok(())
+    }
+
+    /// Test that we can copy inputs to an eval node.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn copy_node_states_copy_inputs() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
+        let workflow_run_state1 = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::new("N1")?,
+                status: NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::Evalling {
+                        inputs: outputs.clone(),
+                    }),
+                },
+                name: None,
+            }]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![
+                NodeEvent {
+                    loc: Location::new("N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1.N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1")?,
+                    status: NodeStatus::Complete { outputs },
+                    name: None,
+                },
+            ]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::Completed {})
+            .await?;
+        let input_res = workflow_run_state1
+            .load_named_input_from_location(&Location::new("N1")?, "foo")
+            .await;
+        assert!(input_res.is_ok());
+
+        let workflow_run_state2 = runtime_state
+            .new_attempt(workflow_run_state1.run_id())
+            .await?;
+        workflow_run_state2
+            .copy_node_states_from(&*workflow_run_state1, &NodeCopyFilter::default())
+            .await?;
+
+        let input_res = workflow_run_state2
+            .load_named_input_from_location(&Location::new("N1")?, "foo")
+            .await;
+        assert!(input_res.is_ok());
+
+        Ok(())
+    }
+
+    /// Test that we can clear inputs to an eval node.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn copy_node_states_clear_inputs() -> miette::Result<()> {
+        let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
+
+        let workflow_id = runtime_state
+            .save_workflow(None, WorkflowGraph::new([]))
+            .await?;
+        let workflow_run_state1 = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "foo".to_string(),
+            AssetSpec {
+                kind: AssetKind::Memory,
+                storage_name: "my_cool_storage".to_string(),
+                asset_key: AssetKey::new(),
+            },
+        );
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::new("N1")?,
+                status: NodeStatus::Running {
+                    state_update: Some(RunningStateUpdate::Evalling {
+                        inputs: outputs.clone(),
+                    }),
+                },
+                name: None,
+            }]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::NodeEvents(vec![
+                NodeEvent {
+                    loc: Location::new("N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1.N0")?,
+                    status: NodeStatus::Complete {
+                        outputs: outputs.clone(),
+                    },
+                    name: None,
+                },
+                NodeEvent {
+                    loc: Location::new("N1")?,
+                    status: NodeStatus::Complete { outputs },
+                    name: None,
+                },
+            ]))
+            .await?;
+        workflow_run_state1
+            .write(WorkflowRunEvent::Completed {})
+            .await?;
+        let input_res = workflow_run_state1
+            .load_named_input_from_location(&Location::new("N1")?, "foo")
+            .await;
+        assert!(input_res.is_ok());
+
+        let workflow_run_state2 = runtime_state
+            .new_attempt(workflow_run_state1.run_id())
+            .await?;
+        let mut invalidated_locations = NodeCopyFilter::default();
+        invalidated_locations
+            .clear_roots
+            .insert(Location::new("N1")?);
+        workflow_run_state2
+            .copy_node_states_from(&*workflow_run_state1, &invalidated_locations)
+            .await?;
+
+        let input_res = workflow_run_state2
+            .load_named_input_from_location(&Location::new("N1")?, "foo")
+            .await;
+        assert!(input_res.is_err());
+
+        Ok(())
+    }
+
     /// Test that we can read and write workflow run state with `map_completed`.
     #[tokio::test(flavor = "multi_thread")]
+    #[test_log::test]
     async fn write_and_read_map_completed() -> miette::Result<()> {
         let runtime_state = SqliteRuntimeState::try_new_in_memory().await?;
 
@@ -817,50 +1416,86 @@ mod tests {
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
 
+        let first_input = AssetSpec {
+            kind: AssetKind::Memory,
+            storage_name: "foo".to_string(),
+            asset_key: AssetKey::new(),
+        };
+        let second_input = AssetSpec {
+            kind: AssetKind::Memory,
+            storage_name: "foo".to_string(),
+            asset_key: AssetKey::new(),
+        };
+
+        let input_sets = [
+            [("a".to_string(), first_input.clone())],
+            [("a".to_string(), second_input.clone())],
+        ]
+        .into_iter()
+        .map(|x| x.into_iter().collect())
+        .collect();
+
+        let map_loc = Location::root().with_node(NodeIndex::new(1));
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: map_loc.clone(),
                 status: NodeStatus::Running {
-                    state_update: Some(RunningStateUpdate::MapStarted { size: 2 }),
+                    state_update: Some(RunningStateUpdate::MapStarted { input_sets }),
                 },
-            }))
+                name: None,
+            }]))
             .await?;
 
-        let node_state = workflow_run_state.read(&Location::root()).await?;
+        assert_eq!(
+            workflow_run_state
+                .load_named_input_from_location(&map_loc.with_map_index(0), "a")
+                .await?,
+            first_input
+        );
+        assert_eq!(
+            workflow_run_state
+                .load_named_input_from_location(&map_loc.with_map_index(1), "a")
+                .await?,
+            second_input
+        );
 
-        assert!(node_state.map_completed.is_some());
+        let node_state = workflow_run_state.read(&map_loc).await?;
+
+        assert_eq!(node_state.map_completed, Some(BitVec::repeat(false, 2)));
 
         let mut bits1 = BitVec::repeat(false, 2);
         bits1.set(0, true);
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: map_loc.clone(),
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits1.clone(),
                     }),
                 },
-            }))
+                name: None,
+            }]))
             .await?;
 
-        let node_state = workflow_run_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&map_loc).await?;
 
         assert_eq!(node_state.map_completed, Some(bits1.clone()));
 
         let mut bits2 = BitVec::repeat(false, 2);
         bits2.set(1, true);
         workflow_run_state
-            .write(WorkflowRunEvent::NodeEvent(NodeEvent {
-                locs: vec![Location::root()],
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: map_loc.clone(),
                 status: NodeStatus::Running {
                     state_update: Some(RunningStateUpdate::MapElemComplete {
                         bits: bits2.clone(),
                     }),
                 },
-            }))
+                name: None,
+            }]))
             .await?;
 
-        let node_state = workflow_run_state.read(&Location::root()).await?;
+        let node_state = workflow_run_state.read(&map_loc).await?;
 
         assert_eq!(node_state.map_completed, Some(bits2.bitor(bits1)));
 

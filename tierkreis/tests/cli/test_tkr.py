@@ -1,8 +1,7 @@
-import json
+import ast
 import sys
 from pathlib import Path
 from unittest import mock
-from uuid import UUID
 
 import pytest
 
@@ -80,20 +79,10 @@ def test_load_inputs_invalid() -> None:
 default_args = [
     "tkr",
     "run",
-    "--run-id",
-    "1860",
     "-v",
     "-o",
-    "-n",
-    "500",
-    "-p",
-    "0.02",
-    "-r",
     "--name",
     "test_name",
-    "--uv",
-    "--registry-path",
-    "tests/controller/sample_graphdata",
 ]
 
 cli_params = [
@@ -120,17 +109,15 @@ cli_params = [
     cli_params,
     ids=["simple_eval_cli", "factorial_cli"],
 )
-def test_end_to_end(args: list[str], result: dict[str, bytes]) -> None:
+def test_end_to_end(
+    args: list[str],
+    result: dict[str, int],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile_root = Path(__file__).parent.parent / "fixtures" / "resource_profiles"
+    monkeypatch.setenv("TKR_ENV", "runtime_e2e")
+    monkeypatch.setenv("TKR_RESOURCE_PATH", str(profile_root))
     with mock.patch.object(sys, "argv", args):
         main()
-    for key, value in result.items():
-        with Path.open(
-            Path.home()
-            / ".tierkreis"
-            / "checkpoints"
-            / str(UUID(int=1860))
-            / f"-/outputs/{key}",
-            "rb",
-        ) as fh:
-            c = json.loads(fh.read())
-        assert c == value
+    assert ast.literal_eval(capsys.readouterr().out) == result

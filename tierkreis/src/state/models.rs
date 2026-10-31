@@ -59,6 +59,7 @@ pub struct NewWorkflowRunAttempt<'a> {
     pub run_metadata: &'a [u8], // JSON blob
     pub started_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
     pub error_time: Option<NaiveDateTime>,
@@ -74,6 +75,7 @@ pub struct WorkflowRunAttempt {
     pub run_metadata: Vec<u8>, // JSON blob
     pub started_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
     pub error_time: Option<NaiveDateTime>,
@@ -85,6 +87,7 @@ pub struct WorkflowRunAttempt {
 pub struct UpsertWorkflowRun {
     pub started_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
     pub error_time: Option<NaiveDateTime>,
@@ -99,10 +102,13 @@ pub struct UpsertWorkflowRun {
 #[diesel(table_name = node_states)]
 pub struct NodeState {
     pub id: i32,
+    pub name: Option<String>,
     pub run_id: String,
     pub attempt: i32,
     pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
+    pub unpaused_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
@@ -112,9 +118,10 @@ pub struct NodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
-    pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub handle: Option<String>,
+    pub execution_context: Option<String>,
 }
 
 #[derive(Insertable, AsChangeset, Default, Debug)]
@@ -122,11 +129,14 @@ pub struct NodeState {
 #[diesel(table_name = crate::state::schema::node_states)]
 #[diesel(treat_none_as_default_value = false)]
 pub struct UpsertNodeState {
+    pub name: Option<String>,
     pub run_id: String,
     pub attempt: i32,
     pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
     pub queued_time: Option<NaiveDateTime>,
+    pub paused_time: Option<NaiveDateTime>,
+    pub unpaused_time: Option<NaiveDateTime>,
     pub running_time: Option<NaiveDateTime>,
     pub complete_time: Option<NaiveDateTime>,
     pub cancelled_time: Option<NaiveDateTime>,
@@ -135,9 +145,10 @@ pub struct UpsertNodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
-    pub handle: Option<String>,
     pub error: Option<String>,
     pub error_detail: Option<String>,
+    pub handle: Option<String>,
+    pub execution_context: Option<String>,
 }
 
 // -----------------------------------------------------------------------------
@@ -150,6 +161,8 @@ pub struct UpsertNodeState {
 pub struct WorkflowRunInput {
     pub id: i32,
     pub workflow_run_id: String,
+    pub attempt: i32,
+    pub location: String,
     pub name: String,
     pub asset_kind: String,
     pub storage_name: String,
@@ -160,6 +173,8 @@ pub struct WorkflowRunInput {
 #[diesel(table_name = workflow_run_inputs)]
 pub struct NewWorkflowRunInput<'a> {
     pub workflow_run_id: &'a str,
+    pub attempt: i32,
+    pub location: String,
     pub name: &'a str,
     pub asset_kind: String,
     pub storage_name: &'a str,

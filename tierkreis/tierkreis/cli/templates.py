@@ -147,14 +147,12 @@ def default_graph(worker_name: str) -> str:
     :rtype: str
     """
     worker_name = worker_name.replace("-", "_")
-    return f"""from typing import NamedTuple
-from pathlib import Path
-from uuid import UUID
+    return f"""import asyncio
+from typing import NamedTuple
 
+from tierkreis.runtime import load_runtime_config, new_from_config
 from tierkreis.builder import Graph
-from tierkreis.controller import run_graph
 from tierkreis.models import OpaqueType, TKR, Workflow
-from tierkreis.executor import ShellExecutor, UvExecutor
 from tierkreis.storage import FileStorage, read_outputs
 
 from {worker_name} import your_worker_task
@@ -172,23 +170,22 @@ def workflow() -> Workflow[GraphInputs, GraphOutputs]:
     out = g.task(your_worker_task(g.inputs.value))
     return g.finish_with_outputs(GraphOutputs(value=out))
 
-def main() -> None:
+async def main() -> None:
     graph = workflow()
-    storage = FileStorage(workflow_id=UUID(int=12345), name="your_workflow")
-    executor = UvExecutor(
-        Path(__file__).parent.parent / "workers", storage.logs_path
-    )
-    # Use the following executor to run installed workers like tkr-*-worker
-    # executor = ShellExecutor(Path(), storage.workflow_dir)
-    # To use both look at the following:
-    # https://quantinuum.github.io/tierkreis/executors/index.html#combining-executors
-    storage.clean_graph_files()
-    run_graph(storage, executor, graph, {{"value": 1}})
-    result = read_outputs(graph, storage)
-    print("Value is: ", result)
+    inputs = {{"value": 1}}
+    # loads the default from tierkreis.toml
+    config = load_runtime_config()
+    runtime = await new_from_config(config)
+    with runtime:
+        workflow_id = await runtime.save_workflow("my-workflow", graph)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, timeout=30)
+        output = await runtime.get_outputs(run_id)
+
+    print("Value is: ", output)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 
 """
 

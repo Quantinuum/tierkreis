@@ -7,19 +7,20 @@ It can be installed with
 pip install tierkreis-visualization
 ```
 
-It extends the `tkr` cli with a `vis` subcommand which can be invoked as:
+The runtime server can be invoked as:
 
 ```
-tkr vis
+tkr serve
 ```
 
-This will start a fastapi development server which by default shows all from the checkpoint directory `~/.tierkreis/checkpoints`.
-It will only include graphs that have been run with `FileStorage` at this location.
+It listens on port 3000 by
+default. It reads workflows and runs from the configured runtime state rather
+than scanning legacy `FileStorage` checkpoint directories.
 
 ## Running the visualizer
 
 The visualizer is browser based and can be accessed at:
-[http://localhost:8000](http://localhost:8000)
+[http://localhost:3000](http://localhost:3000)
 
 Programmatically the server can be run from python
 

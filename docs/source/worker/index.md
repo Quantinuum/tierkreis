@@ -165,37 +165,21 @@ g.finish_with_outputs(output)
 
 ## Running Workers
 
-In general, running workers is associated with an executor.
-Running workers can happen in two flavors, which have different appropriate executors.
-
-1. Self defined workers
-2. Installed workers (we refer to them as prepackaged)
+Workers run through a configured runtime executor. The default subprocess
+executor discovers installed worker entry points named
+`tkr-<worker-name>-worker`.
 
 ```{important}
 If you used the cli to generate the worker layout described above, both cases apply to your worker.
 This is due to worker being also added as a package to the root project.
 ```
 
-Configuring an executor requires sharing the storage interface (typically `FileStorage`) and setting the registry path.
-This is typically in a shared location e.g., the `workers` directotry where each worker has its own folder.
-The folder name must correspond to the name of the worker.
-
-### Running self defined workers
-
-For self defined python workers (using `main.py`) we use the `UvExecutor` as follows:
-
-```python
-executor = UvExecutor(Path("<project_root>/tkr/workers/"), storage.logs_path)
-```
-
-When running the graph with this executor, tierkreis will search for the directory `<project_root>/tkr/workers/worker_name/tkr_<worker_name>_impl` and inside execute the command
+The project template adds a generated worker package to the root project, so
+`uv run` exposes its entry point without a registry path. Verify it with:
 
 ```bash
-uv run main.py ...
+uv run which tkr-worker-name-worker
 ```
-
-As a fallback it will try `<project_root>/tkr/workers/worker_name/`.
-When you want to reuse this worker in a different project (`project_B`) you can use the same executor but need to update the registry path to know point to the correct relative path.
 
 ### Running prepackaged workers
 
@@ -207,19 +191,16 @@ To run the worker the package `tkr-worker-name` alone is not sufficient!
 You will need the `tkr-worker-name-impl` package.
 ```
 
-The workers declare an export script running `tkr-worker-name` which is available in your environment if you installed the correct package.
-Running `which tkr-worker-name` will confirm its existence.
-Hence it can be treated as a shell script; therefore we use the `ShellExecutor` for it like so:
-
-```python
-executor = ShellExecutor(Path(), storage.workflow_dir)
-```
-
-This will run through a similar verification process to locate the command and then run:
+The implementation package declares the worker entry point. The default
+runtime locates it on `PATH` and invokes it with the generated task definition:
 
 ```bash
-tkr-worker-name ...
+tkr-worker-name-worker ...
 ```
+
+For deployments that need an alternate command, configure `worker_commands`
+on an HPC executor or install a protocol-compatible wrapper under the expected
+name. See [Runtime storage and executors](../executors/index.md).
 
 ## Prepackaged workers
 

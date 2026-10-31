@@ -9,17 +9,16 @@ from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
 from nexus_worker import cost, upload_hugr
 from pytket_worker import backend_result_to_dict
+from tierkreis._tierkreis import new_default
 
 from tierkreis.builder import Graph
 from tierkreis.builtins.stubs import append, gt, tkr_range
-from tierkreis.cli.run_workflow import run_workflow
 from tierkreis.controller.data.models import TKR, OpaqueType
 from tierkreis.controller.data.types import Workflow
 from tierkreis.graphs.nexus.submit_poll_hugr import (
     JobInputs,
     nexus_submit_and_poll_hugr,
 )
-from tierkreis.storage import read_outputs
 
 
 @guppy
@@ -79,8 +78,9 @@ def guppy_nexus_graph() -> Workflow[MyInputs, TKR[dict[str, list[str]]]]:
     return graph.finish_with_outputs(final)  # type: ignore
 
 
+@pytest.mark.asyncio
 @pytest.mark.skip("Needs nexus credentials")
-def test_guppy_nexus_integration() -> None:
+async def test_guppy_nexus_integration() -> None:
     my_code = build_ghz_state.compile()
     wf = guppy_nexus_graph()
     config = qnx.models.HeliosConfig(
@@ -97,8 +97,13 @@ def test_guppy_nexus_integration() -> None:
         "job_name": "tkr_test_hugr",
         "backend_config": config,
     }
-    storage = run_workflow(wf, inputs, "Integration", run_id=2026)  # type: ignore
-    out = read_outputs(wf, storage)
+    runtime = await new_default()
+    with runtime:
+        workflow_id = await runtime.save_workflow("guppy_nexus_graph", wf)
+        run_id = await runtime.start_new_run(workflow_id, inputs)
+        await runtime.wait_for(run_id, timeout=30)
+        out = await runtime.get_outputs(run_id)
+
     assert isinstance(out, dict)
     assert "c" in out and isinstance(out["c"], list)
     assert len(out["c"]) == 10

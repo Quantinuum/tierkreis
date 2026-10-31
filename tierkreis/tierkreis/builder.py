@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
+from contextvars import ContextVar, Token
 from copy import copy
 from dataclasses import dataclass
 from functools import partial
 from inspect import isclass
+from types import TracebackType
 from typing import (
     Any,
     NamedTuple,
     Protocol,
+    Self,
     overload,
     runtime_checkable,
 )
@@ -25,6 +29,62 @@ from tierkreis.controller.data.models import (
     init_tmodel,
 )
 from tierkreis.controller.data.types import PType, Workflow
+from tierkreis.exceptions import TierkreisError
+
+_current_context: ContextVar[str | None] = ContextVar(
+    "tierkreis_execution_context", default=None
+)
+_current_executor: ContextVar[str | None] = ContextVar(
+    "tierkreis_execution_executor", default=None
+)
+
+
+class ExecutionContext:
+    """Set the default execution context for nodes built inside a scope."""
+
+    def __init__(self, name: str | None = None, executor: str | None = None) -> None:
+        if name is None and executor is None:
+            raise TierkreisError(
+                "At least one of 'name' or 'executor' must be provided to ExecutionContext."
+            )
+        self.name = name
+        self.executor = executor
+        self._names: list[Token[str | None]] = []
+        self._executors: list[Token[str | None]] = []
+
+    def __enter__(self) -> Self:
+        self._names.append(
+            _current_context.set(
+                self.name if self.name is not None else _current_context.get()
+            )
+        )
+        self._executors.append(
+            _current_executor.set(
+                self.executor if self.executor is not None else _current_executor.get()
+            )
+        )
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        _current_context.reset(self._names.pop())
+        _current_executor.reset(self._executors.pop())
+
+
+def _node_context(
+    context: str | None, executor: str | None, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    context = context if context is not None else _current_context.get()
+    if context is not None:
+        metadata["context"] = context
+    executor = executor if executor is not None else _current_executor.get()
+    if executor is not None:
+        metadata["executor"] = executor
+    return metadata
 
 
 @dataclass
@@ -196,7 +256,11 @@ class Graph[Inputs: TModel, Outputs: TModel]:
                 reindex_inputs(new_node_def, reindex)
                 new_node_def.outputs = {}
 
-                func = self.data.add(new_node_def)
+                metadata = other.node_metadata.get(idx)
+                func = self.data.add(
+                    new_node_def,
+                    **(metadata.model_dump(exclude_none=True) if metadata else {}),
+                )
                 node_map[idx] = func("dummy_port")[0]
             return (node_map[idx], port)
 
@@ -296,6 +360,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
     def task[Out: TModel](
         self,
         func: Function[Out],
+        context: str | None = None,
+        executor: str | None = None,
         **kwargs,
     ) -> Out:
         """Add a worker task node to the graph.
@@ -309,7 +375,9 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         """
         name = f"{func.namespace}.{func.__class__.__name__}"
         inputs = dict_from_tmodel(func)
-        idx, _ = self.data.func(name, inputs, **kwargs)("dummy")
+        idx, _ = self.data.func(
+            name, inputs, **_node_context(context, executor, kwargs)
+        )("dummy")
         OutModel = func.out()
         return init_tmodel(OutModel, lambda p: (idx, p))
 
@@ -317,6 +385,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: Workflow[A, B] | TypedGraphRef[A, B],
         eval_inputs: A,
+        context: str | None = None,
+        executor: str | None = None,
         **kwargs,
     ) -> B:
         """Add a evaluation node to the graph.
@@ -339,7 +409,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         idx, _ = self.data.eval(
             body.graph_ref.value_ref(),
             dict_from_tmodel(eval_inputs),
-            **kwargs,
+            **_node_context(context, executor, kwargs),
         )("dummy")
         return init_tmodel(body.outputs_type, lambda p: (idx, p))
 
@@ -348,6 +418,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         body: TypedGraphRef[A, B] | Workflow[A, B],
         loop_inputs: A,
         name: str | None = None,
+        context: str | None = None,
+        executor: str | None = None,
         **kwargs,
     ) -> B:
         """Add a loop node to the graph.
@@ -376,7 +448,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             dict_from_tmodel(loop_inputs),
             "should_continue",
             name,
-            **kwargs,
+            **_node_context(context, executor, kwargs),
         )(
             "dummy",
         )
@@ -464,6 +536,8 @@ class Graph[Inputs: TModel, Outputs: TModel]:
         self,
         body: TypedGraphRef | Callable | Workflow,
         map_inputs: TKR | TList,
+        context: str | None = None,
+        executor: str | None = None,
         **kwargs,
     ) -> Any:
         """Add a map node to the graph.
@@ -481,15 +555,22 @@ class Graph[Inputs: TModel, Outputs: TModel]:
             body = self.graph_const(body)
 
         if isinstance(body, Callable):
-            if isinstance(map_inputs, TList):
-                return self._map_fn_single_out(map_inputs, body)
-            if isinstance(map_inputs, TKR):
-                return self._map_fn_single_in(map_inputs, body)
+            with (
+                ExecutionContext(context, executor)
+                if context is not None or executor is not None
+                else nullcontext()
+            ):
+                if isinstance(map_inputs, TList):
+                    return self._map_fn_single_out(map_inputs, body)
+                if isinstance(map_inputs, TKR):
+                    return self._map_fn_single_in(map_inputs, body)
 
         if isinstance(map_inputs, TKR):
             map_inputs = self._unfold_list(map_inputs)
 
-        out = self._map_graph_full(map_inputs, body, **kwargs)
+        out = self._map_graph_full(
+            map_inputs, body, **_node_context(context, executor, kwargs)
+        )
 
         if not isclass(body.outputs_type) or not issubclass(
             body.outputs_type,

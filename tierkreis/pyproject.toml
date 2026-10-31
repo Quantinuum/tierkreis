@@ -2,7 +2,7 @@
 name = "tierkreis"
 description = "The Tierkreis Scientific Workflow Management System."
 readme = "README.md"
-version = "2.1.1"
+version = "3.0.0rc0"
 authors = [
     { name = "Seyon Sivarajah", email = "seyon.sivarajah@quantinuum.com" },
     { name = "Lukas Heidemann", email = "lukas.heidemann@quantinuum.com" },
@@ -23,7 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 stubs = [
-    "ruff>=0.16.2",
+    "ruff>=0.17.2",
 ]
 hpc = [
     "psij-python>=0.9.11",
@@ -33,13 +33,13 @@ hpc = [
 dev = [
     "ipykernel>=6.29.5",
     "pytest",
-    "guppylang >=0.21.0",
+    "guppylang>=1.0.0,<2.0.0",
     "qnexus",
 ]
 build = ["build[uv]"]
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+requires = ["maturin>=1.15.0,<2.0"]
 build-backend = "maturin"
 
 [tool.ruff]
@@ -52,8 +52,12 @@ include = ["."]
 exclude = []
 ignore = []
 
+[tool.pytest.ini_options]
+timeout = 60
+
 [tool.maturin]
 module-name = "tierkreis._tierkreis"
+features = ["pyo3"]
 
 [tool.maturin.generate-ci.github]
 # generate-ci has been modified a bit so this isn't going to re-create the

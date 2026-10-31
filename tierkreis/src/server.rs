@@ -1,6 +1,7 @@
 /*!
 The server module defines the REST interface to the Workflow server.
 */
+pub mod assets;
 #[allow(missing_docs)]
 pub mod models;
 #[allow(missing_docs)]
@@ -8,35 +9,25 @@ pub mod nodes;
 #[allow(missing_docs)]
 pub mod routes;
 
-use axum::http::StatusCode;
-use miette::{IntoDiagnostic, WrapErr};
+use miette::IntoDiagnostic;
+use std::net::IpAddr;
 use std::sync::Arc;
-use tower_http::services::ServeFile;
-use tower_http::set_status::SetStatus;
 use utoipa::openapi::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::{
     asset_storage::AssetStorageRegistry,
+    graph::{LegacyWorkflowGraph, WorkflowGraph},
     runtime::{RuntimeConfig, asset_storage_registry_from_config},
-    state::{RuntimeState, SqliteRuntimeState},
+    state::{InMemoryRuntimeState, RuntimeState},
 };
+use std::net::Ipv4Addr;
 
-async fn server(
-    runtime_state: Arc<SqliteRuntimeState>,
-    asset_registry: AssetStorageRegistry,
-) -> miette::Result<()> {
-    let update_receiver = runtime_state.listen();
-
-    let app_state = models::AppState {
-        runtime_state,
-        asset_registry,
-        update_receiver,
-    };
-
-    let api_router = OpenApiRouter::new()
+fn api_router() -> OpenApiRouter<models::AppState> {
+    OpenApiRouter::new()
         .routes(routes!(routes::get_info))
+        .routes(routes!(routes::subscribe_node_updates))
         .routes(routes!(routes::list_workflows))
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
@@ -44,51 +35,67 @@ async fn server(
         .routes(routes!(routes::get_input))
         .routes(routes!(routes::get_node_errors))
         .routes(routes!(routes::get_node_logs))
-        .routes(routes!(routes::get_workflow_logs));
-    let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
-        .nest("/api", api_router)
+        .routes(routes!(routes::get_workflow_logs))
+        .routes(routes!(routes::restart_node))
+}
+
+/// Build the `OpenAPI` document for the workflow server.
+#[must_use]
+pub fn openapi_spec() -> OpenApi {
+    let (_, api) = OpenApiRouter::new()
+        .nest("/api", api_router())
         .split_for_parts();
-    let mut router =
-        api_http_router.merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api));
+    api
+}
 
-    // SPA
-    let dist = std::env::current_dir()
-        .into_diagnostic()
-        .wrap_err("Failed to resolve current working directory")?
-        .join("tierkreis_visualization/tierkreis_visualization/static/dist"); // TODO: Make this configurable
-    if dist.exists() {
-        let index = dist.join("index.html");
-        let assets_dir = dist.join("assets");
-        if !index.exists() {
-            return Err(miette::miette!(
-                "Static frontend index.html not found: {}",
-                index.display()
-            ));
-        }
+async fn server(
+    runtime_state: Arc<dyn RuntimeState>,
+    asset_registry: AssetStorageRegistry,
+    host: IpAddr,
+    port: u16,
+    display_graph: Option<Arc<LegacyWorkflowGraph>>,
+) -> miette::Result<()> {
+    let update_receiver = runtime_state.listen();
 
-        if assets_dir.exists() {
-            use tower_http::services::ServeDir;
-            let index_html = SetStatus::new(ServeFile::new(&index), StatusCode::NOT_FOUND);
-            router = router
-                .nest_service("/assets", ServeDir::new(&assets_dir))
-                .fallback_service(index_html);
-            tracing::info!("Serving frontend assets from {}", assets_dir.display());
-        }
-        tracing::info!("Serving frontend SPA from {}", dist.display());
-    } else {
-        return Err(miette::miette!(
-            "Static frontend directory not found: {}",
-            dist.display()
-        ));
-    }
+    let app_state = models::AppState {
+        runtime_state,
+        asset_registry,
+        update_receiver,
+        display_graph,
+    };
 
-    let router = router.with_state(app_state);
-    let port = 3000;
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
+    let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
+        .nest("/api", api_router())
+        .split_for_parts();
+    let router = api_http_router
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api))
+        .fallback(assets::static_handler)
+        .with_state(app_state);
+
+    let listener = tokio::net::TcpListener::bind((host, port))
         .await
         .into_diagnostic()?;
-    tracing::info!("Visualization server listening on http://localhost:{port}");
-    axum::serve(listener, router).await.into_diagnostic()?;
+    tracing::info!("Visualization server listening on http://{host}:{port}");
+    let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
+    let serving = axum::serve(listener, router).with_graceful_shutdown(async move {
+        let _ = shutdown_receiver.await;
+    });
+    let serving = std::future::IntoFuture::into_future(serving);
+    tokio::pin!(serving);
+    tokio::select! {
+        result = &mut serving => result.into_diagnostic()?,
+        signal = tokio::signal::ctrl_c() => {
+            signal.into_diagnostic()?;
+            tracing::info!("Stopping visualization server");
+            let _ = shutdown_sender.send(());
+            if let Ok(result) = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                &mut serving,
+            ).await {
+                result.into_diagnostic()?;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -97,15 +104,69 @@ async fn server(
 ///
 /// # Errors
 ///
-/// Returns an error if the current directory cannot be read, static frontend files
-/// cannot be found, or the HTTP server fails to bind or run.
+/// Returns an error if the runtime state cannot be opened or the HTTP server fails to
+/// bind or run.
 ///
 /// # Panics
 ///
-/// Panics if the static frontend files are not found in the expected location.
+/// Panics if the tokio runtime cannot be started.
+pub fn serve(host: IpAddr, port: u16) -> miette::Result<()> {
+    serve_with_config(host, port, None)
+}
+
+/// Serve persisted workflow state using an explicit or discovered runtime configuration.
+///
+/// # Errors
+///
+/// Returns an error for invalid configuration, nonpersistent state or server failures.
+///
+/// # Panics
+///
+/// Panics if the Tokio runtime cannot be started.
 #[tokio::main]
-pub async fn serve() -> miette::Result<()> {
-    let runtime_state = Arc::new(SqliteRuntimeState::try_new().await?);
-    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default());
-    server(runtime_state, asset_registry).await
+pub async fn serve_with_config(
+    host: IpAddr,
+    port: u16,
+    config_path: Option<&std::path::Path>,
+) -> miette::Result<()> {
+    let config = match config_path {
+        Some(path) => RuntimeConfig::from_file(path)?,
+        None => RuntimeConfig::load()?,
+    };
+    let runtime_state = config.persistent_viewer_state().await?;
+    let asset_registry = asset_storage_registry_from_config(&config)?;
+    server(runtime_state, asset_registry, host, port, None).await
+}
+
+/// Serve a workflow graph in an isolated in-memory runtime state.
+///
+/// # Errors
+///
+/// Returns an error if the state cannot be created or the server fails to bind or run.
+///
+/// # Panics
+///
+/// Panics if the tokio runtime cannot be started.
+#[tokio::main]
+pub async fn serve_graph(graph_json: &str, port: u16) -> miette::Result<()> {
+    let display_graph: LegacyWorkflowGraph = serde_json::from_str(graph_json).into_diagnostic()?;
+    let runtime_state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
+    let workflow_id = runtime_state
+        .save_workflow(
+            Some("Graph".to_string()),
+            WorkflowGraph::new(std::iter::empty::<String>()),
+        )
+        .await?;
+    let _run_state = runtime_state
+        .new_workflow_run_state(workflow_id, std::collections::HashMap::new())
+        .await?;
+    let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
+    server(
+        runtime_state,
+        asset_registry,
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        port,
+        Some(Arc::new(display_graph)),
+    )
+    .await
 }

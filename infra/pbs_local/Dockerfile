@@ -110,7 +110,9 @@ ENV PATH /usr/lib64/openmpi/bin:$PATH
 
 COPY pbs.conf /etc/pbs.conf
 COPY docker-entrypoint.sh /usr/local/bin/
+COPY qstat_compat.py /usr/local/bin/qstat_compat.py
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/qstat_compat.py
 RUN mkdir /mpi_worker
 COPY main.py /mpi_worker/main.py
 
@@ -122,7 +124,14 @@ USER pbsuser
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 USER root
 
-ENV PATH /opt/pbs/bin:/opt/pbs/sbin:$PATH
+ENV PATH /home/pbsuser/.local/bin:/opt/pbs/bin:/opt/pbs/sbin:$PATH
+
+RUN mv /opt/pbs/bin/qstat /opt/pbs/bin/qstat.openpbs \
+    && printf '%s\n' \
+        '#!/bin/bash' \
+        'exec /home/pbsuser/.local/bin/uv run --script /usr/local/bin/qstat_compat.py "$@"' \
+        > /opt/pbs/bin/qstat \
+    && chmod +x /opt/pbs/bin/qstat
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 

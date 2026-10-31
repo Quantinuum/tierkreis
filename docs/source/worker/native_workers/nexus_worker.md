@@ -48,26 +48,24 @@ The default is to poll every `30` seconds.
 An example use is in `docs/source/examples/polling_and_dir.ipynb` in the [Tierkreis repo](https://github.com/Quantinuum/tierkreis), which looks like:
 
 ```python
+from tierkreis.runtime import new_default
+
 backend_config = ...select the right hardware by specifying the BackendConfig instance...
 circuits = ...your circuits here...
 
-storage = FileStorage(UUID(int=107), do_cleanup=True)
-executor = UvExecutor(PACKAGE_PATH / ".." / "tierkreis_workers", storage.logs_path)
-
-run_graph(
-    storage,
-    executor,
-    nexus_submit_and_poll(),
-    {
+graph = nexus_submit_and_poll()
+runtime = await new_default()
+with runtime:
+    workflow_id = await runtime.save_workflow("Nexus submission", graph)
+    run_id = await runtime.start_new_run(workflow_id, {
         "project_name": "2025-tkr-test",
         "job_name": "job-1",
-        "circuits": circuits,
+        "circuits": [circuit.to_dict() for circuit in circuits],
         "n_shots": [30] * len(circuits),
-        "backend_config": backend_config,
-    },
-    polling_interval_seconds=1,
-)
-res = read_outputs(g, storage)
+        "backend_config": backend_config.model_dump(mode="json"),
+    })
+    await runtime.wait_for(run_id)
+    res = await runtime.get_outputs(run_id)
 print(res)
 ```
 

@@ -131,22 +131,18 @@ rus_workflow = g.finish_with_outputs(loop_output.i)
 Since we still only use built-in functions, we execute the graph in the same way as before.
 
 ```{code-cell} ipython3
-from uuid import UUID
-from pathlib import Path
+from tierkreis.runtime import new_in_memory
 
-from tierkreis import run_graph
-from tierkreis.storage import FileStorage, read_outputs, read_loop_trace
-from tierkreis.executor import ShellExecutor
+runtime = await new_in_memory()
+with runtime:
+    workflow_id = await runtime.save_workflow("Named loop", workflow)
+    run_id = await runtime.start_new_run(workflow_id, {})
+    await runtime.wait_for(run_id)
+    print(await runtime.get_outputs(run_id))
+    print(await runtime.get_loop_iterations(run_id, 0, "my_loop"))
 
-storage = FileStorage(UUID(int=99), name="Nested graphs using Eval")
-executor = ShellExecutor(Path("."), workflow_dir=storage.workflow_dir)
-
-storage.clean_graph_files()
-run_graph(storage, executor, workflow, {})
-print(read_outputs(workflow, storage))
-print(read_loop_trace(workflow, storage, "my_loop"))
-
-storage.clean_graph_files()
-run_graph(storage, executor, rus_workflow, {})
-print(read_outputs(rus_workflow, storage))
+    workflow_id = await runtime.save_workflow("Russian multiplication", rus_workflow)
+    run_id = await runtime.start_new_run(workflow_id, {})
+    await runtime.wait_for(run_id)
+    print(await runtime.get_outputs(run_id))
 ```

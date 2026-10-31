@@ -8,8 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Auto-correct typos from git history
-- Add Changelog generation from git history
+- Add Changelog generation from git history by @johnchildren in [#615](https://github.com/Quantinuum/tierkreis/pull/615)
 - Reorganise imports in codegen by @johnchildren in [#601](https://github.com/Quantinuum/tierkreis/pull/601)
 - Generate pipe characters for Union types by @johnchildren in [#600](https://github.com/Quantinuum/tierkreis/pull/600)
 - Release 2.0.12 by @philipp-seitz in [#417](https://github.com/Quantinuum/tierkreis/pull/417)

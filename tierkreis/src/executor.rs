@@ -2,14 +2,26 @@
 This module defines the interface and some standard implementations of [Executor]
 as well as some utility functions and an [`ExecutorRegistry`] type.
 */
+pub mod hpc;
 pub mod inmemory;
 pub mod interface;
 pub mod nexus;
+#[cfg(unix)]
+pub mod qrmi;
 pub mod subprocess;
 
+pub use crate::executor::hpc::HPCExecutor;
+pub use crate::executor::hpc::{
+    pbs::PbsWrapper,
+    pjsub::PjsubWrapper,
+    slurm::SlurmWrapper,
+    spec::{JobSpec, SchedulerWrapper},
+};
 pub use crate::executor::inmemory::InMemoryExecutor;
 pub use crate::executor::interface::Executor;
 pub use crate::executor::nexus::NexusExecutor;
+#[cfg(unix)]
+pub use crate::executor::qrmi::{QrmiExecutor, QrmiExecutorConfig, QrmiPayload, QrmiResourceType};
 pub use crate::executor::subprocess::SubprocessExecutor;
 
 use std::{collections::HashMap, sync::Arc};

@@ -60,7 +60,11 @@ def test_parser_fail(type_symb: str) -> None:
 def test_model_order() -> None:
     namespace = tests.idl.namespace1.expected_namespace
     sorted_models = [
-        str(model.t.origin.__qualname__)
+        (
+            str(model.t.origin.__qualname__)
+            if not isinstance(model.t.origin, str)
+            else model.t.origin
+        )
         for model in namespace._topologically_sorted_models()
     ]
     assert sorted_models == [

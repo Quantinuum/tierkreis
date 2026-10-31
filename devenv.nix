@@ -60,7 +60,7 @@ in
     languages.javascript = {
       enable = true;
       pnpm.enable = true;
-      directory = "./tierkreis_visualization";
+      directory = "./tierkreis/frontend";
     };
     scripts.sbatch.exec = ''
       ./infra/slurm_local/sbatch "$@";
@@ -79,6 +79,7 @@ in
           unset UV_PYTHON;
           export MATURIN_NO_PROGRESS=1
           export RUST_LOG=error
+          export LIBRARY_PATH=${darwinRuntimeLibraryPath}:$LIBRARY_PATH
         ''
       else
         ''

@@ -1,8 +1,8 @@
 import logging
 
 from guppylang import comptime, guppy
-from guppylang.std.builtins import array, result
-from guppylang.std.quantum import cx, h, measure_array, qubit
+from guppylang.std.builtins import array, output
+from guppylang.std.quantum import collect_measurements, cx, h, measure_array, qubit
 from hugr.package import Package
 from pytket._tket.circuit import Circuit, fresh_symbol
 from sympy import Symbol
@@ -48,6 +48,6 @@ def ghz(size: int) -> Package:
         q = array(qubit() for _ in range(comptime(size)))  # type: ignore
         build_ghz_state(q)
 
-        result("c", measure_array(q))
+        output("c", collect_measurements(measure_array(q)))
 
     return main.compile()

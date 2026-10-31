@@ -1,0 +1,15 @@
+executor = "pbs"
+nodes = 2
+walltime = "01:05:00"
+
+[mpi]
+
+[extra_scheduler_args]
+"-N" = "mpi-profile"
+
+[env]
+OMPI_ALLOW_RUN_AS_ROOT = "1"
+OMPI_ALLOW_RUN_AS_ROOT_CONFIRM = "1"
+PYTHONPATH = "/tierkreis"
+VIRTUAL_ENV = "/home/pbsuser/.venvs/mpi-worker"
+PATH = "/home/pbsuser/.venvs/mpi-worker/bin:/home/pbsuser/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/usr/lib64/openmpi/bin"

@@ -25,6 +25,13 @@ if [ "$1" = "server" ]; then
     /etc/init.d/pbs start
     sleep 10
 
+    mkdir -p /var/spool/pbs/server_priv/accounting
+    chgrp pbsuser /var/spool/pbs/server_priv
+    chgrp -R pbsuser /var/spool/pbs/server_priv/accounting
+    chmod 750 /var/spool/pbs/server_priv
+    chmod 2750 /var/spool/pbs/server_priv/accounting
+    chmod g+r /var/spool/pbs/server_priv/accounting/* 2>/dev/null || true
+
     echo "---> Setting up Nodes ..."
     qmgr -c "create node p1"
     qmgr -c "create node p2"

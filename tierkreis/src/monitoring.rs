@@ -9,11 +9,12 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::{
-    env::home_dir,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
+use tokio::process::Command;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetryLayer};
 use tracing_subscriber::EnvFilter;
@@ -46,9 +47,7 @@ pub struct LoggingConfig {
 
 impl Default for LoggingConfig {
     fn default() -> Self {
-        let tierkreis_log = home_dir()
-            .unwrap_or_else(|| "/tmp".into())
-            .join(".tierkreis/tierkreis.log");
+        let tierkreis_log = crate::config::tierkreis_home_dir().join("tierkreis.log");
 
         let otel_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
 
@@ -63,9 +62,34 @@ impl Default for LoggingConfig {
     }
 }
 
+impl LoggingConfig {
+    /// Override the configured logging level.
+    pub fn set_log_level(&mut self, log_level: impl Into<String>) {
+        self.log_level = Some(log_level.into());
+    }
+}
+
 static LOG_GUARD: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 static LOGGING_INITIALIZED: OnceLock<()> = OnceLock::new();
 static TRACER_PROVIDER: Mutex<Option<SdkTracerProvider>> = Mutex::new(None);
+
+/// Export completed trace spans without shutting down the process-wide provider.
+///
+/// # Errors
+///
+/// Returns an error if the provider lock is poisoned or exporting spans fails.
+pub fn flush_traces() -> miette::Result<()> {
+    let provider = TRACER_PROVIDER
+        .lock()
+        .map_err(|error| miette::miette!("Failed to lock tracer provider: {error}"))?
+        .clone();
+    if let Some(provider) = provider {
+        provider
+            .force_flush()
+            .map_err(|error| miette::miette!("Failed to flush trace spans: {error}"))?;
+    }
+    Ok(())
+}
 
 /// Flush buffered log lines to the log file and shut down OpenTelemetry.
 ///
@@ -230,11 +254,48 @@ fn init(config: &LoggingConfig, with_telemetry: bool) {
 }
 
 /// Initialize logging without OpenTelemetry.
-pub fn init_logging(logging_config: Option<LoggingConfig>) {
-    init(&logging_config.unwrap_or_default(), false);
+pub fn init_logging(logging_config: &Option<LoggingConfig>) {
+    init(
+        logging_config.as_ref().unwrap_or(&LoggingConfig::default()),
+        false,
+    );
 }
 
 /// Initialize the runtime subscriber with logging and OpenTelemetry.
-pub fn init_logging_and_tracing(logging_config: Option<LoggingConfig>) {
-    init(&logging_config.unwrap_or_default(), true);
+pub fn init_logging_and_tracing(logging_config: &Option<LoggingConfig>) {
+    init(
+        logging_config.as_ref().unwrap_or(&LoggingConfig::default()),
+        true,
+    );
+}
+
+fn normalize_otel_env_key(key: &str) -> String {
+    key.to_uppercase().replace('-', "_")
+}
+
+/// A carrier for injecting OpenTelemetry context into environment variables hash map.
+pub struct EnvironmentCarrier<'a>(pub &'a mut HashMap<String, String>);
+
+impl opentelemetry::propagation::Injector for EnvironmentCarrier<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.insert(normalize_otel_env_key(key), value);
+    }
+}
+
+/// A carrier for injecting OpenTelemetry context into a `Command`'s environment.
+pub struct CommandEnvCarrier<'a>(pub &'a mut Command);
+impl opentelemetry::propagation::Injector for CommandEnvCarrier<'_> {
+    fn set(&mut self, key: &str, value: String) {
+        self.0.env(normalize_otel_env_key(key), value);
+    }
+}
+
+/// Inject the OpenTelemetry trace context into the given carrier.
+pub fn inject_trace_context<T>(context: &opentelemetry::Context, carrier: &mut T)
+where
+    T: opentelemetry::propagation::Injector,
+{
+    opentelemetry::global::get_text_map_propagator(|propagator| {
+        propagator.inject_context(context, carrier);
+    });
 }

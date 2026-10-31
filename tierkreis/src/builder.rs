@@ -1,5 +1,6 @@
 /*! This is a graph builder utility module that is currently just used for
 building test workflow graphs internally.
+TODO: should we add context to these functions?
 */
 use miette::IntoDiagnostic;
 use portgraph::NodeIndex;
@@ -51,6 +52,8 @@ pub(crate) fn task<'a>(
         NodeDefinition::Task {
             worker_name: worker.to_string(),
             task_name: task.to_string(),
+            context: None,
+            executor: None,
         },
         inputs.into_iter().map(ToString::to_string),
         outputs.into_iter().map(ToString::to_string),
@@ -87,7 +90,10 @@ pub(crate) fn eval<'a>(
     outputs: impl IntoIterator<Item = &'a str>,
 ) -> NodeIndex {
     graph.add_node(
-        NodeDefinition::Eval {},
+        NodeDefinition::Eval {
+            context: None,
+            executor: None,
+        },
         ["graph".to_string()]
             .into_iter()
             .chain(inputs.into_iter().map(ToString::to_string)),
@@ -101,7 +107,10 @@ pub(crate) fn loop_node<'a>(
     outputs: impl IntoIterator<Item = &'a str>,
 ) -> NodeIndex {
     graph.add_node(
-        NodeDefinition::Loop {},
+        NodeDefinition::Loop {
+            context: None,
+            executor: None,
+        },
         ["graph".to_string()]
             .into_iter()
             .chain(inputs.into_iter().map(ToString::to_string)),
@@ -119,6 +128,8 @@ pub(crate) fn map_node<'a>(
     graph.add_node(
         NodeDefinition::Map {
             mapped_ports: mapped.iter().map(ToString::to_string).collect(),
+            context: None,
+            executor: None,
         },
         ["graph".to_string()]
             .into_iter()
@@ -140,4 +151,8 @@ where
     let (from, from_output) = from;
     let (to, to_input) = to;
     graph.link_nodes_by_port_name(from, from_output.as_ref(), to, to_input.as_ref())
+}
+
+pub(crate) fn breakpoint(graph: &mut WorkflowGraph, node: NodeIndex) {
+    graph.set_breakpoint(node);
 }
