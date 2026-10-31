@@ -1,6 +1,7 @@
 /*!
 This module defines the Workflow graph representation.
 */
+mod hugr;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -341,7 +342,7 @@ impl WorkflowGraph {
             .ok_or_else(|| miette!("Could not find port name for port id: {port:?}"))
     }
 
-    /// Returns the `PortIndex` corresponding to a provided name.
+    /// Returns the `PortIndex` corresponding to the input port with the specified name of the specified node.
     ///
     /// # Errors
     ///
@@ -352,6 +353,24 @@ impl WorkflowGraph {
         port_name: &str,
     ) -> miette::Result<PortIndex> {
         self.input_port_indices
+            .get(&node)
+            .ok_or_else(|| miette!("Could not find node with index: {node:?}"))?
+            .get(port_name)
+            .ok_or_else(|| miette!("Could not find port id for port name: {port_name}"))
+            .copied()
+    }
+
+    /// Returns the `PortIndex` corresponding to the output port with the specified name of the specified node.
+    ///
+    /// # Errors
+    ///
+    /// Will return Err if the provided node index is not found or if the port name is not found.
+    pub fn get_output_port_index(
+        &self,
+        node: NodeIndex,
+        port_name: &str,
+    ) -> miette::Result<PortIndex> {
+        self.output_port_indices
             .get(&node)
             .ok_or_else(|| miette!("Could not find node with index: {node:?}"))?
             .get(port_name)
