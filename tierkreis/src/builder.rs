@@ -2,6 +2,7 @@
 building test workflow graphs internally.
 TODO: should we add context to these functions?
 */
+#![allow(unused)]
 use miette::IntoDiagnostic;
 use portgraph::NodeIndex;
 use serde::Serialize;

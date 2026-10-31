@@ -8,7 +8,7 @@ use tket::passes::cfg::dom_tree::{DomTreeWithBackedges, Path};
 use tket::passes::cfg::gating_path::GatingPath;
 
 use super::{GraphWithFuncs, convert_dfg, wire_up};
-use crate::graph::{NodeDefinition, WorkflowGraph};
+use crate::graph::WorkflowGraph;
 
 type DomTree<N> = DomTreeWithBackedges<N, GatingPath<N>>;
 
@@ -120,16 +120,7 @@ fn build_inputs<N: HugrNode>(
                     if f == t {
                         t.clone()
                     } else {
-                        // crate::builder::if_else is test-only, duplicating it here
-                        let node = graph.add_node(
-                            NodeDefinition::IfElse {},
-                            [
-                                "pred".to_string(),
-                                "if_true".to_string(),
-                                "if_false".to_string(),
-                            ],
-                            ["value".to_string()],
-                        );
+                        let node = crate::builder::if_else(graph);
                         wire_up(
                             graph,
                             [pred, f, t],

@@ -5,8 +5,7 @@ Workflow Management system.
 #![warn(clippy::all, clippy::pedantic)]
 
 pub mod asset_storage;
-#[cfg(test)]
-pub mod builder;
+pub(crate) mod builder; // was test-only, now also using in hugr.rs
 pub mod config;
 pub mod event;
 pub mod executor;

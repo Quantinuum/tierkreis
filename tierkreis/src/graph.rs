@@ -1219,14 +1219,7 @@ mod tests {
                 [],
                 ["inp".to_string()],
             );
-            let task = g.add_node(
-                NodeDefinition::Task {
-                    worker_name: "test".to_string(),
-                    task_name: "identity".to_string(),
-                },
-                ["value".to_string()],
-                ["result".to_string()],
-            );
+            let task = crate::builder::task(&mut g, "test", "identity", ["value"], ["result"]);
             g.link_nodes_by_port_name(input, "inp", task, "value")?;
             g.link_nodes_by_port_name(task, "result", g.output_idx(), "result")?;
             g

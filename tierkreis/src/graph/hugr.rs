@@ -2,7 +2,6 @@
 use std::collections::HashMap;
 use std::iter::once;
 
-use super::{NodeDefinition, WorkflowGraph};
 use hugr::core::HugrNode;
 use hugr::extension::prelude::{ConstUsize, TupleOpDef};
 use hugr::ops::{DataflowOpTrait as _, ExtensionOp, OpType, Tag, TailLoop, Value, constant::Sum};
@@ -20,6 +19,9 @@ mod cfg;
 use cfg::convert_cfg;
 use tket::passes::ComposablePass;
 use tket::passes::cfg::remove_cycles::RemoveCFGCyclesPass;
+
+use super::{NodeDefinition, WorkflowGraph};
+use crate::builder::{eval, loop_node, task};
 
 struct GraphWithFuncs<N: HugrNode> {
     graph: WorkflowGraph,
@@ -163,9 +165,11 @@ fn convert_dataflow_op<H: HugrView>(
                 .out_value_types(node)
                 .map(|(p, _)| format!("out{}", p.index()))
                 .collect::<Vec<_>>();
-            let ni = graph
-                .graph
-                .add_node(NodeDefinition::Eval {}, ins.clone(), outs.clone());
+            let ni = eval(
+                &mut graph.graph,
+                ins.iter().skip(1).map(String::as_str),
+                outs.iter().map(String::as_str),
+            );
             wire_up(&mut graph.graph, &inputs, ni, &ins);
             return Ok(outs.into_iter().map(|port| (ni, port)).collect());
         }
@@ -182,10 +186,10 @@ fn convert_dataflow_op<H: HugrView>(
                 .out_value_types(node)
                 .map(|(p, _)| format!("out{}", p.index()))
                 .collect::<Vec<_>>();
-            let ni = graph.graph.add_node(
-                NodeDefinition::Eval {},
-                Some("graph".to_string()).into_iter().chain(args_in.clone()),
-                outs.clone(),
+            let ni = eval(
+                &mut graph.graph,
+                args_in.iter().map(String::as_str),
+                outs.iter().map(String::as_str),
             );
             graph
                 .graph
@@ -285,17 +289,16 @@ fn convert_tail_loop<H: HugrView>(
             [],
             ["value"],
         );
-        let [should_continue] = g.add_node(
-            NodeDefinition::Task {
-                worker_name: "builtins".to_string(),
-                task_name: "eq".to_string(),
-            },
-            [("a", tag), ("b", continue_const)],
-            ["value"],
+        let should_continue = task(&mut g.graph, "builtins", "eq", ["a", "b"], ["value"]);
+        wire_up(
+            &mut g.graph,
+            &[tag, continue_const],
+            should_continue,
+            &["a", "b"],
         );
         g.graph.link_nodes_by_port_name(
-            should_continue.0,
-            &should_continue.1,
+            should_continue,
+            "value",
             g.graph.output_idx(),
             "should_continue",
         )?;
@@ -318,10 +321,11 @@ fn convert_tail_loop<H: HugrView>(
     let loop_in_names = once("graph".to_string())
         .chain(inout_names.clone())
         .collect::<Vec<_>>();
-    let loop_node =
-        graph
-            .graph
-            .add_node(NodeDefinition::Loop {}, loop_in_names.clone(), inout_names);
+    let loop_node = loop_node(
+        &mut graph.graph,
+        inout_names.iter().map(String::as_str),
+        inout_names.iter().map(String::as_str),
+    );
     wire_up(
         &mut graph.graph,
         [body_graph, just_inputs_tuple].iter().chain(rest_inputs),
@@ -349,14 +353,14 @@ fn make_tuple<N: HugrNode>(
         [inp] => [inp.clone()],
         _ => {
             let rest = make_tuple(graph, &inputs[1..]);
-            graph.add_node(
-                NodeDefinition::Task {
-                    worker_name: "builtins".to_string(),
-                    task_name: "tuple".to_string(),
-                },
-                vec![("a", inputs[0].clone()), ("b", rest)],
-                ["value"],
-            )
+            let tuple = task(&mut graph.graph, "builtins", "tuple", ["a", "b"], ["value"]);
+            wire_up(
+                &mut graph.graph,
+                &[inputs[0].clone(), rest],
+                tuple,
+                &["a", "b"],
+            );
+            [(tuple, "value".to_string())]
         }
     };
     np
@@ -376,14 +380,7 @@ fn unpack_tuple(
         1 => vec![input],
         _ => {
             let mut elements = unpack_tuple(graph, input, num_elements - 1);
-            let untuple = graph.add_node(
-                NodeDefinition::Task {
-                    worker_name: "builtins".to_string(),
-                    task_name: "untuple".to_string(),
-                },
-                ["value".to_string()],
-                ["a".to_string(), "b".to_string()],
-            );
+            let untuple = task(graph, "builtins", "untuple", ["value"], ["a", "b"]);
             wire_up(graph, &[elements.pop().unwrap()], untuple, &["value"]);
             elements.push((untuple, "a".to_string()));
             elements.push((untuple, "b".to_string()));
@@ -495,7 +492,21 @@ fn convert_ext_op(
     // Keep it simple for now, support only hugr ops that become a single node in the workflow graph
     let (node_def, inports, outports) = lookup_ext_op(eop)?;
 
-    let new_node = graph.add_node(node_def, inports.clone(), outports.clone());
+    let new_node = match node_def {
+        ExtOpNode::Task {
+            worker_name,
+            task_name,
+        } => task(
+            graph,
+            &worker_name,
+            &task_name,
+            inports.iter().map(String::as_str),
+            outports.iter().map(String::as_str),
+        ),
+        ExtOpNode::Definition(node_def) => {
+            graph.add_node(node_def, inports.clone(), outports.clone())
+        }
+    };
 
     assert_eq!(inputs.len(), inports.len());
     wire_up(graph, &inputs, new_node, &inports);
@@ -503,17 +514,27 @@ fn convert_ext_op(
     Ok(outports.into_iter().map(|port| (new_node, port)).collect())
 }
 
-fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<String>, Vec<String>)> {
+enum ExtOpNode {
+    Definition(NodeDefinition),
+    Task {
+        worker_name: String,
+        task_name: String,
+    },
+}
+
+fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(ExtOpNode, Vec<String>, Vec<String>)> {
     let num_inputs = eop.signature().input().len();
     let num_outputs = eop.signature().output().len();
     use hugr::extension::simple_op::MakeOpDef as _;
     if let Ok(top) = TupleOpDef::from_op(eop) {
         return match top {
-            TupleOpDef::MakeTuple if num_inputs == 0 => {
-                Ok((unit_const(), vec![], vec!["value".to_string()]))
-            }
+            TupleOpDef::MakeTuple if num_inputs == 0 => Ok((
+                ExtOpNode::Definition(unit_const()),
+                vec![],
+                vec!["value".to_string()],
+            )),
             TupleOpDef::MakeTuple if num_inputs == 2 => Ok((
-                NodeDefinition::Task {
+                ExtOpNode::Task {
                     worker_name: "builtins".to_string(),
                     task_name: "tuple".to_string(),
                 },
@@ -521,7 +542,7 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
                 vec!["value".to_string()],
             )),
             TupleOpDef::UnpackTuple if num_outputs == 2 => Ok((
-                NodeDefinition::Task {
+                ExtOpNode::Task {
                     worker_name: "builtins".to_string(),
                     task_name: "untuple".to_string(),
                 },
@@ -548,7 +569,7 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(NodeDefinition, Vec<Strin
         assert_eq!(num_inputs, INPUT_PORT_NAMES.len());
         assert_eq!(num_outputs, 1);
         Ok((
-            NodeDefinition::Task {
+            ExtOpNode::Task {
                 worker_name: "inmemory".to_string(),
                 task_name: eop.def().name().to_string(),
             },
@@ -734,7 +755,13 @@ pub(crate) mod test {
         }
         let inp = h.add_node_with_parent(loop_, Input { types: input });
         let out = h.add_node_with_parent(loop_, Output { types: output });
-        let tag = h.add_node_with_parent(loop_, Tag::new(TailLoop::BREAK_TAG, vec![[int_ty(), float64_type()].into(); 2]));
+        let tag = h.add_node_with_parent(
+            loop_,
+            Tag::new(
+                TailLoop::BREAK_TAG,
+                vec![[int_ty(), float64_type()].into(); 2],
+            ),
+        );
         h.connect(tag, 0, out, 0);
         h.connect(inp, 0, tag, 0);
         h.connect(inp, 1, tag, 1);
