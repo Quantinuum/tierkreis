@@ -734,7 +734,13 @@ pub(crate) mod test {
         }
         let inp = h.add_node_with_parent(loop_, Input { types: input });
         let out = h.add_node_with_parent(loop_, Output { types: output });
-        let tag = h.add_node_with_parent(loop_, Tag::new(TailLoop::BREAK_TAG, vec![[int_ty(), float64_type()].into(); 2]));
+        let tag = h.add_node_with_parent(
+            loop_,
+            Tag::new(
+                TailLoop::BREAK_TAG,
+                vec![[int_ty(), float64_type()].into(); 2],
+            ),
+        );
         h.connect(tag, 0, out, 0);
         h.connect(inp, 0, tag, 0);
         h.connect(inp, 1, tag, 1);
