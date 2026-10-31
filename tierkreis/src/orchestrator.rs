@@ -364,7 +364,7 @@ impl Orchestrator {
         scheduled_this_lifetime: &'a HashSet<Location>,
     ) -> impl Iterator<Item = NodeIndex> + 'a {
         // Find nodes that are ready for scheduling.
-        let mut nodes = workflow_graph
+        workflow_graph
             // Traverse the graph to find nodes that are yet to run, starting
             // from the output node.
             //
@@ -375,6 +375,7 @@ impl Orchestrator {
                     let definition = workflow_graph
                         .node_definition(n)
                         .expect("Node definition not found");
+
                     // A node scheduled in a previous process will be rescheduled.
                     // The executor deals with reattaching.
                     let scheduled_this_lifetime =
@@ -407,38 +408,20 @@ impl Orchestrator {
                     }
                 },
             )
-            .collect::<Vec<_>>();
-        //if !parent_location.is_root() {nodes.push(NodeIndex::new(2));}
-        eprintln!("ALAN find_ready ({parent_location:?}): nodes {nodes:?}");
-        // Of the nodes that have not yet run, find the nodes that can run.
-        // (Because their inputs are ready or otherwise.)
-        nodes.into_iter().filter(move |n| {
+            // Of the nodes that have not yet run, find the nodes that can run.
+            // (Because their inputs are ready or otherwise.)
+            .filter(|n| {
                 let definition = workflow_graph
                     .node_definition(*n)
                     .expect("Node definition not found");
                 if matches!(definition, NodeDefinition::IfElse {}) {
                     Self::if_else_ready(workflow_graph, node_states, parent_location, *n)
                 } else {
-                    if workflow_graph.all_inputs(*n, |incoming| {
-                        let ready = node_states
+                    workflow_graph.all_inputs(*n, |incoming| {
+                        node_states
                             .get(&parent_location.with_node(incoming))
-                            .is_some_and(|state| state.outputs.is_some());
-                        if !ready {
-                            let in_def = workflow_graph
-                                .node_definition(incoming)
-                                .expect("Node definition not found");
-                            eprintln!("ALAN find_ready ({parent_location:?}) for {n:?} {} missing input from {incoming:?} {}",
-                                def_str(definition), def_str(in_def));
-                        }
-                        ready
-                    }) {
-                        eprintln!("ALAN find_ready ({parent_location:?}) for {n:?} {} all inputs ready",
-                            def_str(definition)
-                        );
-                        true
-                    } else {
-                        false
-                    }
+                            .is_some_and(|state| state.outputs.is_some())
+                    })
                 }
             })
     }
@@ -453,8 +436,7 @@ impl Orchestrator {
         let cond = node_states
             .get(&parent_location.with_node(n))
             .and_then(|state| state.cond);
-
-        let res = match cond {
+        match cond {
             None => Self::port_has_input(workflow_graph, node_states, parent_location, n, "pred")
                 .expect("No `pred` port on `IfElse` node"),
             Some(true) => {
@@ -465,11 +447,7 @@ impl Orchestrator {
                 Self::port_has_input(workflow_graph, node_states, parent_location, n, "if_false")
                     .expect("No `if_false` port on `IfElse` node")
             }
-        };
-        eprintln!(
-            "ALAN if_else_ready ({parent_location:?}) for {n:?} cond = {cond:?} res = {res:?}"
-        );
-        res
+        }
     }
 
     // Returns true if a port on a node's input is available.
@@ -538,10 +516,7 @@ impl Orchestrator {
                     connected_port_name,
                 )
                 .await?;
-                eprintln!(
-                    "ALAN pred_bytes: {:?}",
-                    String::from_utf8(pred_bytes.clone())
-                );
+
                 Ok(Action {
                     loc: parent_location.with_node(n),
                     kind: ActionKind::SetSwitching {
@@ -642,9 +617,6 @@ impl Orchestrator {
             .ok_or_else(|| miette!("Input not found for port: {name}"))?;
         let mut outputs = HashMap::new();
         outputs.insert(name.to_string(), value.clone());
-        eprintln!(
-            "ALAN build_input_action ({parent_location:?}) for {n:?} name = {name}"
-        );
 
         Ok(Action {
             loc: parent_location.with_node(n),
@@ -793,7 +765,6 @@ impl Orchestrator {
                 // visited this loop iteration.
                 let mut inputs =
                     collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
-                eprintln!("ALAN loop iteration {index} got inputs {:?}", inputs.keys());
                 let subgraph = self.load_subgraph(&inputs).await?;
 
                 let loop_loc = loc.with_loop_index(index);
@@ -829,14 +800,10 @@ impl Orchestrator {
                             .await;
                     }
                     Some(outputs) => {
-                        eprintln!("ALAN loop iteration {index} got outputs: {:?}", outputs);
                         let should_continue_bytes =
                             load_asset(&self.asset_storage_registry, &outputs, "should_continue")
                                 .await?;
-                        eprintln!(
-                            "ALAN loop iteration {index} got should_continue: {:?}",
-                            String::from_utf8(should_continue_bytes.clone())
-                        );
+
                         if should_continue_bytes == b"true" {
                             Ok(stream::once(future::ok(Action {
                                 loc,
@@ -1231,23 +1198,6 @@ impl Orchestrator {
 
         streams.push(orchestrator_events.boxed());
         Ok(select_all(streams))
-    }
-}
-
-fn def_str(n: &NodeDefinition) -> String {
-    match n {
-        NodeDefinition::Const { value } => {
-            let v = format!("{value}");
-            format!(
-                "Const({})",
-                if v.len() > 5 {
-                    format!("{}...", &v[..5])
-                } else {
-                    v
-                }
-            )
-        }
-        _ => format!("{n:?}"),
     }
 }
 

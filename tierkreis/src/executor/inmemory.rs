@@ -121,7 +121,6 @@ macro_rules! bin_op {
     ($inputs:expr, $outputs:expr, $op:tt, $input_type:ty) => {{
         let a: $input_type = extract_value($inputs, "a")?;
         let b: $input_type = extract_value($inputs, "b")?;
-        eprintln!("ALAN bin_op {} with a = {:?}, b = {:?}", stringify!($op), a, b);
 
         output_value(&mut $outputs, a $op b)?;
     }};
@@ -155,12 +154,7 @@ fn run_builtin(
         "ine" => bin_op!(inputs, outputs, !=, i64),
         "ilt_s" => bin_op!(inputs, outputs, <, i64),
         // igt is the legacy name
-        "igt_s" | "igt" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
-            eprintln!("ALAN igt_s | igt: a = {}, b = {}", a, b);
-            output_value(&mut outputs, a > b)?;
-        }
+        "igt_s" | "igt" => bin_op!(inputs, outputs, >, i64),
         "ilte_s" => bin_op!(inputs, outputs, <=, i64),
         "igte_s" => bin_op!(inputs, outputs, >=, i64),
         "imax_s" => bin_method!(inputs, outputs, max, i64),
@@ -217,13 +211,12 @@ fn run_builtin(
         "tuple" | "tkr_tuple" => {
             let a: Value = extract_value(inputs, "a")?;
             let b: Value = extract_value(inputs, "b")?;
-            eprintln!("ALAN tuple with a = {:?}, b = {:?}", a, b);
 
             output_value(&mut outputs, [a, b])?;
         }
         "untuple" => {
             let value: (Value, Value) = extract_value(inputs, "value")?;
-            eprintln!("ALAN untuple with value = {:?}", value);
+
             outputs.insert(
                 "a".to_string(),
                 serde_json::to_vec(&value.0).into_diagnostic()?,
