@@ -7,9 +7,19 @@ from tierkreis.controller.data.models import TKR
 from tierkreis.controller.data.types import PType
 
 
+class Unzipped[U: PType, V: PType](NamedTuple):
+    a: TKR[U]
+    b: TKR[V]
+
+
 class Untupled[U: PType, V: PType](NamedTuple):
     a: TKR[U]
     b: TKR[V]
+
+
+class Headed[U: PType](NamedTuple):
+    head: TKR[U]
+    rest: TKR[list[U]]
 
 
 # i64 operations
@@ -296,6 +306,35 @@ class str_eq(NamedTuple):
         return "builtins"
 
 
+class zip[U: PType, V: PType](NamedTuple):
+    a: TKR[list[U]]
+    b: TKR[list[V]]
+
+    @staticmethod
+    def out() -> type[TKR[list[py_builtins.tuple[U, V]]]]:
+        return TKR[list[py_builtins.tuple[U, V]]]
+
+    @property
+    def namespace(self) -> py_builtins.str:
+        return "builtins"
+
+
+class tkr_zip[U: PType, V: PType](zip[U, V]):
+    pass
+
+
+class unzip[U: PType, V: PType](NamedTuple):
+    values: TKR[list[tuple[U, V]]]
+
+    @staticmethod
+    def out() -> type[Unzipped[U, V]]:
+        return Unzipped[U, V]
+
+    @property
+    def namespace(self) -> py_builtins.str:
+        return "builtins"
+
+
 class tuple[U: PType, V: PType](NamedTuple):
     a: TKR[U]
     b: TKR[V]
@@ -379,6 +418,10 @@ class sleep(NamedTuple):
         return "builtins"
 
 
+class tkr_sleep(sleep):
+    pass
+
+
 class rand_int(NamedTuple):
     a: TKR[int]
     b: TKR[int]
@@ -406,3 +449,57 @@ class sum_list(NamedTuple):
 
 class prod_list(sum_list):
     pass
+
+
+class append[U: PType](NamedTuple):
+    v: TKR[list[U]]
+    a: U
+
+    @staticmethod
+    def out() -> type[TKR[U]]:
+        return TKR[U]
+
+    @property
+    def namespace(self) -> py_builtins.str:
+        return "builtins"
+
+
+class len[U: PType](NamedTuple):
+    v: TKR[list[U]]
+
+    @staticmethod
+    def out() -> type[TKR[int]]:
+        return TKR[int]
+
+    @property
+    def namespace(self) -> py_builtins.str:
+        return "builtins"
+
+
+class tkr_len(len):
+    pass
+
+
+class head[U: PType](NamedTuple):
+    v: TKR[list[U]]
+
+    @staticmethod
+    def out() -> type[Headed[U]]:
+        return Headed[U]
+
+    @property
+    def namespace(self) -> py_builtins.str:
+        return "builtins"
+
+
+class at[U: PType](NamedTuple):
+    values: TKR[list[U]]
+    n: int
+
+    @staticmethod
+    def out() -> type[TKR[U]]:
+        return TKR[U]
+
+    @property
+    def namespace(self) -> py_builtins.str:
+        return "builtins"

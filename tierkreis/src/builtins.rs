@@ -153,71 +153,235 @@ pub(crate) fn run_builtin(
 
         // Legacy built-in name.
         "str" | "tkr_str" => {
-            let value: Value = extract_value(inputs, "value")?;
-
-            output_value(&mut outputs, value.to_string())?;
+            str_impl(inputs, &mut outputs)?;
         }
         "str_eq" => bin_op!(inputs, outputs, ==, String),
         // Legacy built-in name.
+        "zip" | "tkr_zip" => {
+            zip_impl(inputs, &mut outputs)?;
+        }
+        "unzip" => {
+            unzip_impl(inputs, &mut outputs)?;
+        }
+        // Legacy built-in name.
         "tuple" | "tkr_tuple" => {
-            let a: Value = extract_value(inputs, "a")?;
-            let b: Value = extract_value(inputs, "b")?;
-
-            output_value(&mut outputs, [a, b])?;
+            tuple_impl(inputs, &mut outputs)?;
         }
         "untuple" => {
-            let value: (Value, Value) = extract_value(inputs, "value")?;
-
-            outputs.insert(
-                "a".to_string(),
-                serde_json::to_vec(&value.0).into_diagnostic()?,
-            );
-            outputs.insert(
-                "b".to_string(),
-                serde_json::to_vec(&value.1).into_diagnostic()?,
-            );
+            untuple_impl(inputs, &mut outputs)?;
         }
         "mean" => {
-            let values: Vec<f64> = extract_value(inputs, "values")?;
-            let count: i32 = values.len().try_into().into_diagnostic()?;
-            let sum: f64 = values.iter().sum();
-            let out: f64 = if count > 0 {
-                sum / f64::from(count)
-            } else {
-                return Err(miette!("Cannot obtain `mean` of an empty list"));
-            };
-
-            output_value(&mut outputs, out)?;
+            mean_impl(inputs, &mut outputs)?;
         }
         "range" | "tkr_range" => {
             range_impl(inputs, &mut outputs)?;
         }
         "conjugate" => {
-            let z: Complex64 = extract_value(inputs, "z")?;
-
-            output_value(&mut outputs, z.conj())?;
+            conjugate_impl(inputs, &mut outputs)?;
         }
-        "sleep" => {
-            let delay_seconds: f64 = extract_value(inputs, "delay_seconds")?;
-            sleep(Duration::from_secs_f64(delay_seconds));
-
-            output_value(&mut outputs, true)?;
+        "sleep" | "tkr_sleep" => {
+            sleep_impl(inputs, &mut outputs)?;
         }
         "rand_int" => {
-            let a: i64 = extract_value(inputs, "a")?;
-            let b: i64 = extract_value(inputs, "b")?;
-
-            let value = rand::random_range(a..=b);
-            output_value(&mut outputs, value)?;
+            rand_int_impl(inputs, &mut outputs)?;
         }
         "sum_list" | "prod_list" => {
             sum_list_impl(task_name, inputs, &mut outputs)?;
+        }
+        "append" => {
+            append_impl(inputs, &mut outputs)?;
+        }
+        "len" | "tkr_len" => {
+            len_impl(inputs, &mut outputs)?;
+        }
+        "head" => {
+            head_impl(inputs, &mut outputs)?;
+        }
+        "at" => {
+            at_impl(inputs, &mut outputs)?;
         }
         task => return Err(miette!("Unknown task: `{task}`")),
     }
     Ok(outputs)
 }
 
+#[inline]
+fn conjugate_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let z: Complex64 = extract_value(inputs, "z")?;
+    output_value(outputs, z.conj())?;
+    Ok(())
+}
+
+#[inline]
+fn str_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let value: Value = extract_value(inputs, "value")?;
+    output_value(outputs, value.to_string())?;
+    Ok(())
+}
+
+#[inline]
+fn len_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let values: Vec<Value> = extract_value(inputs, "v")?;
+    output_value(outputs, i64::try_from(values.len()).into_diagnostic()?)?;
+    Ok(())
+}
+
+#[inline]
+fn append_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let mut values: Vec<Value> = extract_value(inputs, "v")?;
+    values.push(extract_value(inputs, "a")?);
+    output_value(outputs, values)?;
+    Ok(())
+}
+
+#[inline]
+fn rand_int_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let a: i64 = extract_value(inputs, "a")?;
+    let b: i64 = extract_value(inputs, "b")?;
+    let value = rand::random_range(a..=b);
+    output_value(outputs, value)?;
+    Ok(())
+}
+
+#[inline]
+fn sleep_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let delay_seconds: f64 = extract_value(inputs, "delay_seconds")?;
+    sleep(Duration::from_secs_f64(delay_seconds));
+    output_value(outputs, true)?;
+    Ok(())
+}
+
+#[inline]
+fn tuple_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let a: Value = extract_value(inputs, "a")?;
+    let b: Value = extract_value(inputs, "b")?;
+    output_value(outputs, [a, b])?;
+    Ok(())
+}
+
+fn zip_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let a: Vec<Value> = extract_value(inputs, "a")?;
+    let b: Vec<Value> = extract_value(inputs, "b")?;
+    output_value(outputs, a.into_iter().zip(b).collect::<Vec<_>>())?;
+    Ok(())
+}
+
+#[inline]
+fn untuple_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let value: (Value, Value) = extract_value(inputs, "value")?;
+    outputs.insert(
+        "a".to_string(),
+        serde_json::to_vec(&value.0).into_diagnostic()?,
+    );
+    outputs.insert(
+        "b".to_string(),
+        serde_json::to_vec(&value.1).into_diagnostic()?,
+    );
+    Ok(())
+}
+
+#[inline]
+fn mean_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let values: Vec<f64> = extract_value(inputs, "values")?;
+    let count: i32 = values.len().try_into().into_diagnostic()?;
+    let sum: f64 = values.iter().sum();
+    let out: f64 = if count > 0 {
+        sum / f64::from(count)
+    } else {
+        return Err(miette!("Cannot obtain `mean` of an empty list"));
+    };
+    output_value(outputs, out)?;
+    Ok(())
+}
+
+#[inline]
+fn unzip_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let values: Vec<(Value, Value)> = extract_value(inputs, "value")?;
+    if values.is_empty() {
+        return Err(miette!("Cannot unzip an empty list"));
+    }
+    let (a, b): (Vec<_>, Vec<_>) = values.into_iter().unzip();
+    outputs.insert("a".to_string(), serde_json::to_vec(&a).into_diagnostic()?);
+    outputs.insert("b".to_string(), serde_json::to_vec(&b).into_diagnostic()?);
+    Ok(())
+}
+
+#[inline]
+fn head_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let mut values: Vec<Value> = extract_value(inputs, "v")?;
+    if values.is_empty() {
+        return Err(miette!("Cannot take the head of an empty list"));
+    }
+    let head = values.remove(0);
+    outputs.insert(
+        "head".to_string(),
+        serde_json::to_vec(&head).into_diagnostic()?,
+    );
+    outputs.insert(
+        "rest".to_string(),
+        serde_json::to_vec(&values).into_diagnostic()?,
+    );
+    Ok(())
+}
+
+#[inline]
+fn at_impl(
+    inputs: &HashMap<String, Vec<u8>>,
+    outputs: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), miette::Error> {
+    let values: Vec<Value> = extract_value(inputs, "values")?;
+    let n: i64 = extract_value(inputs, "n")?;
+    let index = if n < 0 {
+        values
+            .len()
+            .checked_sub(n.unsigned_abs().try_into().unwrap_or(usize::MAX))
+    } else {
+        usize::try_from(n)
+            .ok()
+            .filter(|index| *index < values.len())
+    }
+    .ok_or_else(|| miette!("List index out of range: {n}"))?;
+    output_value(outputs, values[index].clone())?;
+    Ok(())
+}
+
+#[inline]
 fn sum_list_impl(
     task_name: &str,
     inputs: &HashMap<String, Vec<u8>>,
@@ -256,6 +420,7 @@ fn sum_list_impl(
     Ok(())
 }
 
+#[inline]
 fn range_impl(
     inputs: &HashMap<String, Vec<u8>>,
     outputs: &mut HashMap<String, Vec<u8>>,
