@@ -588,7 +588,7 @@ fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<Str
 }
 
 // Json format expected for subprocess workers.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct WorkerCallArgs {
     function_name: String,
     inputs: HashMap<String, PathBuf>,

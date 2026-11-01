@@ -4,7 +4,8 @@ default:
   @just --list
 
 setup:
-    uv sync --all-extras
+    uv sync --all-extras --no-install-package tierkreis
+    maturin develop --manifest-path tierkreis/Cargo.toml
 
 test:
     # We need to run a sync in the python environment to provide access to the workers

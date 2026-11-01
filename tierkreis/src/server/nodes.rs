@@ -363,7 +363,7 @@ pub async fn build_py_graph(
             NodeDefinition::Const { value } => {
                 Some(serde_json::to_string(value).unwrap_or_default())
             }
-            NodeDefinition::Input { name } => Some(name.clone()),
+            NodeDefinition::Input { name, .. } => Some(name.clone()),
             NodeDefinition::Output {} if input_links.len() == 1 => {
                 // Show the single input value if available.
                 let (_, output_sub) = &input_links[0];
@@ -563,7 +563,7 @@ fn graph_data_node_outputs(node: &LegacyNodeDef) -> Vec<String> {
         LegacyNodeDef::IfElse { .. } | LegacyNodeDef::EagerIfElse { .. } => {
             vec!["value".to_string()]
         }
-        LegacyNodeDef::Input { name } => vec![name.clone()],
+        LegacyNodeDef::Input { name, .. } => vec![name.clone()],
         LegacyNodeDef::Output { .. } => Vec::new(),
     }
 }

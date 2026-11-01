@@ -36,7 +36,7 @@ use crate::{
         ExecutorRegistry,
         interface::{TaskHandle, TaskPlan},
     },
-    graph::{NodeDefinition, WorkflowGraph},
+    graph::{NodeDefinition, ValuePresence, WorkflowGraph},
     location::Location,
     resource_profiles::{ResolvedContext, ResourceProfiles},
     state::{WorkflowRunState, interface::NodeState},
@@ -495,14 +495,16 @@ impl Orchestrator {
                 }
 
                 match definition {
-                    NodeDefinition::Input { name } => Self::build_input_action(
-                        context.workflow_run_state.clone(),
-                        context.parent_loc.clone(),
-                        n,
-                        name.clone(),
-                    )
-                    .into_stream()
-                    .boxed(),
+                    NodeDefinition::Input { name, presence } => self
+                        .build_input_action(
+                            context.workflow_run_state.clone(),
+                            context.parent_loc.clone(),
+                            n,
+                            name.clone(),
+                            presence.clone(),
+                        )
+                        .into_stream()
+                        .boxed(),
                     NodeDefinition::Const { value } => self
                         .build_const_action(context.parent_loc.clone(), n, value.clone())
                         .into_stream()
@@ -855,14 +857,33 @@ impl Orchestrator {
         err,
     )]
     async fn build_input_action(
+        &self,
         workflow_run_state: Arc<dyn WorkflowRunState>,
         parent_location: Location,
         n: NodeIndex,
         name: String,
+        presence: ValuePresence,
     ) -> miette::Result<Action> {
         let input_asset_spec = workflow_run_state
             .load_named_input_from_location(&parent_location, &name)
             .await?;
+        let input_asset_spec = match (presence, input_asset_spec) {
+            (_, Some(input_asset_spec)) => input_asset_spec,
+            (ValuePresence::Required, None) => {
+                return Err(miette!(
+                    "Input with name: `{name}` not found at location: {parent_location}`"
+                ));
+            }
+            (ValuePresence::Omittable(value), None) => {
+                let value_bytes = serde_json::to_vec(&value).into_diagnostic()?;
+                save_asset(
+                    &self.asset_storage_registry,
+                    &self.default_storage_name,
+                    value_bytes,
+                )
+                .await?
+            }
+        };
         let mut outputs = HashMap::new();
         outputs.insert(name, input_asset_spec);
 

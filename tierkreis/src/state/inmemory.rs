@@ -436,7 +436,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
         &'a self,
         location: &'a Location,
         name: &'a str,
-    ) -> BoxFuture<'a, miette::Result<AssetSpec>> {
+    ) -> BoxFuture<'a, miette::Result<Option<AssetSpec>>> {
         async move {
             let run = self
                 .global_state
@@ -448,14 +448,7 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                 .get(location)
                 .ok_or_else(|| miette!("Inputs not found for location: `{}`", location))?
                 .get(name)
-                .ok_or_else(|| {
-                    miette!(
-                        "Input not found with name: `{}` at location: {}",
-                        name,
-                        location
-                    )
-                })?
-                .clone())
+                .cloned())
         }
         .boxed()
     }

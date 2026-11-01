@@ -305,7 +305,7 @@ pub trait WorkflowRunState: Debug + Send + Sync {
         &'a self,
         location: &'a Location,
         name: &'a str,
-    ) -> BoxFuture<'a, miette::Result<AssetSpec>>;
+    ) -> BoxFuture<'a, miette::Result<Option<AssetSpec>>>;
     /// Update the [`WorkflowRunState`] from a [`WorkflowRunEvent`].
     fn write(&self, event: WorkflowRunEvent) -> BoxFuture<'_, miette::Result<()>>;
     /// Read the state of a Node at the specified [`Location`].

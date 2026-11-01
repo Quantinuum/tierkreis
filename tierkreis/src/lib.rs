@@ -119,8 +119,13 @@ mod tierkreis {
         if let Some(related) = err.related() {
             for related in related {
                 py_err
-                    .add_note(py, format!("related: {related}"))
+                    .add_note(py, format!("{related}"))
                     .expect("Failed to add related note to exception");
+                if let Some(help) = related.help() {
+                    py_err
+                        .add_note(py, format!("{help}"))
+                        .expect("Failed to add related note to exception");
+                }
             }
         }
         py_err

@@ -395,8 +395,11 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         return annotation(**ser)
 
     if issubclass(origin, Workflow):
-        _inputs, outputs = get_args(annotation)
-        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
+        inputs, outputs = get_args(annotation)
+        graph = coerce_from_annotation(ser, GraphData)
+        if graph is None:
+            raise TypeError("Could not deserialize workflow graph")
+        return cast("T", Workflow(graph, outputs_type=outputs, inputs_type=inputs))
 
     if issubclass(origin, Struct):
         if isinstance(ser, Sequence):
@@ -517,3 +520,4 @@ def has_default(t: Parameter) -> bool:
 class Workflow[Inputs: TModel, Outputs: TModel]:
     data: "GraphData"
     outputs_type: type[Outputs]
+    inputs_type: type[Inputs] | None = None
