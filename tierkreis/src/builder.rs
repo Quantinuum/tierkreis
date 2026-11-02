@@ -74,7 +74,7 @@ pub(crate) fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
 
 pub(crate) fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     graph.add_node(
-        NodeDefinition::IfElse {},
+        NodeDefinition::EagerIfElse {},
         [
             "pred".to_string(),
             "if_true".to_string(),
