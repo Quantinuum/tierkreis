@@ -2549,45 +2549,34 @@ mod tests {
     #[tokio::test]
     #[test_log::test]
     async fn loop_with_if(#[values(true, false)] eager: bool) -> miette::Result<()> {
-        let mut body = workflow(["should_continue", "inout_tuple"]);
-        let state = input(&mut body, "inout_tuple");
-        let outer = task(&mut body, "builtins", "untuple", ["value"], ["a", "b"]);
-        let inner = task(&mut body, "builtins", "untuple", ["value"], ["a", "b"]);
-        link(&mut body, state, (outer, "value")).unwrap();
-        link(&mut body, (outer, "b"), (inner, "value")).unwrap();
-
-        // The loop state is (counter, (accumulator, total)).
-        let three = constant(&mut body, 3).unwrap();
-        let two = constant(&mut body, 2).unwrap();
+        let mut body = workflow(["should_continue", "state"]);
+        let (state_node, state_port) = input(&mut body, "state");
+        let unpack = task(&mut body, "builtins", "untuple", ["value"], ["a", "b"]);
+        link(&mut body, (state_node, state_port), (unpack, "value")).unwrap();
         let one = constant(&mut body, 1).unwrap();
-        let five = constant(&mut body, 5).unwrap();
-        let total = task(&mut body, "inmemory", "iadd", ["a", "b"], ["value"]);
-        let accumulator = task(&mut body, "inmemory", "iadd", ["a", "b"], ["value"]);
-        let counter = task(&mut body, "inmemory", "iadd", ["a", "b"], ["value"]);
+        let limit = constant(&mut body, 3).unwrap();
+        let increment = task(&mut body, "inmemory", "iadd", ["a", "b"], ["value"]);
         let predicate = task(&mut body, "inmemory", "igt_s", ["a", "b"], ["value"]);
-        link(&mut body, (inner, "b"), (total, "a")).unwrap();
-        link(&mut body, three, (total, "b")).unwrap();
-        link(&mut body, (inner, "a"), (accumulator, "a")).unwrap();
-        link(&mut body, two, (accumulator, "b")).unwrap();
-        link(&mut body, (outer, "a"), (counter, "a")).unwrap();
-        link(&mut body, one, (counter, "b")).unwrap();
-        link(&mut body, five, (predicate, "a")).unwrap();
-        link(&mut body, (outer, "a"), (predicate, "b")).unwrap();
+        link(&mut body, (unpack, "a"), (increment, "a")).unwrap();
+        link(&mut body, one, (increment, "b")).unwrap();
+        link(&mut body, limit, (predicate, "a")).unwrap();
+        link(&mut body, (unpack, "a"), (predicate, "b")).unwrap();
+
+        let next_state = task(&mut body, "builtins", "tuple", ["a", "b"], ["value"]);
+        link(&mut body, (increment, "value"), (next_state, "a")).unwrap();
+        link(&mut body, (unpack, "b"), (next_state, "b")).unwrap();
 
         let break_tag = constant(&mut body, 1).unwrap();
         let continue_tag = constant(&mut body, 0).unwrap();
         let mut branches = Vec::new();
-        for tag in [break_tag, continue_tag] {
+        for (tag, branch_state) in [
+            (break_tag, (state_node, state_port)),
+            (continue_tag, (next_state, "value")),
+        ] {
             let pair = task(&mut body, "builtins", "tuple", ["a", "b"], ["value"]);
-            let state = task(&mut body, "builtins", "tuple", ["a", "b"], ["value"]);
-            let tagged = task(&mut body, "builtins", "tuple", ["a", "b"], ["value"]);
-            link(&mut body, (accumulator, "value"), (pair, "a")).unwrap();
-            link(&mut body, (total, "value"), (pair, "b")).unwrap();
-            link(&mut body, (counter, "value"), (state, "a")).unwrap();
-            link(&mut body, (pair, "value"), (state, "b")).unwrap();
-            link(&mut body, tag, (tagged, "a")).unwrap();
-            link(&mut body, (state, "value"), (tagged, "b")).unwrap();
-            branches.push((tagged, "value"));
+            link(&mut body, tag, (pair, "a")).unwrap();
+            link(&mut body, branch_state, (pair, "b")).unwrap();
+            branches.push((pair, "value"));
         }
         let branch = if eager {
             eager_if_else(&mut body)
@@ -2599,39 +2588,28 @@ mod tests {
         link(&mut body, branches[1], (branch, "if_true")).unwrap();
         let result = task(&mut body, "builtins", "untuple", ["value"], ["a", "b"]);
         link(&mut body, (branch, "value"), (result, "value")).unwrap();
-        let continue_tag = constant(&mut body, 0).unwrap();
-        let should_continue = task(&mut body, "builtins", "eq", ["a", "b"], ["value"]);
-        link(&mut body, (result, "a"), (should_continue, "a")).unwrap();
-        link(&mut body, continue_tag, (should_continue, "b")).unwrap();
-        let continue_out = output(&body, "should_continue");
-        let state_out = output(&body, "inout_tuple");
-        link(&mut body, (should_continue, "value"), continue_out).unwrap();
+        let zero = constant(&mut body, 0).unwrap();
+        let continue_check = task(&mut body, "builtins", "eq", ["a", "b"], ["value"]);
+        link(&mut body, (result, "a"), (continue_check, "a")).unwrap();
+        link(&mut body, zero, (continue_check, "b")).unwrap();
+        let should_continue = output(&body, "should_continue");
+        let state_out = output(&body, "state");
+        link(&mut body, (continue_check, "value"), should_continue).unwrap();
         link(&mut body, (result, "b"), state_out).unwrap();
 
-        let mut graph = workflow(["out0", "out1"]);
-        let in0 = input(&mut graph, "in0");
-        let in1 = input(&mut graph, "in1");
+        let mut graph = workflow(["out"]);
         let zero = constant(&mut graph, 0).unwrap();
+        let initial_state = task(&mut graph, "builtins", "tuple", ["a", "b"], ["value"]);
+        link(&mut graph, zero, (initial_state, "a")).unwrap();
+        link(&mut graph, zero, (initial_state, "b")).unwrap();
         let body = constant(&mut graph, body).unwrap();
-        let pair = task(&mut graph, "builtins", "tuple", ["a", "b"], ["value"]);
-        let state = task(&mut graph, "builtins", "tuple", ["a", "b"], ["value"]);
-        link(&mut graph, in1, (pair, "a")).unwrap();
-        link(&mut graph, zero, (pair, "b")).unwrap();
-        link(&mut graph, in0, (state, "a")).unwrap();
-        link(&mut graph, (pair, "value"), (state, "b")).unwrap();
-        let loop_ = loop_node(&mut graph, ["inout_tuple"], ["inout_tuple"]);
+        let loop_ = loop_node(&mut graph, ["state"], ["state"]);
         link(&mut graph, body, (loop_, "graph")).unwrap();
-        link(&mut graph, (state, "value"), (loop_, "inout_tuple")).unwrap();
-        let outer = task(&mut graph, "builtins", "untuple", ["value"], ["a", "b"]);
-        let inner = task(&mut graph, "builtins", "untuple", ["value"], ["a", "b"]);
-        link(&mut graph, (loop_, "inout_tuple"), (outer, "value")).unwrap();
-        link(&mut graph, (outer, "b"), (inner, "value")).unwrap();
-        let out0 = output(&graph, "out0");
-        let out1 = output(&graph, "out1");
-        link(&mut graph, (inner, "a"), out0).unwrap();
-        link(&mut graph, (inner, "b"), out1).unwrap();
+        link(&mut graph, (initial_state, "value"), (loop_, "state")).unwrap();
+        let out = output(&graph, "out");
+        link(&mut graph, (loop_, "state"), out).unwrap();
 
-        run_workflows(graph, json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15})).await
+        run_workflows(graph, json!({}), json!({"out": [3, 0]})).await
     }
 
     // Test that we can plan the first actions of a workflow and run them.
