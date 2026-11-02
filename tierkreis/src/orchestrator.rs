@@ -2549,67 +2549,33 @@ mod tests {
     #[tokio::test]
     #[test_log::test]
     async fn loop_with_if(#[values(true, false)] eager: bool) -> miette::Result<()> {
-        let mut body = workflow(["should_continue", "state"]);
-        let (state_node, state_port) = input(&mut body, "state");
-        let unpack = task(&mut body, "builtins", "untuple", ["value"], ["a", "b"]);
-        link(&mut body, (state_node, state_port), (unpack, "value")).unwrap();
-        let one = constant(&mut body, 1).unwrap();
-        let limit = constant(&mut body, 3).unwrap();
-        let increment = task(&mut body, "inmemory", "iadd", ["a", "b"], ["value"]);
-        let predicate = task(&mut body, "inmemory", "igt_s", ["a", "b"], ["value"]);
-        link(&mut body, (unpack, "a"), (increment, "a")).unwrap();
-        link(&mut body, one, (increment, "b")).unwrap();
-        link(&mut body, limit, (predicate, "a")).unwrap();
-        link(&mut body, (unpack, "a"), (predicate, "b")).unwrap();
-
-        let next_state = task(&mut body, "builtins", "tuple", ["a", "b"], ["value"]);
-        link(&mut body, (increment, "value"), (next_state, "a")).unwrap();
-        link(&mut body, (unpack, "b"), (next_state, "b")).unwrap();
-
-        let break_tag = constant(&mut body, 1).unwrap();
-        let continue_tag = constant(&mut body, 0).unwrap();
-        let mut branches = Vec::new();
-        for (tag, branch_state) in [
-            (break_tag, (state_node, state_port)),
-            (continue_tag, (next_state, "value")),
-        ] {
-            let pair = task(&mut body, "builtins", "tuple", ["a", "b"], ["value"]);
-            link(&mut body, tag, (pair, "a")).unwrap();
-            link(&mut body, branch_state, (pair, "b")).unwrap();
-            branches.push((pair, "value"));
-        }
-        let branch = if eager {
-            eager_if_else(&mut body)
-        } else {
-            if_else(&mut body)
-        };
-        link(&mut body, (predicate, "value"), (branch, "pred")).unwrap();
-        link(&mut body, branches[0], (branch, "if_false")).unwrap();
-        link(&mut body, branches[1], (branch, "if_true")).unwrap();
-        let result = task(&mut body, "builtins", "untuple", ["value"], ["a", "b"]);
-        link(&mut body, (branch, "value"), (result, "value")).unwrap();
-        let zero = constant(&mut body, 0).unwrap();
-        let continue_check = task(&mut body, "builtins", "eq", ["a", "b"], ["value"]);
-        link(&mut body, (result, "a"), (continue_check, "a")).unwrap();
-        link(&mut body, zero, (continue_check, "b")).unwrap();
-        let should_continue = output(&body, "should_continue");
-        let state_out = output(&body, "state");
-        link(&mut body, (continue_check, "value"), should_continue).unwrap();
-        link(&mut body, (result, "b"), state_out).unwrap();
-
         let mut graph = workflow(["out"]);
-        let zero = constant(&mut graph, 0).unwrap();
-        let initial_state = task(&mut graph, "builtins", "tuple", ["a", "b"], ["value"]);
-        link(&mut graph, zero, (initial_state, "a")).unwrap();
-        link(&mut graph, zero, (initial_state, "b")).unwrap();
-        let body = constant(&mut graph, body).unwrap();
-        let loop_ = loop_node(&mut graph, ["state"], ["state"]);
-        link(&mut graph, body, (loop_, "graph")).unwrap();
-        link(&mut graph, (initial_state, "value"), (loop_, "state")).unwrap();
-        let out = output(&graph, "out");
-        link(&mut graph, (loop_, "state"), out).unwrap();
+        let shared = input(&mut graph, "shared");
+        let untuple = task(&mut graph, "builtins", "untuple", ["value"], ["a", "b"]);
+        link(&mut graph, shared, (untuple, "value")).unwrap();
+        let if_t = task(&mut graph, "builtins", "ffloor", ["a"], ["value"]);
+        let if_f = task(&mut graph, "builtins", "fceil", ["a"], ["value"]);
+        link(&mut graph, (untuple, "a"), (if_t, "a")).unwrap();
+        link(&mut graph, (untuple, "b"), (if_f, "a")).unwrap();
+        let cond = input(&mut graph, "cond");
 
-        run_workflows(graph, json!({}), json!({"out": [3, 0]})).await
+        let branch = if eager {
+            eager_if_else(&mut graph)
+        } else {
+            if_else(&mut graph)
+        };
+        let out = (graph.output_idx(), "out");
+        link(&mut graph, cond, (branch, "pred")).unwrap();
+        link(&mut graph, (if_t, "value"), (branch, "if_true")).unwrap();
+        link(&mut graph, (if_f, "value"), (branch, "if_false")).unwrap();
+        link(&mut graph, (branch, "value"), out).unwrap();
+
+        run_workflows(
+            graph,
+            json!({"shared": [2.71, 3.14], "cond": true}),
+            json!({"out": 2.0}),
+        )
+        .await
     }
 
     // Test that we can plan the first actions of a workflow and run them.
