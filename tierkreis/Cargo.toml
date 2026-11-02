@@ -29,9 +29,9 @@ inspect = ["pyo3/experimental-inspect"]
 # [[bin]]
 # name = "tkr"
 
-[[bin]]
-name = "tkr-builtins"
-path = "src/bin/tkr-builtins.rs"
+# [[bin]]
+# name = "tkr-builtins"
+# path = "src/bin/tkr-builtins.rs"
 
 [dependencies]
 axum = { version = "0.8.8", features = ["ws", "http2"] }

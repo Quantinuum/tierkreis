@@ -27,6 +27,7 @@ pub mod workflow_state_query;
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
     use std::net::IpAddr;
+    use std::path::PathBuf;
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use chrono::{TimeDelta, Utc};
@@ -52,6 +53,12 @@ mod tierkreis {
         location::Location,
         runtime::RuntimeConfig,
     };
+
+    #[pyfunction]
+    fn run_builtin_worker_call(path: PathBuf) -> PyResult<()> {
+        crate::worker::run_builtin_worker_call(&path)
+            .map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
 
     #[pyfunction]
     #[pyo3(signature = (port=3000, host="127.0.0.1", config=None))]
