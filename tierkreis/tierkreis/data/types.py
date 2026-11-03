@@ -3,6 +3,7 @@
 import json
 import logging
 import pickle
+import sys
 from base64 import b64decode, b64encode
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -13,6 +14,7 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    Never,
     Protocol,
     Self,
     TypeVar,
@@ -25,7 +27,6 @@ from typing import (
     runtime_checkable,
 )
 
-from hugr.package import Package
 from pydantic import BaseModel, ValidationError
 from typing_extensions import TypeIs
 
@@ -40,6 +41,8 @@ from tierkreis.data.core import (
 from tierkreis.exceptions import TierkreisError
 
 if TYPE_CHECKING:
+    from hugr.package import Package
+
     from tierkreis.data.graph import GraphData
     from tierkreis.data.models import TModel
 
@@ -105,7 +108,7 @@ type Container[T] = (
     | dict[str, Container[T]]
     | Mapping[str, Container[T]]
 )
-type ElementaryType = (
+type CoreElementaryType = (
     bool
     | int
     | float
@@ -118,8 +121,11 @@ type ElementaryType = (
     | NdarraySurrogate
     | BaseModel  # Includes GraphData
     | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
-    | Package
 )
+if TYPE_CHECKING:
+    type ElementaryType = CoreElementaryType | Package
+else:
+    type ElementaryType = CoreElementaryType
 type JsonType = Container[ElementaryType]
 
 
@@ -201,6 +207,22 @@ def _is_tuple(o: object) -> TypeIs[type[tuple[Any, ...]]]:
     return get_origin(o) is tuple
 
 
+def _is_hugr_package_type(candidate: object) -> TypeIs[type[Any]]:
+    """Return whether ``candidate`` is the loaded HUGR ``Package`` type.
+
+    A Package value or annotation can only exist after ``hugr.package`` has
+    already been imported by user code. Looking in ``sys.modules`` lets scalar
+    workers avoid importing HUGR solely to perform this type check.
+    """
+    hugr_package = sys.modules.get("hugr.package")
+    package_type = getattr(hugr_package, "Package", None)
+    return (
+        isclass(candidate)
+        and isclass(package_type)
+        and issubclass(candidate, package_type)
+    )
+
+
 def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
     """Check if a type annotation is a PType.
 
@@ -240,7 +262,8 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
             (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
         )
         or (isclass(origin) and issubclass(origin, Workflow))
-        or annotation in get_args(ElementaryType.__value__)
+        or annotation in (bool, int, float, complex, str, NoneType, bytes, Workflow)
+        or _is_hugr_package_type(annotation)
     ):
         return True
 
@@ -266,13 +289,14 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
     if sr := get_serializer(annotation):
         return sr.serializer(ptype)
 
+    if _is_hugr_package_type(type(ptype)):
+        return cast("Package", ptype).to_bytes()
+
     match ptype:
         case Workflow():
             return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
-        case Package():
-            return ptype.to_bytes()
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
             return ptype
         case Struct():
@@ -296,7 +320,7 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
         case NdarraySurrogate():
             return ptype.dumps()
         case _:
-            assert_never(ptype)
+            assert_never(cast("Never", ptype))
 
 
 def bytes_from_ptype(ptype: PType, annotation: type[PType] | None = None) -> bytes:
@@ -330,8 +354,6 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
     :return: The coerced value or None if the input was None.
     :rtype: T | None
     """
-    from tierkreis.data.graph import GraphData
-
     if annotation is None:
         return ser
 
@@ -370,8 +392,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
     if issubclass(origin, complex):
         return complex(real=ser[0], imag=ser[1])  # type: ignore complex is T
 
-    if origin is Package:
-        return Package.from_bytes(ser)  # type: ignore Package is T
+    if _is_hugr_package_type(origin):
+        return cast("T", cast("type[Package]", origin).from_bytes(ser))
 
     if issubclass(origin, DictConvertible):
         if not issubclass(annotation, origin):
@@ -395,6 +417,8 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         return annotation(**ser)
 
     if issubclass(origin, Workflow):
+        from tierkreis.data.graph import GraphData
+
         inputs, outputs = get_args(annotation)
         graph = coerce_from_annotation(ser, GraphData)
         if graph is None:
@@ -456,8 +480,7 @@ def get_serialization_format[T: PType](
     if (
         isclass(unannotated)
         and issubclass(unannotated, (bytes, NdarraySurrogate))
-        or isclass(unannotated)
-        and issubclass(unannotated, Package)
+        or _is_hugr_package_type(unannotated)
     ):
         return "bytes"
 

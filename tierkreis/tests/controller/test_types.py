@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -141,3 +143,35 @@ def test_ptype_from_annotation(ptype: type[PType]) -> None:
 @pytest.mark.parametrize("ptype", fail_list)
 def test_ptype_from_annotation_fails(ptype: type[PType]) -> None:
     assert not is_ptype(ptype)
+
+
+def test_scalar_worker_does_not_import_hugr() -> None:
+    code = """
+import sys
+from tierkreis.data.types import bytes_from_ptype, ptype_from_bytes
+from tierkreis.worker import Worker
+
+worker = Worker("scalar")
+
+@worker.task()
+def add(a: int, b: int) -> int:
+    return a + b
+
+encoded = bytes_from_ptype(42, int)
+assert ptype_from_bytes(encoded, int) == 42
+assert "hugr" not in sys.modules
+assert "hugr.package" not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_hugr_package_type_and_roundtrip() -> None:
+    from hugr.package import Package
+
+    class DerivedPackage(Package):
+        pass
+
+    package = Package([])
+    assert is_ptype(Package)
+    assert is_ptype(DerivedPackage)
+    assert ptype_from_bytes(bytes_from_ptype(package, Package), Package) == package

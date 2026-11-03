@@ -4,13 +4,13 @@ from inspect import isclass
 from types import NoneType
 from typing import ForwardRef
 
-from hugr.package import Package
 from pydantic import BaseModel
 
 from tierkreis.data.types import (
     DictConvertible,
     ListConvertible,
     NdarraySurrogate,
+    _is_hugr_package_type,
     _is_union,
 )
 from tierkreis.idl.models import GenericType, Method, Model, TypedArg
@@ -31,9 +31,11 @@ def format_ptype(
     if isinstance(ptype, str):
         return ptype
 
-    if isclass(ptype) and issubclass(
-        ptype,
-        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Package),
+    if isclass(ptype) and (
+        issubclass(
+            ptype, (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel)
+        )
+        or _is_hugr_package_type(ptype)
     ):
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     if ptype is NoneType or ptype is None:
