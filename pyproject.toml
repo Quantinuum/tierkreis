@@ -10,6 +10,12 @@ exclude = [
     "docs/source/examples/example_workers/openssl_worker",
 ]
 
+[tool.ruff]
+target-version = "py312"
+# maturin does not output the correct type for __exit__ yet.
+lint.ignore = ["PYI036"]
+format.preview = true
+
 [tool.uv]
 exclude-newer = "P7D"
 required-version = ">=0.13.1"

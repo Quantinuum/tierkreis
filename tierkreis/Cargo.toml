@@ -23,6 +23,7 @@ crate-type = ["rlib", "cdylib"]
 [features]
 default = []
 pyo3 = ["dep:pyo3", "dep:pyo3-async-runtimes"]
+inspect = ["pyo3/experimental-inspect"]
 
 # Disabled until feature-parity with the existing CLI tool.
 # [[bin]]

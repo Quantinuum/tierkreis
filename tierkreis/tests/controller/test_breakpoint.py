@@ -3,8 +3,8 @@ from collections.abc import Awaitable, Callable
 import pytest
 from pytket._tket.circuit import Circuit
 from pytket_worker import n_qubits
-from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
+from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 from tierkreis.builder import Graph
 from tierkreis.builtins import iadd
 from tierkreis.controller.data.models import TKR

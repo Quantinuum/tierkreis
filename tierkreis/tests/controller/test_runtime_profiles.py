@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 
 import pytest
-from tierkreis._tierkreis import load_runtime_config, new_default, new_from_config
 
 from tests.executor.stubs import mpi_rank_info
 from tests.workers.env_worker.stubs import read_env
+from tierkreis._tierkreis import load_runtime_config, new_default, new_from_config
 from tierkreis.builder import ExecutionContext, Graph
 from tierkreis.builtins import iadd, sum_list
 from tierkreis.models import TKR, Workflow
@@ -166,6 +166,7 @@ async def test_profile_routes_task_to_hpc_docker_worker(
         outputs = await runtime.get_outputs(run_id)
         states = await runtime.debug_read_node_states(run_id, 0, ["N1"])
 
+    assert isinstance(outputs, list)
     assert "Rank 0 out of 2" in outputs
     assert "Rank 1 out of 2" in outputs
     assert states["N1"].execution_context == "hpc"

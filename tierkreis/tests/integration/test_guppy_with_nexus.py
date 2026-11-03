@@ -9,8 +9,8 @@ from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
 from nexus_worker import cost, upload_hugr
 from pytket_worker import backend_result_to_dict
-from tierkreis._tierkreis import new_default
 
+from tierkreis._tierkreis import new_default
 from tierkreis.builder import Graph
 from tierkreis.builtins.stubs import append, gt, tkr_range
 from tierkreis.controller.data.models import TKR, OpaqueType
