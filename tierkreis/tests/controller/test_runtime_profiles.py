@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 
 import pytest
-from tierkreis._tierkreis import load_runtime_config, new_default, new_from_config
 
 from tests.executor.stubs import mpi_rank_info
 from tests.workers.env_worker.stubs import read_env
+from tierkreis._tierkreis import load_runtime_config, new_default, new_from_config
 from tierkreis.builder import ExecutionContext, Graph
 from tierkreis.builtins import iadd, sum_list
 from tierkreis.models import TKR, Workflow

@@ -54,6 +54,14 @@ wheel:
     just prod
     maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
 
+bindings-generate dir:
+  #!/usr/bin/env bash
+  cd {{dir}}
+  maturin generate-stubs --out . --features inspect
+  {{uvrun}} ruff format
+  # maturin does not output the correct type for __exit__ yet.
+  {{uvrun}} ruff check --fix --ignore PYI036
+
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
@@ -65,6 +73,7 @@ stubs-generate-api dir:
   uv run --all-extras main.py --stubs-path ../api/api.py
 
 generate: 
+  just bindings-generate 'tierkreis'
   just stubs-generate 'tierkreis/tierkreis/builtins'
   just stubs-generate 'tierkreis/tests/workers/graph'
 

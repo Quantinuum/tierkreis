@@ -3,7 +3,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
 from tests.controller.typed_graphdata import (
     DoublerInput,
@@ -12,6 +11,7 @@ from tests.controller.typed_graphdata import (
     typed_doubler_plus,
 )
 from tierkreis import run_graph
+from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 from tierkreis.builder import Graph
 from tierkreis.builtins import iadd, itimes
 from tierkreis.controller.data.location import Loc

@@ -30,6 +30,8 @@ mod tierkreis {
     use chrono::{TimeDelta, Utc};
     use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
+    use pyo3::exceptions::PyBaseException;
+    use pyo3::types::{PyTraceback, PyType};
     use pyo3::{
         Borrowed, FromPyObject, PyErr, PyResult, Python,
         exceptions::{PyTypeError, PyValueError},
@@ -168,8 +170,14 @@ mod tierkreis {
         String(String),
         #[pyo3(transparent, annotation = "complex")]
         Complex(Complex64),
+        // Recursive types are not currently supported by experimental-inspect
+        // see: https://github.com/PyO3/pyo3/issues/6509
+        #[cfg(not(feature = "inspect"))]
         #[pyo3(transparent, annotation = "Sequence")]
         List(Vec<Value>),
+        // Recursive types are not currently supported by experimental-inspect
+        // see: https://github.com/PyO3/pyo3/issues/6509
+        #[cfg(not(feature = "inspect"))]
         #[pyo3(transparent, annotation = "Mapping")]
         Dict(HashMap<String, Value>),
     }
@@ -632,11 +640,12 @@ mod tierkreis {
             self.cancel = Some(send);
         }
 
+        #[allow(unused_variables)]
         fn __exit__(
             &mut self,
-            _exc_type: &Bound<'_, PyAny>,
-            _exc_value: &Bound<'_, PyAny>,
-            _traceback: &Bound<'_, PyAny>,
+            exc_type: &Bound<'_, PyType>,
+            exc_value: Option<&Bound<'_, PyBaseException>>,
+            traceback: Option<&Bound<'_, PyAny>>,
         ) {
             if let Some(cancel) = self.cancel.take()
                 && cancel.send(()).is_err()
@@ -800,10 +809,21 @@ mod tierkreis {
         }
     }
 
+    #[cfg_attr(
+        feature = "inspect",
+        allow(
+            unused_variables,
+            clippy::needless_pass_by_value,
+            clippy::unnecessary_wraps
+        )
+    )]
     fn convert_loop_trace(
         py: Python<'_>,
         outputs: HashMap<String, Vec<Vec<u8>>>,
     ) -> PyResult<ValueOrMapping> {
+        // Recursive types are not currently supported by experimental-inspect
+        // see: https://github.com/PyO3/pyo3/issues/6509
+        #[cfg(not(feature = "inspect"))]
         let outputs: HashMap<String, Option<Value>> = outputs
             .into_iter()
             .map(|(k, trace)| {
@@ -816,6 +836,9 @@ mod tierkreis {
             })
             .collect::<miette::Result<_>>()
             .map_err(|err| convert_err(py, err))?;
+
+        #[cfg(feature = "inspect")]
+        let outputs = HashMap::new();
 
         Ok(ValueOrMapping::Mapping(outputs))
     }
