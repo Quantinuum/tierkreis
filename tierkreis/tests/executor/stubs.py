@@ -3,7 +3,7 @@
 from types import NoneType
 from typing import NamedTuple
 
-from tierkreis.controller.data.models import TKR
+from tierkreis.data.models import TKR
 
 
 class mpi_rank_info(NamedTuple):

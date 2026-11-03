@@ -2,10 +2,10 @@
 
 import logging
 
-from tierkreis.controller.data.core import PortID, ValueRef
-from tierkreis.controller.data.graph import NodeDef, in_edges
-from tierkreis.controller.data.location import Loc
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.data.core import PortID, ValueRef
+from tierkreis.data.graph import NodeDef, in_edges
+from tierkreis.data.location import Loc
 
 logger = logging.getLogger(__name__)
 

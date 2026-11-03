@@ -8,8 +8,8 @@ import pytest
 from tests.controller.sample_graphdata import simple_eval
 from tierkreis.cli.run import _load_inputs, load_graph
 from tierkreis.cli.tkr import main
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import PType
+from tierkreis.data.graph import GraphData
+from tierkreis.data.types import PType
 from tierkreis.exceptions import TierkreisError
 
 simple_eval_graph = simple_eval()

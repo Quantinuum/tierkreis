@@ -121,7 +121,7 @@ The name of the worker tells the executor which worker a task comes from.
 Therefore all of the different workers used in a single graph should have distinct names.
 
 ```{code} ipython3
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 worker = Worker("hello_world_worker")
 ```

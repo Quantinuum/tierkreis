@@ -7,8 +7,7 @@ from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.ibm import IBMQBackend
 from pytket.passes import BasePass
 from tierkreis.exceptions import TierkreisError
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 from .default_pass import IBMQ_GATE_SET, default_compilation_pass
 

@@ -6,10 +6,10 @@ import logging
 from importlib.machinery import ModuleSpec
 from pathlib import Path
 
-from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
+from tierkreis.data.location import WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 from tierkreis.worker.storage.in_memory import InMemoryWorkerStorage
 

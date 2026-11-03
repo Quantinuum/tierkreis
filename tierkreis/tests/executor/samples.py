@@ -1,12 +1,12 @@
 from tests.executor.stubs import mpi_fail, mpi_rank_info
 from tierkreis.builder import Graph
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.models import TKR
 from tierkreis.controller.executor.hpc.job_spec import (
     JobSpec,
     MpiSpec,
     ResourceSpec,
 )
+from tierkreis.data.graph import GraphData
+from tierkreis.data.models import TKR
 
 
 def mpi_graph() -> GraphData:

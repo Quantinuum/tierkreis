@@ -18,16 +18,16 @@ from typing import (
     runtime_checkable,
 )
 
-from tierkreis.controller.data.core import EmptyModel, ValueRef
-from tierkreis.controller.data.graph import GraphData, reindex_inputs
-from tierkreis.controller.data.models import (
+from tierkreis.data.core import EmptyModel, ValueRef
+from tierkreis.data.graph import GraphData, reindex_inputs
+from tierkreis.data.models import (
     TKR,
     TModel,
     TNamedModel,
     dict_from_tmodel,
     init_tmodel,
 )
-from tierkreis.controller.data.types import PType, Workflow
+from tierkreis.data.types import PType, Workflow
 from tierkreis.exceptions import TierkreisError
 
 _current_context: ContextVar[str | None] = ContextVar(

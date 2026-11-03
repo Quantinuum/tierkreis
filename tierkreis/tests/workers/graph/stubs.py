@@ -2,8 +2,8 @@
 
 from typing import NamedTuple
 
-from tierkreis.controller.data.models import TKR
-from tierkreis.controller.data.types import Workflow
+from tierkreis.data.models import TKR
+from tierkreis.data.types import Workflow
 
 
 class ApplyTwiceInput(NamedTuple):

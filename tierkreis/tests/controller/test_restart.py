@@ -11,7 +11,7 @@ from tests.controller.typed_graphdata import (
 from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 from tierkreis.builder import Graph
 from tierkreis.builtins import iadd, itimes
-from tierkreis.controller.data.models import TKR
+from tierkreis.data.models import TKR
 from tierkreis.models import EmptyModel
 
 runtime_fns = [new_default, new_in_memory, new_sqlite_memory]

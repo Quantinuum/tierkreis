@@ -1,5 +1,5 @@
-from tierkreis import Labels
-from tierkreis.controller.data.graph import GraphData
+from tierkreis.data.graph import GraphData
+from tierkreis.labels import Labels
 
 
 def doubler_plus() -> GraphData:

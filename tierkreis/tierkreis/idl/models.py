@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from types import NoneType
 from typing import Annotated, ForwardRef, Self, get_args, get_origin
 
-from tierkreis.controller.data.core import (
+from tierkreis.data.core import (
     Deserializer,
     RestrictedNamedTuple,
     Serializer,
 )
-from tierkreis.controller.data.types import _is_generic, is_ptype
+from tierkreis.data.types import _is_generic, is_ptype
 
 type ElementaryType = (
     type[int | float | bytes | str | bool | NoneType | Mapping | Sequence]

@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field
 
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import NodeDef
-from tierkreis.controller.data.location import Loc
+from tierkreis.data.core import PortID
+from tierkreis.data.graph import NodeDef
+from tierkreis.data.location import Loc
 
 
 class NodeRunData(BaseModel):

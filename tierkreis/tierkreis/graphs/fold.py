@@ -4,7 +4,7 @@ from typing import NamedTuple, TypeVar
 
 from tierkreis.builder import Graph, TypedGraphRef
 from tierkreis.builtins import head, igt, tkr_len
-from tierkreis.controller.data.types import PType
+from tierkreis.data.types import PType
 from tierkreis.models import TKR, Workflow
 
 

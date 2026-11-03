@@ -1,10 +1,10 @@
 from sys import argv
 from typing import NamedTuple
 
-from tierkreis import Worker
 from tierkreis.builder import Graph, TypedGraphRef
 from tierkreis.builtins import iadd, itimes
 from tierkreis.models import TKR, Workflow
+from tierkreis.worker import Worker
 
 worker = Worker("graph")
 

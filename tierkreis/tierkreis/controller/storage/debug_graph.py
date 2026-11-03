@@ -4,11 +4,11 @@ from uuid import UUID
 
 from tierkreis.consts import WORKERS_DIR
 from tierkreis.controller import run_graph
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.models import TModel
-from tierkreis.controller.data.types import PType, Workflow
 from tierkreis.controller.executor.in_memory_executor import InMemoryExecutor
 from tierkreis.controller.storage.in_memory import ControllerInMemoryStorage
+from tierkreis.data.graph import GraphData
+from tierkreis.data.models import TModel
+from tierkreis.data.types import PType, Workflow
 
 
 def debug_graph[A: TModel, B: TModel](

@@ -9,11 +9,10 @@ from hugr.qsystem.result import DataValue, QsysShot
 from pytket import Circuit
 from pytket.backends.backendresult import BackendResult
 from pytket.passes import BasePass, RemoveRedundancies, SquashRzPhasedX
-from tierkreis.controller.data.core import Deserializer, Serializer
+from tierkreis.data.core import Deserializer, Serializer
 from tierkreis.exceptions import TierkreisError
+from tierkreis.worker import Worker
 from tket.passes import NormalizeGuppy, PytketHugrPass
-
-from tierkreis import Worker
 
 worker = Worker("guppy_worker")
 

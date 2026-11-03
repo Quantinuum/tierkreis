@@ -10,8 +10,11 @@ from logging import getLogger
 from typing import assert_never
 
 from tierkreis.controller.consts import BODY_PORT
-from tierkreis.controller.data.core import NodeIndex
-from tierkreis.controller.data.graph import (
+from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
+from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.controller.storage.walk_result import NodeRunData, WalkResult
+from tierkreis.data.core import NodeIndex
+from tierkreis.data.graph import (
     EagerIfElse,
     Eval,
     GraphData,
@@ -19,11 +22,8 @@ from tierkreis.controller.data.graph import (
     Map,
     NodeDef,
 )
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.types import ptype_from_bytes
-from tierkreis.controller.storage.adjacency import outputs_iter, unfinished_inputs
-from tierkreis.controller.storage.protocol import ControllerStorage
-from tierkreis.controller.storage.walk_result import NodeRunData, WalkResult
+from tierkreis.data.location import Loc
+from tierkreis.data.types import ptype_from_bytes
 from tierkreis.labels import Labels
 
 logger = getLogger(__name__)

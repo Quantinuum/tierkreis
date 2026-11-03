@@ -38,8 +38,8 @@ from tests.controller.typed_graphdata import (
     typed_map_simple,
 )
 from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import PType
+from tierkreis.data.graph import GraphData
+from tierkreis.data.types import PType
 from tierkreis.models import Workflow
 
 params: list[

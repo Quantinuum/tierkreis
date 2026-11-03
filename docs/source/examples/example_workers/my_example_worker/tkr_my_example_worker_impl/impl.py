@@ -6,8 +6,7 @@ from guppylang.std.quantum import collect_measurements, cx, h, measure_array, qu
 from hugr.package import Package
 from pytket._tket.circuit import Circuit, fresh_symbol
 from sympy import Symbol
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 logger = logging.getLogger(__name__)
 

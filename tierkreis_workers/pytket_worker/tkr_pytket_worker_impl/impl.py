@@ -15,8 +15,7 @@ from pytket.utils.measurements import append_pauli_measurement
 from pytket.utils.outcomearray import OutcomeArray
 from qnexus import BackendConfig, IBMQConfig, QuantinuumConfig
 from tierkreis.exceptions import TierkreisError
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 from .compile_circuit import (
     MINIMAL_GATE_SET,

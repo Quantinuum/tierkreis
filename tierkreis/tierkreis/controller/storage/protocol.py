@@ -11,9 +11,6 @@ from pathlib import Path
 from typing import Any, assert_never, overload
 from uuid import UUID
 
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import NodeDef, NodeDefModel
-from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.controller.storage.data import (
     ExecutorDebugData,
     NodeDebugData,
@@ -21,6 +18,9 @@ from tierkreis.controller.storage.data import (
 )
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.walk_result import WalkResult
+from tierkreis.data.core import PortID
+from tierkreis.data.graph import NodeDef, NodeDefModel
+from tierkreis.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)

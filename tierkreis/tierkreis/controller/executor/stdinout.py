@@ -6,9 +6,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.check_launcher import check_and_set_launcher
 from tierkreis.controller.storage.data import ExecutorDebugData
+from tierkreis.data.location import WorkerCallArgs
 
 
 class StdInOut:

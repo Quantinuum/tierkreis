@@ -3,8 +3,8 @@
 import builtins as py_builtins
 from typing import NamedTuple
 
-from tierkreis.controller.data.models import TKR
-from tierkreis.controller.data.types import PType
+from tierkreis.data.models import TKR
+from tierkreis.data.types import PType
 
 
 class Unzipped[U: PType, V: PType](NamedTuple):
