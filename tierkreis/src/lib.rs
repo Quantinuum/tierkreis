@@ -55,6 +55,7 @@ mod tierkreis {
     };
 
     #[pyfunction]
+    #[allow(clippy::needless_pass_by_value)]
     fn run_builtin_worker_call(path: PathBuf) -> PyResult<()> {
         crate::worker::run_builtin_worker_call(&path)
             .map_err(|err| Python::attach(|py| convert_err(py, err)))

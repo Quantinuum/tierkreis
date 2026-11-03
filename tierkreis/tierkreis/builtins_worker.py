@@ -15,4 +15,4 @@ def main() -> None:
     parser.add_argument("call_args", type=Path)
     parser.set_defaults(func=run_builtin_worker_call)
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
-    args.func(args.call_args)
+    run_builtin_worker_call(args.call_args)

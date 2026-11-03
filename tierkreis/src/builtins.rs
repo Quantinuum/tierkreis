@@ -329,7 +329,7 @@ fn unzip_impl(
     inputs: &HashMap<String, Vec<u8>>,
     outputs: &mut HashMap<String, Vec<u8>>,
 ) -> Result<(), miette::Error> {
-    let values: Vec<(Value, Value)> = extract_value(inputs, "value")?;
+    let values: Vec<(Value, Value)> = extract_value(inputs, "values")?;
     if values.is_empty() {
         return Err(miette!("Cannot unzip an empty list"));
     }

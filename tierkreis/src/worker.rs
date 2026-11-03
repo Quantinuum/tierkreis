@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use miette::{IntoDiagnostic, miette};
+use miette::{Context, IntoDiagnostic, miette};
 use serde::{Deserialize, Serialize};
 
 use crate::builtins;
@@ -68,7 +68,12 @@ pub fn run_builtin_worker_call(path: &Path) -> miette::Result<()> {
     let outputs = builtins::run_builtin(
         &worker_call_args.function_name,
         &worker_call_args.read_inputs()?,
-    )?;
+    )
+    .wrap_err(format!(
+        "builtins.{} failed with input keys: {:?}",
+        worker_call_args.function_name,
+        worker_call_args.inputs.keys(),
+    ))?;
 
     worker_call_args.write_outputs(&outputs)?;
 
