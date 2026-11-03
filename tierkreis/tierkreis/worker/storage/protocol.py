@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Protocol
 
-from tierkreis.controller.data.location import WorkerCallArgs
+from tierkreis.data.location import WorkerCallArgs
 
 
 class WorkerStorage(Protocol):

@@ -4,8 +4,8 @@ from typing import NamedTuple
 import pytest
 
 from tests.controller.test_types import ptypes
-from tierkreis.controller.data.models import PModel, dict_from_pmodel, portmapping
-from tierkreis.controller.data.types import PType
+from tierkreis.data.models import PModel, dict_from_pmodel, portmapping
+from tierkreis.data.types import PType
 
 
 @portmapping

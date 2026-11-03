@@ -7,7 +7,7 @@ from typing import Any, Literal, Self, assert_never
 from pydantic import BaseModel, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
-from tierkreis.controller.data.core import NodeIndex, PortID
+from tierkreis.data.core import NodeIndex, PortID
 from tierkreis.exceptions import TierkreisError
 
 logger = getLogger(__name__)

@@ -18,13 +18,13 @@ from typing import (
 
 from typing_extensions import TypeIs
 
-from tierkreis.controller.data.core import (
+from tierkreis.data.core import (
     NodeIndex,
     PortID,
     RestrictedNamedTuple,
     ValueRef,
 )
-from tierkreis.controller.data.types import PType
+from tierkreis.data.types import PType
 
 TKR_PORTMAPPING_FLAG = "__tkr_portmapping__"
 

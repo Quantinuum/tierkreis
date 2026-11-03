@@ -16,9 +16,9 @@ from typing import Any, Literal, assert_never
 
 from pydantic import BaseModel, RootModel
 
-from tierkreis.controller.data.core import NodeIndex, PortID, ValueRef
-from tierkreis.controller.data.location import Loc, OutputLoc
-from tierkreis.controller.data.types import PType, ptype_from_bytes
+from tierkreis.data.core import NodeIndex, PortID, ValueRef
+from tierkreis.data.location import Loc, OutputLoc
+from tierkreis.data.types import PType, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)

@@ -11,7 +11,7 @@ def python_worker_impl(worker_name: str) -> str:
     """
     worker_name = worker_name.replace("-", "_")
     return f"""#TODO Implement your custom worker here.
-from tierkreis import Worker
+from tierkreis.worker import Worker
 from tierkreis.exceptions import TierkreisError
 
 worker = Worker("{worker_name}")

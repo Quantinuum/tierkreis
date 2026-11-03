@@ -1,6 +1,6 @@
 import pytest
 
-from tierkreis import Labels
+from tierkreis.labels import Labels
 
 
 def test_instantiate_raises() -> None:

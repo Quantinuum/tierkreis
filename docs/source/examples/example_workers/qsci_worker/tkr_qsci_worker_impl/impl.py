@@ -8,8 +8,7 @@ from pytket.backends.backendresult import BackendResult
 from pytket.circuit import Qubit
 from pytket.pauli import QubitPauliString
 from pytket.utils.operators import CoeffTypeAccepted, QubitPauliOperator
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 from .chemistry.active_space import get_frozen
 from .chemistry.molecule import extract_hamiltonian_rhf

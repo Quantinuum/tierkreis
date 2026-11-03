@@ -1,7 +1,7 @@
 import logging
 from sys import argv
 
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 logger = logging.getLogger(__name__)
 worker = Worker("hello_world_worker")

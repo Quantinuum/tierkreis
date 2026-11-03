@@ -9,9 +9,8 @@ from logging import getLogger
 from pathlib import Path
 from typing import Self
 
-from tierkreis.codegen import format_method, format_model
-from tierkreis.controller.data.models import PModel, is_portmapping
-from tierkreis.controller.data.types import Struct, has_default, is_ptype
+from tierkreis.data.models import PModel, is_portmapping
+from tierkreis.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
 from tierkreis.idl.spec import spec
@@ -146,6 +145,8 @@ class Namespace:
         :return: The generated stubs as string.
         :rtype: str
         """
+        from tierkreis.codegen import format_method, format_model
+
         functions = [format_method(self.name, method) for method in self.methods]
         functions_str = "\n\n".join(functions)
         models_str = "\n\n".join([
@@ -158,8 +159,8 @@ class Namespace:
 from types import NoneType
 from typing import Literal, NamedTuple, Sequence, TypeVar, Generic, Protocol, Union
 
-from tierkreis.controller.data.models import TKR, OpaqueType
-from tierkreis.controller.data.types import PType, Struct, Workflow
+from tierkreis.data.models import TKR, OpaqueType
+from tierkreis.data.types import PType, Struct, Workflow
 
 {models_str}
 

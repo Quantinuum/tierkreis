@@ -2,8 +2,8 @@ from typing import NamedTuple
 
 from tierkreis.builder import Graph
 from tierkreis.builtins import iadd, itimes
-from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.models import TKR
+from tierkreis.data.core import EmptyModel
+from tierkreis.data.models import TKR
 
 
 class DoublerInput(NamedTuple):

@@ -15,20 +15,20 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.location import WorkerCallArgs
-from tierkreis.controller.data.models import (
+from tierkreis.controller.storage.exceptions import EntryNotFoundError
+from tierkreis.data.core import PortID
+from tierkreis.data.location import WorkerCallArgs
+from tierkreis.data.models import (
     PModel,
     annotations_from_pmodel,
     dict_from_pmodel,
 )
-from tierkreis.controller.data.types import (
+from tierkreis.data.types import (
     PType,
     bytes_from_ptype,
     has_default,
     ptype_from_bytes,
 )
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.exceptions import TierkreisError
 from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction

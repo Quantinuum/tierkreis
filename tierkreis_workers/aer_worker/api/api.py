@@ -4,7 +4,7 @@
 from types import NoneType
 from typing import NamedTuple
 
-from tierkreis.controller.data.models import TKR, OpaqueType
+from tierkreis.data.models import TKR, OpaqueType
 
 
 class get_compiled_circuit(NamedTuple):

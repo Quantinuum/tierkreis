@@ -1,7 +1,7 @@
 import pytest
 
 from tierkreis.builder import Graph
-from tierkreis.controller.data.models import TKR
+from tierkreis.data.models import TKR
 from tierkreis.runtime import new_in_memory
 
 

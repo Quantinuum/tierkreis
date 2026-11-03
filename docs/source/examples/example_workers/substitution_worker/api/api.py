@@ -3,7 +3,7 @@
 # ruff: noqa: F821
 from typing import NamedTuple
 
-from tierkreis.controller.data.models import TKR, OpaqueType
+from tierkreis.data.models import TKR, OpaqueType
 
 
 class substitute(NamedTuple):

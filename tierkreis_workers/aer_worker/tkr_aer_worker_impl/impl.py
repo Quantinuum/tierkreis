@@ -6,8 +6,7 @@ from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qiskit.backends.aer import AerBackend
 from pytket.extensions.qiskit.qiskit_convert import tk_to_qiskit
 from qiskit import qasm3
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 worker = Worker("aer_worker")
 logger = logging.getLogger(__name__)

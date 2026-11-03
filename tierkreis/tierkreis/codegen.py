@@ -7,7 +7,7 @@ from typing import ForwardRef
 from hugr.package import Package
 from pydantic import BaseModel
 
-from tierkreis.controller.data.types import (
+from tierkreis.data.types import (
     DictConvertible,
     ListConvertible,
     NdarraySurrogate,

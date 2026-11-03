@@ -7,18 +7,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import (
+from tierkreis.controller.storage.protocol import (
+    ControllerStorage,
+    StorageEntryMetadata,
+)
+from tierkreis.data.core import PortID
+from tierkreis.data.graph import (
     Eval,
     GraphData,
     NodeDef,
     graph_node_from_loc,
 )
-from tierkreis.controller.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.controller.storage.protocol import (
-    ControllerStorage,
-    StorageEntryMetadata,
-)
+from tierkreis.data.location import Loc, OutputLoc, WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 
 

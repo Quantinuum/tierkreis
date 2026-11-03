@@ -5,12 +5,12 @@ import json
 import logging
 from pathlib import Path
 
-from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.in_memory import (
     ControllerInMemoryStorage,
     InMemoryFileData,
 )
+from tierkreis.data.location import WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 
 logger = logging.getLogger(__name__)

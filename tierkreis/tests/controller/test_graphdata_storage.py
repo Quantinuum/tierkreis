@@ -3,8 +3,9 @@ from uuid import UUID
 import pytest
 
 from tests.controller.sample_graphdata import simple_eval, simple_map
-from tierkreis.controller.data.core import PortID
-from tierkreis.controller.data.graph import (
+from tierkreis.controller.storage.graphdata import GraphDataStorage
+from tierkreis.data.core import PortID
+from tierkreis.data.graph import (
     Const,
     Eval,
     Func,
@@ -12,8 +13,7 @@ from tierkreis.controller.data.graph import (
     Input,
     graph_node_from_loc,
 )
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.storage.graphdata import GraphDataStorage
+from tierkreis.data.location import Loc
 from tierkreis.exceptions import TierkreisError
 
 

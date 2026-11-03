@@ -4,15 +4,6 @@ from typing import get_args, get_origin
 
 from typing_extensions import is_protocol
 
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.location import Loc
-from tierkreis.controller.data.models import TKR, TModel
-from tierkreis.controller.data.types import (
-    PType,
-    is_optional,
-    is_ptype,
-    ptype_from_bytes,
-)
 from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
@@ -21,6 +12,15 @@ from tierkreis.controller.storage.in_memory import (
     ControllerInMemoryStorage as InMemoryStorage,
 )
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.data.graph import GraphData
+from tierkreis.data.location import Loc
+from tierkreis.data.models import TKR, TModel
+from tierkreis.data.types import (
+    PType,
+    is_optional,
+    is_ptype,
+    ptype_from_bytes,
+)
 from tierkreis.exceptions import TierkreisError
 from tierkreis.models import Workflow
 

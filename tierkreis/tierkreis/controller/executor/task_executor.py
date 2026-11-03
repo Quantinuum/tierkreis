@@ -4,10 +4,10 @@ import json
 from fnmatch import filter
 from pathlib import Path
 
-from tierkreis.controller.data.location import WorkerCallArgs
 from tierkreis.controller.executor.protocol import ControllerExecutor
 from tierkreis.controller.storage.data import ExecutorDebugData
 from tierkreis.controller.storage.protocol import ControllerStorage
+from tierkreis.data.location import WorkerCallArgs
 from tierkreis.exceptions import TierkreisError
 
 

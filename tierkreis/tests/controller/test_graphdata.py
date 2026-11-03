@@ -3,9 +3,9 @@ import pytest
 from tests.controller.typed_graphdata import DoublerInput, typed_doubler_plus
 from tierkreis.builder import ExecutionContext, Graph
 from tierkreis.builtins import iadd
-from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.models import TKR
+from tierkreis.data.core import EmptyModel
+from tierkreis.data.graph import GraphData
+from tierkreis.data.models import TKR
 from tierkreis.exceptions import TierkreisError
 
 

@@ -13,7 +13,7 @@ from urllib.request import urlopen
 from tierkreis._tierkreis import serve as _serve
 from tierkreis._tierkreis import serve_graph as _serve_graph
 from tierkreis.builder import Graph
-from tierkreis.controller.data.graph import GraphData
+from tierkreis.data.graph import GraphData
 from tierkreis.models import Workflow
 
 
