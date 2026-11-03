@@ -31,7 +31,7 @@ mod tierkreis {
     use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
     use pyo3::exceptions::PyBaseException;
-    use pyo3::types::{PyTraceback, PyType};
+    use pyo3::types::PyType;
     use pyo3::{
         Borrowed, FromPyObject, PyErr, PyResult, Python,
         exceptions::{PyTypeError, PyValueError},
@@ -173,13 +173,34 @@ mod tierkreis {
         // Recursive types are not currently supported by experimental-inspect
         // see: https://github.com/PyO3/pyo3/issues/6509
         #[cfg(not(feature = "inspect"))]
-        #[pyo3(transparent, annotation = "Sequence")]
+        #[pyo3(transparent)]
         List(Vec<Value>),
         // Recursive types are not currently supported by experimental-inspect
         // see: https://github.com/PyO3/pyo3/issues/6509
         #[cfg(not(feature = "inspect"))]
-        #[pyo3(transparent, annotation = "Mapping")]
+        #[pyo3(transparent)]
         Dict(HashMap<String, Value>),
+        // Just used to get a type annotation.
+        #[cfg(feature = "inspect")]
+        BoolList(Vec<bool>),
+        #[cfg(feature = "inspect")]
+        IntList(Vec<i64>),
+        #[cfg(feature = "inspect")]
+        FloatList(Vec<f64>),
+        #[cfg(feature = "inspect")]
+        StringList(Vec<String>),
+        #[cfg(feature = "inspect")]
+        ComplexList(Vec<Complex64>),
+        #[cfg(feature = "inspect")]
+        BoolDict(HashMap<String, bool>),
+        #[cfg(feature = "inspect")]
+        IntDict(HashMap<String, i64>),
+        #[cfg(feature = "inspect")]
+        FloatDict(HashMap<String, f64>),
+        #[cfg(feature = "inspect")]
+        StringDict(HashMap<String, String>),
+        #[cfg(feature = "inspect")]
+        ComplexDict(HashMap<String, Complex64>),
     }
 
     #[pyclass(name = "NodeState")]
@@ -643,7 +664,7 @@ mod tierkreis {
         #[allow(unused_variables)]
         fn __exit__(
             &mut self,
-            exc_type: &Bound<'_, PyType>,
+            exc_type: Option<&Bound<'_, PyType>>,
             exc_value: Option<&Bound<'_, PyBaseException>>,
             traceback: Option<&Bound<'_, PyAny>>,
         ) {

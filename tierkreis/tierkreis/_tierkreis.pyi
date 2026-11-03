@@ -35,7 +35,11 @@ class PyWorkflowInputs: ...
 class Runtime:
     def __enter__(self, /) -> None: ...
     def __exit__(
-        self, /, exc_type: type, exc_value: BaseException | None, traceback: Any | None
+        self,
+        /,
+        exc_type: type | None,
+        exc_value: BaseException | None,
+        traceback: Any | None,
     ) -> None: ...
     async def debug_read_node_states(
         self,
@@ -52,12 +56,40 @@ class Runtime:
         name: str,
         output_name: str | None = None,
     ) -> (
-        dict[str, bool | int | float | str | complex | None]
+        dict[
+            str,
+            bool
+            | int
+            | float
+            | str
+            | complex
+            | list[bool]
+            | list[int]
+            | list[float]
+            | list[str]
+            | list[complex]
+            | dict[str, bool]
+            | dict[str, int]
+            | dict[str, float]
+            | dict[str, str]
+            | dict[str, complex]
+            | None,
+        ]
         | bool
         | int
         | float
         | str
         | complex
+        | list[bool]
+        | list[int]
+        | list[float]
+        | list[str]
+        | list[complex]
+        | dict[str, bool]
+        | dict[str, int]
+        | dict[str, float]
+        | dict[str, str]
+        | dict[str, complex]
     ):
         """
         Same as `get_loop_trace_by_name`, but shaped as one dict per iteration
@@ -69,12 +101,40 @@ class Runtime:
     async def get_outputs(
         self, run_id: UUID, attempt: SupportsIndex = 0, /
     ) -> (
-        dict[str, bool | int | float | str | complex | None]
+        dict[
+            str,
+            bool
+            | int
+            | float
+            | str
+            | complex
+            | list[bool]
+            | list[int]
+            | list[float]
+            | list[str]
+            | list[complex]
+            | dict[str, bool]
+            | dict[str, int]
+            | dict[str, float]
+            | dict[str, str]
+            | dict[str, complex]
+            | None,
+        ]
         | bool
         | int
         | float
         | str
         | complex
+        | list[bool]
+        | list[int]
+        | list[float]
+        | list[str]
+        | list[complex]
+        | dict[str, bool]
+        | dict[str, int]
+        | dict[str, float]
+        | dict[str, str]
+        | dict[str, complex]
     ): ...
     async def get_raw_outputs(
         self, run_id: UUID, attempt: SupportsIndex = 0, /

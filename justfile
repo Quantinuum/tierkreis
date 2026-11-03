@@ -59,8 +59,7 @@ bindings-generate dir:
   cd {{dir}}
   maturin generate-stubs --out . --features inspect
   {{uvrun}} ruff format
-  # maturin does not output the correct type for __exit__ yet.
-  {{uvrun}} ruff check --fix --ignore PYI036
+  {{uvrun}} ruff check --fix
 
 stubs-generate dir:
   #!/usr/bin/env bash

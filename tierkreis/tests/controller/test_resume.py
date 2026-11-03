@@ -42,7 +42,7 @@ from tierkreis.controller.data.graph import GraphData
 from tierkreis.controller.data.types import PType
 from tierkreis.models import Workflow
 
-param_data: list[
+params: list[
     tuple[
         GraphData | Workflow,
         dict[str, PType] | PType,
@@ -117,43 +117,6 @@ param_data: list[
     ),
     (embed_graph(), {"s1": "1", "s2": "4", "final": 2}, "embed_graph", 1),
 ]
-params: list[tuple[GraphData | Workflow, Any, str, int, dict[str, PType] | PType]] = [
-    (graph, output, name, i + 1, inputs)
-    for i, (graph, output, name, inputs) in enumerate(param_data)
-]
-ids = [
-    "simple_eval",
-    "simple_loop",
-    "simple_map",
-    "maps_in_series",
-    "simple_ifelse_true",
-    "simple_ifelse_false",
-    "factorial_4",
-    "loop_multiple_acc_untyped",
-    "loop_multiple_acc",
-    "simple_eagerifelse",
-    "factorial_5",
-    "typed_eval",
-    "typed_loop",
-    "typed_map",
-    "typed_map_empty",
-    "typed_map_simple",
-    "typed_map_simple_empty",
-    "typed_destructuring",
-    "typed_destructuring_empty",
-    "tuple_untuple",
-    "gcd_1071_462",
-    "gcd_12_26",
-    "gcd_48_360",
-    "gcd_9357_5864",
-    "gcd_3_0",
-    "tkr_conj",
-    "tkr_conj_list",
-    "loop_scoping",
-    "defaults_omit",
-    "defaults_passthru",
-    "embed_graph",
-]
 
 runtime_fns = [new_default, new_in_memory, new_sqlite_memory]
 runtime_fn_ids = ["default", "in_memory", "sqlite_memory"]
@@ -162,16 +125,14 @@ runtime_fn_ids = ["default", "in_memory", "sqlite_memory"]
 @pytest.mark.asyncio
 @pytest.mark.parametrize("runtime_fn", runtime_fns, ids=runtime_fn_ids)
 @pytest.mark.parametrize(
-    ("graph", "output", "name", "workflow_id", "inputs"),
+    ("graph", "output", "name", "inputs"),
     params,
-    ids=ids,
 )
 async def test_resume(
     runtime_fn: Callable[[], Awaitable[Runtime]],
     graph: GraphData | Workflow,
     output: dict[str, PType] | PType,
     name: str,
-    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
     runtime = await runtime_fn()
@@ -190,7 +151,7 @@ async def test_resume(
     assert summary.name == name
 
 
-with_worker_param_data: list[
+with_worker_params: list[
     tuple[GraphData | Workflow, Any, str, dict[str, PType] | PType]
 ] = [
     (eval_body_is_from_worker(), 21, "eval_body_is_from_worker", {"value": 10}),
@@ -203,30 +164,16 @@ with_worker_param_data: list[
     ),
 ]
 
-with_worker_params: list[
-    tuple[GraphData | Workflow, Any, str, int, dict[str, PType] | PType]
-] = [
-    (graph, output, name, i + 1, inputs)
-    for i, (graph, output, name, inputs) in enumerate(with_worker_param_data)
-]
-with_worker_ids = [
-    "eval_body_is_from_worker",
-    "eval_graph_of_graph",
-    "eval_from_worker_with_graph_from_worker",
-]
-
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("graph", "output", "name", "workflow_id", "inputs"),
+    ("graph", "output", "name", "inputs"),
     with_worker_params,
-    ids=with_worker_ids,
 )
 async def test_resume_with_worker(
     graph: GraphData,
     output: dict[str, PType] | PType,
     name: str,
-    workflow_id: int,
     inputs: dict[str, PType] | PType,
 ) -> None:
     runtime = await new_default()
