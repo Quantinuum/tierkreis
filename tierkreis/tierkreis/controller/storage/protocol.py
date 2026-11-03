@@ -16,12 +16,11 @@ from tierkreis.controller.storage.data import (
     NodeDebugData,
     WorkflowMetaData,
 )
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.walk_result import WalkResult
 from tierkreis.data.core import PortID
 from tierkreis.data.graph import NodeDef, NodeDefModel
 from tierkreis.data.location import Loc, OutputLoc, WorkerCallArgs
-from tierkreis.exceptions import TierkreisError
+from tierkreis.exceptions import EntryNotFoundError, TierkreisError
 
 logger = logging.getLogger(__name__)
 

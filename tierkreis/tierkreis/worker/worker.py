@@ -15,7 +15,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.data.core import PortID
 from tierkreis.data.location import WorkerCallArgs
 from tierkreis.data.models import (
@@ -29,7 +28,7 @@ from tierkreis.data.types import (
     has_default,
     ptype_from_bytes,
 )
-from tierkreis.exceptions import TierkreisError
+from tierkreis.exceptions import EntryNotFoundError, TierkreisError
 from tierkreis.logger_setup import add_handler_from_environment
 from tierkreis.namespace import Namespace, WorkerFunction
 from tierkreis.worker.storage.filestorage import WorkerFileStorage

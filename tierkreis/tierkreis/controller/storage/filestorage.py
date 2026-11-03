@@ -8,11 +8,11 @@ from time import time_ns
 from typing import override
 from uuid import UUID
 
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import (
     ControllerStorage,
     StorageEntryMetadata,
 )
+from tierkreis.exceptions import EntryNotFoundError
 
 logger = logging.getLogger(__name__)
 
