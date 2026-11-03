@@ -15,7 +15,6 @@ use std::{
 use futures::{FutureExt, SinkExt, StreamExt, channel::mpsc, future::BoxFuture, stream::BoxStream};
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use tokio::{task::AbortHandle, time::MissedTickBehavior};
 use tracing::{instrument, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -38,6 +37,7 @@ use crate::{
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
     resource_profiles::downcast,
+    worker::WorkerCallArgs,
 };
 
 fn shell_quote(argument: &str) -> String {
@@ -155,17 +155,6 @@ impl TryFrom<HashMap<String, serde_json::Value>> for ResourceRequest {
             extra_scheduler_args,
         })
     }
-}
-
-#[derive(Serialize, Deserialize, Default)]
-struct WorkerCallArgs {
-    function_name: String,
-    inputs: HashMap<String, PathBuf>,
-    outputs: HashMap<String, PathBuf>,
-    output_dir: PathBuf,
-    done_path: PathBuf,
-    error_path: PathBuf,
-    logs_path: Option<PathBuf>,
 }
 
 struct BackgroundTaskPlan {

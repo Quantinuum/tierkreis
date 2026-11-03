@@ -73,7 +73,6 @@ stubs-generate-api dir:
 
 generate: 
   just bindings-generate 'tierkreis'
-  just stubs-generate 'tierkreis/tierkreis/builtins'
   just stubs-generate 'tierkreis/tests/workers/graph'
 
   just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'

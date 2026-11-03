@@ -4,7 +4,7 @@
 from typing import NamedTuple
 
 from tierkreis.builder import Graph
-from tierkreis.builtins import at, tkr_sleep
+from tierkreis.builtins import at, sleep
 from tierkreis.models import TKR, OpaqueType, Workflow
 from tierkreis.nexus_worker import (
     get_results,
@@ -72,7 +72,7 @@ def _polling_loop_body(
 
     wait = g.ifelse(
         pred,
-        g.task(tkr_sleep(g.const(polling_interval))),
+        g.task(sleep(g.const(polling_interval))),
         g.const(value=False),
     )
     results = g.ifelse(pred, g.const([0]), g.task(get_results(g.inputs)))

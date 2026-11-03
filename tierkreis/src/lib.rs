@@ -7,6 +7,7 @@ Workflow Management system.
 pub mod asset_storage;
 #[cfg(test)]
 pub mod builder;
+pub mod builtins;
 pub mod config;
 pub mod event;
 pub mod executor;
@@ -18,6 +19,7 @@ pub mod resource_profiles;
 pub mod runtime;
 pub mod server;
 pub mod state;
+pub mod worker;
 pub mod workflow_state_query;
 
 #[cfg(feature = "pyo3")]
@@ -25,6 +27,7 @@ pub mod workflow_state_query;
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
     use std::net::IpAddr;
+    use std::path::PathBuf;
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use chrono::{TimeDelta, Utc};
@@ -50,6 +53,13 @@ mod tierkreis {
         location::Location,
         runtime::RuntimeConfig,
     };
+
+    #[pyfunction]
+    #[allow(clippy::needless_pass_by_value)]
+    fn run_builtin_worker_call(path: PathBuf) -> PyResult<()> {
+        crate::worker::run_builtin_worker_call(&path)
+            .map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
 
     #[pyfunction]
     #[pyo3(signature = (port=3000, host="127.0.0.1", config=None))]

@@ -67,8 +67,8 @@ trusted-publishing = true
 publishing-environment = "pypi"
 
 [project.scripts]
-tkr-builtins = "tierkreis.builtins.main:main"
 tkr = "tierkreis.cli.tkr:main"
+tkr-builtins = "tierkreis.builtins_worker:main"
 
 [project.urls]
 repository = "https://github.com/Quantinuum/tierkreis"
