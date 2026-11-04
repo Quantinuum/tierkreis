@@ -11,7 +11,6 @@ from inspect import isclass
 from types import TracebackType
 from typing import (
     Any,
-    NamedTuple,
     Protocol,
     Self,
     overload,
@@ -151,34 +150,6 @@ class LoopOutput(TNamedModel, Protocol):
         :rtype: TKR[bool]
         """
         ...
-
-
-def script(script_name: str, script_input: TKR[bytes]) -> Function[TKR[bytes]]:
-    """Add a script to the graph.
-
-    A shell script or binary with a single input and output.
-    Inputs are provided from the standard input and outputs to the standard output.
-
-    :param script_name: The name of the script.
-    :type script_name: str
-    :param script_input: The input to the script.
-    :type script_input: TKR[bytes]
-    :return: The output of the script.
-    :rtype: Function[TKR[bytes]]
-    """
-
-    class exec_script(NamedTuple):
-        input: TKR[bytes]
-
-        @staticmethod
-        def out() -> type[TKR[bytes]]:
-            return TKR[bytes]
-
-        @property
-        def namespace(self) -> str:
-            return script_name
-
-    return exec_script(input=script_input)
 
 
 class Graph[Inputs: TModel, Outputs: TModel]:
