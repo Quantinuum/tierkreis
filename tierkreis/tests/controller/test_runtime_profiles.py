@@ -8,6 +8,7 @@ from tests.workers.env_worker.stubs import read_env
 from tierkreis._tierkreis import load_runtime_config, new_default, new_from_config
 from tierkreis.builder import ExecutionContext, Graph
 from tierkreis.builtins import iadd, sum_list
+from tierkreis.data.core import EmptyModel
 from tierkreis.models import TKR, Workflow
 
 FIXTURE_ROOT = Path(__file__).parent.parent / "fixtures" / "resource_profiles"
@@ -33,8 +34,8 @@ def read_profile_env() -> Workflow[TKR[str], TKR[str]]:
     return graph.finish_with_outputs(value)
 
 
-def mpi_graph_with_profile() -> Workflow[TKR[None], TKR[str | None]]:
-    graph = Graph(TKR[None], TKR[str | None])
+def mpi_graph_with_profile() -> Workflow[EmptyModel, TKR[str | None]]:
+    graph = Graph(EmptyModel, TKR[str | None])
     result = graph.task(mpi_rank_info(), context="hpc")
     return graph.finish_with_outputs(result)
 

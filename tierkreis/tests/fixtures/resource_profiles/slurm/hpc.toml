@@ -1,4 +1,4 @@
-executor = "hpc"
+executor = "slurm"
 nodes = 2
 cpu = 1
 walltime = "01:05:00"
