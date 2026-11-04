@@ -29,7 +29,7 @@ from hugr.package import Package
 from pydantic import BaseModel, ValidationError
 from typing_extensions import TypeIs
 
-from tierkreis.controller.data.core import (
+from tierkreis.data.core import (
     Deserializer,
     RestrictedNamedTuple,
     SerializationFormat,
@@ -40,8 +40,8 @@ from tierkreis.controller.data.core import (
 from tierkreis.exceptions import TierkreisError
 
 if TYPE_CHECKING:
-    from tierkreis.controller.data.graph import GraphData
-    from tierkreis.controller.data.models import TModel
+    from tierkreis.data.graph import GraphData
+    from tierkreis.data.models import TModel
 
 logger = logging.getLogger(__name__)
 
@@ -330,7 +330,7 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
     :return: The coerced value or None if the input was None.
     :rtype: T | None
     """
-    from tierkreis.controller.data.graph import GraphData
+    from tierkreis.data.graph import GraphData
 
     if annotation is None:
         return ser
@@ -395,8 +395,11 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
         return annotation(**ser)
 
     if issubclass(origin, Workflow):
-        _inputs, outputs = get_args(annotation)
-        return annotation(coerce_from_annotation(ser, GraphData), outputs)  # type: ignore
+        inputs, outputs = get_args(annotation)
+        graph = coerce_from_annotation(ser, GraphData)
+        if graph is None:
+            raise TypeError("Could not deserialize workflow graph")
+        return cast("T", Workflow(graph, outputs_type=outputs, inputs_type=inputs))
 
     if issubclass(origin, Struct):
         if isinstance(ser, Sequence):
@@ -517,3 +520,4 @@ def has_default(t: Parameter) -> bool:
 class Workflow[Inputs: TModel, Outputs: TModel]:
     data: "GraphData"
     outputs_type: type[Outputs]
+    inputs_type: type[Inputs] | None = None

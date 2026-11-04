@@ -1,4 +1,4 @@
-from tierkreis.controller.data.graph import GraphData
+from tierkreis.data.graph import GraphData
 
 
 def ternary_add() -> GraphData:

@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 logger = logging.getLogger(__name__)
 worker = Worker("failing_worker")

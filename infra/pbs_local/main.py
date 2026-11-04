@@ -9,8 +9,7 @@ import socket
 from sys import argv
 
 from mpi4py import MPI  # type: ignore
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 logger = logging.getLogger(__name__)
 worker = Worker("mpi_worker")

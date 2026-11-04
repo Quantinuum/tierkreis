@@ -23,10 +23,15 @@ crate-type = ["rlib", "cdylib"]
 [features]
 default = []
 pyo3 = ["dep:pyo3", "dep:pyo3-async-runtimes"]
+inspect = ["pyo3/experimental-inspect"]
 
 # Disabled until feature-parity with the existing CLI tool.
 # [[bin]]
 # name = "tkr"
+
+# [[bin]]
+# name = "tkr-builtins"
+# path = "src/bin/tkr-builtins.rs"
 
 [dependencies]
 axum = { version = "0.8.8", features = ["ws", "http2"] }

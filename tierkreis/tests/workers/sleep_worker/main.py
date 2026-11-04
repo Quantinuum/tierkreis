@@ -1,7 +1,7 @@
 from sys import argv
 from time import sleep
 
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 worker = Worker("sleep_worker")
 

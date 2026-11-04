@@ -6,6 +6,7 @@ Workflow Management system.
 
 pub mod asset_storage;
 pub(crate) mod builder; // was test-only, now also using in hugr.rs
+pub mod builtins;
 pub mod config;
 pub mod event;
 pub mod executor;
@@ -17,6 +18,7 @@ pub mod resource_profiles;
 pub mod runtime;
 pub mod server;
 pub mod state;
+pub mod worker;
 pub mod workflow_state_query;
 
 #[cfg(feature = "pyo3")]
@@ -24,11 +26,14 @@ pub mod workflow_state_query;
 #[pyo3(name = "_tierkreis")]
 mod tierkreis {
     use std::net::IpAddr;
+    use std::path::PathBuf;
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use chrono::{TimeDelta, Utc};
     use miette::{Diagnostic, IntoDiagnostic, miette};
     use num_complex::Complex64;
+    use pyo3::exceptions::PyBaseException;
+    use pyo3::types::PyType;
     use pyo3::{
         Borrowed, FromPyObject, PyErr, PyResult, Python,
         exceptions::{PyTypeError, PyValueError},
@@ -47,6 +52,13 @@ mod tierkreis {
         location::Location,
         runtime::RuntimeConfig,
     };
+
+    #[pyfunction]
+    #[allow(clippy::needless_pass_by_value)]
+    fn run_builtin_worker_call(path: PathBuf) -> PyResult<()> {
+        crate::worker::run_builtin_worker_call(&path)
+            .map_err(|err| Python::attach(|py| convert_err(py, err)))
+    }
 
     #[pyfunction]
     #[pyo3(signature = (port=3000, host="127.0.0.1", config=None))]
@@ -118,8 +130,13 @@ mod tierkreis {
         if let Some(related) = err.related() {
             for related in related {
                 py_err
-                    .add_note(py, format!("related: {related}"))
+                    .add_note(py, format!("{related}"))
                     .expect("Failed to add related note to exception");
+                if let Some(help) = related.help() {
+                    py_err
+                        .add_note(py, format!("{help}"))
+                        .expect("Failed to add related note to exception");
+                }
             }
         }
         py_err
@@ -162,10 +179,37 @@ mod tierkreis {
         String(String),
         #[pyo3(transparent, annotation = "complex")]
         Complex(Complex64),
-        #[pyo3(transparent, annotation = "Sequence")]
+        // Recursive types are not currently supported by experimental-inspect
+        // see: https://github.com/PyO3/pyo3/issues/6509
+        #[cfg(not(feature = "inspect"))]
+        #[pyo3(transparent)]
         List(Vec<Value>),
-        #[pyo3(transparent, annotation = "Mapping")]
+        // Recursive types are not currently supported by experimental-inspect
+        // see: https://github.com/PyO3/pyo3/issues/6509
+        #[cfg(not(feature = "inspect"))]
+        #[pyo3(transparent)]
         Dict(HashMap<String, Value>),
+        // Just used to get a type annotation.
+        #[cfg(feature = "inspect")]
+        BoolList(Vec<bool>),
+        #[cfg(feature = "inspect")]
+        IntList(Vec<i64>),
+        #[cfg(feature = "inspect")]
+        FloatList(Vec<f64>),
+        #[cfg(feature = "inspect")]
+        StringList(Vec<String>),
+        #[cfg(feature = "inspect")]
+        ComplexList(Vec<Complex64>),
+        #[cfg(feature = "inspect")]
+        BoolDict(HashMap<String, bool>),
+        #[cfg(feature = "inspect")]
+        IntDict(HashMap<String, i64>),
+        #[cfg(feature = "inspect")]
+        FloatDict(HashMap<String, f64>),
+        #[cfg(feature = "inspect")]
+        StringDict(HashMap<String, String>),
+        #[cfg(feature = "inspect")]
+        ComplexDict(HashMap<String, Complex64>),
     }
 
     #[pyclass(name = "NodeState")]
@@ -626,11 +670,12 @@ mod tierkreis {
             self.cancel = Some(send);
         }
 
+        #[allow(unused_variables)]
         fn __exit__(
             &mut self,
-            _exc_type: &Bound<'_, PyAny>,
-            _exc_value: &Bound<'_, PyAny>,
-            _traceback: &Bound<'_, PyAny>,
+            exc_type: Option<&Bound<'_, PyType>>,
+            exc_value: Option<&Bound<'_, PyBaseException>>,
+            traceback: Option<&Bound<'_, PyAny>>,
         ) {
             if let Some(cancel) = self.cancel.take()
                 && cancel.send(()).is_err()
@@ -794,10 +839,21 @@ mod tierkreis {
         }
     }
 
+    #[cfg_attr(
+        feature = "inspect",
+        allow(
+            unused_variables,
+            clippy::needless_pass_by_value,
+            clippy::unnecessary_wraps
+        )
+    )]
     fn convert_loop_trace(
         py: Python<'_>,
         outputs: HashMap<String, Vec<Vec<u8>>>,
     ) -> PyResult<ValueOrMapping> {
+        // Recursive types are not currently supported by experimental-inspect
+        // see: https://github.com/PyO3/pyo3/issues/6509
+        #[cfg(not(feature = "inspect"))]
         let outputs: HashMap<String, Option<Value>> = outputs
             .into_iter()
             .map(|(k, trace)| {
@@ -810,6 +866,9 @@ mod tierkreis {
             })
             .collect::<miette::Result<_>>()
             .map_err(|err| convert_err(py, err))?;
+
+        #[cfg(feature = "inspect")]
+        let outputs = HashMap::new();
 
         Ok(ValueOrMapping::Mapping(outputs))
     }

@@ -2,8 +2,7 @@ import logging
 
 from pytket._tket.circuit import Circuit
 from sympy import Symbol
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 logger = logging.getLogger(__name__)
 

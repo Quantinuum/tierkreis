@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::executor::qrmi::QrmiExecutorConfig;
 use crate::{
     config::{TKR_ENV_VAR, resource_profile_search_paths, tierkreis_home_dir},
-    executor::{hpc::spec::HPCResourceSpec, nexus::NexusClientConfig},
+    executor::{commands::WorkerCommands, hpc::spec::HPCResourceSpec, nexus::NexusClientConfig},
     monitoring::LoggingConfig,
     resource_profiles::ResourceProfiles,
 };
@@ -86,6 +86,7 @@ impl RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "tempfile".to_string(),
                         output_storage_name: "memory".to_string(),
+                        worker_commands: WorkerCommands::new(),
                     },
                 ),
             ]
@@ -134,6 +135,7 @@ impl Default for RuntimeConfig {
                     ExecutorConfig::Subprocess {
                         subprocess_storage_name: "file".to_string(),
                         output_storage_name: "file".to_string(),
+                        worker_commands: WorkerCommands::new(),
                     },
                 ),
             ]
@@ -164,6 +166,8 @@ pub(super) enum ExecutorConfig {
     Subprocess {
         subprocess_storage_name: String,
         output_storage_name: String,
+        #[serde(default)]
+        worker_commands: HashMap<String, Vec<String>>,
     },
     Nexus {
         client_config: NexusClientConfig,

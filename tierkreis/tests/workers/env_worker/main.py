@@ -1,7 +1,7 @@
 import os
 from sys import argv
 
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 worker = Worker("env_worker")
 

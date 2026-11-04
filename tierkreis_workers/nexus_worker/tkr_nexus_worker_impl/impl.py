@@ -16,8 +16,7 @@ from qnexus.models.references import (
     HUGRRef,
 )
 from tierkreis.exceptions import TierkreisError
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 logger = logging.getLogger(__name__)
 worker = Worker("nexus_worker")

@@ -25,9 +25,6 @@ dependencies = [
 stubs = [
     "ruff>=0.17.2",
 ]
-hpc = [
-    "psij-python>=0.9.11",
-]
 
 [dependency-groups]
 dev = [
@@ -44,7 +41,8 @@ build-backend = "maturin"
 
 [tool.ruff]
 target-version = "py312"
-extend-exclude = []
+# maturin does not output the correct type for __exit__ yet.
+lint.ignore = ["PYI036"]
 format.preview = true
 
 [tool.pyright]
@@ -66,8 +64,8 @@ trusted-publishing = true
 publishing-environment = "pypi"
 
 [project.scripts]
-tkr-builtins = "tierkreis.builtins.main:main"
 tkr = "tierkreis.cli.tkr:main"
+tkr-builtins = "tierkreis.builtins_worker:main"
 
 [project.urls]
 repository = "https://github.com/Quantinuum/tierkreis"

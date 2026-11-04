@@ -1,8 +1,8 @@
 from typing import NamedTuple
 
-from tierkreis import Worker
-from tierkreis.controller.data.models import portmapping
-from tierkreis.controller.data.types import PType
+from tierkreis.data.models import portmapping
+from tierkreis.data.types import PType
+from tierkreis.worker import Worker
 
 worker = Worker("TestNamespace")
 

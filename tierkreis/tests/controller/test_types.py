@@ -8,9 +8,9 @@ import pytest
 from pydantic import BaseModel
 
 from tests.controller.typed_graphdata import typed_doubler
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.models import TKR
-from tierkreis.controller.data.types import (
+from tierkreis.data.graph import GraphData
+from tierkreis.data.models import TKR
+from tierkreis.data.types import (
     PType,
     Workflow,
     bytes_from_ptype,

@@ -1,10 +1,10 @@
 from collections.abc import Awaitable, Callable
 
 import pytest
-from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
 
 from tests.controller.loop_graphdata import loop_multiple_acc, loop_multiple_acc_untyped
-from tierkreis.controller.data.graph import GraphData
+from tierkreis._tierkreis import Runtime, new_default, new_in_memory, new_sqlite_memory
+from tierkreis.data.graph import GraphData
 
 return_value = {
     "acc1": [x for x in range(1, 7)],

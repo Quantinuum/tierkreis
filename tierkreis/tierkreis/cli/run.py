@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tierkreis.builder import Graph
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import PType, Workflow, ptype_from_bytes
+from tierkreis.data.graph import GraphData
+from tierkreis.data.types import PType, Workflow, ptype_from_bytes
 from tierkreis.exceptions import TierkreisError
 from tierkreis.runtime import flush_traces, load_runtime_config, new_from_config
 

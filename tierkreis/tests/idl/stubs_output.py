@@ -2,8 +2,8 @@
 
 from typing import NamedTuple, Protocol
 
-from tierkreis.controller.data.models import TKR
-from tierkreis.controller.data.types import PType, Struct
+from tierkreis.data.models import TKR
+from tierkreis.data.types import PType, Struct
 
 
 class B(Struct, Protocol):

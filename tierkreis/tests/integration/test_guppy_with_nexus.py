@@ -9,12 +9,12 @@ from guppylang.std.quantum import cx, h, measure_array, qubit
 from hugr.package import Package
 from nexus_worker import cost, upload_hugr
 from pytket_worker import backend_result_to_dict
-from tierkreis._tierkreis import new_default
 
+from tierkreis._tierkreis import new_default
 from tierkreis.builder import Graph
-from tierkreis.builtins.stubs import append, gt, tkr_range
-from tierkreis.controller.data.models import TKR, OpaqueType
-from tierkreis.controller.data.types import Workflow
+from tierkreis.builtins import append, fgt, tkr_range
+from tierkreis.data.models import TKR, OpaqueType
+from tierkreis.data.types import Workflow
 from tierkreis.graphs.nexus.submit_poll_hugr import (
     JobInputs,
     nexus_submit_and_poll_hugr,
@@ -49,7 +49,7 @@ def guppy_nexus_graph() -> Workflow[MyInputs, TKR[dict[str, list[str]]]]:
         )
     )
     run_cost = graph.task(cost(ref, graph.inputs.shots, graph.inputs.project_name))
-    pred = graph.task(gt(run_cost, graph.const(0)))
+    pred = graph.task(fgt(run_cost, graph.const(0.0)))
 
     ## true case: cost > 0: simulate locally
     local = graph.task(

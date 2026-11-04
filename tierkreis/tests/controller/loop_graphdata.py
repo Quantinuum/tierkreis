@@ -1,9 +1,9 @@
 from typing import NamedTuple
 
-import tierkreis.builtins.stubs as tkr_builtins
+import tierkreis.builtins as tkr_builtins
 from tierkreis.builder import Graph
-from tierkreis.controller.data.core import EmptyModel
-from tierkreis.controller.data.graph import GraphData
+from tierkreis.data.core import EmptyModel
+from tierkreis.data.graph import GraphData
 from tierkreis.models import TKR, Workflow
 
 

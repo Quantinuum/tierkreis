@@ -3,11 +3,14 @@
 Tierkreis does not put any restrictions on workers except the general [contract](../executors/index.md).
 This means that you can also write workers in your preferred language and interface it with Tierkreis.
 To incorporate the worker into a Tierkreis graph, you can either describe the interface using a subset of [TypeSpec](https://typespec.io) to generate stubs for your worker or use the untyped functions in the graph builder.
-To run the worker you may use one of the existing executors;
-In the common case when you can run your code as a commandline script, the [ShellWorker](../executors/shell.md) is appropriate.
-Alternatively you can write your own executor to launch the worker process.
+To run a command-line worker, configure it in the
+[`SubprocessExecutor`](../executors/shell.md). The conventional command name is
+discovered automatically, or `worker_commands` can select an arbitrary binary
+or script. Write a custom executor only when the subprocess protocol is not
+sufficient.
 
-For a full example without stubs you can have a look at the `signing_graph.py` example.
+For a complete shell-worker example, see the
+[`signing_graph`](../examples/signing_graph.ipynb) tutorial.
 
 ## IDL
 
@@ -65,22 +68,19 @@ if __name__ == "__main__":
 
 ## Parsing Inputs and Outputs
 
-There are two possible scenarios to parse input and outputs for workers.
-You can either define a custom executor in python; this has the advantage of interacting with the storage from Tierkreis, making it simpler to read inputs.
-But you also have to make sure the outputs are written to the correct places.
-Alternatively you can use an existing executor, which means you have to do the parsing inside the worker.
-Tierkreis typically hands over a single argument to the invoked script: the [`WorkerCallArgs`](#tierkreis.controller.data.location.WorkerCallArgs)
-This contains all the information specified in the the contract of a worker.
-Parsing this file will provide the locations of inputs and expected outputs.
+The subprocess executor passes one argument to the invoked command: the path
+to a [`WorkerCallArgs`](#tierkreis.data.location.WorkerCallArgs) JSON
+document. It contains the function name and the paths of every input and
+expected output. The worker reads values from the paths in `inputs` and writes
+results to the matching paths in `outputs`. Shell workers can use a JSON tool
+such as `jq`; workers in other languages can use their standard JSON parser.
 
 ### Errors and Logging
 
-Part of the specification for `WorkerCallArgs` are path descriptions for `logs_path` and `errors_path`.
-These point to files that the Tierkreis controller will collect logs and errors in.
-To make worker errors visible, you can use those paths to write the information.
-Additionally, the controller will redirect any output from `stdout` and `stderr` to `errors_path` and `logs_path` automatically.
-If the invoked script returns a non-zero exit code, the controller assumes an error and stop execution.
-This is indicated with an `_error` file in the node location.
+`WorkerCallArgs` also supplies `done_path`, `error_path`, and an optional
+`logs_path`. A protocol-compatible worker touches `done_path` after writing all
+outputs and writes a useful message to `error_path` when it fails. A non-zero
+exit status also tells the executor that the task failed.
 
 ### C++ Example
 

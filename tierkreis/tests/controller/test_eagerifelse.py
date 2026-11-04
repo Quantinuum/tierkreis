@@ -1,12 +1,12 @@
 import pytest
-from tierkreis._tierkreis import new_default, new_in_memory
 
 from tests.controller.sample_graphdata import (
     simple_eagerifelse,
     simple_ifelse,
 )
-from tierkreis.controller.data.graph import GraphData
-from tierkreis.controller.data.types import PType
+from tierkreis._tierkreis import new_default, new_in_memory
+from tierkreis.data.graph import GraphData
+from tierkreis.data.types import PType
 
 
 def eagerifelse_long_running() -> GraphData:

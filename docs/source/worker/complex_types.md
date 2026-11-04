@@ -155,7 +155,7 @@ Unlike bytes, the stub generation process will produce `TKR[OpaqueType["numpy.nd
 ## Custom serializers
 
 If the worker author would like to customize the (de)serialization functions they may use Python `Annotated` types.
-The Tierkreis Python library will look for subclasses of `tierkreis.controller.data.core.Serializer` and `tierkreis.controller.data.core.Deserializer` in the annotations.
+The Tierkreis Python library will look for subclasses of `tierkreis.data.core.Serializer` and `tierkreis.data.core.Deserializer` in the annotations.
 The `serialization_format` of `Serializer` and `Deserializer` defaults to `"bytes"`, which means that the (de)serialization method will be applied before JSON parsing.
 If we set the `serialization_format` to `"json"` then Tierkreis will insert JSON loading/dumping before/after the custom method is called.
 It is up to the user to ensure that these functions invert each other appropriately for the user's needs.

@@ -4,7 +4,8 @@ default:
   @just --list
 
 setup:
-    uv sync --all-extras
+    uv sync --all-extras --no-install-package tierkreis
+    maturin develop --manifest-path tierkreis/Cargo.toml
 
 test:
     # We need to run a sync in the python environment to provide access to the workers
@@ -53,6 +54,13 @@ wheel:
     just prod
     maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
 
+bindings-generate dir:
+  #!/usr/bin/env bash
+  cd {{dir}}
+  maturin generate-stubs --out . --features inspect
+  {{uvrun}} ruff format
+  {{uvrun}} ruff check --fix
+
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
@@ -64,7 +72,7 @@ stubs-generate-api dir:
   uv run --all-extras main.py --stubs-path ../api/api.py
 
 generate: 
-  just stubs-generate 'tierkreis/tierkreis/builtins'
+  just bindings-generate 'tierkreis'
   just stubs-generate 'tierkreis/tests/workers/graph'
 
   just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'

@@ -9,10 +9,28 @@ use bitvec::vec::BitVec;
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{
     Direction, LinkMut, LinkView, MultiPortGraph, NodeIndex, PortIndex, PortMut, PortView,
-    algorithms::{PostOrder, TopoSort, postorder, toposort_filtered},
+    algorithms::{PostOrder, postorder, postorder_filtered},
     multiportgraph::SubportIndex,
 };
 use serde::{Deserialize, Serialize};
+use tracing::warn;
+
+/// Whether an asset must be present for a computation.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValuePresence {
+    /// The value must be present to continue.
+    #[default]
+    Required,
+    /// The value may be absent, but has an alternative default value.
+    Omittable(serde_json::Value),
+}
+
+impl ValuePresence {
+    fn is_required(&self) -> bool {
+        matches!(self, ValuePresence::Required)
+    }
+}
 
 /// Possible definitions for Nodes in the [`WorkflowGraph`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -21,6 +39,9 @@ pub enum NodeDefinition {
     Input {
         /// The name of the input value to the Graph.
         name: String,
+        /// Whether the input is required.
+        #[serde(default, skip_serializing_if = "ValuePresence::is_required")]
+        presence: ValuePresence,
     },
     /// A node that returns output values from the Graph.
     Output {},
@@ -141,6 +162,19 @@ impl WorkflowGraph {
             node_names: BTreeMap::new(),
             output_node: idx,
         }
+    }
+
+    /// Query which inputs must be provided for the Workflow.
+    pub fn required_inputs(&self) -> impl Iterator<Item = &String> {
+        self.node_definitions
+            .values()
+            .filter_map(|definition| match definition {
+                NodeDefinition::Input {
+                    name,
+                    presence: ValuePresence::Required,
+                } => Some(name),
+                _ => None,
+            })
     }
 
     /// Retrieve the [`NodeIndex`] of the output node.
@@ -463,15 +497,16 @@ impl WorkflowGraph {
         postorder(&self.graph, vec![node], Direction::Outgoing)
     }
 
-    /// Return an iterator that returns the `NodeIndex` of Nodes where
-    /// the supplied `filter` function returns `true`, starting at the
-    /// `output_node` of the graph and then in topologically sorted order.
-    pub fn toposort_filtered_from_output_node<'a>(
+    /// Return an iterator that returns the `NodeIndex` of Nodes starting at
+    /// the `output_node` of the graph and then in post-order of Nodes reachable
+    /// along paths where the provided `node_filter` and `port_filter` return
+    /// `true`.
+    pub fn postorder_filtered_from_output_node<'a>(
         &'a self,
         node_filter: impl Fn(NodeIndex) -> bool + 'a,
         port_filter: impl Fn(NodeIndex, PortIndex) -> bool + 'a,
-    ) -> TopoSort<'a, &'a MultiPortGraph> {
-        toposort_filtered::<_, BitVec>(
+    ) -> PostOrder<'a, &'a MultiPortGraph> {
+        postorder_filtered::<_, BitVec>(
             &self.graph,
             [self.output_node],
             Direction::Incoming,
@@ -567,7 +602,13 @@ pub(crate) enum LegacyNodeDef {
         if_false: ValueRef,
     },
     #[serde(rename = "input")]
-    Input { name: String },
+    Input {
+        name: String,
+        #[serde(default)]
+        default_value: Option<serde_json::Value>,
+        #[serde(default)]
+        default_none: bool,
+    },
     #[serde(rename = "output")]
     Output { inputs: HashMap<String, ValueRef> },
 }
@@ -912,8 +953,12 @@ impl ConversionState {
             } => {
                 self.convert_eager_if_else(pred, if_true, if_false, metadata);
             }
-            LegacyNodeDef::Input { name } => {
-                self.convert_input(name, metadata);
+            LegacyNodeDef::Input {
+                name,
+                default_value,
+                default_none,
+            } => {
+                self.convert_input(name, default_value, default_none, metadata);
             }
             LegacyNodeDef::Output { inputs } => {
                 self.convert_output(inputs, metadata);
@@ -939,11 +984,39 @@ impl ConversionState {
         self.convert_metadata(metadata, node_index);
     }
 
-    fn convert_input(&mut self, name: String, metadata: Option<&LegacyNodeMetadata>) {
+    fn convert_input(
+        &mut self,
+        name: String,
+        default_value: Option<serde_json::Value>,
+        default_none: bool,
+        metadata: Option<&LegacyNodeMetadata>,
+    ) {
         let node_index = self.graph.add_node(0, 1);
 
-        self.node_definitions
-            .insert(node_index, NodeDefinition::Input { name: name.clone() });
+        if default_value.is_some() && default_none {
+            warn!(
+                "`default_value` is `Some` but `default_none` is `false`, ignoring `default_none` and using the provided `default_value`"
+            );
+        }
+
+        let presence = default_value.map_or_else(
+            || {
+                if default_none {
+                    ValuePresence::Omittable(serde_json::Value::Null)
+                } else {
+                    ValuePresence::Required
+                }
+            },
+            ValuePresence::Omittable,
+        );
+
+        self.node_definitions.insert(
+            node_index,
+            NodeDefinition::Input {
+                name: name.clone(),
+                presence,
+            },
+        );
 
         self.build_outputs([name], node_index);
         self.convert_metadata(metadata, node_index);
@@ -1321,9 +1394,12 @@ mod tests {
                 (
                     LegacyNodeDef::Input {
                         name: original_name,
+                        default_value: None,
+                        default_none: false,
                     },
                     NodeDefinition::Input {
                         name: converted_name,
+                        presence: ValuePresence::Required,
                     },
                 ) => {
                     assert_eq!(original_name, converted_name);

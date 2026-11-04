@@ -3,8 +3,8 @@
 # ruff: noqa: F821
 from typing import NamedTuple, Protocol
 
-from tierkreis.controller.data.models import TKR, OpaqueType
-from tierkreis.controller.data.types import Struct
+from tierkreis.data.models import TKR, OpaqueType
+from tierkreis.data.types import Struct
 
 
 class PointedArray(Struct, Protocol):

@@ -2,6 +2,7 @@
 This module defines the interface and some standard implementations of [Executor]
 as well as some utility functions and an [`ExecutorRegistry`] type.
 */
+pub(crate) mod commands;
 pub mod hpc;
 pub mod inmemory;
 pub mod interface;

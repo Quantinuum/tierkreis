@@ -1,6 +1,6 @@
 import pytest
 
-from tierkreis.controller.data.location import Loc, NodeStep
+from tierkreis.data.location import Loc, NodeStep
 from tierkreis.exceptions import TierkreisError
 
 node_location_1 = Loc()

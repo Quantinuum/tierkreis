@@ -4,8 +4,7 @@ from pytket._tket.circuit import Circuit
 from pytket.backends.backend import Backend
 from pytket.backends.backendresult import BackendResult
 from pytket.extensions.qulacs.backends.qulacs_backend import QulacsBackend
-
-from tierkreis import Worker
+from tierkreis.worker import Worker
 
 worker = Worker("qulacs_worker")
 

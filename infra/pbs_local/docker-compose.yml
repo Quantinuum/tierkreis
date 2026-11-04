@@ -13,7 +13,6 @@ services:
     volumes:
       - pbs_home:/var/spool/pbs
       - ~/.tierkreis:/home/pbsuser/.tierkreis/
-      - ~/.psij:/home/pbsuser/.psij/
       - ../../tierkreis:/tierkreis
       - data:/data
       - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
@@ -34,7 +33,6 @@ services:
     container_name: p1
     volumes:
       - ~/.tierkreis:/home/pbsuser/.tierkreis/
-      - ~/.psij:/home/pbsuser/.psij/
       - ../../tierkreis:/tierkreis
       - data:/data
       - ${HOME}/.tierkreis/:${HOME}/.tierkreis/
@@ -55,7 +53,6 @@ services:
     container_name: p2
     volumes:
       - ~/.tierkreis:/home/pbsuser/.tierkreis/
-      - ~/.psij:/home/pbsuser/.psij/
       - ../../tierkreis:/tierkreis
       - data:/data
       - ${HOME}/.tierkreis/:${HOME}/.tierkreis/

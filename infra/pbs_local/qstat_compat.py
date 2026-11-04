@@ -127,14 +127,12 @@ def main() -> int:
             }
 
     print(
-        json.dumps(
-            {
-                "timestamp": int(time.time()),
-                "pbs_version": "openpbs-local",
-                "pbs_server": os.environ.get("PBS_SERVER", "pbs-server"),
-                "Jobs": live_jobs,
-            }
-        )
+        json.dumps({
+            "timestamp": int(time.time()),
+            "pbs_version": "openpbs-local",
+            "pbs_server": os.environ.get("PBS_SERVER", "pbs-server"),
+            "Jobs": live_jobs,
+        })
     )
     return 0
 

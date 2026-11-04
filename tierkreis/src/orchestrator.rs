@@ -36,7 +36,7 @@ use crate::{
         ExecutorRegistry,
         interface::{TaskHandle, TaskPlan},
     },
-    graph::{NodeDefinition, WorkflowGraph},
+    graph::{NodeDefinition, ValuePresence, WorkflowGraph},
     location::Location,
     resource_profiles::{ResolvedContext, ResourceProfiles},
     state::{WorkflowRunState, interface::NodeState},
@@ -495,14 +495,16 @@ impl Orchestrator {
                 }
 
                 match definition {
-                    NodeDefinition::Input { name } => Self::build_input_action(
-                        context.workflow_run_state.clone(),
-                        context.parent_loc.clone(),
-                        n,
-                        name.clone(),
-                    )
-                    .into_stream()
-                    .boxed(),
+                    NodeDefinition::Input { name, presence } => self
+                        .build_input_action(
+                            context.workflow_run_state.clone(),
+                            context.parent_loc.clone(),
+                            n,
+                            name.clone(),
+                            presence.clone(),
+                        )
+                        .into_stream()
+                        .boxed(),
                     NodeDefinition::Const { value } => self
                         .build_const_action(context.parent_loc.clone(), n, value.clone())
                         .into_stream()
@@ -630,9 +632,7 @@ impl Orchestrator {
         workflow_graph
             // Traverse the graph to find nodes that are yet to run, starting
             // from the output node.
-            //
-            // TODO: We shouldn't really need to sort every time
-            .toposort_filtered_from_output_node(
+            .postorder_filtered_from_output_node(
                 // Returns true if a node should be traversed.
                 move |n| {
                     let definition = workflow_graph
@@ -855,14 +855,33 @@ impl Orchestrator {
         err,
     )]
     async fn build_input_action(
+        &self,
         workflow_run_state: Arc<dyn WorkflowRunState>,
         parent_location: Location,
         n: NodeIndex,
         name: String,
+        presence: ValuePresence,
     ) -> miette::Result<Action> {
         let input_asset_spec = workflow_run_state
             .load_named_input_from_location(&parent_location, &name)
             .await?;
+        let input_asset_spec = match (presence, input_asset_spec) {
+            (_, Some(input_asset_spec)) => input_asset_spec,
+            (ValuePresence::Required, None) => {
+                return Err(miette!(
+                    "Input with name: `{name}` not found at location: {parent_location}`"
+                ));
+            }
+            (ValuePresence::Omittable(value), None) => {
+                let value_bytes = serde_json::to_vec(&value).into_diagnostic()?;
+                save_asset(
+                    &self.asset_storage_registry,
+                    &self.default_storage_name,
+                    value_bytes,
+                )
+                .await?
+            }
+        };
         let mut outputs = HashMap::new();
         outputs.insert(name, input_asset_spec);
 
@@ -1528,7 +1547,7 @@ fn should_traverse_if_else_port(
         .get_port_name(p)
         .expect("Failed to get port name");
     match &**port_name {
-        "pred" => true,
+        "pred" | "value" => true,
         "if_true" => matches!(node_cond, Some(true)),
         "if_false" => matches!(node_cond, Some(false)),
         _ => panic!("Unexpected port name for `IfElse`"),
@@ -1540,6 +1559,7 @@ mod tests {
     use std::assert_matches;
     use std::sync::Arc;
 
+    use chrono::Utc;
     use futures::StreamExt;
     use rstest::{fixture, rstest};
     use serde_json::json;
@@ -1550,7 +1570,8 @@ mod tests {
         builder::*,
         event::{NodeEvent, NodeStatus, WorkflowRunEvent},
         executor::{
-            inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
+            commands::WorkerCommands, inmemory::InMemoryExecutor, interface::Executor,
+            subprocess::SubprocessExecutor,
         },
         graph::LegacyWorkflowGraph,
         state::{RuntimeWatchState, inmemory::InMemoryWorkflowRunState, interface::NodeState},
@@ -1567,7 +1588,15 @@ mod tests {
         );
         executor_registry.insert(
             "subprocess".to_string(),
-            Box::new(SubprocessExecutor::try_new(asset_storage_registry, "file", "file").unwrap()),
+            Box::new(
+                SubprocessExecutor::try_new(
+                    asset_storage_registry,
+                    "file",
+                    "file",
+                    WorkerCommands::new(),
+                )
+                .unwrap(),
+            ),
         );
 
         Arc::new(executor_registry)
@@ -1777,6 +1806,30 @@ mod tests {
     }
 
     #[fixture]
+    fn if_else_shared_branches() -> WorkflowGraph {
+        let mut wf = workflow(["out"]);
+
+        let pred = input(&mut wf, "pred");
+        let shared = input(&mut wf, "shared");
+        let untuple = task(&mut wf, "builtins", "untuple", ["value"], ["a", "b"]);
+        let ceil = task(&mut wf, "builtins", "fceil", ["a"], ["value"]);
+        let floor = task(&mut wf, "builtins", "ffloor", ["a"], ["value"]);
+        let if_else = if_else(&mut wf);
+        let out = output(&wf, "out");
+
+        link(&mut wf, shared, (untuple, "value")).expect("failed to link");
+        link(&mut wf, (untuple, "a"), (ceil, "a")).expect("failed to link");
+        link(&mut wf, (untuple, "b"), (floor, "a")).expect("failed to link");
+
+        link(&mut wf, pred, (if_else, "pred")).expect("failed to link");
+        link(&mut wf, (ceil, "value"), (if_else, "if_true")).expect("failed to link");
+        link(&mut wf, (floor, "value"), (if_else, "if_false")).expect("failed to link");
+        link(&mut wf, (if_else, "value"), out).expect("failed to link");
+
+        wf
+    }
+
+    #[fixture]
     fn breakpoints_task() -> WorkflowGraph {
         let mut wf = workflow(["out"]);
         let a = input(&mut wf, "a");
@@ -1839,6 +1892,105 @@ mod tests {
             state_recv.changed().await.into_diagnostic()?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn if_else_branch_ready() {
+        let mut wf = workflow(["out"]);
+
+        let pred = input(&mut wf, "pred");
+        let shared = input(&mut wf, "shared");
+        let untuple = task(&mut wf, "builtins", "untuple", ["value"], ["a", "b"]);
+        let ceil = task(&mut wf, "builtins", "fceil", ["a"], ["value"]);
+        let floor = task(&mut wf, "builtins", "ffloor", ["a"], ["value"]);
+        let if_else = if_else(&mut wf);
+        let out = output(&wf, "out");
+
+        link(&mut wf, shared, (untuple, "value")).expect("failed to link");
+        link(&mut wf, (untuple, "a"), (ceil, "a")).expect("failed to link");
+        link(&mut wf, (untuple, "b"), (floor, "a")).expect("failed to link");
+
+        link(&mut wf, pred, (if_else, "pred")).expect("failed to link");
+        link(&mut wf, (ceil, "value"), (if_else, "if_true")).expect("failed to link");
+        link(&mut wf, (floor, "value"), (if_else, "if_false")).expect("failed to link");
+        link(&mut wf, (if_else, "value"), out).expect("failed to link");
+
+        let mut node_states = NodeStates::new();
+        let ready =
+            Orchestrator::find_ready_nodes(&Location::root(), &wf, &node_states, &HashSet::new())
+                .collect::<Vec<_>>();
+
+        assert_eq!(&ready.iter().collect::<Vec<_>>(), &[&pred.0]);
+
+        // Check that if the node connected to pred is complete and has
+        // outputs, we schedule the IfElse node.
+        node_states.insert(
+            Location::root().with_node(pred.0),
+            NodeState {
+                complete_time: Some(Utc::now()),
+                // find_ready_nodes doesn't actually look at the outputs,
+                // it only cares that the connected node has outputs.
+                outputs: Some(HashMap::new()),
+                ..Default::default()
+            },
+        );
+
+        let ready =
+            Orchestrator::find_ready_nodes(&Location::root(), &wf, &node_states, &HashSet::new())
+                .collect::<Vec<_>>();
+
+        assert_eq!(&ready.iter().collect::<Vec<_>>(), &[&if_else]);
+
+        // Check that if the IfElse node is running and is set to true
+        // we traverse the if_true port up to the input
+        node_states.insert(
+            Location::root().with_node(if_else),
+            NodeState {
+                running_time: Some(Utc::now()),
+                cond: Some(true),
+                ..Default::default()
+            },
+        );
+
+        let ready =
+            Orchestrator::find_ready_nodes(&Location::root(), &wf, &node_states, &HashSet::new())
+                .collect::<Vec<_>>();
+
+        assert_eq!(&ready.iter().collect::<Vec<_>>(), &[&shared.0]);
+
+        // Check that the task that shares an input with another branch
+        // is properly scheduled
+        node_states.insert(
+            Location::root().with_node(shared.0),
+            NodeState {
+                complete_time: Some(Utc::now()),
+                outputs: Some(HashMap::new()),
+                ..Default::default()
+            },
+        );
+
+        let ready =
+            Orchestrator::find_ready_nodes(&Location::root(), &wf, &node_states, &HashSet::new())
+                .collect::<Vec<_>>();
+
+        assert_eq!(&ready.iter().collect::<Vec<_>>(), &[&untuple]);
+
+        // Check that the task that shares a task with another branch
+        // is properly scheduled
+        node_states.insert(
+            Location::root().with_node(untuple),
+            NodeState {
+                complete_time: Some(Utc::now()),
+                outputs: Some(HashMap::new()),
+                ..Default::default()
+            },
+        );
+
+        let ready =
+            Orchestrator::find_ready_nodes(&Location::root(), &wf, &node_states, &HashSet::new())
+                .collect::<Vec<_>>();
+
+        assert_eq!(&ready.iter().collect::<Vec<_>>(), &[&ceil]);
     }
 
     // Test that we can plan a workflow with two input nodes.
@@ -2523,6 +2675,8 @@ mod tests {
     #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::if_else_map(if_else_map(), json!({}), json!({"out": [1, 2, 3]}))]
+    #[case::if_else_shared_branches(if_else_shared_branches(), json!({"pred": true, "shared": (1.3, 3.6)}), json!({"out": 2.0}))]
+    #[case::if_else_shared_branches(if_else_shared_branches(), json!({"pred": false, "shared": (1.3, 3.6)}), json!({"out": 3.0}))]
     #[case::hugr_tuple1(crate::graph::hugr::test::hugr_tuple1(), json!({"a": 1, "b": 7, "c": 11}), json!({"x": 1, "y": 7, "z": 11}))]
     #[case::hugr_never_loop(crate::graph::hugr::test::never_loop(), json!({"in0": 3}), json!({"out0": 3}))]
     #[case::hugr_never_loop2(crate::graph::hugr::test::never_loop2(), json!({"in0": 3, "in1": 4.13}), json!({"out0": 3, "out1": 4.13}))]

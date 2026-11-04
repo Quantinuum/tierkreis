@@ -11,7 +11,7 @@ def python_worker_impl(worker_name: str) -> str:
     """
     worker_name = worker_name.replace("-", "_")
     return f"""#TODO Implement your custom worker here.
-from tierkreis import Worker
+from tierkreis.worker import Worker
 from tierkreis.exceptions import TierkreisError
 
 worker = Worker("{worker_name}")
@@ -153,7 +153,6 @@ from typing import NamedTuple
 from tierkreis.runtime import load_runtime_config, new_from_config
 from tierkreis.builder import Graph
 from tierkreis.models import OpaqueType, TKR, Workflow
-from tierkreis.storage import FileStorage, read_outputs
 
 from {worker_name} import your_worker_task
 

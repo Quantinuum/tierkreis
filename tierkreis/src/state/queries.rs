@@ -697,7 +697,7 @@ pub async fn read_workflow_run_input_from_location(
     attempt: i32,
     location: &str,
     name: &str,
-) -> miette::Result<AssetSpec> {
+) -> miette::Result<Option<AssetSpec>> {
     use crate::state::schema::workflow_run_inputs::dsl as wri;
 
     let input = wri::workflow_run_inputs
@@ -708,13 +708,18 @@ pub async fn read_workflow_run_input_from_location(
         .filter(wri::name.eq(name))
         .first(conn)
         .await
+        .optional()
         .into_diagnostic()?;
 
-    Ok(AssetSpec {
-        asset_key: input.asset_key.parse().into_diagnostic()?,
-        kind: input.asset_kind.parse()?,
-        storage_name: input.storage_name,
-    })
+    input
+        .map(|input| {
+            Ok(AssetSpec {
+                asset_key: input.asset_key.parse().into_diagnostic()?,
+                kind: input.asset_kind.parse()?,
+                storage_name: input.storage_name,
+            })
+        })
+        .transpose()
 }
 
 async fn insert_outputs(
