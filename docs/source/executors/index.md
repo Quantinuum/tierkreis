@@ -70,8 +70,6 @@ run_id = await runtime.start_new_run(workflow_id, inputs, profile="gpu")
 
 ## Legacy executor APIs
 
-`UvExecutor`, `ShellExecutor`, `MultipleExecutor`, `TaskExecutor`, `StdInOut`,
-and PSI/J belong to the legacy Python controller. The Rust runtime replaces
-their routing behavior with named executor configuration and worker commands.
-There is not yet a Rust-runtime equivalent for an arbitrary `script()` node
-whose input and output are redirected through stdin and stdout.
+`UvExecutor`, `ShellExecutor`, `MultipleExecutor`, `TaskExecutor`, and PSI/J
+belong to the legacy Python controller. The Rust runtime replaces their routing
+behavior with named executor configuration and worker commands.

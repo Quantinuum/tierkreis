@@ -33,6 +33,6 @@ appends the path to the generated `WorkerCallArgs` JSON document. The command
 must parse that document, read each file in `inputs`, and write each result to
 the corresponding path in `outputs`.
 
-The legacy `ShellExecutor` and `StdInOut` adapters are not part of the Rust
-runtime. Package external programs behind the Tierkreis worker protocol and
-select them with `worker_commands` on a subprocess or HPC executor.
+The legacy `ShellExecutor` is not part of the Rust runtime. Package external
+programs behind the Tierkreis worker protocol and select them with
+`worker_commands` on a subprocess or HPC executor.
