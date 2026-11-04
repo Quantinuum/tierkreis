@@ -38,7 +38,10 @@ use crate::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RuntimeEvent, WorkflowRunEvent,
         send_cancelled, send_complete, send_error, send_queued, send_running,
     },
-    executor::interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    executor::{
+        commands::{WorkerCommands, validate_worker_commands, worker_invocation},
+        interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+    },
     location::Location,
     monitoring::{CommandEnvCarrier, inject_trace_context},
     worker::WorkerCallArgs,
@@ -168,6 +171,7 @@ async fn start_task(
     event_sender: &mut EventSender,
     abort_handles: &mut AbortHandles,
     running: &mut RunningFutures<'_>,
+    worker_commands: &WorkerCommands,
     internal_task: BackgroundTaskPlan,
 ) -> miette::Result<()> {
     let loc = internal_task.loc;
@@ -207,6 +211,7 @@ async fn start_task(
     let res = {
         let _enter = parent_span.enter();
         spawn_worker(
+            worker_commands,
             &internal_task.worker_name,
             worker_args_path,
             &internal_task.environment,
@@ -272,6 +277,7 @@ async fn process_tasks(
     mut cancel_receiver: CancelReceiver,
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
+    worker_commands: WorkerCommands,
     mut abort_handles: AbortHandles,
     max_concurrency: NonZero<usize>,
 ) {
@@ -344,6 +350,7 @@ async fn process_tasks(
                     &mut event_sender,
                     &mut abort_handles,
                     &mut running,
+                    &worker_commands,
                     task,
                 )
                 .await
@@ -416,6 +423,7 @@ impl SubprocessExecutor {
         asset_storage_registry: &AssetStorageRegistry,
         subprocess_storage_name: &str,
         output_storage_name: &str,
+        worker_commands: WorkerCommands,
     ) -> miette::Result<Self> {
         if let Some(subprocess_storage) = asset_storage_registry.get(subprocess_storage_name) {
             let subprocess_storage: &dyn Any = subprocess_storage as &dyn Any;
@@ -431,6 +439,7 @@ impl SubprocessExecutor {
         if !asset_storage_registry.contains_key(output_storage_name) {
             return Err(miette!("output_storage_name not in registry"));
         }
+        validate_worker_commands(&worker_commands)?;
 
         let background_asset_storage_registry = Arc::clone(asset_storage_registry);
         let (task_sender, task_receiver) = mpsc::channel(64);
@@ -442,6 +451,7 @@ impl SubprocessExecutor {
             cancel_receiver,
             event_sender,
             background_asset_storage_registry,
+            worker_commands,
             abort_handles,
             std::thread::available_parallelism().into_diagnostic()?,
         ));
@@ -507,18 +517,20 @@ impl SubprocessExecutor {
 }
 
 fn spawn_worker(
+    commands: &WorkerCommands,
     worker_name: &str,
     worker_args_path: &Path,
     environment: &HashMap<String, String>,
 ) -> miette::Result<tokio::process::Child> {
-    let cmd = format!("tkr-{}", worker_name.replace('_', "-"));
+    let (cmd, args) = worker_invocation(commands, worker_name, worker_args_path)?;
     let mut command = Command::new(&cmd);
+
     command.envs(environment);
     let cx = tracing::Span::current().context();
     inject_trace_context(&cx, &mut CommandEnvCarrier(&mut command));
 
     command
-        .arg(worker_args_path)
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
@@ -745,7 +757,8 @@ mod tests {
     #[tokio::test]
     async fn subprocess_workers() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor =
+            SubprocessExecutor::try_new(&registry, "file", "file", WorkerCommands::new())?;
 
         let workers = executor.workers().await?;
 
@@ -790,7 +803,12 @@ mod tests {
             outputs,
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
+        let executor = SubprocessExecutor::try_new(
+            &registry,
+            "file",
+            output_storage_name,
+            WorkerCommands::new(),
+        )?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -863,7 +881,12 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
+        let executor = SubprocessExecutor::try_new(
+            &registry,
+            "file",
+            output_storage_name,
+            WorkerCommands::new(),
+        )?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -951,7 +974,12 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let executor = SubprocessExecutor::try_new(&registry, "file", output_storage_name)?;
+        let executor = SubprocessExecutor::try_new(
+            &registry,
+            "file",
+            output_storage_name,
+            WorkerCommands::new(),
+        )?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1044,7 +1072,8 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor =
+            SubprocessExecutor::try_new(&registry, "file", "file", WorkerCommands::new())?;
 
         executor.execute(task_plans).await?;
         let stream = executor.listen()?;
@@ -1104,7 +1133,8 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor =
+            SubprocessExecutor::try_new(&registry, "file", "file", WorkerCommands::new())?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1167,7 +1197,8 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor =
+            SubprocessExecutor::try_new(&registry, "file", "file", WorkerCommands::new())?;
 
         let mut stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1218,7 +1249,8 @@ mod tests {
     #[tokio::test]
     async fn execute_subprocess_cancel_non_existent() -> miette::Result<()> {
         let (registry, _, _) = test_storage_registry(vec![], vec![]).await;
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor =
+            SubprocessExecutor::try_new(&registry, "file", "file", WorkerCommands::new())?;
 
         let loc = Location::from_usize_iter([0]);
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
@@ -1249,7 +1281,8 @@ mod tests {
 
             ..Default::default()
         }];
-        let executor = SubprocessExecutor::try_new(&registry, "file", "file")?;
+        let executor =
+            SubprocessExecutor::try_new(&registry, "file", "file", WorkerCommands::new())?;
 
         let stream = executor.listen()?;
         executor.execute(task_plans).await?;
@@ -1294,6 +1327,44 @@ mod tests {
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn execute_subprocess_with_worker_command_override() -> miette::Result<()> {
+        let (registry, input_sets, _dir) = test_storage_registry(
+            vec![json!({"greeting": "hello ", "subject": "override"})],
+            vec![],
+        )
+        .await;
+        let executor = SubprocessExecutor::try_new(
+            &registry,
+            "file",
+            "memory",
+            WorkerCommands::from([(
+                "hello-world-worker".to_string(),
+                vec!["env".to_string(), "tkr-hello-world-worker".to_string()],
+            )]),
+        )?;
+        let stream = executor.listen()?;
+        executor
+            .execute(vec![TaskPlan {
+                worker_name: "hello-world-worker".to_string(),
+                task_name: "greet".to_string(),
+                inputs: input_sets[0].clone(),
+                outputs: HashSet::from(["value".to_string()]),
+                ..Default::default()
+            }])
+            .await?;
+
+        let events = stream.take(4).collect::<Vec<_>>().await;
+        assert_registry_contains_values(
+            &registry,
+            "memory",
+            &events[3].clone().outputs()[0],
+            json!({"value": "hello override"}),
+        )
+        .await;
         Ok(())
     }
 }

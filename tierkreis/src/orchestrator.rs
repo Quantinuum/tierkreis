@@ -1570,7 +1570,8 @@ mod tests {
         builder::*,
         event::{NodeEvent, NodeStatus, WorkflowRunEvent},
         executor::{
-            inmemory::InMemoryExecutor, interface::Executor, subprocess::SubprocessExecutor,
+            commands::WorkerCommands, inmemory::InMemoryExecutor, interface::Executor,
+            subprocess::SubprocessExecutor,
         },
         graph::LegacyWorkflowGraph,
         state::{RuntimeWatchState, inmemory::InMemoryWorkflowRunState, interface::NodeState},
@@ -1587,7 +1588,15 @@ mod tests {
         );
         executor_registry.insert(
             "subprocess".to_string(),
-            Box::new(SubprocessExecutor::try_new(asset_storage_registry, "file", "file").unwrap()),
+            Box::new(
+                SubprocessExecutor::try_new(
+                    asset_storage_registry,
+                    "file",
+                    "file",
+                    WorkerCommands::new(),
+                )
+                .unwrap(),
+            ),
         );
 
         Arc::new(executor_registry)

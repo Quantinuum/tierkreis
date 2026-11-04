@@ -709,12 +709,14 @@ async fn executor_registry_from_config(
             ExecutorConfig::Subprocess {
                 subprocess_storage_name,
                 output_storage_name,
+                worker_commands,
             } => executor_registry.insert(
                 executor_name.clone(),
                 Box::new(SubprocessExecutor::try_new(
                     asset_storage_registry,
                     subprocess_storage_name,
                     output_storage_name,
+                    worker_commands.clone(),
                 )?),
             ),
             ExecutorConfig::Nexus {

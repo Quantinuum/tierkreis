@@ -25,7 +25,7 @@ const RESOURCE_PROFILES_DIR_NAME: &str = "resource_profiles";
 const RESOURCE_PATH_ENV_VAR: &str = "TKR_RESOURCE_PATH";
 /// Name of the temporary files directory under the Tierkreis home directory.
 pub const TMP_DIR_NAME: &str = "tmp";
-/// Name of the default file asset storage directory un                                      der the Tierkreis home directory.
+/// Name of the default file asset storage directory under the Tierkreis home directory.
 pub const ASSETS_DIR_NAME: &str = "assets";
 
 /// Return the canonical Tierkreis home directory (`~/.tierkreis`), falling back
