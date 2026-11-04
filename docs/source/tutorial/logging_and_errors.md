@@ -87,6 +87,5 @@ state database, asset storage, and worker configuration. This process recovery
 is distinct from `restart_task`: recovery continues the current attempt,
 whereas a task restart creates a new attempt after a failure or manual choice.
 
-The legacy interactive `debug_graph` helper is not part of the Rust runtime.
 Use breakpoints together with run summaries and `debug_read_node_states` to
 build an interactive debugging flow.

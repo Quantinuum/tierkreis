@@ -13,9 +13,8 @@ The runtime server can be invoked as:
 tkr serve
 ```
 
-It listens on port 3000 by
-default. It reads workflows and runs from the configured runtime state rather
-than scanning legacy `FileStorage` checkpoint directories.
+It listens on port 3000 by default and reads workflows and runs from the
+configured runtime state.
 
 ## Running the visualizer
 

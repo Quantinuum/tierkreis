@@ -67,9 +67,3 @@ profile can be selected for an individual run:
 ```python
 run_id = await runtime.start_new_run(workflow_id, inputs, profile="gpu")
 ```
-
-## Legacy executor APIs
-
-`UvExecutor`, `ShellExecutor`, `MultipleExecutor`, `TaskExecutor`, and PSI/J
-belong to the legacy Python controller. The Rust runtime replaces their routing
-behavior with named executor configuration and worker commands.

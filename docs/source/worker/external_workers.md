@@ -69,7 +69,7 @@ if __name__ == "__main__":
 ## Parsing Inputs and Outputs
 
 The subprocess executor passes one argument to the invoked command: the path
-to a [`WorkerCallArgs`](#tierkreis.controller.data.location.WorkerCallArgs) JSON
+to a [`WorkerCallArgs`](#tierkreis.data.location.WorkerCallArgs) JSON
 document. It contains the function name and the paths of every input and
 expected output. The worker reads values from the paths in `inputs` and writes
 results to the matching paths in `outputs`. Shell workers can use a JSON tool
