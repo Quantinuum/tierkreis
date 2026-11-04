@@ -40,15 +40,13 @@ When running the notebooks select the kernel corresponding to the uv environment
 
 ## Runtime compatibility
 
-Most examples use the Rust runtime. `parallelism` relies on lazy loading of the
-selected conditional branch, and `restart` demonstrates attempt-based task
-restarts. `errors_and_debugging` demonstrates pausing, inspection, and resuming
-at breakpoints. Simulator-heavy parallelism, credentialed Nexus, and HPC
-examples require deployment-specific resources and are not executed by the
-documentation build.
-
-The `scipy` example remains on the legacy controller because it compares binary
-NumPy serializers and still needs typed or raw output handling in the example.
+The examples use the Rust runtime. `parallelism` relies on lazy loading of the
+selected conditional branch, `restart` demonstrates attempt-based task
+restarts, and `scipy` uses raw output retrieval for binary NumPy serializers.
+`errors_and_debugging` demonstrates pausing, inspection, and resuming at
+breakpoints. Simulator-heavy parallelism, credentialed Nexus, and HPC examples
+require deployment-specific resources and are not executed by the documentation
+build.
 
 The `types_and_defaults` example demonstrates that omitted graph inputs use the
 defaults captured by the typed graph builder.
