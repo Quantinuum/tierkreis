@@ -403,6 +403,47 @@ pub async fn send_error(
         .wrap_err("Failed to send node error event")
 }
 
+/// Utility function to send a new [`Event`] with [`NodeStatus::Error`] and an error message.
+///
+/// This function accepts multiple locations so that errors can be set for multiple nodes
+/// simultaneously.
+///
+/// # Errors
+///
+/// Will return Err if the channel for `event_sender` is full or closed.
+pub async fn send_errors(
+    event_sender: &mut EventSender,
+    workflow_run_id: Uuid,
+    attempt: u32,
+    locations: impl Iterator<Item = &Location>,
+    err: &miette::Error,
+) -> miette::Result<()> {
+    let err_chain: Vec<_> = err.chain().map(ToString::to_string).collect();
+    let detail = err_chain.join("\n\nWhich was caused by:\n\n");
+
+    let event = RuntimeEvent::WorkflowRun {
+        workflow_run_id,
+        attempt,
+        event: WorkflowRunEvent::NodeEvents(
+            locations
+                .map(|loc| NodeEvent {
+                    loc: loc.clone(),
+                    status: NodeStatus::Error {
+                        error: err.to_string(),
+                        detail: Some(detail.clone()),
+                    },
+                    name: None,
+                })
+                .collect(),
+        ),
+    };
+    event_sender
+        .send(event)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to send node error event")
+}
+
 /// Utility function to send a new [`Event`] with [`WorkflowRunEvent::Paused`].
 ///
 /// # Errors
