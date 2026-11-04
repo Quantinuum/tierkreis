@@ -8,7 +8,7 @@ use bitvec::vec::BitVec;
 use miette::{Context, IntoDiagnostic, miette};
 use portgraph::{
     Direction, LinkMut, LinkView, MultiPortGraph, NodeIndex, PortIndex, PortMut, PortView,
-    algorithms::{PostOrder, TopoSort, postorder, toposort_filtered},
+    algorithms::{PostOrder, postorder, postorder_filtered},
     multiportgraph::SubportIndex,
 };
 use serde::{Deserialize, Serialize};
@@ -422,15 +422,16 @@ impl WorkflowGraph {
         postorder(&self.graph, vec![node], Direction::Outgoing)
     }
 
-    /// Return an iterator that returns the `NodeIndex` of Nodes where
-    /// the supplied `filter` function returns `true`, starting at the
-    /// `output_node` of the graph and then in topologically sorted order.
-    pub fn toposort_filtered_from_output_node<'a>(
+    /// Return an iterator that returns the `NodeIndex` of Nodes starting at
+    /// the `output_node` of the graph and then in post-order of Nodes reachable
+    /// along paths where the provided `node_filter` and `port_filter` return
+    /// `true`.
+    pub fn postorder_filtered_from_output_node<'a>(
         &'a self,
         node_filter: impl Fn(NodeIndex) -> bool + 'a,
         port_filter: impl Fn(NodeIndex, PortIndex) -> bool + 'a,
-    ) -> TopoSort<'a, &'a MultiPortGraph> {
-        toposort_filtered::<_, BitVec>(
+    ) -> PostOrder<'a, &'a MultiPortGraph> {
+        postorder_filtered::<_, BitVec>(
             &self.graph,
             [self.output_node],
             Direction::Incoming,
