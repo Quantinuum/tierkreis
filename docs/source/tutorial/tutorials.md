@@ -47,12 +47,13 @@ at breakpoints. Simulator-heavy parallelism, credentialed Nexus, and HPC
 examples require deployment-specific resources and are not executed by the
 documentation build.
 
-Two examples remain on the legacy controller for a specific reason:
+Some example sections remain on the legacy controller for a specific reason:
 
 - `scipy` compares binary NumPy serializers and still needs typed or raw output
   handling in the example;
-- `signing_graph` uses arbitrary shell and stdin/stdout adapters that do not
-  have Rust-runtime equivalents.
+- `signing_graph` runs its named shell worker with the Rust subprocess executor,
+  but its final arbitrary stdin/stdout `script()` example still uses the legacy
+  adapter because that node has no Rust-runtime equivalent.
 
 The `types_and_defaults` example demonstrates that omitted graph inputs use the
 defaults captured by the typed graph builder.

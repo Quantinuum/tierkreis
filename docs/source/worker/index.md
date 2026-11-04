@@ -199,8 +199,8 @@ tkr-worker-name-worker ...
 ```
 
 For deployments that need an alternate command, configure `worker_commands`
-on an HPC executor or install a protocol-compatible wrapper under the expected
-name. See [Runtime storage and executors](../executors/index.md).
+on the subprocess or an HPC executor. See
+[Runtime storage and executors](../executors/index.md).
 
 ## Prepackaged workers
 
