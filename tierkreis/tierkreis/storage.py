@@ -4,7 +4,6 @@ from typing import get_args, get_origin
 
 from typing_extensions import is_protocol
 
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.filestorage import (
     ControllerFileStorage as FileStorage,
 )
@@ -21,7 +20,7 @@ from tierkreis.data.types import (
     is_ptype,
     ptype_from_bytes,
 )
-from tierkreis.exceptions import TierkreisError
+from tierkreis.exceptions import EntryNotFoundError, TierkreisError
 from tierkreis.models import Workflow
 
 __all__ = ["FileStorage", "InMemoryStorage"]

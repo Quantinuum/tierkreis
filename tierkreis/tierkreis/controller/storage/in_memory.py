@@ -5,11 +5,11 @@ from time import time
 from typing import override
 from uuid import UUID
 
-from tierkreis.controller.storage.exceptions import EntryNotFoundError
 from tierkreis.controller.storage.protocol import (
     ControllerStorage,
     StorageEntryMetadata,
 )
+from tierkreis.exceptions import EntryNotFoundError
 
 
 class InMemoryFileData:
