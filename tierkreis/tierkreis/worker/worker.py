@@ -8,12 +8,6 @@ from pathlib import Path
 from typing import NoReturn, TypeVar
 
 from opentelemetry import propagate, trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from tierkreis.data.core import PortID
 from tierkreis.data.location import WorkerCallArgs
@@ -242,14 +236,29 @@ class Worker:
             self.run(Path(argv[1]))
             logger.removeHandler(handler)
             if otel_provider is not None:
-                otel_provider.shutdown()
+                from opentelemetry.sdk.trace import TracerProvider
 
-    def _set_up_otel(self) -> TracerProvider | None:
+                if isinstance(otel_provider, TracerProvider):
+                    otel_provider.shutdown()
+
+    def _set_up_otel(self) -> trace.TracerProvider | None:
         """Set up OpenTelemetry tracing for the worker."""
         otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
         if otel_endpoint is None:
             logger.warning("OTEL_EXPORTER_OTLP_ENDPOINT not set, tracing disabled")
             return None
+
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            OTLPSpanExporter,
+        )
+        from opentelemetry.propagate import set_global_textmap
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.trace.propagation.tracecontext import (
+            TraceContextTextMapPropagator,
+        )
 
         set_global_textmap(TraceContextTextMapPropagator())
         otel_provider = TracerProvider(
