@@ -48,7 +48,3 @@ OMP_NUM_THREADS = "8"
 Select the profile with `new_default("cluster")`, the `TKR_ENV` environment
 variable, or `profile="cluster"` on `start_new_run`. Scheduler-specific queue,
 account, MPI, and extra arguments can also be supplied by the profile.
-
-The legacy PSI/J executor is not supported by the Rust runtime. Existing PSI/J
-documentation is retained only as legacy reference and should not be used for
-new workflows.

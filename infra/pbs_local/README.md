@@ -116,7 +116,7 @@ In short:
 - From `infra/pbs_local`
   - build the containers with `docker compose build`
   - ensure the containers are running `docker compose up -d`
-  - This will mount `~/.tierkreis` and `~/.psij` inside the containers on `/home/pbsuser/` and the tierkreis directory to `/tierkreis`
+  - This mounts `~/.tierkreis` inside the containers and the tierkreis directory at `/tierkreis`
   - To interact with the PBS cluster you can `docker exec -it pbs-server bash`
 
 To run MPI-based tests, you can submit jobs using PBS commands or use the provided

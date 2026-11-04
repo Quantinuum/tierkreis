@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.executor.stubs import mpi_rank_info
+from tests.controller.runtime_profile_stubs import mpi_rank_info
 from tests.workers.env_worker.stubs import read_env
 from tierkreis._tierkreis import load_runtime_config, new_default, new_from_config
 from tierkreis.builder import ExecutionContext, Graph

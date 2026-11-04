@@ -1,4 +1,4 @@
-"""Data structures for node locations in the controller."""
+"""Data structures for workflow node locations and worker calls."""
 
 from logging import getLogger
 from pathlib import Path

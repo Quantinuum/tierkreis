@@ -416,7 +416,7 @@ class Graph[Inputs: TModel, Outputs: TModel]:
 
         This will loop over the given graph until the `should_continue` output is false.
         To trace intermediate values, use the name attribute in conjunction with
-        read_loop_trace.
+        ``Runtime.get_loop_iterations``.
 
         :param body: The graph to loop.
         :type body: TypedGraphRef[A, B] | Workflow[A, B],

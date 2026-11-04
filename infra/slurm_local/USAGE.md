@@ -8,7 +8,7 @@ In short:
   - make the local sbatch script executable `chmod +x sbatch squeue`
   - build the containers with `docker compose build`
   - ensure the containers are running `docker compose up -d`
-  - This will mount `~/.tierkreis` and `~/.psij` inside the containers on `/root/tierkreis/` and the tierkreis directory to `/tierkreis`
+  - This mounts `~/.tierkreis` inside the containers and the tierkreis directory at `/tierkreis`
   - To emulate the root node you can `docker exec -it slurmctld bash`
 
 To run the test we emulate `sbatch` and `squeue`.
@@ -18,7 +18,7 @@ By default the test is disabled with `pytest.mark.skip()` uncomment before testi
 Run the test:
 
 ```
-pytest tierkreis/tests/executor/test_hpc_executor.py
+pytest tierkreis/tests/controller/test_runtime_profiles.py -k hpc_docker_worker
 ```
 
 **Caveats**:

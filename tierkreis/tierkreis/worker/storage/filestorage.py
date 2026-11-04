@@ -1,4 +1,4 @@
-"""Filestorage implementation analog to ControllerFileStorage."""
+"""File storage implementation for workers."""
 
 import json
 import os

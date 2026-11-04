@@ -3,39 +3,10 @@
 import logging
 import sys
 from os import getenv
-from pathlib import Path
 
 from tierkreis.consts import TKR_DATE_FMT_KEY, TKR_LOG_FMT_KEY, TKR_LOG_LEVEL_KEY
 
 LOGGER_NAME = "tierkreis"
-
-
-def set_tkr_logger(
-    file_name: Path,
-    level: int | str = logging.INFO,
-) -> None:
-    """Set up the 'tierkreis' logger.
-
-    Adds a filehandler for use in the controller.
-
-    :param file_name: The file to use for the logging.
-    :type file_name: Path
-    :param level: The log level, defaults to logging.INFO
-    :type level: int | str, optional
-    """
-    logger = logging.getLogger(LOGGER_NAME)
-    if logger.hasHandlers():
-        [logger.removeHandler(h) for h in logger.handlers]
-    logger.setLevel(level)
-    formatter = logging.Formatter("%(asctime)s: %(message)s", "%Y-%m-%dT%H:%M:%S%z")
-    try:
-        handler = logging.FileHandler(file_name, mode="a+")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
-    except FileNotFoundError:
-        root_logger = logging.getLogger()
-        root_logger.warning("Could not log to file, logging to std out instead.")
 
 
 def add_handler_from_environment(logger: logging.Logger) -> logging.Handler:

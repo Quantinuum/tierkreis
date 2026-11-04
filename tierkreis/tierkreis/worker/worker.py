@@ -44,9 +44,7 @@ class Worker:
     """A worker bundles a set of functionality under a common namespace.
 
     The main usage of a worker is to convert python functions into atomic tasks,
-    which can then be executed by the
-    :py:class:`tierkreis.controller.executor.uv_executor.UvExecutor`
-    or similar Executors.
+    which can then be executed by a configured runtime executor.
     From the worker type stubs can be generated to statically check the function calls.
 
     Example snippet for wrapping a python function:
@@ -61,8 +59,7 @@ class Worker:
 
     :fields:
         name (str) The name of the worker.
-        storage (WorkerStorage) Storage layer for the
-            worker to interact with the ControllerStorage.
+        storage (WorkerStorage) Storage layer used to read inputs and write outputs.
         namespace (Namespace) The namespace of the worker.
         types (dict[MethodName, Signature]) Mapping function names to their signatures.
         functions (dict[str, Callable[[WorkerCallArgs], None]])
