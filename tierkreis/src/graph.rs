@@ -253,7 +253,7 @@ impl WorkflowGraph {
                 let source_port: PortIndex = link.port().into();
                 let src_node = graph.graph.port_node(source_port).unwrap();
                 let source = match &graph.node_definitions[&src_node] {
-                    NodeDefinition::Input { name } => inputs[name].clone(),
+                    NodeDefinition::Input { name, .. } => inputs[name].clone(),
                     _ => (node_map[&src_node], graph.port_names[&source_port].clone()),
                 };
 
@@ -1266,6 +1266,8 @@ impl ConversionState {
 mod tests {
     use rstest::rstest;
 
+    use crate::builder::{input, task};
+
     use super::*;
 
     #[test]
@@ -1285,15 +1287,9 @@ mod tests {
         let to_insert = {
             let mut g = WorkflowGraph::new(["result".to_string()]);
 
-            let input = g.add_node(
-                NodeDefinition::Input {
-                    name: "inp".to_string(),
-                },
-                [],
-                ["inp".to_string()],
-            );
-            let task = crate::builder::task(&mut g, "test", "identity", ["value"], ["result"]);
-            g.link_nodes_by_port_name(input, "inp", task, "value")?;
+            let input = input(&mut g, "inp");
+            let task = task(&mut g, "test", "identity", ["value"], ["result"]);
+            g.link_nodes_by_port_name(input.0, input.1, task, "value")?;
             g.link_nodes_by_port_name(task, "result", g.output_idx(), "result")?;
             g
         };

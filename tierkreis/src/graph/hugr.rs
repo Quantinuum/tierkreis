@@ -21,7 +21,7 @@ use tket::passes::ComposablePass;
 use tket::passes::cfg::remove_cycles::RemoveCFGCyclesPass;
 
 use super::{NodeDefinition, WorkflowGraph};
-use crate::builder::{eval, loop_node, task};
+use crate::builder::{eval, input, loop_node, task};
 
 struct GraphWithFuncs<N: HugrNode> {
     graph: WorkflowGraph,
@@ -44,12 +44,8 @@ impl<N: HugrNode> GraphWithFuncs<N> {
         let input_results = input_names
             .into_iter()
             .map(|name| {
-                let n = graph.add_node(
-                    NodeDefinition::Input { name: name.clone() },
-                    vec![],
-                    vec![name.clone()],
-                );
-                (n, name)
+                let (ni, p) = input(&mut graph, &name);
+                (ni, p.to_string())
             })
             .collect::<Vec<_>>();
         (
@@ -634,17 +630,18 @@ fn graph_from_hugr<H: HugrView>(hugr: &H, parent: H::Node) -> miette::Result<Wor
 
 #[cfg(test)]
 pub(crate) mod test {
-    use hugr::hugr::hugrmut::HugrMut;
     use std::collections::HashMap;
     use std::fs::File;
     use std::io::BufReader;
 
+    use hugr::hugr::hugrmut::HugrMut;
     use hugr::ops::{DFG, DataflowParent, Input, Output, Tag, TailLoop};
-    use hugr::std_extensions::arithmetic::{float_types, int_types};
+    use hugr::std_extensions::arithmetic::int_types;
     use hugr::types::Signature;
     use hugr::{Hugr, HugrView, Node};
 
-    use super::{GraphWithFuncs, NodeDefinition, WorkflowGraph, make_tuple, unpack_tuple};
+    use super::{GraphWithFuncs, WorkflowGraph, make_tuple, unpack_tuple};
+    use crate::builder::input;
 
     #[test]
     fn convert_map() {
@@ -662,12 +659,9 @@ pub(crate) mod test {
 
     pub fn hugr_tuple1() -> WorkflowGraph {
         let mut wg = WorkflowGraph::new(["x", "y", "z"].map(ToString::to_string));
-        let [a, b, c] = ["a", "b", "c"].map(ToString::to_string).map(|n| {
-            (
-                wg.add_node(NodeDefinition::Input { name: n.clone() }, [], [n.clone()]),
-                n,
-            )
-        });
+        let [a, b, c] = ["a", "b", "c"]
+            .map(|n| input(&mut wg, n))
+            .map(|(ni, p)| (ni, p.to_string()));
         let mut gwf = GraphWithFuncs::<Node> {
             graph: wg,
             funcs: HashMap::new(),
