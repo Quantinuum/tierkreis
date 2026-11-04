@@ -2624,7 +2624,8 @@ mod tests {
     #[case::simple_eager_if_else_true(simple_eager_if_else(), json!({"pred": true}), json!({"out": 1}))]
     #[case::simple_eager_if_else_false(simple_eager_if_else(), json!({"pred": false}), json!({"out": 2}))]
     #[case::if_else_map(if_else_map(), json!({}), json!({"out": [1, 2, 3]}))]
-    #[case::if_else_shared_branches(if_else_shared_branches(), json!({"pred": true, "shared": (1.3, 2.6)}), json!({"out": 2.0}))]
+    #[case::if_else_shared_branches(if_else_shared_branches(), json!({"pred": true, "shared": (1.3, 3.6)}), json!({"out": 2.0}))]
+    #[case::if_else_shared_branches(if_else_shared_branches(), json!({"pred": false, "shared": (1.3, 3.6)}), json!({"out": 3.0}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_workflows(

@@ -422,9 +422,10 @@ impl WorkflowGraph {
         postorder(&self.graph, vec![node], Direction::Outgoing)
     }
 
-    /// Return an iterator that returns the `NodeIndex` of Nodes where
-    /// the supplied `filter` function returns `true`, starting at the
-    /// `output_node` of the graph and then in post-order.
+    /// Return an iterator that returns the `NodeIndex` of Nodes starting at
+    /// the `output_node` of the graph and then in post-order of Nodes reachable
+    /// along paths where the provided `node_filter` and `port_filter` return
+    /// `true`.
     pub fn postorder_filtered_from_output_node<'a>(
         &'a self,
         node_filter: impl Fn(NodeIndex) -> bool + 'a,
