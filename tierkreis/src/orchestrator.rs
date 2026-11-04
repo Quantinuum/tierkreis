@@ -5,6 +5,7 @@ of [Event]s with updates about each node in the Workflow.
 */
 use std::{
     collections::{HashMap, HashSet},
+    error::Error,
     iter,
     sync::{Arc, Mutex},
 };
@@ -16,7 +17,7 @@ use futures::{
     future,
     stream::{self, BoxStream, LocalBoxStream, select_all},
 };
-use miette::{Context, IntoDiagnostic, miette};
+use miette::{Context, Diagnostic, IntoDiagnostic, miette};
 use portgraph::{NodeIndex, PortIndex};
 use tokio::sync::RwLock;
 use tracing::{debug, instrument};
@@ -130,7 +131,89 @@ enum SetWorkflowState {
     Completed,
 }
 
-#[derive(Debug, Clone, Default)]
+/// `OrchestrationErrors` are specific errors that occur while running the
+/// Orchestrator, each has a location that they correspond to.
+#[derive(Diagnostic, Debug, thiserror::Error)]
+pub enum OrchestrationError {
+    /// `InputError` results from a missing input value and is not recoverable.
+    #[diagnostic()]
+    #[error("Input with name: `{name}` not found at location: {location}`")]
+    InputError {
+        /// The location where the error occurred.
+        location: Location,
+        /// The name of the missing input
+        name: String,
+    },
+    /// `GraphError` is not recoverable and results from things like
+    /// disconnected or mislabelled ports.
+    #[diagnostic()]
+    #[error("Orchestration failed for workflow at {location}, with error: {err}")]
+    #[help("Check your Workflow definition")]
+    GraphError {
+        /// The location where the error occurred.
+        location: Location,
+        /// The full error report.
+        err: miette::Report,
+    },
+    /// `SerializationError` is not recoverable and results from trying to
+    /// serialize or deserialize a value from from the asset storage.
+    #[diagnostic()]
+    #[error("Orchestration failed during asset serialization at {location}, with error: {err}")]
+    SerializationError {
+        /// The location where the error occurred.
+        location: Location,
+        /// The full error report.
+        err: miette::Report,
+    },
+    /// `ExecutionContextError` occurs when the Orchestrator cannot determine
+    /// which context to use for a task.
+    #[diagnostic()]
+    #[error(
+        "Orchestration failed while resolving execution context for {location}, with error: {err}"
+    )]
+    #[help("Check your tierkreis configuration")]
+    ExecutionContextError {
+        /// The location where the error occurred.
+        location: Location,
+        /// The full error report.
+        err: miette::Report,
+    },
+    /// `StateStorageError` occurs when interacting with runtime state and is
+    /// potentially recoverable.
+    #[diagnostic()]
+    #[error("Orchestration failed while accessing state storage for {location}, with error: {err}")]
+    StateStorageError {
+        /// The location where the error occurred.
+        location: Location,
+        /// The full error report.
+        err: miette::Report,
+    },
+    /// `AssetStorageError` occurs when interacting with asset storage is
+    /// potentially recoverable.
+    #[diagnostic()]
+    #[error("Orchestration failed while accessing asset storage for {location}, with error: {err}")]
+    AssetStorageError {
+        /// The location where the error occurred.
+        location: Location,
+        /// The full error report.
+        err: miette::Report,
+    },
+}
+
+impl OrchestrationError {
+    fn location(&self) -> Location {
+        match self {
+            Self::InputError { location, .. }
+            | Self::GraphError { location, .. }
+            | Self::SerializationError { location, .. }
+            | Self::ExecutionContextError { location, .. }
+            | Self::StateStorageError { location, .. }
+            | Self::AssetStorageError { location, .. } => location.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 struct ActionPlan {
     // map executor -> tasks
     tasks: ExecutorTaskPlans,
@@ -142,6 +225,8 @@ struct ActionPlan {
     map_elem_complete: HashMap<Location, BitVec<u8>>,
     node_complete: Vec<(Location, HashMap<String, AssetSpec>)>,
     set_workflow_state: Option<SetWorkflowState>,
+
+    errors: Vec<OrchestrationError>,
 }
 
 impl ActionPlan {
@@ -162,6 +247,7 @@ impl ActionPlan {
             map_elem_complete,
             node_complete,
             set_workflow_state,
+            errors,
         } = self;
 
         let complete = node_complete.into_iter().map(|(loc, outputs)| NodeEvent {
@@ -223,6 +309,16 @@ impl ActionPlan {
             })
             .collect::<Vec<_>>()
             .into_iter();
+        let errored = errors.into_iter().map(|err| {
+            let error = err.to_string();
+            let detail = err.source().map(|source| format!("Caused by: {source}"));
+
+            NodeEvent {
+                loc: err.location(),
+                status: NodeStatus::Error { error, detail },
+                name: None,
+            }
+        });
 
         let node_events = complete
             .chain(paused)
@@ -231,7 +327,8 @@ impl ActionPlan {
             .chain(map_elem_complete)
             .chain(looping)
             .chain(switching)
-            .chain(scheduled);
+            .chain(scheduled)
+            .chain(errored);
 
         (node_events, tasks, set_workflow_state)
     }
@@ -318,9 +415,10 @@ impl OrchestrationContext {
         workflow_graph: &Arc<WorkflowGraph>,
         node_states: &NodeStates,
         asset_storage_registry: &AssetStorageRegistry,
+        parent_location: &Location,
         node_index: NodeIndex,
         allow_recursion: bool,
-    ) -> miette::Result<Arc<WorkflowGraph>> {
+    ) -> Result<Arc<WorkflowGraph>, OrchestrationError> {
         let graph_loc = self.parent_loc.with_node(node_index);
         let maybe_subgraph = {
             let subgraph_cache_guard = self.subworkflow_cache.read().await;
@@ -336,10 +434,20 @@ impl OrchestrationContext {
                 &self.parent_loc,
                 node_index,
                 "graph",
-            );
+            )
+            .map_err(|err| OrchestrationError::GraphError {
+                location: parent_location.with_node(node_index),
+                err,
+            });
+
             let subgraph = match maybe_subgraph_asset_spec {
                 Ok(subgraph_asset_spec) => Ok(Arc::new(
-                    load_subgraph_from_asset(asset_storage_registry, subgraph_asset_spec).await?,
+                    load_subgraph_from_asset(asset_storage_registry, subgraph_asset_spec)
+                        .await
+                        .map_err(|err| OrchestrationError::AssetStorageError {
+                            location: parent_location.with_node(node_index),
+                            err,
+                        })?,
                 )),
                 Err(_) if allow_recursion => Ok(workflow_graph.clone()),
                 Err(err) => Err(err),
@@ -422,7 +530,7 @@ impl Orchestrator {
         &'a self,
         context: OrchestrationContext,
         workflow_graph: Arc<WorkflowGraph>,
-    ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
+    ) -> Result<LocalBoxStream<'a, Result<Action, OrchestrationError>>, OrchestrationError> {
         let node_states = Self::collect_node_states(&context, &workflow_graph).await?;
         let loc = context.parent_loc.with_node(workflow_graph.output_idx());
 
@@ -474,143 +582,149 @@ impl Orchestrator {
 
         let node_states = Arc::new(node_states);
         Ok(stream::iter(ready_nodes)
-            .flat_map_unordered(None, move |n| -> LocalBoxStream<miette::Result<Action>> {
-                let node_states = Arc::clone(&node_states);
-                let Some(definition) = workflow_graph.node_definition(n) else {
-                    return stream_error(miette!("Could not find node definition"));
-                };
+            .flat_map_unordered(
+                None,
+                move |n| -> LocalBoxStream<Result<Action, OrchestrationError>> {
+                    let node_states = Arc::clone(&node_states);
+                    let Some(definition) = workflow_graph.node_definition(n) else {
+                        return stream_graph_error(
+                            context.parent_loc.with_node(n),
+                            miette!("Could not find node definition"),
+                        );
+                    };
 
-                if workflow_graph.has_breakpoint(n)
-                    && node_states
-                        .get(&context.parent_loc.with_node(n))
-                        .is_none_or(|state| state.unpaused_time.is_none())
-                {
-                    return Self::build_pause_action(
-                        context.scheduled_this_lifetime.clone(),
-                        context.parent_loc.clone(),
-                        n,
-                    )
-                    .into_stream()
-                    .boxed();
-                }
+                    if workflow_graph.has_breakpoint(n)
+                        && node_states
+                            .get(&context.parent_loc.with_node(n))
+                            .is_none_or(|state| state.unpaused_time.is_none())
+                    {
+                        return Self::build_pause_action(
+                            context.scheduled_this_lifetime.clone(),
+                            context.parent_loc.clone(),
+                            n,
+                        )
+                        .into_stream()
+                        .boxed();
+                    }
 
-                match definition {
-                    NodeDefinition::Input { name, presence } => self
-                        .build_input_action(
-                            context.workflow_run_state.clone(),
-                            context.parent_loc.clone(),
-                            n,
-                            name.clone(),
-                            presence.clone(),
-                        )
-                        .into_stream()
-                        .boxed(),
-                    NodeDefinition::Const { value } => self
-                        .build_const_action(context.parent_loc.clone(), n, value.clone())
-                        .into_stream()
-                        .boxed(),
-                    NodeDefinition::Output {} => self
-                        .build_output_actions(
-                            workflow_graph.clone(),
-                            node_states,
-                            context.parent_loc.clone(),
-                            n,
-                        )
-                        .try_flatten_stream()
-                        .boxed(),
-                    NodeDefinition::Task {
-                        worker_name,
-                        task_name,
-                        context: requested_context,
-                        executor: requested_executor,
-                        ..
-                    } => stream_action_result(build_task_action(
-                        context.clone().with_execution_context(
-                            requested_context.clone(),
-                            requested_executor.clone(),
-                        ),
-                        workflow_graph.clone(),
-                        &node_states,
-                        n,
-                        worker_name,
-                        task_name,
-                    )),
-                    NodeDefinition::Eval {
-                        context: node_context,
-                        executor: node_executor,
-                    } => self
-                        .build_eval_actions(
+                    match definition {
+                        NodeDefinition::Input { name, presence } => self
+                            .build_input_action(
+                                context.workflow_run_state.clone(),
+                                context.parent_loc.clone(),
+                                n,
+                                name.clone(),
+                                presence.clone(),
+                            )
+                            .into_stream()
+                            .boxed(),
+                        NodeDefinition::Const { value } => self
+                            .build_const_action(context.parent_loc.clone(), n, value.clone())
+                            .into_stream()
+                            .boxed(),
+                        NodeDefinition::Output {} => self
+                            .build_output_actions(
+                                workflow_graph.clone(),
+                                node_states,
+                                context.parent_loc.clone(),
+                                n,
+                            )
+                            .try_flatten_stream()
+                            .boxed(),
+                        NodeDefinition::Task {
+                            worker_name,
+                            task_name,
+                            context: requested_context,
+                            executor: requested_executor,
+                            ..
+                        } => stream_action_result(build_task_action(
                             context.clone().with_execution_context(
-                                node_context.clone(),
-                                node_executor.clone(),
+                                requested_context.clone(),
+                                requested_executor.clone(),
                             ),
                             workflow_graph.clone(),
-                            node_states,
+                            &node_states,
                             n,
-                        )
-                        .try_flatten_stream()
-                        .boxed_local(),
-                    NodeDefinition::Loop {
-                        context: node_context,
-                        executor: node_executor,
-                    } => self
-                        .build_loop_actions(
-                            context.clone().with_execution_context(
-                                node_context.clone(),
-                                node_executor.clone(),
-                            ),
-                            workflow_graph.clone(),
-                            node_states,
-                            n,
-                            workflow_graph.node_name(n),
-                        )
-                        .try_flatten_stream()
-                        .boxed_local(),
-                    NodeDefinition::Map {
-                        mapped_ports,
-                        context: node_context,
-                        executor: node_executor,
-                    } => self
-                        .build_map_actions(
-                            context.clone().with_execution_context(
-                                node_context.clone(),
-                                node_executor.clone(),
-                            ),
-                            workflow_graph.clone(),
-                            node_states,
-                            mapped_ports.clone(),
-                            n,
-                        )
-                        .try_flatten_stream()
-                        .boxed_local(),
-                    // Eager and Lazy If else are controlled by the ready node checks
-                    NodeDefinition::IfElse {} => self
-                        .build_if_else_action(
-                            workflow_graph.clone(),
-                            node_states,
-                            context.parent_loc.clone(),
-                            n,
-                        )
-                        .into_stream()
-                        .boxed(),
-                    NodeDefinition::EagerIfElse {} => self
-                        .build_eager_if_else_action(
-                            workflow_graph.clone(),
-                            node_states,
-                            context.parent_loc.clone(),
-                            n,
-                        )
-                        .into_stream()
-                        .boxed(),
-                }
-            })
+                            worker_name,
+                            task_name,
+                        )),
+                        NodeDefinition::Eval {
+                            context: node_context,
+                            executor: node_executor,
+                        } => self
+                            .build_eval_actions(
+                                context.clone().with_execution_context(
+                                    node_context.clone(),
+                                    node_executor.clone(),
+                                ),
+                                workflow_graph.clone(),
+                                node_states,
+                                n,
+                            )
+                            .try_flatten_stream()
+                            .boxed_local(),
+                        NodeDefinition::Loop {
+                            context: node_context,
+                            executor: node_executor,
+                        } => self
+                            .build_loop_actions(
+                                context.clone().with_execution_context(
+                                    node_context.clone(),
+                                    node_executor.clone(),
+                                ),
+                                workflow_graph.clone(),
+                                node_states,
+                                n,
+                                workflow_graph.node_name(n),
+                            )
+                            .try_flatten_stream()
+                            .boxed_local(),
+                        NodeDefinition::Map {
+                            mapped_ports,
+                            context: node_context,
+                            executor: node_executor,
+                        } => self
+                            .build_map_actions(
+                                context.clone().with_execution_context(
+                                    node_context.clone(),
+                                    node_executor.clone(),
+                                ),
+                                workflow_graph.clone(),
+                                node_states,
+                                mapped_ports.clone(),
+                                n,
+                            )
+                            .try_flatten_stream()
+                            .boxed_local(),
+                        // Eager and Lazy If else are controlled by the ready node checks
+                        NodeDefinition::IfElse {} => self
+                            .build_if_else_action(
+                                workflow_graph.clone(),
+                                node_states,
+                                context.parent_loc.clone(),
+                                n,
+                            )
+                            .into_stream()
+                            .boxed(),
+                        NodeDefinition::EagerIfElse {} => self
+                            .build_eager_if_else_action(
+                                workflow_graph.clone(),
+                                node_states,
+                                context.parent_loc.clone(),
+                                n,
+                            )
+                            .into_stream()
+                            .boxed(),
+                    }
+                },
+            )
             .boxed_local())
     }
 
     async fn collect_node_states(
         context: &OrchestrationContext,
         workflow_graph: &Arc<WorkflowGraph>,
-    ) -> miette::Result<NodeStates> {
+    ) -> Result<NodeStates, OrchestrationError> {
         context
             .workflow_run_state
             .read_many(
@@ -619,6 +733,10 @@ impl Orchestrator {
                     .map(|n| context.parent_loc.with_node(n)),
             )
             .await
+            .map_err(|err| OrchestrationError::StateStorageError {
+                location: context.parent_loc.clone(),
+                err,
+            })
     }
 
     /// Find nodes which are ready for execution, mark them as scheduled then return them.
@@ -682,6 +800,7 @@ impl Orchestrator {
                     .expect("Node definition not found");
                 if matches!(definition, NodeDefinition::IfElse {}) {
                     Self::if_else_ready(workflow_graph, node_states, parent_location, *n)
+                        .expect("Failed to check IfElse readiness")
                 } else {
                     workflow_graph.all_inputs(*n, |incoming| {
                         node_states
@@ -698,20 +817,20 @@ impl Orchestrator {
         node_states: &NodeStates,
         parent_location: &Location,
         n: NodeIndex,
-    ) -> bool {
+    ) -> miette::Result<bool> {
         let cond = node_states
             .get(&parent_location.with_node(n))
             .and_then(|state| state.cond);
         match cond {
             None => Self::port_has_input(workflow_graph, node_states, parent_location, n, "pred")
-                .expect("No `pred` port on `IfElse` node"),
+                .wrap_err("No `pred` port on `IfElse` node"),
             Some(true) => {
                 Self::port_has_input(workflow_graph, node_states, parent_location, n, "if_true")
-                    .expect("No `if_true` port on `IfElse` node")
+                    .wrap_err("No `if_true` port on `IfElse` node")
             }
             Some(false) => {
                 Self::port_has_input(workflow_graph, node_states, parent_location, n, "if_false")
-                    .expect("No `if_false` port on `IfElse` node")
+                    .wrap_err("No `if_false` port on `IfElse` node")
             }
         }
     }
@@ -742,28 +861,43 @@ impl Orchestrator {
         node_states: Arc<NodeStates>,
         parent_location: Location,
         n: NodeIndex,
-    ) -> miette::Result<Action> {
+    ) -> Result<Action, OrchestrationError> {
         let cond = node_states
             .get(&parent_location.with_node(n))
             .and_then(|state| state.cond);
         match cond {
             None => {
-                let (pred_node, connected_port) =
-                    workflow_graph.connected_input_by_port_name(n, "pred")?;
-                let pred_state = node_states
+                let (pred_node, connected_port) = workflow_graph
+                    .connected_input_by_port_name(n, "pred")
+                    .map_err(|err| OrchestrationError::GraphError {
+                        location: parent_location.with_node(n),
+                        err,
+                    })?;
+                let pred_outputs = node_states
                     .get(&parent_location.with_node(pred_node))
-                    .ok_or_else(|| miette!("Cannot find state for `pred` node"))?;
-                let connected_port_name = workflow_graph.get_port_name(connected_port)?;
+                    .and_then(|state| state.outputs.as_ref())
+                    .ok_or_else(|| OrchestrationError::GraphError {
+                        location: parent_location.with_node(n),
+                        err: miette!("Node connected to `pred` port has no outputs."),
+                    })?;
+                let connected_port_name =
+                    workflow_graph
+                        .get_port_name(connected_port)
+                        .map_err(|err| OrchestrationError::GraphError {
+                            location: parent_location.with_node(n),
+                            err,
+                        })?;
 
                 let pred_bytes = load_asset(
                     &self.asset_storage_registry,
-                    pred_state
-                        .outputs
-                        .as_ref()
-                        .ok_or_else(|| miette!("`pred` node has no outputs"))?,
+                    pred_outputs,
                     connected_port_name,
                 )
-                .await?;
+                .await
+                .map_err(|err| OrchestrationError::AssetStorageError {
+                    location: parent_location.with_node(n),
+                    err,
+                })?;
 
                 Ok(Action {
                     loc: parent_location.with_node(n),
@@ -795,21 +929,35 @@ impl Orchestrator {
         parent_location: &Location,
         n: NodeIndex,
         port_name: &str,
-    ) -> miette::Result<Action> {
-        let (connected_node, connected_port) =
-            workflow_graph.connected_input_by_port_name(n, port_name)?;
-        let node_state = node_states
+    ) -> Result<Action, OrchestrationError> {
+        let (connected_node, connected_port) = workflow_graph
+            .connected_input_by_port_name(n, port_name)
+            .map_err(|err| OrchestrationError::GraphError {
+                location: parent_location.with_node(n),
+                err,
+            })?;
+
+        let node_outputs = node_states
             .get(&parent_location.with_node(connected_node))
-            .ok_or_else(|| miette!("Cannot find state for `{port_name}` node"))?;
-        let connected_port_name = workflow_graph.get_port_name(connected_port)?;
+            .and_then(|state| state.outputs.as_ref());
+        let connected_port_name = workflow_graph
+            .get_port_name(connected_port)
+            .map_err(|err| OrchestrationError::GraphError {
+                location: parent_location.with_node(n),
+                err,
+            })?;
 
         let mut outputs = HashMap::new();
-        let value = node_state
-            .outputs
-            .as_ref()
-            .ok_or_else(|| miette!("No outputs found on node connected to `{port_name}` port."))?
+        let value = node_outputs
+            .ok_or_else(|| OrchestrationError::GraphError {
+                location: parent_location.with_node(n),
+                err: miette!("No outputs found on node connected to `{port_name}` port."),
+            })?
             .get(connected_port_name)
-            .ok_or_else(|| miette!("No outputs found for `{connected_port_name}` port."))?;
+            .ok_or_else(|| OrchestrationError::GraphError {
+                location: parent_location.with_node(n),
+                err: miette!("No outputs found for `{connected_port_name}` port."),
+            })?;
         outputs.insert("value".to_string(), value.clone());
 
         Ok(Action {
@@ -829,10 +977,20 @@ impl Orchestrator {
         node_states: Arc<NodeStates>,
         parent_location: Location,
         n: NodeIndex,
-    ) -> miette::Result<Action> {
-        let mut inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
+    ) -> Result<Action, OrchestrationError> {
+        let mut inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)
+            .map_err(|err| OrchestrationError::GraphError {
+                location: parent_location.with_node(n),
+                err,
+            })?;
 
-        let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred").await?;
+        let pred_bytes = load_asset(&self.asset_storage_registry, &inputs, "pred")
+            .await
+            .map_err(|err| OrchestrationError::AssetStorageError {
+                location: parent_location.with_node(n),
+                err,
+            })?;
+
         let mut outputs = HashMap::new();
 
         if pred_bytes == b"true" {
@@ -861,25 +1019,39 @@ impl Orchestrator {
         n: NodeIndex,
         name: String,
         presence: ValuePresence,
-    ) -> miette::Result<Action> {
+    ) -> Result<Action, OrchestrationError> {
         let input_asset_spec = workflow_run_state
             .load_named_input_from_location(&parent_location, &name)
-            .await?;
+            .await
+            .map_err(|err| OrchestrationError::StateStorageError {
+                location: parent_location.with_node(n),
+                err,
+            })?;
         let input_asset_spec = match (presence, input_asset_spec) {
             (_, Some(input_asset_spec)) => input_asset_spec,
             (ValuePresence::Required, None) => {
-                return Err(miette!(
-                    "Input with name: `{name}` not found at location: {parent_location}`"
-                ));
+                return Err(OrchestrationError::InputError {
+                    name,
+                    location: parent_location.with_node(n),
+                });
             }
             (ValuePresence::Omittable(value), None) => {
-                let value_bytes = serde_json::to_vec(&value).into_diagnostic()?;
+                let value_bytes = serde_json::to_vec(&value)
+                    .into_diagnostic()
+                    .map_err(|err| OrchestrationError::SerializationError {
+                        location: parent_location.with_node(n),
+                        err,
+                    })?;
                 save_asset(
                     &self.asset_storage_registry,
                     &self.default_storage_name,
                     value_bytes,
                 )
-                .await?
+                .await
+                .map_err(|err| OrchestrationError::AssetStorageError {
+                    location: parent_location.with_node(n),
+                    err,
+                })?
             }
         };
         let mut outputs = HashMap::new();
@@ -901,14 +1073,23 @@ impl Orchestrator {
         parent_location: Location,
         n: NodeIndex,
         value: serde_json::Value,
-    ) -> miette::Result<Action> {
-        let value_bytes = serde_json::to_vec(&value).into_diagnostic()?;
+    ) -> Result<Action, OrchestrationError> {
+        let value_bytes = serde_json::to_vec(&value)
+            .into_diagnostic()
+            .map_err(|err| OrchestrationError::SerializationError {
+                location: parent_location.with_node(n),
+                err,
+            })?;
         let asset_key = save_asset(
             &self.asset_storage_registry,
             &self.default_storage_name,
             value_bytes,
         )
-        .await?;
+        .await
+        .map_err(|err| OrchestrationError::AssetStorageError {
+            location: parent_location.with_node(n),
+            err,
+        })?;
 
         let mut outputs = HashMap::new();
         outputs.insert("value".to_string(), asset_key);
@@ -929,8 +1110,14 @@ impl Orchestrator {
         node_states: Arc<NodeStates>,
         parent_location: Location,
         n: NodeIndex,
-    ) -> miette::Result<BoxStream<'_, miette::Result<Action>>> {
-        let inputs = collect_inputs(&workflow_graph, &node_states, &parent_location, n)?;
+    ) -> Result<BoxStream<'_, Result<Action, OrchestrationError>>, OrchestrationError> {
+        let inputs =
+            collect_inputs(&workflow_graph, &node_states, &parent_location, n).map_err(|err| {
+                OrchestrationError::GraphError {
+                    location: parent_location.with_node(n),
+                    err,
+                }
+            })?;
         let loc = parent_location.with_node(n);
 
         let is_root_workflow = loc == Location::from_node_index_iter([workflow_graph.output_idx()]);
@@ -960,7 +1147,7 @@ impl Orchestrator {
         workflow_graph: Arc<WorkflowGraph>,
         node_states: Arc<NodeStates>,
         n: NodeIndex,
-    ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
+    ) -> Result<LocalBoxStream<'a, Result<Action, OrchestrationError>>, OrchestrationError> {
         let is_running = node_states
             .get(&context.parent_loc.with_node(n))
             .and_then(|state| state.running_time)
@@ -972,6 +1159,7 @@ impl Orchestrator {
                     &workflow_graph,
                     &node_states,
                     &self.asset_storage_registry,
+                    &context.parent_loc,
                     n,
                     true,
                 )
@@ -980,7 +1168,11 @@ impl Orchestrator {
             let subgraph_output_state = context
                 .workflow_run_state
                 .read(&location.with_node(subgraph.output_idx()))
-                .await?;
+                .await
+                .map_err(|err| OrchestrationError::StateStorageError {
+                    location: context.parent_loc.with_node(n),
+                    err,
+                })?;
 
             if let Some(subgraph_outputs) = subgraph_output_state.outputs {
                 return Ok(stream::once(future::ok(Action {
@@ -998,7 +1190,11 @@ impl Orchestrator {
 
             Ok(stream.boxed_local())
         } else {
-            let mut inputs = collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n)?;
+            let mut inputs = collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n)
+                .map_err(|err| OrchestrationError::GraphError {
+                    location: context.parent_loc.with_node(n),
+                    err,
+                })?;
             // The graph input is always the same, no sense in saving it.
             inputs.remove("graph");
 
@@ -1024,13 +1220,18 @@ impl Orchestrator {
         node_states: Arc<NodeStates>,
         n: NodeIndex,
         name: Option<String>,
-    ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
+    ) -> Result<LocalBoxStream<'a, Result<Action, OrchestrationError>>, OrchestrationError> {
         let loc = context.parent_loc.with_node(n);
         let loop_index = node_states.get(&loc).and_then(|state| state.loop_index);
         match loop_index {
             None => {
                 let mut inputs =
-                    collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n)?;
+                    collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n).map_err(
+                        |err| OrchestrationError::GraphError {
+                            location: context.parent_loc.with_node(n),
+                            err,
+                        },
+                    )?;
                 // The graph input is always the same, no sense in saving it.
                 inputs.remove("graph");
                 return Ok(stream::once(future::ok(Action {
@@ -1050,6 +1251,7 @@ impl Orchestrator {
                         &workflow_graph,
                         &node_states,
                         &self.asset_storage_registry,
+                        &context.parent_loc,
                         n,
                         false,
                     )
@@ -1059,7 +1261,11 @@ impl Orchestrator {
                 let loop_iteration_output_state = context
                     .workflow_run_state
                     .read(&loop_subgraph_output_loc)
-                    .await?;
+                    .await
+                    .map_err(|err| OrchestrationError::StateStorageError {
+                        location: context.parent_loc.clone(),
+                        err,
+                    })?;
 
                 match loop_iteration_output_state.outputs {
                     None => {
@@ -1070,7 +1276,11 @@ impl Orchestrator {
                     Some(outputs) => {
                         let should_continue_bytes =
                             load_asset(&self.asset_storage_registry, &outputs, "should_continue")
-                                .await?;
+                                .await
+                                .map_err(|err| OrchestrationError::AssetStorageError {
+                                    location: context.parent_loc.clone(),
+                                    err,
+                                })?;
 
                         if should_continue_bytes == b"true" {
                             let mut inputs = collect_inputs(
@@ -1078,7 +1288,14 @@ impl Orchestrator {
                                 &node_states,
                                 &context.parent_loc,
                                 n,
-                            )?;
+                            )
+                            .map_err(|err| {
+                                OrchestrationError::GraphError {
+                                    location: context.parent_loc.with_node(n),
+                                    err,
+                                }
+                            })?;
+
                             inputs.extend(outputs);
                             Ok(stream::once(future::ok(Action {
                                 loc,
@@ -1114,12 +1331,13 @@ impl Orchestrator {
         node_states: Arc<NodeStates>,
         mapped_ports: HashSet<String>,
         n: NodeIndex,
-    ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
+    ) -> Result<LocalBoxStream<'a, Result<Action, OrchestrationError>>, OrchestrationError> {
         let subgraph = context
             .load_subgraph(
                 &workflow_graph,
                 &node_states,
                 &self.asset_storage_registry,
+                &context.parent_loc,
                 n,
                 false,
             )
@@ -1169,15 +1387,23 @@ impl Orchestrator {
         node_states: Arc<NodeStates>,
         mapped_ports: HashSet<String>,
         n: NodeIndex,
-    ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
-        let mut inputs = collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n)?;
+    ) -> Result<LocalBoxStream<'a, Result<Action, OrchestrationError>>, OrchestrationError> {
+        let mut inputs = collect_inputs(&workflow_graph, &node_states, &context.parent_loc, n)
+            .map_err(|err| OrchestrationError::GraphError {
+                location: context.parent_loc.with_node(n),
+                err,
+            })?;
         // The graph input is always the same, no sense in saving it.
         inputs.remove("graph");
 
         let mut input_sets = Vec::new();
         for mapped_port in mapped_ports {
-            let unfolded_assets =
-                unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port).await?;
+            let unfolded_assets = unfold_asset(&self.asset_storage_registry, &inputs, &mapped_port)
+                .await
+                .map_err(|err| OrchestrationError::AssetStorageError {
+                    location: context.parent_loc.with_node(n),
+                    err,
+                })?;
 
             if input_sets.is_empty() {
                 input_sets.extend(iter::repeat_n(inputs.clone(), unfolded_assets.len()));
@@ -1204,7 +1430,7 @@ impl Orchestrator {
         n: NodeIndex,
         completed: BitVec<u8>,
         subgraph: Arc<WorkflowGraph>,
-    ) -> miette::Result<LocalBoxStream<'a, miette::Result<Action>>> {
+    ) -> Result<LocalBoxStream<'a, Result<Action, OrchestrationError>>, OrchestrationError> {
         let output_idx = subgraph.output_idx();
         let map_size = completed.len();
 
@@ -1221,7 +1447,11 @@ impl Orchestrator {
                         async move {
                             let subgraph_output_state = workflow_run_state_copy
                                 .read(&map_loc_copy.with_node(output_idx))
-                                .await?;
+                                .await
+                                .map_err(|err| OrchestrationError::StateStorageError {
+                                    location: map_loc_copy.with_node(output_idx),
+                                    err,
+                                })?;
 
                             match subgraph_output_state.outputs {
                                 None => Ok(stream::empty().boxed()),
@@ -1254,10 +1484,14 @@ impl Orchestrator {
         n: NodeIndex,
         map_size: usize,
         output_idx: NodeIndex,
-    ) -> miette::Result<Action> {
+    ) -> Result<Action, OrchestrationError> {
         let loc = context.parent_loc.with_node(n);
         let mut asset_bundles: HashMap<String, Vec<_>> = workflow_graph
-            .output_names(n)?
+            .output_names(n)
+            .map_err(|err| OrchestrationError::GraphError {
+                location: context.parent_loc.with_node(n),
+                err,
+            })?
             .map(|name| (name.clone(), Vec::new()))
             .collect();
         for index in 0..map_size {
@@ -1265,11 +1499,18 @@ impl Orchestrator {
             let subgraph_output_state = context
                 .workflow_run_state
                 .read(&map_loc.with_node(output_idx))
-                .await?;
+                .await
+                .map_err(|err| OrchestrationError::StateStorageError {
+                    location: map_loc.with_node(output_idx),
+                    err,
+                })?;
 
-            let outputs = subgraph_output_state
-                .outputs
-                .ok_or_else(|| miette!("No outputs!"))?;
+            let outputs = subgraph_output_state.outputs.ok_or_else(|| {
+                OrchestrationError::StateStorageError {
+                    location: map_loc.with_node(output_idx),
+                    err: miette!("No outputs!"),
+                }
+            })?;
 
             for (k, v) in outputs {
                 let entry = asset_bundles.entry(k).or_default();
@@ -1284,7 +1525,11 @@ impl Orchestrator {
                 &self.default_storage_name,
                 asset_specs,
             )
-            .await?;
+            .await
+            .map_err(|err| OrchestrationError::AssetStorageError {
+                location: context.parent_loc.with_node(n),
+                err,
+            })?;
             outputs.insert(name, folded_asset_spec);
         }
 
@@ -1303,7 +1548,7 @@ impl Orchestrator {
         scheduled_this_lifetime: Arc<RwLock<ScheduledSet>>,
         parent_location: Location,
         n: NodeIndex,
-    ) -> miette::Result<Action> {
+    ) -> Result<Action, OrchestrationError> {
         let loc = parent_location.with_node(n);
         let mut scheduled = scheduled_this_lifetime.write().await;
         scheduled.remove(&loc);
@@ -1324,81 +1569,84 @@ impl Orchestrator {
         &self,
         workflow_run_id: Uuid,
         attempt: u32,
-        mut actions: impl Stream<Item = miette::Result<Action>> + Unpin,
+        mut actions: impl Stream<Item = Result<Action, OrchestrationError>> + Unpin,
     ) -> miette::Result<()> {
-        // Build a list of tasks to dispatch to Executors and immediately
-        // process everything else.
         let mut plan = ActionPlan::default();
-        while let Some(Action { loc, kind }) = actions.next().await.transpose()? {
-            debug!("Running action at {loc}, kind: {kind:?}");
-            match kind {
-                ActionKind::PerformTask {
-                    worker_name,
-                    task_name,
-                    inputs,
-                    outputs,
-                    task_handle,
-                    resources,
-                } => {
-                    let resolved = *resources;
-                    plan.tasks
-                        .entry(
-                            resolved
-                                .executor
-                                .unwrap_or_else(|| self.default_executor_name.clone()),
-                        )
-                        .or_default()
-                        .push(TaskPlan {
-                            workflow_run_id,
-                            attempt,
-                            loc,
-                            execution_context: resolved.name,
+        while let Some(res) = actions.next().await {
+            match res {
+                Ok(Action { loc, kind }) => {
+                    debug!("Running action at {loc}, kind: {kind:?}");
+                    match kind {
+                        ActionKind::PerformTask {
                             worker_name,
                             task_name,
                             inputs,
                             outputs,
-                            output_storage_name: Some(self.default_storage_name.clone()),
-                            resources: resolved.resources,
-                            environment: resolved.environment,
                             task_handle,
-                        });
+                            resources,
+                        } => {
+                            let resolved = *resources;
+                            plan.tasks
+                                .entry(
+                                    resolved
+                                        .executor
+                                        .unwrap_or_else(|| self.default_executor_name.clone()),
+                                )
+                                .or_default()
+                                .push(TaskPlan {
+                                    workflow_run_id,
+                                    attempt,
+                                    loc,
+                                    execution_context: resolved.name,
+                                    worker_name,
+                                    task_name,
+                                    inputs,
+                                    outputs,
+                                    output_storage_name: Some(self.default_storage_name.clone()),
+                                    resources: resolved.resources,
+                                    environment: resolved.environment,
+                                    task_handle,
+                                });
+                        }
+                        ActionKind::SetPaused {} => {
+                            plan.pause.push(loc);
+                        }
+                        ActionKind::SetSwitching { cond } => {
+                            plan.switching.push((loc, cond));
+                        }
+                        ActionKind::SetRunningEval { inputs } => plan.evalling.push((loc, inputs)),
+                        ActionKind::SetRunningLoop {
+                            index,
+                            inputs,
+                            name,
+                        } => {
+                            plan.looping.push((loc, index, inputs, name));
+                        }
+                        ActionKind::SetRunningMap { input_sets } => {
+                            plan.mapping.push((loc, input_sets));
+                        }
+                        ActionKind::SetMapElemComplete { index, size } => {
+                            let entry = plan
+                                .map_elem_complete
+                                .entry(loc)
+                                .or_insert_with(|| BitVec::repeat(false, size));
+                            entry.set(index, true);
+                        }
+                        ActionKind::SetComplete { outputs } => {
+                            plan.node_complete.push((loc, outputs));
+                        }
+                        ActionKind::WorkflowPaused {} => {
+                            plan.set_workflow_state = Some(SetWorkflowState::Paused);
+                        }
+                        ActionKind::WorkflowErrored {} => {
+                            plan.set_workflow_state = Some(SetWorkflowState::Errored);
+                        }
+                        ActionKind::WorkflowCompleted {} => {
+                            plan.set_workflow_state = Some(SetWorkflowState::Completed);
+                        }
+                    }
                 }
-                ActionKind::SetPaused {} => {
-                    plan.pause.push(loc);
-                }
-                ActionKind::SetSwitching { cond } => {
-                    plan.switching.push((loc, cond));
-                }
-                ActionKind::SetRunningEval { inputs } => plan.evalling.push((loc, inputs)),
-                ActionKind::SetRunningLoop {
-                    index,
-                    inputs,
-                    name,
-                } => {
-                    plan.looping.push((loc, index, inputs, name));
-                }
-                ActionKind::SetRunningMap { input_sets } => {
-                    plan.mapping.push((loc, input_sets));
-                }
-                ActionKind::SetMapElemComplete { index, size } => {
-                    let entry = plan
-                        .map_elem_complete
-                        .entry(loc)
-                        .or_insert_with(|| BitVec::repeat(false, size));
-                    entry.set(index, true);
-                }
-                ActionKind::SetComplete { outputs } => {
-                    plan.node_complete.push((loc, outputs));
-                }
-                ActionKind::WorkflowPaused {} => {
-                    plan.set_workflow_state = Some(SetWorkflowState::Paused);
-                }
-                ActionKind::WorkflowErrored {} => {
-                    plan.set_workflow_state = Some(SetWorkflowState::Errored);
-                }
-                ActionKind::WorkflowCompleted {} => {
-                    plan.set_workflow_state = Some(SetWorkflowState::Completed);
-                }
+                Err(err) => plan.errors.push(err),
             }
         }
 
@@ -1510,12 +1758,21 @@ impl Orchestrator {
     }
 }
 
-fn stream_action_result<'a>(res: miette::Result<Action>) -> BoxStream<'a, miette::Result<Action>> {
+fn stream_action_result<'a>(
+    res: Result<Action, OrchestrationError>,
+) -> BoxStream<'a, Result<Action, OrchestrationError>> {
     stream::once(future::ready(res)).boxed()
 }
 
-fn stream_error<'a>(err: miette::Error) -> BoxStream<'a, miette::Result<Action>> {
-    stream::once(future::err(err)).boxed()
+fn stream_graph_error<'a>(
+    location: Location,
+    err: miette::Error,
+) -> BoxStream<'a, Result<Action, OrchestrationError>> {
+    stream::once(future::err(OrchestrationError::GraphError {
+        location,
+        err,
+    }))
+    .boxed()
 }
 
 #[instrument(
@@ -1530,21 +1787,44 @@ fn build_task_action(
     n: NodeIndex,
     worker_name: &str,
     task_name: &str,
-) -> miette::Result<Action> {
+) -> Result<Action, OrchestrationError> {
     let loc = context.parent_loc.with_node(n);
-    let inputs = collect_inputs(&workflow_graph, node_states, &context.parent_loc, n)?;
-    let outputs = workflow_graph.output_names(n)?.cloned().collect();
+    let inputs =
+        collect_inputs(&workflow_graph, node_states, &context.parent_loc, n).map_err(|err| {
+            OrchestrationError::GraphError {
+                location: context.parent_loc.with_node(n),
+                err,
+            }
+        })?;
+
+    let outputs = workflow_graph
+        .output_names(n)
+        .map_err(|err| OrchestrationError::GraphError {
+            location: context.parent_loc.with_node(n),
+            err,
+        })?
+        .cloned()
+        .collect();
     let task_handle = node_states.get(&loc).and_then(|state| state.handle.clone());
+
     let resolved = match context.profiles {
-        Some(profiles) => profiles.resolve(
-            context.inherited_context.as_deref(),
-            context.inherited_executor.as_deref(),
-        )?,
-        None if context.inherited_context.is_some() => {
-            return Err(miette!(
-                "Task at {loc} requests execution context `{}` but no resource deployment is selected",
-                context.inherited_context.unwrap()
-            ));
+        Some(profiles) => profiles
+            .resolve(
+                context.inherited_context.as_deref(),
+                context.inherited_executor.as_deref(),
+            )
+            .map_err(|err| OrchestrationError::ExecutionContextError {
+                location: loc.clone(),
+                err,
+            })?,
+        None if let Some(inherited_context) = context.inherited_context => {
+            return Err(OrchestrationError::ExecutionContextError {
+                location: loc,
+                err: miette!(
+                    "Requested execution context `{}` but no resource deployment is selected",
+                    inherited_context,
+                ),
+            });
         }
         None => ResolvedContext {
             executor: context.inherited_executor,

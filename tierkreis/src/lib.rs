@@ -696,8 +696,8 @@ mod tierkreis {
         }
     }
 
-    // TODO: I'm not sure how debuggable this is
     #[pyclass(name = "RuntimeConfig")]
+    #[derive(Clone, Debug)]
     struct PyRuntimeConfig(pub RuntimeConfig);
 
     #[pymethods]
@@ -705,6 +705,17 @@ mod tierkreis {
         /// Override the configured logging level.
         fn set_log_level(&mut self, log_level: String) {
             self.0.set_log_level(log_level);
+        }
+
+        fn __repr__(&self) -> String {
+            format!("{self}")
+        }
+    }
+
+    impl std::fmt::Display for PyRuntimeConfig {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let contents = serde_json::to_string_pretty(&self.0).expect("Failed to write config");
+            write!(f, "RuntimeConfig({contents})")
         }
     }
 
@@ -749,9 +760,22 @@ mod tierkreis {
         }
     }
 
-    // TODO: I'm not sure how debuggable this is
     #[pyclass(name = "WorkflowGraph")]
     struct PyWorkflowGraph(pub WorkflowGraph);
+
+    #[pymethods]
+    impl PyWorkflowGraph {
+        fn __repr__(&self) -> String {
+            format!("{self}")
+        }
+    }
+
+    impl std::fmt::Display for PyWorkflowGraph {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let contents = serde_json::to_string_pretty(&self.0).expect("Failed to write config");
+            write!(f, "WorkflowGraph({contents})")
+        }
+    }
 
     impl<'a, 'py> FromPyObject<'a, 'py> for PyWorkflowGraph {
         type Error = PyErr;
@@ -783,8 +807,7 @@ mod tierkreis {
         }
     }
 
-    // TODO: I'm not sure how debuggable this is
-    #[pyclass]
+    #[pyclass(name = "WorkflowInputs")]
     struct PyWorkflowInputs(pub HashMap<String, Vec<u8>>);
 
     impl<'a, 'py> FromPyObject<'a, 'py> for PyWorkflowInputs {
@@ -815,6 +838,20 @@ mod tierkreis {
                     .into_diagnostic()
                     .map_err(|err| convert_err(py, err))?,
             }))
+        }
+    }
+
+    #[pymethods]
+    impl PyWorkflowInputs {
+        fn __repr__(&self) -> String {
+            format!("{self}")
+        }
+    }
+
+    impl std::fmt::Display for PyWorkflowInputs {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let contents = serde_json::to_string_pretty(&self.0).expect("Failed to write config");
+            write!(f, "WorkflowInputs({contents})")
         }
     }
 
