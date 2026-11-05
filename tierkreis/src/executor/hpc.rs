@@ -28,10 +28,10 @@ use crate::{
         send_queued, send_running,
     },
     executor::{
-        commands::{shell_quote, validate_worker_commands, worker_invocation},
+        commands::{validate_worker_commands, worker_invocation},
         hpc::spec::{
             ContainerSpec, HPCResourceSpec, JobSpec, MpiSpec, SchedulerStatus, SchedulerWrapper,
-            UserSpec,
+            UserSpec, shell_word,
         },
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     },
@@ -564,14 +564,14 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         let (command, args) =
             worker_invocation(&self.worker_commands, &task.worker_name, worker_args_path)?;
 
-        let mut command = shell_quote(&command);
+        let mut command = shell_word(&command);
         // Append the arguments to command, args is always non-empty as it includes
         // the `worker_args_path` at the end.
         command.push(' ');
         command.push_str(
             &args
                 .iter()
-                .map(|arg| shell_quote(arg))
+                .map(|arg| shell_word(arg))
                 .collect::<Vec<_>>()
                 .join(" "),
         );
@@ -749,6 +749,19 @@ mod tests {
 
         assert_eq!(request.resources.cores_per_node, Some(4));
         assert_eq!(request.extra_scheduler_args["--verbose"], None);
+        Ok(())
+    }
+
+    #[test]
+    fn resource_request_parses_mpi_launcher() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::from([(
+            "mpi".to_string(),
+            json!({"proc": "4", "launcher": ["srun", "--mpi=pmix"]}),
+        )]))?;
+
+        let mpi = request.mpi.ok_or_else(|| miette!("MPI spec is missing"))?;
+        assert_eq!(mpi.proc.as_deref(), Some("4"));
+        assert_eq!(mpi.launch_prefix(), "srun --mpi=pmix");
         Ok(())
     }
 

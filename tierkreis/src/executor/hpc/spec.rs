@@ -106,6 +106,48 @@ pub struct MpiSpec {
     pub proc: Option<String>,
     /// MPI processes per node.
     pub max_proc_per_node: Option<String>,
+    /// Command prefix used to launch MPI programs.
+    ///
+    /// Defaults to `["mpiexec"]` when unset. The batch script prepends this
+    /// launcher to the worker command within the scheduler allocation.
+    /// An empty list runs the worker command without an MPI launcher.
+    pub launcher: Option<Vec<String>>,
+}
+
+/// Default MPI launcher used when [`MpiSpec::launcher`] is unset.
+pub const DEFAULT_MPI_LAUNCHER: &str = "mpiexec";
+
+impl MpiSpec {
+    /// Launcher arguments, falling back to [`DEFAULT_MPI_LAUNCHER`].
+    #[must_use]
+    pub fn launcher_args(&self) -> Vec<String> {
+        self.launcher
+            .clone()
+            .unwrap_or_else(|| vec![DEFAULT_MPI_LAUNCHER.to_string()])
+    }
+
+    /// Shell-escaped prefix for the worker command in the batch script.
+    #[must_use]
+    pub fn launch_prefix(&self) -> String {
+        self.launcher_args()
+            .iter()
+            .map(|argument| shell_word(argument))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+/// Quotes a shell word unless it only contains characters that are safe unquoted.
+pub(crate) fn shell_word(argument: &str) -> String {
+    let is_safe = !argument.is_empty()
+        && argument
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c));
+    if is_safe {
+        argument.to_string()
+    } else {
+        format!("'{}'", argument.replace('\'', "'\"'\"'"))
+    }
 }
 
 /// Container settings.
@@ -158,7 +200,10 @@ impl ScriptTemplates {
         self.environment
             .get_template(name)
             .into_diagnostic()?
-            .render(minijinja::context! { job => minijinja::value::Serde(spec) })
+            .render(minijinja::context! {
+                job => minijinja::value::Serde(spec),
+                mpi_launch => spec.mpi.as_ref().map(MpiSpec::launch_prefix),
+            })
             .into_diagnostic()
     }
 }
@@ -213,11 +258,53 @@ mod tests {
             mpi: Some(MpiSpec {
                 proc: Some("8".to_string()),
                 max_proc_per_node: Some("4".to_string()),
+                launcher: None,
             }),
             queue: Some("debug".to_string()),
             account: Some("project".to_string()),
             ..Default::default()
         }
+    }
+
+    #[rstest::rstest]
+    #[case::default(None, "mpiexec worker args.json")]
+    #[case::slurm(Some(vec!["srun", "--mpi=pmix"]), "srun --mpi=pmix worker args.json")]
+    #[case::pbs(Some(vec!["mpirun"]), "mpirun worker args.json")]
+    #[case::quoted(Some(vec!["mpiexec", "-x", "A B", "a'b"]), "mpiexec -x 'A B' 'a'\"'\"'b' worker args.json")]
+    #[case::disabled(Some(vec![]), "worker args.json")]
+    fn renders_launcher_inside_batch_script(
+        #[values("pbs", "pjsub", "slurm")] template: &str,
+        #[case] launcher: Option<Vec<&str>>,
+        #[case] expected: &str,
+    ) {
+        let mut job = test_job();
+        job.mpi.as_mut().expect("job has MPI").launcher =
+            launcher.map(|words| words.into_iter().map(String::from).collect());
+        let script = ScriptTemplates::default()
+            .render(template, &job)
+            .expect("template renders");
+
+        assert!(script.starts_with("#!"), "{script}");
+        assert_eq!(script.lines().last(), Some(expected), "{script}");
+        assert!(!script.contains("TKR_MPI_"), "{script}");
+        match template {
+            "slurm" => assert!(script.contains("#SBATCH --ntasks=8"), "{script}"),
+            "pbs" => assert!(script.contains("#PBS -l mpiprocs=4"), "{script}"),
+            "pjsub" => assert!(script.contains("#PJM --mpi \"proc=8\""), "{script}"),
+            _ => unreachable!(),
+        }
+    }
+
+    #[rstest::rstest]
+    fn renders_non_mpi_worker(#[values("pbs", "pjsub", "slurm")] template: &str) {
+        let mut job = test_job();
+        job.mpi = None;
+        let script = ScriptTemplates::default()
+            .render(template, &job)
+            .expect("template renders");
+
+        assert_eq!(script.lines().last(), Some("worker args.json"), "{script}");
+        assert!(!script.contains("mpiexec"), "{script}");
     }
 
     #[test]

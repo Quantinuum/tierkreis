@@ -48,3 +48,49 @@ OMP_NUM_THREADS = "8"
 Select the profile with `new_default("cluster")`, the `TKR_ENV` environment
 variable, or `profile="cluster"` on `start_new_run`. Scheduler-specific queue,
 account, MPI, and extra arguments can also be supplied by the profile.
+
+## MPI
+
+An `mpi` table in the resource profile requests MPI ranks from the scheduler
+and, by default, wraps the worker command with `mpiexec`:
+
+```toml
+executor = "slurm"
+nodes = 1
+
+[mpi]
+proc = "4"
+max_proc_per_node = "4"
+# Optional: defaults to ["mpiexec"].
+launcher = ["srun", "--mpi=pmix"]
+```
+
+The launcher runs **inside the batch script**, after the scheduler has
+allocated the resources; it is not used to launch `sbatch`, `qsub`, or `pjsub`.
+For example, the Slurm profile above produces `#SBATCH --ntasks=4` and a
+command of the form:
+
+```sh
+srun --mpi=pmix /path/to/worker /path/to/worker-call.json
+```
+
+Use the launcher recommended by the cluster: Slurm may use `srun` with a
+compatible PMI/PMIx plugin, while PBS commonly uses a scheduler-integrated
+`mpiexec` or `mpirun`. Such launchers obtain process placement from the batch
+allocation. Configure the site's PBS MPI allocation using
+`max_proc_per_node` and, where needed, `extra_scheduler_args`; `proc` is
+rendered as a total task request for Slurm and PJSUB. Additional launcher
+options can be supplied as separate words in `launcher`. Each word is
+shell-quoted when the script is rendered.
+
+The worker binary must implement the Tierkreis worker protocol itself,
+including input loading and output writing. It runs on every MPI rank and
+must coordinate any shared-file access, typically writing results on rank 0.
+No wrapper or Tierkreis MPI environment variables are needed. Do not start a
+second MPI launcher inside the worker.
+
+Set `launcher = []` to run the worker command without an MPI launcher.
+
+The legacy PSI/J executor is not supported by the Rust runtime. Existing PSI/J
+documentation is retained only as legacy reference and should not be used for
+new workflows.
