@@ -37,6 +37,6 @@
 {% for module in job.modules %}module load {{ module }}
 {% endfor %}
 # --- User Command ---
-{% if job.mpi %}mpiexec {{ job.command }}
+{% if mpi_launch %}{{ mpi_launch }} {{ job.command }}
 {% else %}{{ job.command }}
 {% endif %}

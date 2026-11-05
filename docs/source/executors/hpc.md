@@ -48,3 +48,51 @@ OMP_NUM_THREADS = "8"
 Select the profile with `new_default("cluster")`, the `TKR_ENV` environment
 variable, or `profile="cluster"` on `start_new_run`. Scheduler-specific queue,
 account, MPI, and extra arguments can also be supplied by the profile.
+
+## MPI
+
+An `mpi` table in the resource profile requests MPI ranks from the scheduler
+and, by default, wraps the worker command with `mpiexec`:
+
+```toml
+executor = "slurm"
+nodes = 1
+
+[mpi]
+proc = "4"
+max_proc_per_node = "4"
+# Optional: defaults to ["mpiexec"].
+launcher = ["srun", "--mpi=pmix"]
+```
+
+The job script exports the request as `TKR_MPI_PROC`,
+`TKR_MPI_MAX_PROC_PER_NODE`, and `TKR_MPI_LAUNCHER`.
+
+### Launcher workers
+
+Some workers are not MPI programs themselves: they stage inputs, start an MPI
+binary and collect its outputs. Wrapping such a worker would run all of it on
+every rank. Set `wrap_worker = false` to allocate the ranks but run the worker
+command once:
+
+```toml
+[mpi]
+proc = "4"
+launcher = ["srun", "--mpi=pmix"]
+wrap_worker = false
+```
+
+The worker then starts the MPI binary itself with `TKR_MPI_LAUNCHER`, which
+holds the launcher as shell-quoted words, and `TKR_MPI_PROC`:
+
+```bash
+eval "launcher=(${TKR_MPI_LAUNCHER})"
+"${launcher[@]}" -n "${TKR_MPI_PROC}" ./solver
+```
+
+`launcher = []` also leaves the worker command unwrapped, with an empty
+`TKR_MPI_LAUNCHER`.
+
+The legacy PSI/J executor is not supported by the Rust runtime. Existing PSI/J
+documentation is retained only as legacy reference and should not be used for
+new workflows.

@@ -576,12 +576,18 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
                 .join(" "),
         );
 
+        let mut environment = request
+            .mpi
+            .as_ref()
+            .map(MpiSpec::environment)
+            .unwrap_or_default();
+        environment.extend(hpc_environment);
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
             walltime: request.walltime.unwrap_or_else(|| "01:00:00".to_string()),
             resources: request.resources,
-            environment: hpc_environment,
+            environment,
             queue: request.queue,
             account: request.account,
             modules: request.modules,
@@ -749,6 +755,21 @@ mod tests {
 
         assert_eq!(request.resources.cores_per_node, Some(4));
         assert_eq!(request.extra_scheduler_args["--verbose"], None);
+        Ok(())
+    }
+
+    #[test]
+    fn resource_request_parses_mpi_launcher() -> miette::Result<()> {
+        let request = ResourceRequest::try_from(HashMap::from([(
+            "mpi".to_string(),
+            json!({"proc": "4", "launcher": ["srun", "--mpi=pmix"], "wrap_worker": false}),
+        )]))?;
+
+        let mpi = request.mpi.ok_or_else(|| miette!("MPI spec is missing"))?;
+        assert_eq!(mpi.proc.as_deref(), Some("4"));
+        assert_eq!(mpi.wrap_worker, Some(false));
+        assert_eq!(mpi.launch_prefix(), "");
+        assert_eq!(mpi.environment()["TKR_MPI_LAUNCHER"], "'srun --mpi=pmix'");
         Ok(())
     }
 

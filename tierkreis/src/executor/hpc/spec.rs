@@ -106,6 +106,82 @@ pub struct MpiSpec {
     pub proc: Option<String>,
     /// MPI processes per node.
     pub max_proc_per_node: Option<String>,
+    /// Command prefix used to launch MPI programs.
+    ///
+    /// Defaults to `["mpiexec"]` when unset. It wraps the worker command unless
+    /// [`MpiSpec::wrap_worker`] is false; an empty list never wraps it.
+    pub launcher: Option<Vec<String>>,
+    /// Whether to start the worker command with the launcher on every rank.
+    ///
+    /// Defaults to true. Set it to false for launcher workers that run setup
+    /// once and start an MPI binary themselves with `TKR_MPI_LAUNCHER`.
+    pub wrap_worker: Option<bool>,
+}
+
+/// Default MPI launcher used when [`MpiSpec::launcher`] is unset.
+pub const DEFAULT_MPI_LAUNCHER: &str = "mpiexec";
+
+impl MpiSpec {
+    /// Launcher arguments, falling back to [`DEFAULT_MPI_LAUNCHER`].
+    #[must_use]
+    pub fn launcher_args(&self) -> Vec<String> {
+        self.launcher
+            .clone()
+            .unwrap_or_else(|| vec![DEFAULT_MPI_LAUNCHER.to_string()])
+    }
+
+    /// Shell-escaped launcher arguments.
+    #[must_use]
+    pub fn launcher_words(&self) -> String {
+        self.launcher_args()
+            .iter()
+            .map(|argument| shell_word(argument))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Shell-escaped prefix of the worker command, empty if it is not wrapped.
+    #[must_use]
+    pub fn launch_prefix(&self) -> String {
+        if self.wrap_worker.unwrap_or(true) {
+            self.launcher_words()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Environment variables describing the MPI request to the worker.
+    #[must_use]
+    pub fn environment(&self) -> HashMap<String, String> {
+        let mut environment = HashMap::new();
+        if let Some(proc) = &self.proc {
+            environment.insert("TKR_MPI_PROC".to_string(), proc.clone());
+        }
+        if let Some(max_proc_per_node) = &self.max_proc_per_node {
+            environment.insert(
+                "TKR_MPI_MAX_PROC_PER_NODE".to_string(),
+                max_proc_per_node.clone(),
+            );
+        }
+        environment.insert(
+            "TKR_MPI_LAUNCHER".to_string(),
+            shell_word(&self.launcher_words()),
+        );
+        environment
+    }
+}
+
+/// Quotes a shell word unless it only contains characters that are safe unquoted.
+pub(crate) fn shell_word(argument: &str) -> String {
+    let is_safe = !argument.is_empty()
+        && argument
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_./=:,+@%".contains(c));
+    if is_safe {
+        argument.to_string()
+    } else {
+        format!("'{}'", argument.replace('\'', "'\"'\"'"))
+    }
 }
 
 /// Container settings.
@@ -158,7 +234,10 @@ impl ScriptTemplates {
         self.environment
             .get_template(name)
             .into_diagnostic()?
-            .render(minijinja::context! { job => minijinja::value::Serde(spec) })
+            .render(minijinja::context! {
+                job => minijinja::value::Serde(spec),
+                mpi_launch => spec.mpi.as_ref().map(MpiSpec::launch_prefix),
+            })
             .into_diagnostic()
     }
 }
@@ -213,6 +292,8 @@ mod tests {
             mpi: Some(MpiSpec {
                 proc: Some("8".to_string()),
                 max_proc_per_node: Some("4".to_string()),
+                launcher: None,
+                wrap_worker: None,
             }),
             queue: Some("debug".to_string()),
             account: Some("project".to_string()),
