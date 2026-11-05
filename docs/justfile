@@ -1,5 +1,5 @@
 sphinx_opts  := "-T"
-sphinx_build := "uv run sphinx-build"
+sphinx_build := "uv run --config-settings-package tierkreis:build-args='--profile dev' sphinx-build"
 source_dir   := "source"
 build_dir    := "build"
 

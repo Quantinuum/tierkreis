@@ -1,11 +1,16 @@
-uvrun := "uv run --all-extras"
+uvrun := "uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev'"
+export MATURIN_PEP517_ARGS := "--profile dev"
 
 default:
   @just --list
 
 setup:
-    uv sync --all-extras --no-install-package tierkreis
-    maturin develop --manifest-path tierkreis/Cargo.toml
+    uv sync --all-extras --config-settings-package tierkreis:build-args='--profile dev'
+
+populate-cache:
+    @just setup
+    cargo test --no-run
+    cargo clippy --all-features --all-targets -- -D warnings
 
 test:
     # We need to run a sync in the python environment to provide access to the workers
@@ -15,15 +20,18 @@ test:
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term
 
 test-workers:
+    @just setup
     {{uvrun}} pytest tierkreis_workers/pytket_worker --doctest-modules --cov=. --cov-report=html --cov-report=term
 
 test-slow:
+    @just setup
     {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
 
 typos:
   typos
     
 lint:
+  @just setup
   cargo fmt --check
   cargo clippy --all-features --all-targets -- -D warnings
   {{uvrun}} ruff format --check
@@ -31,12 +39,14 @@ lint:
   {{uvrun}} pyright .
 
 fix:
+  @just setup
   cargo fmt
   cargo clippy --all-features --all-targets --fix
   {{uvrun}} ruff format
   {{uvrun}} ruff check --fix
 
 docs:
+  @just setup
   just docs/build
 
 serve:
@@ -64,14 +74,15 @@ bindings-generate dir:
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run --all-extras main.py --stubs-path ./stubs.py
+  uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev' main.py --stubs-path ./stubs.py
 
 stubs-generate-api dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run --all-extras main.py --stubs-path ../api/api.py
+  uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev' main.py --stubs-path ../api/api.py
 
 generate: 
+  @just setup
   just bindings-generate 'tierkreis'
   just stubs-generate 'tierkreis/tests/workers/graph'
 
