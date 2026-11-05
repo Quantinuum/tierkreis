@@ -68,6 +68,7 @@ graphs/index
 worker/index
 executors/index
 tutorial/tutorials.md
+examples/cwl_tasks/index
 ```
 
 ```{toctree}

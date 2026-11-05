@@ -5,8 +5,10 @@ https://typespec.io/docs/language-basics/models/
 https://typespec.io/docs/language-basics/interfaces/
 as well as the extra decorators
 - @portmapping on models with multiple outputs,
-- @file("name") on `bytes` ports staged as files for shell workers,
-- @args on `Array<string>` inputs passed as a bash array to shell workers.
+- @file("name") on `bytes` ports describing fixed filenames,
+- @args on `Array<string>` inputs describing command-line arguments.
+
+These are interface annotations only; workers implement their own I/O.
 """
 
 from tierkreis.exceptions import TierkreisError

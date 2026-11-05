@@ -105,7 +105,9 @@ def parse_args(
         help="The name of the new worker.",
         type=str,
     )
-    stubs = init_subparsers.add_parser("stubs", help="Generates worker stubs with uv.")
+    stubs = init_subparsers.add_parser(
+        "stubs", help="Generates worker stubs from Python, TypeSpec or CWL tasks."
+    )
     stubs.add_argument(
         "--worker-directory",
         help="Directory where to search for workers.",
@@ -162,10 +164,18 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
     for worker in worker_directory.iterdir():
         if not worker.is_dir():
             continue
-        if (idl := next(worker.glob("*/*.tsp"), None)) is not None:
-            namespace = Namespace.from_spec_file(idl)
-            namespace.write_stubs(idl.parent / stubs_name)
-            namespace.write_shell_stubs((idl.parent / stubs_name).with_suffix(".sh"))
+        typespecs = sorted(worker.glob("*/*.tsp"))
+        cwl_tasks = sorted(worker.glob("*/*.cwl"))
+        if (typespecs and cwl_tasks) or len(typespecs) > 1:
+            raise TierkreisError(f"Ambiguous task definitions in {worker}")
+        if typespecs or cwl_tasks:
+            namespace = (
+                Namespace.from_cwl_files(cwl_tasks, name=worker.name)
+                if cwl_tasks
+                else Namespace.from_spec_file(typespecs[0])
+            )
+            stubs_directory = worker if cwl_tasks else typespecs[0].parent
+            namespace.write_stubs(stubs_directory / stubs_name)
         else:
             worker_command = command + [
                 f"tkr_{worker.name}_impl/main.py",

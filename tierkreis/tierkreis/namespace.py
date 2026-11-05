@@ -13,7 +13,6 @@ from tierkreis.data.models import PModel, is_portmapping
 from tierkreis.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
-from tierkreis.idl.shell import shell_library, validate_method, validate_models
 from tierkreis.idl.spec import spec
 
 logger = getLogger(__name__)
@@ -96,16 +95,41 @@ class Namespace:
 
     @classmethod
     def from_spec_file(cls, path: Path) -> "Namespace":
-        """Generate a Namespace from a tsp spec file.
+        """Generate a Namespace from a TypeSpec or single-task CWL file.
 
         :param path: The path to the spec file.
         :type path: Path
         :return: The generated namespace.
         :rtype: Namespace
         """
+        if path.suffix == ".cwl":
+            return cls.from_cwl_files([path], name=path.stem)
         with Path.open(path) as fh:
             namespace_spec = spec(fh.read())
             return cls._from_spec(namespace_spec[0])
+
+    @classmethod
+    def from_cwl_files(cls, paths: list[Path], *, name: str) -> "Self":
+        """Load concrete CWL tasks into a named worker namespace."""
+        from tierkreis.idl.cwl import _identifier, parse_file
+
+        name = _identifier(name)
+        if not paths:
+            raise TierkreisError("A CWL namespace needs at least one task")
+        models: list[Model] = []
+        methods: list[Method] = []
+        for path in sorted(paths):
+            task_models, interface = parse_file(path)
+            for method in interface.methods:
+                if any(m.name.origin == method.name.origin for m in methods):
+                    raise TierkreisError(f"Duplicate CWL task {method.name.origin}")
+                methods.append(method)
+            models.extend(task_models)
+        if {m.name.origin for m in methods} & {m.t.origin for m in models}:
+            raise TierkreisError(
+                "CWL task names conflict with generated output model names"
+            )
+        return cls._from_spec((models, Interface(name, methods)))
 
     @classmethod
     def _from_spec(cls, args: tuple[list[Model], Interface]) -> "Self":
@@ -116,9 +140,7 @@ class Namespace:
             model = next((x for x in models if x.t == method.return_type), None)
             if model is not None:
                 method.return_type_is_portmapping = model.is_portmapping
-            validate_method(method, models)
             namespace.methods.append(method)
-        validate_models(namespace.methods, models)
 
         return namespace
 
@@ -198,25 +220,6 @@ from tierkreis.data.types import PType, Struct, Workflow
             )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")
-
-    def shell_stubs(self) -> str:
-        """Generate the bash library for shell workers of the namespace.
-
-        See :py:mod:`tierkreis.idl.shell`.
-
-        :return: The generated bash source.
-        :rtype: str
-        """
-        return shell_library(self.name, self.methods, self.models)
-
-    def write_shell_stubs(self, path: Path) -> None:
-        """Write the bash library for shell workers to path.
-
-        :param path: The location to write to.
-        :type path: Path
-        """
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.shell_stubs())
 
 
 def _visit(
