@@ -117,11 +117,17 @@ class TypedArg:
         name (str): The argument name.
         t (GenericType): The argument type.
         has_default(bool): Whether the argument has a default value.
+        file (str | None): The file name set by the `@file` decorator, under which
+            the value is staged in the working directory of a shell worker.
+        args (bool): Whether the `@args` decorator is set, which passes the
+            strings of an `Array<string>` input to a shell worker as a bash array.
     """
 
     name: str
     t: GenericType
     has_default: bool = False
+    file: str | None = None
+    args: bool = False
 
 
 @dataclass

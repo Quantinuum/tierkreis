@@ -165,6 +165,7 @@ def _gen_stubs(worker_directory: Path, stubs_name: str) -> None:
         if (idl := next(worker.glob("*/*.tsp"), None)) is not None:
             namespace = Namespace.from_spec_file(idl)
             namespace.write_stubs(idl.parent / stubs_name)
+            namespace.write_shell_stubs((idl.parent / stubs_name).with_suffix(".sh"))
         else:
             worker_command = command + [
                 f"tkr_{worker.name}_impl/main.py",

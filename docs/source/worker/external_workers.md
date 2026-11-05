@@ -75,6 +75,71 @@ expected output. The worker reads values from the paths in `inputs` and writes
 results to the matching paths in `outputs`. Shell workers can use a JSON tool
 such as `jq`; workers in other languages can use their standard JSON parser.
 
+The subprocess and HPC executors also export the call as environment variables,
+so scripts do not need a JSON parser:
+
+| Variable | Value |
+|---|---|
+| `TKR_FUNCTION_NAME` | The task to run. |
+| `TKR_INPUT_<port>` | Path of the input value for `<port>`. |
+| `TKR_OUTPUT_<port>` | Path to write the output `<port>` to; only set if a downstream node consumes it. |
+
+Port names keep their case; other characters than ASCII letters, digits and `_`
+are replaced by `_`. A non-zero exit code marks the task as failed.
+
+### Shell workers and fixed file names
+
+For workers defined in a `.tsp` file, `tkr init stubs` also writes a bash library
+(`api.sh` next to `api.py`). It dispatches on `TKR_FUNCTION_NAME`, runs every
+function in a fresh working directory and handles programs that read or write
+fixed file names or command line arguments. Mark ports staged under a fixed
+file name with `@file("<name>")` and string lists passed as arguments with
+`@args`:
+
+```
+@portmapping
+model DiagResult {
+    @file("carryover.bin") carryover: bytes;
+    energy: float;
+}
+
+interface solver_worker {
+    diagonalize(
+        @file("fcidump.txt") fcidump: bytes,
+        block: integer,
+        @args solver_args: Array<string>
+    ): DiagResult;
+}
+```
+
+`@file` is allowed on `bytes` inputs and on `bytes` fields of `@portmapping`
+outputs. `@args` is allowed on `Array<string>` inputs; the library decodes the
+list into the bash array `TKR_ARGS_<port>`. The worker script sources the
+library, defines `tkr_<function>` and calls `tkr_main`:
+
+```bash
+#!/usr/bin/env bash
+source "$(dirname -- "${BASH_SOURCE[0]}")/../api/api.sh"
+
+tkr_diagonalize() {
+    # fcidump.txt is linked into $TKR_WORKDIR, which is the current directory.
+    # writes carryover.bin
+    solver --block "$(<"$TKR_INPUT_block")" "${TKR_ARGS_solver_args[@]}"
+    printf '%s' "$(<energy.txt)" >"$TKR_OUTPUT_energy"
+}
+
+tkr_main "$@"
+```
+
+Before the call, `@file` inputs are linked into the working directory under
+their file name. After a successful call, `@file` outputs that are consumed
+downstream are copied from there to storage. Write other outputs directly to
+`$TKR_OUTPUT_<port>`. The working directory is created below
+`$TKR_WORKDIR_ROOT` (default `$TMPDIR` or `/tmp`) and is exported as
+`$TKR_WORKDIR`. It is removed on success and kept on failure for debugging.
+Point `TKR_WORKDIR_ROOT` at shared storage when MPI ranks on other nodes need
+the files. The library requires bash 4.4 or newer.
+
 ### Errors and Logging
 
 `WorkerCallArgs` also supplies `done_path`, `error_path`, and an optional

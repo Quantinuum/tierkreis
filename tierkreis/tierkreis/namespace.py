@@ -13,6 +13,7 @@ from tierkreis.data.models import PModel, is_portmapping
 from tierkreis.data.types import Struct, has_default, is_ptype
 from tierkreis.exceptions import TierkreisError
 from tierkreis.idl.models import GenericType, Interface, Method, Model, TypedArg
+from tierkreis.idl.shell import shell_library, validate_method, validate_models
 from tierkreis.idl.spec import spec
 
 logger = getLogger(__name__)
@@ -115,7 +116,9 @@ class Namespace:
             model = next((x for x in models if x.t == method.return_type), None)
             if model is not None:
                 method.return_type_is_portmapping = model.is_portmapping
+            validate_method(method, models)
             namespace.methods.append(method)
+        validate_models(namespace.methods, models)
 
         return namespace
 
@@ -195,6 +198,25 @@ from tierkreis.data.types import PType, Struct, Workflow
             )
         else:
             logger.warning("No ruff binary found. Stubs will contain raw codegen.")
+
+    def shell_stubs(self) -> str:
+        """Generate the bash library for shell workers of the namespace.
+
+        See :py:mod:`tierkreis.idl.shell`.
+
+        :return: The generated bash source.
+        :rtype: str
+        """
+        return shell_library(self.name, self.methods, self.models)
+
+    def write_shell_stubs(self, path: Path) -> None:
+        """Write the bash library for shell workers to path.
+
+        :param path: The location to write to.
+        :type path: Path
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.shell_stubs())
 
 
 def _visit(
