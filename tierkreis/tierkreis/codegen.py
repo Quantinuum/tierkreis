@@ -120,7 +120,7 @@ def format_model(model: Model) -> str:
     is_portmapping = model.is_portmapping
     outs = [format_typed_arg(x, is_portmapping=not is_portmapping) for x in model.decls]
     outs.sort()
-    outs_str = "\n    ".join(outs)
+    outs_str = "\n    ".join(outs) or "pass"
 
     bases = (
         ["NamedTuple"]

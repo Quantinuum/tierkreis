@@ -1,4 +1,4 @@
-"""Tierkreis IDL models representation used for TSP parsing."""
+"""Shared worker interface models for TypeSpec, CWL and Python workers."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -117,11 +117,17 @@ class TypedArg:
         name (str): The argument name.
         t (GenericType): The argument type.
         has_default(bool): Whether the argument has a default value.
+        file (str | None): The file name set by the `@file` decorator, under which
+            a worker can stage the value.
+        args (bool): Whether the `@args` decorator marks an `Array<string>`
+            input as command-line arguments.
     """
 
     name: str
     t: GenericType
     has_default: bool = False
+    file: str | None = None
+    args: bool = False
 
 
 @dataclass

@@ -95,16 +95,41 @@ class Namespace:
 
     @classmethod
     def from_spec_file(cls, path: Path) -> "Namespace":
-        """Generate a Namespace from a tsp spec file.
+        """Generate a Namespace from a TypeSpec or single-task CWL file.
 
         :param path: The path to the spec file.
         :type path: Path
         :return: The generated namespace.
         :rtype: Namespace
         """
+        if path.suffix == ".cwl":
+            return cls.from_cwl_files([path], name=path.stem)
         with Path.open(path) as fh:
             namespace_spec = spec(fh.read())
             return cls._from_spec(namespace_spec[0])
+
+    @classmethod
+    def from_cwl_files(cls, paths: list[Path], *, name: str) -> "Self":
+        """Load concrete CWL tasks into a named worker namespace."""
+        from tierkreis.idl.cwl import _identifier, parse_file
+
+        name = _identifier(name)
+        if not paths:
+            raise TierkreisError("A CWL namespace needs at least one task")
+        models: list[Model] = []
+        methods: list[Method] = []
+        for path in sorted(paths):
+            task_models, interface = parse_file(path)
+            for method in interface.methods:
+                if any(m.name.origin == method.name.origin for m in methods):
+                    raise TierkreisError(f"Duplicate CWL task {method.name.origin}")
+                methods.append(method)
+            models.extend(task_models)
+        if {m.name.origin for m in methods} & {m.t.origin for m in models}:
+            raise TierkreisError(
+                "CWL task names conflict with generated output model names"
+            )
+        return cls._from_spec((models, Interface(name, methods)))
 
     @classmethod
     def _from_spec(cls, args: tuple[list[Model], Interface]) -> "Self":
