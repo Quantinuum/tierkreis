@@ -10,7 +10,6 @@ setup:
 populate-cache:
     @just setup
     cargo test --no-run
-    cargo clippy --all-features --all-targets -- -D warnings
 
 test:
     # We need to run a sync in the python environment to provide access to the workers
@@ -33,7 +32,7 @@ typos:
 lint:
   @just setup
   cargo fmt --check
-  cargo clippy --all-features --all-targets -- -D warnings
+  cargo clippy --all-features --all-targets --no-deps -- -D warnings
   {{uvrun}} ruff format --check
   {{uvrun}} ruff check
   {{uvrun}} pyright .
@@ -41,7 +40,7 @@ lint:
 fix:
   @just setup
   cargo fmt
-  cargo clippy --all-features --all-targets --fix
+  cargo clippy --all-features --all-targets --no-deps --fix
   {{uvrun}} ruff format
   {{uvrun}} ruff check --fix
 
