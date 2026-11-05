@@ -65,33 +65,31 @@ max_proc_per_node = "4"
 launcher = ["srun", "--mpi=pmix"]
 ```
 
-The job script exports the request as `TKR_MPI_PROC`,
-`TKR_MPI_MAX_PROC_PER_NODE`, and `TKR_MPI_LAUNCHER`.
+The launcher runs **inside the batch script**, after the scheduler has
+allocated the resources; it is not used to launch `sbatch`, `qsub`, or `pjsub`.
+For example, the Slurm profile above produces `#SBATCH --ntasks=4` and a
+command of the form:
 
-### Launcher workers
-
-Some workers are not MPI programs themselves: they stage inputs, start an MPI
-binary and collect its outputs. Wrapping such a worker would run all of it on
-every rank. Set `wrap_worker = false` to allocate the ranks but run the worker
-command once:
-
-```toml
-[mpi]
-proc = "4"
-launcher = ["srun", "--mpi=pmix"]
-wrap_worker = false
+```sh
+srun --mpi=pmix /path/to/worker /path/to/worker-call.json
 ```
 
-The worker then starts the MPI binary itself with `TKR_MPI_LAUNCHER`, which
-holds the launcher as shell-quoted words, and `TKR_MPI_PROC`:
+Use the launcher recommended by the cluster: Slurm may use `srun` with a
+compatible PMI/PMIx plugin, while PBS commonly uses a scheduler-integrated
+`mpiexec` or `mpirun`. Such launchers obtain process placement from the batch
+allocation. Configure the site's PBS MPI allocation using
+`max_proc_per_node` and, where needed, `extra_scheduler_args`; `proc` is
+rendered as a total task request for Slurm and PJSUB. Additional launcher
+options can be supplied as separate words in `launcher`. Each word is
+shell-quoted when the script is rendered.
 
-```bash
-eval "launcher=(${TKR_MPI_LAUNCHER})"
-"${launcher[@]}" -n "${TKR_MPI_PROC}" ./solver
-```
+The worker binary must implement the Tierkreis worker protocol itself,
+including input loading and output writing. It runs on every MPI rank and
+must coordinate any shared-file access, typically writing results on rank 0.
+No wrapper or Tierkreis MPI environment variables are needed. Do not start a
+second MPI launcher inside the worker.
 
-`launcher = []` also leaves the worker command unwrapped, with an empty
-`TKR_MPI_LAUNCHER`.
+Set `launcher = []` to run the worker command without an MPI launcher.
 
 The legacy PSI/J executor is not supported by the Rust runtime. Existing PSI/J
 documentation is retained only as legacy reference and should not be used for

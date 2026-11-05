@@ -28,10 +28,10 @@ use crate::{
         send_queued, send_running,
     },
     executor::{
-        commands::{shell_quote, validate_worker_commands, worker_invocation},
+        commands::{validate_worker_commands, worker_invocation},
         hpc::spec::{
             ContainerSpec, HPCResourceSpec, JobSpec, MpiSpec, SchedulerStatus, SchedulerWrapper,
-            UserSpec,
+            UserSpec, shell_word,
         },
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
     },
@@ -564,30 +564,24 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         let (command, args) =
             worker_invocation(&self.worker_commands, &task.worker_name, worker_args_path)?;
 
-        let mut command = shell_quote(&command);
+        let mut command = shell_word(&command);
         // Append the arguments to command, args is always non-empty as it includes
         // the `worker_args_path` at the end.
         command.push(' ');
         command.push_str(
             &args
                 .iter()
-                .map(|arg| shell_quote(arg))
+                .map(|arg| shell_word(arg))
                 .collect::<Vec<_>>()
                 .join(" "),
         );
 
-        let mut environment = request
-            .mpi
-            .as_ref()
-            .map(MpiSpec::environment)
-            .unwrap_or_default();
-        environment.extend(hpc_environment);
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
             walltime: request.walltime.unwrap_or_else(|| "01:00:00".to_string()),
             resources: request.resources,
-            environment,
+            environment: hpc_environment,
             queue: request.queue,
             account: request.account,
             modules: request.modules,
@@ -762,14 +756,12 @@ mod tests {
     fn resource_request_parses_mpi_launcher() -> miette::Result<()> {
         let request = ResourceRequest::try_from(HashMap::from([(
             "mpi".to_string(),
-            json!({"proc": "4", "launcher": ["srun", "--mpi=pmix"], "wrap_worker": false}),
+            json!({"proc": "4", "launcher": ["srun", "--mpi=pmix"]}),
         )]))?;
 
         let mpi = request.mpi.ok_or_else(|| miette!("MPI spec is missing"))?;
         assert_eq!(mpi.proc.as_deref(), Some("4"));
-        assert_eq!(mpi.wrap_worker, Some(false));
-        assert_eq!(mpi.launch_prefix(), "");
-        assert_eq!(mpi.environment()["TKR_MPI_LAUNCHER"], "'srun --mpi=pmix'");
+        assert_eq!(mpi.launch_prefix(), "srun --mpi=pmix");
         Ok(())
     }
 

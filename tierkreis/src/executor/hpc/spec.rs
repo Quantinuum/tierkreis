@@ -108,14 +108,10 @@ pub struct MpiSpec {
     pub max_proc_per_node: Option<String>,
     /// Command prefix used to launch MPI programs.
     ///
-    /// Defaults to `["mpiexec"]` when unset. It wraps the worker command unless
-    /// [`MpiSpec::wrap_worker`] is false; an empty list never wraps it.
+    /// Defaults to `["mpiexec"]` when unset. The batch script prepends this
+    /// launcher to the worker command within the scheduler allocation.
+    /// An empty list runs the worker command without an MPI launcher.
     pub launcher: Option<Vec<String>>,
-    /// Whether to start the worker command with the launcher on every rank.
-    ///
-    /// Defaults to true. Set it to false for launcher workers that run setup
-    /// once and start an MPI binary themselves with `TKR_MPI_LAUNCHER`.
-    pub wrap_worker: Option<bool>,
 }
 
 /// Default MPI launcher used when [`MpiSpec::launcher`] is unset.
@@ -130,44 +126,14 @@ impl MpiSpec {
             .unwrap_or_else(|| vec![DEFAULT_MPI_LAUNCHER.to_string()])
     }
 
-    /// Shell-escaped launcher arguments.
+    /// Shell-escaped prefix for the worker command in the batch script.
     #[must_use]
-    pub fn launcher_words(&self) -> String {
+    pub fn launch_prefix(&self) -> String {
         self.launcher_args()
             .iter()
             .map(|argument| shell_word(argument))
             .collect::<Vec<_>>()
             .join(" ")
-    }
-
-    /// Shell-escaped prefix of the worker command, empty if it is not wrapped.
-    #[must_use]
-    pub fn launch_prefix(&self) -> String {
-        if self.wrap_worker.unwrap_or(true) {
-            self.launcher_words()
-        } else {
-            String::new()
-        }
-    }
-
-    /// Environment variables describing the MPI request to the worker.
-    #[must_use]
-    pub fn environment(&self) -> HashMap<String, String> {
-        let mut environment = HashMap::new();
-        if let Some(proc) = &self.proc {
-            environment.insert("TKR_MPI_PROC".to_string(), proc.clone());
-        }
-        if let Some(max_proc_per_node) = &self.max_proc_per_node {
-            environment.insert(
-                "TKR_MPI_MAX_PROC_PER_NODE".to_string(),
-                max_proc_per_node.clone(),
-            );
-        }
-        environment.insert(
-            "TKR_MPI_LAUNCHER".to_string(),
-            shell_word(&self.launcher_words()),
-        );
-        environment
     }
 }
 
@@ -293,12 +259,52 @@ mod tests {
                 proc: Some("8".to_string()),
                 max_proc_per_node: Some("4".to_string()),
                 launcher: None,
-                wrap_worker: None,
             }),
             queue: Some("debug".to_string()),
             account: Some("project".to_string()),
             ..Default::default()
         }
+    }
+
+    #[rstest::rstest]
+    #[case::default(None, "mpiexec worker args.json")]
+    #[case::slurm(Some(vec!["srun", "--mpi=pmix"]), "srun --mpi=pmix worker args.json")]
+    #[case::pbs(Some(vec!["mpirun"]), "mpirun worker args.json")]
+    #[case::quoted(Some(vec!["mpiexec", "-x", "A B", "a'b"]), "mpiexec -x 'A B' 'a'\"'\"'b' worker args.json")]
+    #[case::disabled(Some(vec![]), "worker args.json")]
+    fn renders_launcher_inside_batch_script(
+        #[values("pbs", "pjsub", "slurm")] template: &str,
+        #[case] launcher: Option<Vec<&str>>,
+        #[case] expected: &str,
+    ) {
+        let mut job = test_job();
+        job.mpi.as_mut().expect("job has MPI").launcher =
+            launcher.map(|words| words.into_iter().map(String::from).collect());
+        let script = ScriptTemplates::default()
+            .render(template, &job)
+            .expect("template renders");
+
+        assert!(script.starts_with("#!"), "{script}");
+        assert_eq!(script.lines().last(), Some(expected), "{script}");
+        assert!(!script.contains("TKR_MPI_"), "{script}");
+        match template {
+            "slurm" => assert!(script.contains("#SBATCH --ntasks=8"), "{script}"),
+            "pbs" => assert!(script.contains("#PBS -l mpiprocs=4"), "{script}"),
+            "pjsub" => assert!(script.contains("#PJM --mpi \"proc=8\""), "{script}"),
+            _ => unreachable!(),
+        }
+    }
+
+    #[rstest::rstest]
+    fn renders_non_mpi_worker(#[values("pbs", "pjsub", "slurm")] template: &str) {
+        let mut job = test_job();
+        job.mpi = None;
+        let script = ScriptTemplates::default()
+            .render(template, &job)
+            .expect("template renders");
+
+        assert_eq!(script.lines().last(), Some("worker args.json"), "{script}");
+        assert!(!script.contains("mpiexec"), "{script}");
     }
 
     #[test]

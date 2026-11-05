@@ -6,11 +6,6 @@ use miette::miette;
 
 pub type WorkerCommands = HashMap<String, Vec<String>>;
 
-/// Utility function to quote components for shell invocations.
-pub fn shell_quote(argument: &str) -> String {
-    format!("'{}'", argument.replace('\'', "'\"'\"'"))
-}
-
 /// Builds the worker invocation command escaping each argument for the shell.
 /// Falls back to `tkr-<worker_name>` if no custom command is found.
 /// Otherwise uses the command specified for the worker in the commands map.
