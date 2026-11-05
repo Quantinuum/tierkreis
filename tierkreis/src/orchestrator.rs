@@ -29,7 +29,7 @@ use crate::{
     },
     event::{
         EventReceiver, EventSender, NodeEvent, NodeStatus, RunningStateUpdate, RuntimeEvent,
-        send_node_events, send_workflow_run_complete, send_workflow_run_errored,
+        send_errors, send_node_events, send_workflow_run_complete, send_workflow_run_errored,
         send_workflow_run_paused,
     },
     executor::{
@@ -1423,12 +1423,39 @@ impl Orchestrator {
         .await?;
 
         for (name, tasks) in tasks {
-            self.executor_registry
+            match self
+                .executor_registry
                 .get(&name)
-                .ok_or_else(|| miette!("Unknown executor `{name}` selected by execution context"))?
-                .execute(tasks)
-                .await
-                .wrap_err_with(|| format!("Could not run Task Nodes on `{name}`"))?;
+                .ok_or_else(|| miette!("Unknown executor `{name}` selected by execution context"))
+            {
+                Ok(executor) => {
+                    let locations: Vec<_> = tasks.iter().map(|task| task.loc.clone()).collect();
+                    if let Err(err) = executor
+                        .execute(tasks)
+                        .await
+                        .wrap_err_with(|| format!("Could not run Task Nodes on `{name}`"))
+                    {
+                        send_errors(
+                            &mut event_sender,
+                            workflow_run_id,
+                            attempt,
+                            locations.iter(),
+                            &err,
+                        )
+                        .await?;
+                    }
+                }
+                Err(err) => {
+                    send_errors(
+                        &mut event_sender,
+                        workflow_run_id,
+                        attempt,
+                        tasks.iter().map(|task| &task.loc),
+                        &err,
+                    )
+                    .await?;
+                }
+            }
         }
 
         if let Some(set_workflow_state) = set_workflow_state {
