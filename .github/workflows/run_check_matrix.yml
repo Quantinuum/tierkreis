@@ -9,6 +9,11 @@ on:
       command:
         required: true
         type: string
+      save_cache:
+        description: Save compiled artifacts to the shared Kache cache
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   run:
@@ -25,7 +30,10 @@ jobs:
       - name: Setup Kache
         uses: kunobi-ninja/kache-action@v1
         with:
-          cache-key-prefix: ${{ inputs.command_name }}
+          cache-key-prefix: tierkreis-dev
+          cache-executables: true
+          max-size: 5GiB
+          save-cache: ${{ inputs.save_cache }}
 
       - name: Setup deps
         uses: ./.github/actions/setup_deps

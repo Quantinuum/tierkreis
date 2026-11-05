@@ -7,32 +7,49 @@ on:
       - main
 
 jobs:
+  populate-cache:
+    uses: ./.github/workflows/run_check_matrix.yml
+    with:
+      command_name: populate-cache
+      command: just populate-cache
+      save_cache: true
+
   lint:
+    needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
       command_name: lint
       command: just lint
+      save_cache: false
 
   test:
+    needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
       command_name: test
       command: just test
+      save_cache: false
 
   test-workers:
+    needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
       command_name: test-workers
       command: just test-workers
+      save_cache: false
 
   docs:
+    needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
       command_name: docs
       command: just docs
+      save_cache: false
 
   check-stubs:
+    needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
       command_name: check-stubs
       command: just check-stubs
+      save_cache: false
