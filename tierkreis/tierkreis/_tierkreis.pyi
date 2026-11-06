@@ -8,6 +8,8 @@ from _typeshed import Incomplete, SupportsGetItem
 
 DEFAULT_CONFIG_FILE_NAME: Final[str]
 
+class TierkreisRuntimeError(RuntimeError): ...
+
 @final
 class NodeState:
     @property
@@ -178,12 +180,10 @@ class RuntimeConfig:
         """
 
 @final
-class WorkflowGraph:
-    ...
+class WorkflowGraph: ...
 
 @final
-class WorkflowInputs:
-    ...
+class WorkflowInputs: ...
 
 @final
 class WorkflowSummary:

@@ -37,7 +37,7 @@ mod tierkreis {
     use pyo3::types::PyType;
     use pyo3::{
         Borrowed, FromPyObject, PyErr, PyResult, Python,
-        exceptions::{PyTypeError, PyValueError},
+        exceptions::{PyRuntimeError, PyTypeError, PyValueError},
         prelude::*,
         types::{PyBytes, PyMapping},
     };
@@ -51,8 +51,10 @@ mod tierkreis {
         config::CONFIG_FILE_NAME,
         graph::{LegacyWorkflowGraph, WorkflowGraph},
         location::Location,
-        runtime::RuntimeConfig,
+        runtime::{RuntimeConfig, RuntimeUnavailable},
     };
+
+    pyo3::create_exception!(tierkreis, TierkreisRuntimeError, PyRuntimeError);
 
     #[pyfunction]
     #[allow(clippy::needless_pass_by_value)]
@@ -103,16 +105,36 @@ mod tierkreis {
 
     #[allow(clippy::unnecessary_wraps)]
     #[pymodule_init]
-    fn init(_m: &Bound<'_, PyModule>) -> PyResult<()> {
+    fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
         let mut builder = Builder::new_multi_thread();
         builder.enable_all();
         pyo3_async_runtimes::tokio::init(builder);
+        m.add(
+            "TierkreisRuntimeError",
+            m.py().get_type::<TierkreisRuntimeError>(),
+        )?;
         Ok(())
     }
 
     fn convert_err(py: Python<'_>, err: miette::Report) -> PyErr {
         let boxed: Box<dyn Diagnostic + 'static> = err.into();
         convert_diagnostic(py, &*boxed)
+    }
+
+    fn convert_runtime_err(py: Python<'_>, err: miette::Report) -> PyErr {
+        let boxed: Box<dyn Diagnostic + 'static> = err.into();
+        let py_err = TierkreisRuntimeError::new_err(boxed.to_string());
+        if let Some(source) = boxed.diagnostic_source() {
+            py_err.set_cause(py, Some(convert_diagnostic(py, source)));
+        } else if let Some(source) = boxed.source() {
+            py_err.set_cause(py, Some(convert_stderr(py, source)));
+        }
+        if let Some(help) = boxed.help() {
+            py_err
+                .add_note(py, format!("\thelp: {help}"))
+                .expect("Failed to add help annotation to exception");
+        }
+        py_err
     }
 
     fn convert_diagnostic(py: Python<'_>, err: &dyn Diagnostic) -> PyErr {
@@ -423,13 +445,23 @@ mod tierkreis {
                     tokio::time::timeout(Duration::from_secs(timeout), fut)
                         .await
                         .into_diagnostic()??;
-                    Ok(())
+                    Ok::<(), miette::Report>(())
                 })
                 .await
                 .map_err(|err| {
-                    Python::attach(|py| convert_err(py, miette!("Failed to join future: {err}")))
+                    Python::attach(|py| {
+                        convert_runtime_err(py, miette!("Failed to join future: {err}"))
+                    })
                 })?
-                .map_err(|err| Python::attach(|py| convert_err(py, err)))?;
+                .map_err(|err| {
+                    Python::attach(|py| {
+                        if err.downcast_ref::<RuntimeUnavailable>().is_some() {
+                            convert_runtime_err(py, err)
+                        } else {
+                            convert_err(py, err)
+                        }
+                    })
+                })?;
 
             Ok(())
         }

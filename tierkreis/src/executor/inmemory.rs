@@ -14,7 +14,10 @@ use futures::{
     stream::{BoxStream, FuturesUnordered},
 };
 use miette::{IntoDiagnostic, miette};
-use tokio::task::{AbortHandle, JoinHandle};
+use tokio::{
+    sync::watch,
+    task::{AbortHandle, JoinHandle},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -25,8 +28,9 @@ use crate::{
         send_running,
     },
     executor::{
-        Executor,
+        Executor, ExecutorHealth,
         interface::{TaskPlan, WorkerSpec},
+        spawn_supervised_executor,
     },
     location::Location,
 };
@@ -244,6 +248,7 @@ pub struct InMemoryExecutor {
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
     background_abort_handle: AbortHandle,
+    health_receiver: watch::Receiver<ExecutorHealth>,
     output_storage_name: String,
 }
 
@@ -276,25 +281,31 @@ impl InMemoryExecutor {
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         let abort_handles = HashMap::new();
-        let background_task = tokio::spawn(Box::pin(process_tasks(
-            task_receiver,
-            cancel_receiver,
-            event_sender,
-            asset_storage_registry,
-            abort_handles,
-        )));
+        let (background_abort_handle, health_receiver) =
+            spawn_supervised_executor(Box::pin(process_tasks(
+                task_receiver,
+                cancel_receiver,
+                event_sender,
+                asset_storage_registry,
+                abort_handles,
+            )));
 
         Ok(Self {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
-            background_abort_handle: background_task.abort_handle(),
+            background_abort_handle,
+            health_receiver,
             output_storage_name: output_storage_name.to_string(),
         })
     }
 }
 
 impl Executor for InMemoryExecutor {
+    fn health(&self) -> watch::Receiver<ExecutorHealth> {
+        self.health_receiver.clone()
+    }
+
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         futures::future::ok(vec![WorkerSpec {
             worker_name: "builtin".to_string(),

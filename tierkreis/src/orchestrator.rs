@@ -5,7 +5,6 @@ of [Event]s with updates about each node in the Workflow.
 */
 use std::{
     collections::{HashMap, HashSet},
-    error::Error,
     iter,
     sync::{Arc, Mutex},
 };
@@ -153,6 +152,7 @@ pub enum OrchestrationError {
         /// The location where the error occurred.
         location: Location,
         /// The full error report.
+        #[diagnostic_source]
         err: miette::Report,
     },
     /// `SerializationError` is not recoverable and results from trying to
@@ -163,6 +163,7 @@ pub enum OrchestrationError {
         /// The location where the error occurred.
         location: Location,
         /// The full error report.
+        #[diagnostic_source]
         err: miette::Report,
     },
     /// `ExecutionContextError` occurs when the Orchestrator cannot determine
@@ -176,6 +177,7 @@ pub enum OrchestrationError {
         /// The location where the error occurred.
         location: Location,
         /// The full error report.
+        #[diagnostic_source]
         err: miette::Report,
     },
     /// `StateStorageError` occurs when interacting with runtime state and is
@@ -186,6 +188,7 @@ pub enum OrchestrationError {
         /// The location where the error occurred.
         location: Location,
         /// The full error report.
+        #[diagnostic_source]
         err: miette::Report,
     },
     /// `AssetStorageError` occurs when interacting with asset storage is
@@ -196,6 +199,7 @@ pub enum OrchestrationError {
         /// The location where the error occurred.
         location: Location,
         /// The full error report.
+        #[diagnostic_source]
         err: miette::Report,
     },
 }
@@ -311,7 +315,9 @@ impl ActionPlan {
             .into_iter();
         let errored = errors.into_iter().map(|err| {
             let error = err.to_string();
-            let detail = err.source().map(|source| format!("Caused by: {source}"));
+            let detail = err
+                .diagnostic_source()
+                .map(|source| format!("Caused by: {source}"));
 
             NodeEvent {
                 loc: err.location(),
