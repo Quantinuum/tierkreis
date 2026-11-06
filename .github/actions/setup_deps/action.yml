@@ -43,7 +43,7 @@ runs:
     - name: Set up maturin
       if: inputs.include_maturin == 'yes'
       shell: bash
-      run: uv tool install maturin
+      run: uv tool install maturin==1.15.0
 
     - name: Set up just
       if: inputs.include_just == 'yes'
