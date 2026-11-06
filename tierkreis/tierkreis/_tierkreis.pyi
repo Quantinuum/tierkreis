@@ -178,12 +178,10 @@ class RuntimeConfig:
         """
 
 @final
-class WorkflowGraph:
-    ...
+class WorkflowGraph: ...
 
 @final
-class WorkflowInputs:
-    ...
+class WorkflowInputs: ...
 
 @final
 class WorkflowSummary:
