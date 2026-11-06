@@ -248,7 +248,14 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
         isclass(annotation)
         and issubclass(
             annotation,
-            (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
+            (
+                DictConvertible,
+                ListConvertible,
+                BytesConvertible,
+                NdarraySurrogate,
+                BaseModel,
+                Struct,
+            ),
         )
         or (isclass(origin) and issubclass(origin, Workflow))
         or annotation in get_args(ElementaryType.__value__)
@@ -467,8 +474,17 @@ def get_serialization_format[T: PType](
         return sr.serialization_method
 
     unannotated = get_args(hint)[0] if get_origin(hint) is Annotated else hint
-    if isclass(unannotated) and issubclass(
-        unannotated, (bytes, NdarraySurrogate, BytesConvertible)
+    if isclass(unannotated) and (
+        issubclass(unannotated, (bytes, NdarraySurrogate))
+        or (
+            issubclass(unannotated, BytesConvertible)
+            # bool and int have a to_bytes() method that we don't
+            # want to use in this case as json is preferable.
+            #
+            # bool is technically a subclass of int but this
+            # is more specific.
+            and not issubclass(unannotated, (bool, int))
+        )
     ):
         return "bytes"
 
