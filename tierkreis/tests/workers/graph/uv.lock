@@ -301,6 +301,7 @@ provides-extras = ["stubs"]
 build = [{ name = "build", extras = ["uv"] }]
 dev = [
     { name = "guppylang", specifier = ">=1.0.0,<2.0.0" },
+    { name = "hugr", specifier = ">=0.18.8" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "pytest" },
     { name = "qnexus" },
