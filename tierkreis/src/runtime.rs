@@ -2,12 +2,16 @@
 The runtime module defines the entrypoint to running Workflows.
 */
 use std::{
+    any::Any,
+    borrow::Borrow,
     collections::{HashMap, HashSet},
+    fmt,
     hash::BuildHasher,
+    panic::AssertUnwindSafe,
     sync::Arc,
 };
 
-use futures::{Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt};
 use miette::{Diagnostic, IntoDiagnostic, miette};
 use tokio::sync::watch;
 use tracing::warn;
@@ -22,8 +26,9 @@ use crate::{
     },
     event::{NodeStatus, RuntimeEvent, WorkflowRunEvent},
     executor::{
-        Executor, ExecutorRegistry, HPCExecutor, InMemoryExecutor, PbsWrapper, PjsubWrapper,
-        SlurmWrapper, SubprocessExecutor, hpc::spec::ScriptTemplates, nexus::NexusExecutor,
+        Executor, ExecutorHealth, ExecutorRegistry, HPCExecutor, InMemoryExecutor, PbsWrapper,
+        PjsubWrapper, SlurmWrapper, SubprocessExecutor, hpc::spec::ScriptTemplates,
+        nexus::NexusExecutor,
     },
     graph::WorkflowGraph,
     location::Location,
@@ -80,6 +85,135 @@ pub struct WorkflowRunError {
     related: Vec<NodeError>,
 }
 
+/// A long-lived component required for a [`Runtime`] to make progress.
+#[derive(Clone, Debug)]
+pub enum RuntimeComponent {
+    /// The loop that builds and performs workflow actions.
+    OrchestrationDriver,
+    /// The task that persists orchestrator and executor events.
+    EventProcessor,
+    /// A configured executor's task dispatcher and monitor.
+    ExecutorDispatcher(String),
+}
+
+impl fmt::Display for RuntimeComponent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OrchestrationDriver => write!(f, "orchestration driver"),
+            Self::EventProcessor => write!(f, "event processor"),
+            Self::ExecutorDispatcher(executor) => {
+                write!(f, "executor dispatcher `{executor}`")
+            }
+        }
+    }
+}
+
+/// An internal failure that prevents a runtime instance from making progress.
+#[derive(Diagnostic, Debug, thiserror::Error)]
+pub enum RuntimeError {
+    /// The runtime failed while driving a particular workflow attempt.
+    #[error("Failed to drive workflow run {run_id}, attempt {attempt}")]
+    #[diagnostic(code(tierkreis::runtime::run_processing))]
+    RunProcessing {
+        /// The affected run.
+        run_id: Uuid,
+        /// The affected attempt.
+        attempt: u32,
+        /// The internal failure.
+        #[diagnostic_source]
+        err: miette::Report,
+    },
+    /// The runtime failed while persisting execution events.
+    #[error("Failed to process workflow execution events")]
+    #[diagnostic(code(tierkreis::runtime::event_processing))]
+    EventProcessing {
+        /// The internal failure.
+        #[diagnostic_source]
+        err: miette::Report,
+    },
+    /// Runtime-state updates can no longer be observed.
+    #[error("Runtime state update channel closed unexpectedly")]
+    #[diagnostic(code(tierkreis::runtime::state_updates_closed))]
+    StateUpdatesClosed,
+    /// A required component returned without a shutdown request.
+    #[error("Runtime component {component} stopped unexpectedly")]
+    #[diagnostic(code(tierkreis::runtime::component_stopped))]
+    ComponentStopped {
+        /// The component that stopped.
+        component: RuntimeComponent,
+    },
+    /// A required component panicked.
+    #[error("Runtime component {component} panicked: {message}")]
+    #[diagnostic(code(tierkreis::runtime::component_panicked))]
+    ComponentPanicked {
+        /// The component that panicked.
+        component: RuntimeComponent,
+        /// The panic payload, when it was a string.
+        message: String,
+    },
+}
+
+/// Current health of a runtime instance.
+#[derive(Clone, Debug)]
+pub enum RuntimeHealth {
+    /// All supervised runtime components are operational.
+    Running,
+    /// The runtime can no longer reliably make progress.
+    Failed(Arc<RuntimeError>),
+}
+
+#[derive(Clone, Debug)]
+struct SharedRuntimeError(Arc<RuntimeError>);
+
+impl fmt::Display for SharedRuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for SharedRuntimeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.0)
+    }
+}
+
+impl Borrow<dyn Diagnostic> for SharedRuntimeError {
+    fn borrow(&self) -> &(dyn Diagnostic + 'static) {
+        &*self.0
+    }
+}
+
+/// Returned when a workflow is still active but its runtime has failed.
+#[derive(Diagnostic, Debug, thiserror::Error)]
+#[error("Runtime became unavailable while waiting for workflow run {run_id}, attempt {attempt}")]
+#[diagnostic(code(tierkreis::runtime::unavailable))]
+pub struct RuntimeUnavailable {
+    run_id: Uuid,
+    attempt: u32,
+    #[diagnostic_source]
+    source: SharedRuntimeError,
+}
+
+#[derive(Diagnostic, Debug, thiserror::Error)]
+#[error("Runtime failed")]
+#[diagnostic(code(tierkreis::runtime::failed))]
+struct RuntimeFailed {
+    #[diagnostic_source]
+    source: SharedRuntimeError,
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    payload.downcast_ref::<&str>().map_or_else(
+        || {
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "unknown panic payload".to_string())
+        },
+        |message| (*message).to_string(),
+    )
+}
+
 /// The [`Runtime`] struct encapsulates the [`Orchestrator`] and [`RuntimeState`]
 /// such that the workflow system can be run from a single object.
 pub struct Runtime {
@@ -89,7 +223,10 @@ pub struct Runtime {
     default_storage_name: String,
     resources: ResourceSettings,
 
-    background_task: Option<AbortOnDrop>,
+    health_sender: watch::Sender<RuntimeHealth>,
+    health_receiver: watch::Receiver<RuntimeHealth>,
+    executor_health: Vec<(String, watch::Receiver<ExecutorHealth>)>,
+    background_tasks: Vec<AbortOnDrop>,
 }
 
 struct AbortOnDrop(tokio::task::JoinHandle<()>);
@@ -111,6 +248,11 @@ impl Runtime {
 
         let executor_registry =
             executor_registry_from_config(&asset_storage_registry, config).await?;
+        let executor_health = executor_registry
+            .iter()
+            .map(|(name, executor)| (name.clone(), executor.health()))
+            .collect();
+        let (health_sender, health_receiver) = watch::channel(RuntimeHealth::Running);
 
         init_logging_and_tracing(&config.logging_config);
         let orchestrator = Orchestrator::try_new(
@@ -137,7 +279,10 @@ impl Runtime {
             asset_storage_registry,
             default_storage_name: config.default_storage_name.clone(),
             resources: config.resources.clone(),
-            background_task: None,
+            health_sender,
+            health_receiver,
+            executor_health,
+            background_tasks: Vec::new(),
         };
 
         runtime.start()?;
@@ -146,12 +291,13 @@ impl Runtime {
 
     // Start processing events from the orchestrator in the background.
     fn start(&mut self) -> miette::Result<()> {
-        if self.background_task.is_some() {
+        if !self.background_tasks.is_empty() {
             return Ok(());
         }
 
         let stream = self.orchestrator.listen()?;
         let state = self.state.clone();
+        let health_sender = self.health_sender.clone();
         let task = AbortOnDrop(tokio::spawn(async move {
             tokio::select! {
                 sig = tokio::signal::ctrl_c() => {
@@ -168,21 +314,96 @@ impl Runtime {
                         }
                     }
                 }
-                res = Self::process_events(state, stream) => {
+                res = AssertUnwindSafe(Self::process_events(state, stream)).catch_unwind() => {
                     match res {
-                        Ok(()) => {},
-                        Err(err) => {
-                            tracing::error!("Error while processing events: {err:?}");
-                            eprintln!("{err:?}");
+                        Ok(Ok(())) => Self::report_failure_with(
+                            &health_sender,
+                            RuntimeError::ComponentStopped {
+                                component: RuntimeComponent::EventProcessor,
+                            },
+                        ),
+                        Ok(Err(source)) => {
+                            Self::report_failure_with(
+                                &health_sender,
+                                RuntimeError::EventProcessing { err: source },
+                            );
+                        }
+                        Err(payload) => {
+                            Self::report_failure_with(
+                                &health_sender,
+                                RuntimeError::ComponentPanicked {
+                                    component: RuntimeComponent::EventProcessor,
+                                    message: panic_message(&*payload),
+                                },
+                            );
                         }
                     }
                 }
             }
         }));
 
-        self.background_task = Some(task);
+        self.background_tasks.push(task);
+
+        for (executor, mut health) in self.executor_health.drain(..) {
+            let health_sender = self.health_sender.clone();
+            self.background_tasks
+                .push(AbortOnDrop(tokio::spawn(async move {
+                    loop {
+                        let component = RuntimeComponent::ExecutorDispatcher(executor.clone());
+                        match health.borrow_and_update().clone() {
+                            ExecutorHealth::Running => {}
+                            ExecutorHealth::Stopped => {
+                                Self::report_failure_with(
+                                    &health_sender,
+                                    RuntimeError::ComponentStopped { component },
+                                );
+                                break;
+                            }
+                            ExecutorHealth::Panicked(message) => {
+                                Self::report_failure_with(
+                                    &health_sender,
+                                    RuntimeError::ComponentPanicked { component, message },
+                                );
+                                break;
+                            }
+                        }
+                        if health.changed().await.is_err() {
+                            Self::report_failure_with(
+                                &health_sender,
+                                RuntimeError::ComponentStopped { component },
+                            );
+                            break;
+                        }
+                    }
+                })));
+        }
 
         Ok(())
+    }
+
+    fn report_failure_with(sender: &watch::Sender<RuntimeHealth>, error: RuntimeError) {
+        sender.send_if_modified(|health| {
+            if matches!(health, RuntimeHealth::Running) {
+                *health = RuntimeHealth::Failed(Arc::new(error));
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    fn report_failure(&self, error: RuntimeError) -> Arc<RuntimeError> {
+        Self::report_failure_with(&self.health_sender, error);
+        match &*self.health_receiver.borrow() {
+            RuntimeHealth::Running => unreachable!("runtime failure was not recorded"),
+            RuntimeHealth::Failed(error) => error.clone(),
+        }
+    }
+
+    /// Subscribe to changes in this runtime instance's health.
+    #[must_use]
+    pub fn listen_health(&self) -> watch::Receiver<RuntimeHealth> {
+        self.health_receiver.clone()
     }
 
     /// Save a workflow to the runtime state with an option name.
@@ -382,7 +603,7 @@ impl Runtime {
     /// # Errors
     ///
     /// Will return Err if the [`Runtime`] fails to process a workflow run attempt.
-    pub async fn run(&self) -> miette::Result<()> {
+    async fn run_inner(&self) -> Result<(), RuntimeError> {
         let mut state_recv = self.state.listen();
         // TODO: this should probably be part of the runtime state
         let mut contexts: HashMap<(Uuid, u32), OrchestrationContext> = HashMap::new();
@@ -400,42 +621,79 @@ impl Runtime {
             contexts.retain(|key, _| active_runs.contains(key));
 
             for (run_id, attempt) in active_runs {
-                let workflow_run_state =
-                    self.state.load_workflow_run_state(run_id, attempt).await?;
-                let workflow_id = workflow_run_state.workflow_id();
-                let (_workflow_name, workflow_graph) =
-                    self.state.load_workflow(workflow_id).await?;
+                let result: miette::Result<()> = async {
+                    let workflow_run_state =
+                        self.state.load_workflow_run_state(run_id, attempt).await?;
+                    let workflow_id = workflow_run_state.workflow_id();
+                    let (_workflow_name, workflow_graph) =
+                        self.state.load_workflow(workflow_id).await?;
 
-                let workflow_run_state = Arc::new(workflow_run_state);
-                let workflow_graph = Arc::new(workflow_graph);
+                    let workflow_run_state = Arc::new(workflow_run_state);
+                    let workflow_graph = Arc::new(workflow_graph);
 
-                let context = if let Some(context) = contexts.get(&(run_id, attempt)) {
-                    context.clone()
-                } else {
-                    let metadata = workflow_run_state.read_metadata().await?;
-                    let profile: Option<String> = match metadata.get(RUN_PROFILE_METADATA_KEY) {
-                        Some(profile) => serde_json::from_str(profile).into_diagnostic()?,
-                        None => self.resources.selected_profile(),
+                    let context = if let Some(context) = contexts.get(&(run_id, attempt)) {
+                        context.clone()
+                    } else {
+                        let metadata = workflow_run_state.read_metadata().await?;
+                        let profile: Option<String> = match metadata.get(RUN_PROFILE_METADATA_KEY) {
+                            Some(profile) => serde_json::from_str(profile).into_diagnostic()?,
+                            None => self.resources.selected_profile(),
+                        };
+                        let profiles = profile
+                            .as_deref()
+                            .map(|profile| self.resources.load_profile(profile))
+                            .transpose()?;
+                        let context = OrchestrationContext::new(&workflow_run_state, profiles);
+                        contexts.insert((run_id, attempt), context.clone());
+                        context
                     };
-                    let profiles = profile
-                        .as_deref()
-                        .map(|profile| self.resources.load_profile(profile))
-                        .transpose()?;
-                    let context = OrchestrationContext::new(&workflow_run_state, profiles);
-                    contexts.insert((run_id, attempt), context.clone());
-                    context
-                };
 
-                let actions = self
-                    .orchestrator
-                    .build_actions(context, workflow_graph)
-                    .await?;
-                self.orchestrator
-                    .perform_actions(run_id, attempt, actions)
-                    .await?;
+                    let actions = self
+                        .orchestrator
+                        .build_actions(context, workflow_graph)
+                        .await?;
+                    self.orchestrator
+                        .perform_actions(run_id, attempt, actions)
+                        .await
+                }
+                .await;
+
+                if let Err(source) = result {
+                    return Err(RuntimeError::RunProcessing {
+                        run_id,
+                        attempt,
+                        err: source,
+                    });
+                }
             }
-            state_recv.changed().await.into_diagnostic()?;
+            state_recv
+                .changed()
+                .await
+                .map_err(|_| RuntimeError::StateUpdatesClosed)?;
         }
+    }
+
+    /// Allow the runtime to run all available workflow run attempts.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error and marks this runtime instance unhealthy if an internal component fails.
+    pub async fn run(&self) -> miette::Result<()> {
+        let failure = match AssertUnwindSafe(self.run_inner()).catch_unwind().await {
+            Ok(Ok(())) => RuntimeError::ComponentStopped {
+                component: RuntimeComponent::OrchestrationDriver,
+            },
+            Ok(Err(error)) => error,
+            Err(payload) => RuntimeError::ComponentPanicked {
+                component: RuntimeComponent::OrchestrationDriver,
+                message: panic_message(&*payload),
+            },
+        };
+        let source = self.report_failure(failure);
+        Err(RuntimeFailed {
+            source: SharedRuntimeError(source),
+        }
+        .into())
     }
 
     /// Wait for a specific workflow run attempt to finish.
@@ -445,6 +703,7 @@ impl Runtime {
     /// Will return Err if the requested run attempt ends in an error state.
     pub async fn wait_for(&self, run_id: Uuid, attempt: u32) -> miette::Result<()> {
         let mut state_recv = self.listen();
+        let mut health_recv = self.listen_health();
         loop {
             let still_active = {
                 state_recv
@@ -481,7 +740,19 @@ impl Runtime {
                 return Ok::<_, miette::Report>(());
             }
 
-            state_recv.changed().await.into_diagnostic()?;
+            if let RuntimeHealth::Failed(source) = &*health_recv.borrow_and_update() {
+                return Err(RuntimeUnavailable {
+                    run_id,
+                    attempt,
+                    source: SharedRuntimeError(source.clone()),
+                }
+                .into());
+            }
+
+            tokio::select! {
+                changed = state_recv.changed() => changed.into_diagnostic()?,
+                changed = health_recv.changed() => changed.into_diagnostic()?,
+            }
         }
     }
 
@@ -908,6 +1179,89 @@ mod tests {
         link(&mut workflow_graph, (task, "value"), out)?;
 
         Ok((workflow_graph, Location::root().with_node(task)))
+    }
+
+    fn constant_graph() -> miette::Result<WorkflowGraph> {
+        let mut workflow_graph = workflow(["result"]);
+        let value = constant(&mut workflow_graph, 42)?;
+        let result = output(&workflow_graph, "result");
+        link(&mut workflow_graph, value, result)?;
+        Ok(workflow_graph)
+    }
+
+    #[tokio::test]
+    async fn runtime_failure_wakes_waiter_without_failing_workflow() -> miette::Result<()> {
+        let runtime = Runtime::from_config(&RuntimeConfig::memory()).await?;
+        let workflow_id = runtime.save_workflow(None, constant_graph()?).await?;
+        let (run_id, attempt) = runtime
+            .start_new_run(workflow_id, HashMap::new(), None)
+            .await?;
+
+        runtime.report_failure(RuntimeError::ComponentStopped {
+            component: RuntimeComponent::OrchestrationDriver,
+        });
+
+        let error = runtime
+            .wait_for(run_id, attempt)
+            .await
+            .expect_err("wait_for should report the failed runtime");
+        assert!(error.downcast_ref::<RuntimeUnavailable>().is_some());
+
+        let summary = runtime.read_workflow_run_summary(run_id, attempt).await?;
+        assert!(summary.error_time.is_none());
+        assert!(
+            runtime
+                .listen()
+                .borrow()
+                .active_runs
+                .contains(&(run_id, attempt))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn persisted_terminal_state_wins_over_runtime_failure() -> miette::Result<()> {
+        let runtime = Runtime::from_config(&RuntimeConfig::memory()).await?;
+        let workflow_id = runtime.save_workflow(None, constant_graph()?).await?;
+        let (run_id, attempt) = runtime
+            .start_new_run(workflow_id, HashMap::new(), None)
+            .await?;
+        runtime
+            .state
+            .load_workflow_run_state(run_id, attempt)
+            .await?
+            .write(WorkflowRunEvent::Completed {})
+            .await?;
+        runtime.report_failure(RuntimeError::ComponentStopped {
+            component: RuntimeComponent::EventProcessor,
+        });
+
+        runtime.wait_for(run_id, attempt).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_health_retains_first_failure() -> miette::Result<()> {
+        let runtime = Runtime::from_config(&RuntimeConfig::memory()).await?;
+        runtime.report_failure(RuntimeError::ComponentStopped {
+            component: RuntimeComponent::EventProcessor,
+        });
+        runtime.report_failure(RuntimeError::ComponentPanicked {
+            component: RuntimeComponent::OrchestrationDriver,
+            message: "later failure".to_string(),
+        });
+
+        let health = runtime.listen_health();
+        let RuntimeHealth::Failed(error) = &*health.borrow() else {
+            panic!("runtime should be failed");
+        };
+        assert!(matches!(
+            &**error,
+            RuntimeError::ComponentStopped {
+                component: RuntimeComponent::EventProcessor
+            }
+        ));
+        Ok(())
     }
 
     #[rstest::rstest]

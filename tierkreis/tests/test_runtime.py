@@ -34,6 +34,7 @@ def test_runtime_api_is_public() -> None:
     assert runtime.Runtime is not None
     assert hasattr(runtime.Runtime, "get_raw_outputs")
     assert runtime.RuntimeConfig is not None
+    assert issubclass(runtime.TierkreisRuntimeError, RuntimeError)
     assert callable(runtime.new_default)
     assert callable(runtime.new_from_config)
     assert callable(runtime.load_runtime_config)
