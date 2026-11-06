@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Reorganise imports and module structure by @johnchildren in [#772](https://github.com/Quantinuum/tierkreis/pull/772)
+- Autogenerate changelog for release candidate by @johnchildren in [#733](https://github.com/Quantinuum/tierkreis/pull/733)
 - Upgrade Guppy version by @philipp-seitz in [#695](https://github.com/Quantinuum/tierkreis/pull/695)
 - Upgrade dependencies by @johnchildren in [#640](https://github.com/Quantinuum/tierkreis/pull/640)
 - Add Changelog generation from git history by @johnchildren in [#615](https://github.com/Quantinuum/tierkreis/pull/615)

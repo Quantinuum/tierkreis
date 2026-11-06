@@ -8,6 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Remove Hugr dependency by @johnchildren in [#791](https://github.com/Quantinuum/tierkreis/pull/791)
+- Share build cache between jobs by @johnchildren in [#790](https://github.com/Quantinuum/tierkreis/pull/790)
+- Remove legacy controller code by @johnchildren in [#782](https://github.com/Quantinuum/tierkreis/pull/782)
+- Update scipy tutorial by @johnchildren in [#781](https://github.com/Quantinuum/tierkreis/pull/781)
+- Remove `script()` and `StdInOut` executor by @johnchildren in [#779](https://github.com/Quantinuum/tierkreis/pull/779)
+- Machine generated docs for worker overrides by @johnchildren in [#777](https://github.com/Quantinuum/tierkreis/pull/777)
+- Custom worker_commands for subprocess exec by @johnchildren in [#776](https://github.com/Quantinuum/tierkreis/pull/776)
+- Lazily import otel in worker sdk by @johnchildren in [#774](https://github.com/Quantinuum/tierkreis/pull/774)
+- Reorganise exception imports by @johnchildren in [#773](https://github.com/Quantinuum/tierkreis/pull/773)
+- Reorganise imports and module structure by @johnchildren in [#772](https://github.com/Quantinuum/tierkreis/pull/772)
+- Move builtins to rust binary by @johnchildren in [#757](https://github.com/Quantinuum/tierkreis/pull/757)
+- Generate type stubs for rust bindings by @johnchildren in [#769](https://github.com/Quantinuum/tierkreis/pull/769)
+- Machine generated defaults docs updates by @johnchildren in [#766](https://github.com/Quantinuum/tierkreis/pull/766)
+- Implement default values by @johnchildren in [#755](https://github.com/Quantinuum/tierkreis/pull/755)
+- Add back release step by @johnchildren in [#765](https://github.com/Quantinuum/tierkreis/pull/765)
+- Bump setuptools from 84.0.0 to 84.1.0 by @dependabot[bot] in [#760](https://github.com/Quantinuum/tierkreis/pull/760)
+- Swap back to bundled sqlite3 by @johnchildren in [#763](https://github.com/Quantinuum/tierkreis/pull/763)
+- Correct sqlite dev package by @johnchildren in [#761](https://github.com/Quantinuum/tierkreis/pull/761)
+- Disable arm and windows build and fix sqlite3 by @johnchildren in [#758](https://github.com/Quantinuum/tierkreis/pull/758)
+- Try using kache in CI by @johnchildren in [#749](https://github.com/Quantinuum/tierkreis/pull/749)
+- Add concurrency control for subprocesses by @johnchildren in [#751](https://github.com/Quantinuum/tierkreis/pull/751)
+- Fix use of || operator by @johnchildren in [#750](https://github.com/Quantinuum/tierkreis/pull/750)
+- Install sqlite for wheels and allow dirty by @johnchildren in [#748](https://github.com/Quantinuum/tierkreis/pull/748)
+- Set specific manylinux for aarch64 ring build by @johnchildren in [#747](https://github.com/Quantinuum/tierkreis/pull/747)
+- Disable QRMI on non-unix by @johnchildren in [#746](https://github.com/Quantinuum/tierkreis/pull/746)
+- Update minor version rust dependencies by @johnchildren in [#744](https://github.com/Quantinuum/tierkreis/pull/744)
+- Update rust dependencies by @johnchildren in [#742](https://github.com/Quantinuum/tierkreis/pull/742)
+- Update docs for breakpoints by @johnchildren in [#726](https://github.com/Quantinuum/tierkreis/pull/726)
+- Add resume to python bindings by @johnchildren in [#725](https://github.com/Quantinuum/tierkreis/pull/725)
+- Disable uv in frontend release build by @johnchildren in [#740](https://github.com/Quantinuum/tierkreis/pull/740)
+
+### Fixed
+- Executor mpi launcher by @philipp-seitz in [#785](https://github.com/Quantinuum/tierkreis/pull/785)
+- Update runtime profiles hpc test by @johnchildren in [#788](https://github.com/Quantinuum/tierkreis/pull/788)
+- Report executor errors in the workflow run by @johnchildren in [#784](https://github.com/Quantinuum/tierkreis/pull/784)
+- Stubgen path by @philipp-seitz in [#786](https://github.com/Quantinuum/tierkreis/pull/786)
+- Scheduling IfElse fails for shared outputs by @johnchildren in [#768](https://github.com/Quantinuum/tierkreis/pull/768)
+- Ignore duplicate workflow input events by @johnchildren in [#735](https://github.com/Quantinuum/tierkreis/pull/735)
+- Force timeouts on all python tests by @johnchildren in [#741](https://github.com/Quantinuum/tierkreis/pull/741)
+
+## [3.0.0rc0] - 2026-10-26
+
+### Changed
+- Update frontend dependencies by @johnchildren in [#736](https://github.com/Quantinuum/tierkreis/pull/736)
+- Bump version for release candidate by @johnchildren in [#734](https://github.com/Quantinuum/tierkreis/pull/734)
+- Autogenerate changelog for release candidate by @johnchildren in [#733](https://github.com/Quantinuum/tierkreis/pull/733)
 - Update QRMI and disable pyO3 feature by @johnchildren in [#728](https://github.com/Quantinuum/tierkreis/pull/728)
 - Bump the uv group across 4 directories with 1 update by @dependabot[bot] in [#732](https://github.com/Quantinuum/tierkreis/pull/732)
 - Implement resume by @johnchildren in [#723](https://github.com/Quantinuum/tierkreis/pull/723)
@@ -86,6 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Include guppy worker in release step by @johnchildren in [#560](https://github.com/Quantinuum/tierkreis/pull/560)
 
 ### Fixed
+- Run cli by @philipp-seitz in [#724](https://github.com/Quantinuum/tierkreis/pull/724)
 - Frontend websocket by @philipp-seitz in [#719](https://github.com/Quantinuum/tierkreis/pull/719)
 - Ruff check by @philipp-seitz in [#698](https://github.com/Quantinuum/tierkreis/pull/698)
 - Abort workflows on failure by @johnchildren in [#656](https://github.com/Quantinuum/tierkreis/pull/656)
@@ -1294,7 +1341,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * @acl-cqc made their first contribution
 * @zrho made their first contribution
 
-[unreleased]: https://github.com/Quantinuum/tierkreis/compare/v2.1.1...HEAD
+[unreleased]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc0...HEAD
+[3.0.0rc0]: https://github.com/Quantinuum/tierkreis/compare/v2.1.1...v3.0.0rc0
 [2.1.1]: https://github.com/Quantinuum/tierkreis/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/Quantinuum/tierkreis/compare/v2.0.12-post.2...v2.1.0
 [2.0.12-post.2]: https://github.com/Quantinuum/tierkreis/compare/v2.0.12-post.1...v2.0.12-post.2

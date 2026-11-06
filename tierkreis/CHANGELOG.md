@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Remove Hugr dependency by @johnchildren in [#791](https://github.com/Quantinuum/tierkreis/pull/791)
+- Remove legacy controller code by @johnchildren in [#782](https://github.com/Quantinuum/tierkreis/pull/782)
+- Remove `script()` and `StdInOut` executor by @johnchildren in [#779](https://github.com/Quantinuum/tierkreis/pull/779)
+- Custom worker_commands for subprocess exec by @johnchildren in [#776](https://github.com/Quantinuum/tierkreis/pull/776)
+- Lazily import otel in worker sdk by @johnchildren in [#774](https://github.com/Quantinuum/tierkreis/pull/774)
+- Reorganise exception imports by @johnchildren in [#773](https://github.com/Quantinuum/tierkreis/pull/773)
+- Reorganise imports and module structure by @johnchildren in [#772](https://github.com/Quantinuum/tierkreis/pull/772)
+- Move builtins to rust binary by @johnchildren in [#757](https://github.com/Quantinuum/tierkreis/pull/757)
+- Generate type stubs for rust bindings by @johnchildren in [#769](https://github.com/Quantinuum/tierkreis/pull/769)
+- Implement default values by @johnchildren in [#755](https://github.com/Quantinuum/tierkreis/pull/755)
+- Swap back to bundled sqlite3 by @johnchildren in [#763](https://github.com/Quantinuum/tierkreis/pull/763)
+- Add concurrency control for subprocesses by @johnchildren in [#751](https://github.com/Quantinuum/tierkreis/pull/751)
+- Disable QRMI on non-unix by @johnchildren in [#746](https://github.com/Quantinuum/tierkreis/pull/746)
+- Update minor version rust dependencies by @johnchildren in [#744](https://github.com/Quantinuum/tierkreis/pull/744)
+- Update rust dependencies by @johnchildren in [#742](https://github.com/Quantinuum/tierkreis/pull/742)
+- Update docs for breakpoints by @johnchildren in [#726](https://github.com/Quantinuum/tierkreis/pull/726)
+- Add resume to python bindings by @johnchildren in [#725](https://github.com/Quantinuum/tierkreis/pull/725)
+
+### Fixed
+- Executor mpi launcher by @philipp-seitz in [#785](https://github.com/Quantinuum/tierkreis/pull/785)
+- Update runtime profiles hpc test by @johnchildren in [#788](https://github.com/Quantinuum/tierkreis/pull/788)
+- Report executor errors in the workflow run by @johnchildren in [#784](https://github.com/Quantinuum/tierkreis/pull/784)
+- Stubgen path by @philipp-seitz in [#786](https://github.com/Quantinuum/tierkreis/pull/786)
+- Scheduling IfElse fails for shared outputs by @johnchildren in [#768](https://github.com/Quantinuum/tierkreis/pull/768)
+- Ignore duplicate workflow input events by @johnchildren in [#735](https://github.com/Quantinuum/tierkreis/pull/735)
+- Force timeouts on all python tests by @johnchildren in [#741](https://github.com/Quantinuum/tierkreis/pull/741)
+
+## [3.0.0rc0] - 2026-10-26
+
+### Changed
+- Update frontend dependencies by @johnchildren in [#736](https://github.com/Quantinuum/tierkreis/pull/736)
+- Bump version for release candidate by @johnchildren in [#734](https://github.com/Quantinuum/tierkreis/pull/734)
+- Autogenerate changelog for release candidate by @johnchildren in [#733](https://github.com/Quantinuum/tierkreis/pull/733)
 - Update QRMI and disable pyO3 feature by @johnchildren in [#728](https://github.com/Quantinuum/tierkreis/pull/728)
 - Bump the uv group across 4 directories with 1 update by @dependabot[bot] in [#732](https://github.com/Quantinuum/tierkreis/pull/732)
 - Implement resume by @johnchildren in [#723](https://github.com/Quantinuum/tierkreis/pull/723)
@@ -76,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prepare for 2.1.0 release by @johnchildren in [#550](https://github.com/Quantinuum/tierkreis/pull/550)
 
 ### Fixed
+- Run cli by @philipp-seitz in [#724](https://github.com/Quantinuum/tierkreis/pull/724)
 - Frontend websocket by @philipp-seitz in [#719](https://github.com/Quantinuum/tierkreis/pull/719)
 - Ruff check by @philipp-seitz in [#698](https://github.com/Quantinuum/tierkreis/pull/698)
 - Abort workflows on failure by @johnchildren in [#656](https://github.com/Quantinuum/tierkreis/pull/656)
@@ -681,7 +715,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove array type and add Vec type by @ss2165
 - Removed actix dependency from runtime. by @zrho
 
-[unreleased]: https://github.com/Quantinuum/tierkreis/compare/v2.1.0...HEAD
+[unreleased]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc0...HEAD
+[3.0.0rc0]: https://github.com/Quantinuum/tierkreis/compare/v2.1.0...v3.0.0rc0
 [2.1.0]: https://github.com/Quantinuum/tierkreis/compare/v2.0.11...v2.1.0
 [2.0.11]: https://github.com/Quantinuum/tierkreis/compare/v2.0.10...v2.0.11
 [2.0.10]: https://github.com/Quantinuum/tierkreis/compare/v2.0.9...v2.0.10
