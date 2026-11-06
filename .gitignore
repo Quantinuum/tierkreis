@@ -165,3 +165,6 @@ devenv.local.nix
 
 *.DS_Store
 *.code-workspace
+
+# Test directory lockfiles
+tierkreis/tests/workers/**/uv.lock
