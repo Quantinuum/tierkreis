@@ -25,7 +25,6 @@ from typing import (
     runtime_checkable,
 )
 
-from hugr.package import Package
 from pydantic import BaseModel, ValidationError
 from typing_extensions import TypeIs
 
@@ -97,6 +96,18 @@ class ListConvertible(Protocol):
         ...
 
 
+@runtime_checkable
+class BytesConvertible(Protocol):
+    def to_bytes(self) -> bytes:
+        """Convert self to bytes."""
+        ...
+
+    @classmethod
+    def from_bytes(cls, arg: bytes, /) -> "Self":
+        """Construct self from bytes."""
+        ...
+
+
 type Container[T] = (
     T
     | list[Container[T]]
@@ -115,10 +126,10 @@ type ElementaryType = (
     | bytes
     | DictConvertible
     | ListConvertible
+    | BytesConvertible
     | NdarraySurrogate
     | BaseModel  # Includes GraphData
     | Workflow  # So, special case: a Workflow is just a GraphData, discard the type info
-    | Package
 )
 type JsonType = Container[ElementaryType]
 
@@ -237,7 +248,14 @@ def is_ptype(annotation: Any) -> TypeIs[type[PType]]:
         isclass(annotation)
         and issubclass(
             annotation,
-            (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Struct),
+            (
+                DictConvertible,
+                ListConvertible,
+                BytesConvertible,
+                NdarraySurrogate,
+                BaseModel,
+                Struct,
+            ),
         )
         or (isclass(origin) and issubclass(origin, Workflow))
         or annotation in get_args(ElementaryType.__value__)
@@ -271,8 +289,6 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
             return ser_from_ptype(ptype.data, annotation)
         case bytes() | bytearray() | memoryview():
             return bytes(ptype)
-        case Package():
-            return ptype.to_bytes()
         case bool() | int() | float() | complex() | str() | NoneType() | TypeVar():
             return ptype
         case Struct():
@@ -295,6 +311,8 @@ def ser_from_ptype(ptype: PType, annotation: type[PType] | None) -> JsonType:
             return ptype.model_dump(mode="json")
         case NdarraySurrogate():
             return ptype.dumps()
+        case BytesConvertible():
+            return ptype.to_bytes()
         case _:
             assert_never(ptype)
 
@@ -370,9 +388,6 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
     if issubclass(origin, complex):
         return complex(real=ser[0], imag=ser[1])  # type: ignore complex is T
 
-    if origin is Package:
-        return Package.from_bytes(ser)  # type: ignore Package is T
-
     if issubclass(origin, DictConvertible):
         if not issubclass(annotation, origin):
             msg = "Invalid subclass relation encountered."
@@ -431,6 +446,12 @@ def coerce_from_annotation[T: PType](ser: Any, annotation: type[T] | None) -> T 
             {k: coerce_from_annotation(v, args[1]) for k, v in ser.items()},
         )
 
+    if issubclass(origin, BytesConvertible):
+        if not issubclass(annotation, origin):
+            msg = "Invalid subclass relation encountered."
+            raise TypeError(msg)
+        return annotation.from_bytes(ser)
+
     assert_never(ser)
 
 
@@ -453,11 +474,17 @@ def get_serialization_format[T: PType](
         return sr.serialization_method
 
     unannotated = get_args(hint)[0] if get_origin(hint) is Annotated else hint
-    if (
-        isclass(unannotated)
-        and issubclass(unannotated, (bytes, NdarraySurrogate))
-        or isclass(unannotated)
-        and issubclass(unannotated, Package)
+    if isclass(unannotated) and (
+        issubclass(unannotated, (bytes, NdarraySurrogate))
+        or (
+            issubclass(unannotated, BytesConvertible)
+            # bool and int have a to_bytes() method that we don't
+            # want to use in this case as json is preferable.
+            #
+            # bool is technically a subclass of int but this
+            # is more specific.
+            and not issubclass(unannotated, (bool, int))
+        )
     ):
         return "bytes"
 

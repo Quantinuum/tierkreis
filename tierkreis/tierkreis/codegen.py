@@ -4,10 +4,10 @@ from inspect import isclass
 from types import NoneType
 from typing import ForwardRef
 
-from hugr.package import Package
 from pydantic import BaseModel
 
 from tierkreis.data.types import (
+    BytesConvertible,
     DictConvertible,
     ListConvertible,
     NdarraySurrogate,
@@ -31,9 +31,20 @@ def format_ptype(
     if isinstance(ptype, str):
         return ptype
 
+    if isclass(ptype) and issubclass(ptype, (int, bool)):
+        # int and bool are BytesConvertible but we we can support
+        # them directly in stubs.
+        return ptype.__qualname__
+
     if isclass(ptype) and issubclass(
         ptype,
-        (DictConvertible, ListConvertible, NdarraySurrogate, BaseModel, Package),
+        (
+            BytesConvertible,
+            DictConvertible,
+            ListConvertible,
+            NdarraySurrogate,
+            BaseModel,
+        ),
     ):
         return f'OpaqueType["{ptype.__module__}.{ptype.__qualname__}"]'
     if ptype is NoneType or ptype is None:
