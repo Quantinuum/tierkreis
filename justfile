@@ -67,8 +67,9 @@ bindings-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
   maturin generate-stubs --out . --features inspect
-  {{uvrun}} ruff format
+  # Unclear why but changing the order of these seems to upset the lint task.
   {{uvrun}} ruff check --fix
+  {{uvrun}} ruff format
 
 stubs-generate dir:
   #!/usr/bin/env bash
