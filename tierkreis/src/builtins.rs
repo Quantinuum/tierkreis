@@ -100,6 +100,10 @@ pub(crate) fn run_builtin(
 ) -> miette::Result<HashMap<String, Vec<u8>>> {
     let mut outputs = HashMap::new();
     match task_name {
+        // logical operations
+        "not" | "tkr_not" => un_op!(inputs, outputs, !, bool),
+        "and" | "tkr_and" => bin_op!(inputs, outputs, &&, bool),
+        "or" | "tkr_or" => bin_op!(inputs, outputs, ||, bool),
         // i64 operations
         "ieq" => bin_op!(inputs, outputs, ==, i64),
         "ine" => bin_op!(inputs, outputs, !=, i64),
