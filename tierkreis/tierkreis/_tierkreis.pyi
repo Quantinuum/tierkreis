@@ -29,9 +29,6 @@ class NodeStatus:
     def __int__(self, /) -> int: ...
 
 @final
-class PyWorkflowInputs: ...
-
-@final
 class Runtime:
     def __enter__(self, /) -> None: ...
     def __exit__(
@@ -182,6 +179,9 @@ class RuntimeConfig:
 
 @final
 class WorkflowGraph: ...
+
+@final
+class WorkflowInputs: ...
 
 @final
 class WorkflowSummary:
