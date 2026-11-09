@@ -22,6 +22,57 @@ class Headed[U: PType](NamedTuple):
     rest: TKR[list[U]]
 
 
+# logic operations
+class _not(NamedTuple):
+    a: TKR[bool]
+
+    @staticmethod
+    def out() -> type[TKR[bool]]:
+        return TKR[bool]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+_not.__name__ = "not"
+
+
+class tkr_not(_not):
+    pass
+
+
+class _and(NamedTuple):
+    a: TKR[bool]
+    b: TKR[bool]
+
+    @staticmethod
+    def out() -> type[TKR[bool]]:
+        return TKR[bool]
+
+    @property
+    def namespace(self) -> str:
+        return "builtins"
+
+
+_and.__name__ = "and"
+
+
+class tkr_and(_and):
+    pass
+
+
+class _or(_and):
+    pass
+
+
+_or.__name__ = "or"
+
+
+class tkr_or(_or):
+    pass
+
+
 # i64 operations
 class ieq(NamedTuple):
     a: TKR[int]
