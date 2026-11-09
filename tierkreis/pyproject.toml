@@ -2,7 +2,7 @@
 name = "tierkreis"
 description = "The Tierkreis Scientific Workflow Management System."
 readme = "README.md"
-version = "3.0.0rc1"
+version = "3.0.0rc2"
 authors = [
     { name = "Seyon Sivarajah", email = "seyon.sivarajah@quantinuum.com" },
     { name = "Lukas Heidemann", email = "lukas.heidemann@quantinuum.com" },
