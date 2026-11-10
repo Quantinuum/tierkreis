@@ -13,7 +13,13 @@ author = "Quantinuum"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 add_module_names = False
-extensions = ["autodoc2", "myst_nb", "sphinx.ext.intersphinx", "sphinx.ext.mathjax"]
+extensions = [
+    "autodoc2",
+    "myst_nb",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.mathjax",
+    "sphinx_copybutton",
+]
 latex_engine = "xelatex"
 autodoc2_packages = [
     "../../tierkreis/tierkreis",
