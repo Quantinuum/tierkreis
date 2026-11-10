@@ -37,11 +37,12 @@ jobs:
             target: x86_64
           - runner: ubuntu-22.04
             target: x86
-          # - runner: ubuntu-22.04
-          #   target: aarch64
-          # - runner: ubuntu-22.04
-          #   target: armv7
-          #   manylinux: 2_28
+          - runner: ubuntu-22.04
+            target: aarch64
+            manylinux: 2_28
+          - runner: ubuntu-22.04
+            target: armv7
+            manylinux: 2_28
           - runner: ubuntu-22.04
             target: s390x
           - runner: ubuntu-22.04
@@ -81,11 +82,12 @@ jobs:
             target: x86_64
           - runner: ubuntu-22.04
             target: x86
-          # - runner: ubuntu-22.04
-          #   target: aarch64
-          #   manylinux: 2_28
-          # - runner: ubuntu-22.04
-          #   target: armv7
+          - runner: ubuntu-22.04
+            target: aarch64
+            manylinux: 2_28
+          - runner: ubuntu-22.04
+            target: armv7
+            manylinux: 2_28
     steps:
       - uses: actions/checkout@v6
       - name: Download frontend bundle
