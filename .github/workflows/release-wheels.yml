@@ -33,18 +33,17 @@ jobs:
     strategy:
       matrix:
         platform:
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: x86
-          # - runner: ubuntu-22.04
-          #   target: aarch64
-          # - runner: ubuntu-22.04
-          #   target: armv7
-          #   manylinux: 2_28
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04-arm
+            target: aarch64
+          - runner: ubuntu-24.04-arm
+            target: armv7
+          - runner: ubuntu-24.04
             target: s390x
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: ppc64le
     steps:
       - uses: actions/checkout@v6
@@ -77,15 +76,14 @@ jobs:
     strategy:
       matrix:
         platform:
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04
             target: x86
-          # - runner: ubuntu-22.04
-          #   target: aarch64
-          #   manylinux: 2_28
-          # - runner: ubuntu-22.04
-          #   target: armv7
+          - runner: ubuntu-24.04-arm
+            target: aarch64
+          - runner: ubuntu-24.04-arm
+            target: armv7
     steps:
       - uses: actions/checkout@v6
       - name: Download frontend bundle
