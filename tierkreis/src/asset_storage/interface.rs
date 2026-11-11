@@ -6,7 +6,7 @@ use std::{fmt::Display, path::PathBuf, str::FromStr, time::SystemTime};
 
 use futures::future::BoxFuture;
 use miette::{Context, IntoDiagnostic, miette};
-use url::Url;
+use url::{Host, Url};
 use uuid::Uuid;
 
 /// [`AssetKind`] is used to categorize [`AssetSpec`] and [`AssetStorage`] implementations
@@ -31,6 +31,14 @@ pub enum AssetKind {
         /// in the filesystem.
         root: PathBuf,
     },
+    /// An asset that is accessible through a compliant implementation
+    /// of the JSON:API specification: <https://jsonapi.org/>
+    JsonAPI {
+        /// The host name of the JSON:API compliant resource.
+        host: Host,
+        /// The resource type of the JSON:API resource.
+        resource_type: String,
+    },
 }
 
 impl FromStr for AssetKind {
@@ -45,6 +53,16 @@ impl FromStr for AssetKind {
                     miette!("Failed to parse root folder location, for url: {url}")
                 })?,
             }),
+            "http+jsonapi" => {
+                let host = url
+                    .host()
+                    .ok_or_else(|| miette!("No host specified for http+jsonapi AssetKind"))?;
+                let resource_type = url.path().trim_matches('/').to_string();
+                Ok(Self::JsonAPI {
+                    host: host.to_owned(),
+                    resource_type,
+                })
+            }
             scheme => Err(miette!("Unknown scheme: {scheme}")),
         }
     }
@@ -55,6 +73,10 @@ impl Display for AssetKind {
         match self {
             Self::Memory => write!(f, "memory://process"),
             Self::File { root } => write!(f, "file://{}", root.to_string_lossy()),
+            Self::JsonAPI {
+                host,
+                resource_type,
+            } => write!(f, "http+jsonapi://{host}/{resource_type}"),
         }
     }
 }
@@ -179,6 +201,14 @@ mod tests {
     #[case::memory(AssetKind::Memory, "memory://process")]
     #[case::empty_root(AssetKind::File { root: "/".parse().unwrap() }, "file:///")]
     #[case::tmp_dir(AssetKind::File { root: "/tmp".parse().unwrap() }, "file:///tmp")]
+    #[case::tmp_dir(AssetKind::JsonAPI {
+        host: Host::Domain("localhost".to_string()),
+        resource_type: "comment".to_string(),
+    }, "http+jsonapi://localhost/comment")]
+    #[case::tmp_dir(AssetKind::JsonAPI {
+        host: Host::Domain("nexus.quantinuum.com".to_string()),
+        resource_type: "api/circuits/v1beta2".to_string(),
+    }, "http+jsonapi://nexus.quantinuum.com/api/circuits/v1beta2")]
     fn test_asset_kind_to_from_str(
         #[case] asset_kind: AssetKind,
         #[case] expected_str: &str,
