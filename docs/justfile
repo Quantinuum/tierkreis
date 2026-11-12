@@ -7,9 +7,7 @@ default:
   @just --list
 
 uvrun profile +ARGS:
-    uv run --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}' {{ARGS}}
+  MATURIN_PEP517_ARGS="--profile {{profile}}" uv run --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}' {{ARGS}}
 
 build profile:
-  # Required as we make calls to uv run in documentation cells.
-  export MATURIN_PEP517_ARGS := "--profile {{profile}}"
   @just uvrun {{profile}} {{sphinx_build}} -M html "{{source_dir}}" "{{build_dir}}" {{sphinx_opts}}

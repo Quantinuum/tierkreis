@@ -20,7 +20,7 @@ jobs:
           include_maturin: "no"
           include_node: "yes"
       - name: Build frontend
-        run: just prod
+        run: just build-frontend
       - name: Upload frontend bundle
         uses: actions/upload-artifact@v6
         with:
