@@ -1,30 +1,34 @@
-uvrun := "uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev'"
-export MATURIN_PEP517_ARGS := "--profile dev"
+profile := "dev"
+pytestargs := "--doctest-modules --cov=. --cov-report=html --cov-report=term"
+
 
 default:
   @just --list
 
-setup:
-    uv sync --all-extras --config-settings-package tierkreis:build-args='--profile dev'
+uvrun profile +ARGS:
+  uv run --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}' {{ARGS}}
+  
+setup profile=profile:
+  uv sync --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}'
 
-populate-cache:
-    @just setup
-    cargo test --no-run
+populate-cache profile=profile:
+  @just setup
+  cargo test --no-run
 
 test:
-    # We need to run a sync in the python environment to provide access to the workers
-    # for the rust tests that use worker subprocesses.
-    @just setup
-    cargo test
-    {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term
+  # We need to run a sync in the python environment to provide access to the workers
+  # for the rust tests that use worker subprocesses.
+  @just setup
+  cargo test
+  @just uvrun dev pytest tierkreis {{pytestargs}}
 
 test-workers:
-    @just setup
-    {{uvrun}} pytest tierkreis_workers/pytket_worker --doctest-modules --cov=. --cov-report=html --cov-report=term
+  @just setup
+  @just uvrun dev pytest tierkreis_workers/pytket_worker {{pytestargs}}
 
 test-slow:
-    @just setup
-    {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
+  @just setup
+  @just uvrun dev pytest tierkreis {{pytestargs}} --runslow
 
 typos:
   typos
@@ -33,23 +37,23 @@ lint:
   @just setup
   cargo fmt --check
   cargo clippy --all-features --all-targets --no-deps -- -D warnings
-  {{uvrun}} ruff format --check
-  {{uvrun}} ruff check
-  {{uvrun}} pyright .
+  @just uvrun dev ruff format --check
+  @just uvrun dev ruff check
+  @just uvrun dev pyright .
 
 fix:
   @just setup
   cargo fmt
   cargo clippy --all-features --all-targets --no-deps --fix
-  {{uvrun}} ruff format
-  {{uvrun}} ruff check --fix
+  @just uvrun dev ruff format
+  @just uvrun dev ruff check --fix
 
-docs:
+docs profile=profile:
   @just setup
-  just docs/build
+  just docs/build {{profile}}
 
 serve:
-	cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
+  cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
 
 [working-directory:'tierkreis/frontend']
 prod:
@@ -57,29 +61,29 @@ prod:
   pnpm run build
 
 openapi:
-    cargo run --manifest-path tierkreis/Cargo.toml --bin tkr -- openapi tierkreis/openapi.json
+  cargo run --manifest-path tierkreis/Cargo.toml --bin tkr -- openapi tierkreis/openapi.json
 
 wheel:
-    just prod
-    maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
+  just prod
+  maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
 
 bindings-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
   maturin generate-stubs --out . --features inspect
   # Unclear why but changing the order of these seems to upset the lint task.
-  {{uvrun}} ruff check --fix
-  {{uvrun}} ruff format
+  @just uvrun dev ruff check --fix
+  @just uvrun dev ruff format
 
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev' main.py --stubs-path ./stubs.py
+  @just uvrun dev main.py --stubs-path ./stubs.py
 
 stubs-generate-api dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev' main.py --stubs-path ../api/api.py
+  @just uvrun dev main.py --stubs-path ../api/api.py
 
 generate: 
   @just setup
@@ -130,9 +134,9 @@ generate-changelogs:
 
 # Generate changelog entiries for a single sub-project from git history.
 generate-changelog dir:
-    #!/usr/bin/env bash
-    cd {{dir}}
-    git cliff -o CHANGELOG.md
+  #!/usr/bin/env bash
+  cd {{dir}}
+  git cliff -o CHANGELOG.md
 
 # Check that the CHANGELOG has been updated to the latest version.
 check-changelog:
