@@ -195,27 +195,33 @@ generate-check: generate uncommitted
 [private]
 [group('changelog')]
 [working-directory:'tierkreis']
-tierkreis-changelog-generate:
-  git cliff -o CHANGELOG.md
+tierkreis-changelog-generate *ARGS:
+  git cliff -o CHANGELOG.md {{ARGS}}
 
 
 [private]
 [group('changelog')]
-worker-changelog-generate name:
+worker-changelog-generate name *ARGS:
   #!/usr/bin/env bash
   cd tierkreis_workers/{{name}}_worker
-  git cliff -o CHANGELOG.md
+  git cliff -o CHANGELOG.md {{ARGS}}
 
 
 [private]
 [group('changelog')]
-workers-changelog-generate: *(worker-changelog-generate *workers) 
+workers-changelog-generate *ARGS: *(worker-changelog-generate *workers ARGS) 
 
 
 # Generate changelog entries for all sub-projects from git history.
 [group('dev')]
 [group('changelog')]
-changelogs-generate: tierkreis-changelog-generate workers-changelog-generate
+changelogs-generate *ARGS: (tierkreis-changelog-generate ARGS) (workers-changelog-generate ARGS)
+
+
+# Bump the changelog entries based on git history.
+[group('dev')]
+[group('changelog')]
+changelogs-bump: (changelogs-generate "--bump")
 
 
 # Check that the CHANGELOG has been updated to the latest version.
