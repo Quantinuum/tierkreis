@@ -37,8 +37,8 @@ jobs:
     needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
-      command_name: test-workers
-      command: just test-workers
+      command_name: workers-test
+      command: just workers-test
       save_cache: false
 
   docs:
@@ -53,6 +53,6 @@ jobs:
     needs: populate-cache
     uses: ./.github/workflows/run_check_matrix.yml
     with:
-      command_name: check-stubs
-      command: just check-stubs
+      command_name: generate-check
+      command: just generate-check
       save_cache: false

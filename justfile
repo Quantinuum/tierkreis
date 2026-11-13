@@ -1,141 +1,224 @@
-uvrun := "uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev'"
-export MATURIN_PEP517_ARGS := "--profile dev"
+set lists
+set unstable
 
+dev := "dev"
+pytestargs := "--doctest-modules --cov=. --cov-report=html --cov-report=term"
+uvrun(profile,args) := f"uv run --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}' {{args}}"
+
+[private]
 default:
   @just --list
 
-setup:
-    uv sync --all-extras --config-settings-package tierkreis:build-args='--profile dev'
 
-populate-cache:
-    @just setup
-    cargo test --no-run
+[private]
+uvrun profile +ARGS:
+  uv run --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}' {{ARGS}}
 
-test:
-    # We need to run a sync in the python environment to provide access to the workers
-    # for the rust tests that use worker subprocesses.
-    @just setup
-    cargo test
-    {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term
 
-test-workers:
-    @just setup
-    {{uvrun}} pytest tierkreis_workers/pytket_worker --doctest-modules --cov=. --cov-report=html --cov-report=term
+[group('dev')]
+setup profile=dev:
+  uv sync --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}'
 
-test-slow:
-    @just setup
-    {{uvrun}} pytest tierkreis --doctest-modules --cov=. --cov-report=html --cov-report=term --runslow
 
-typos:
-  typos
-    
-lint:
-  @just setup
-  cargo fmt --check
-  cargo clippy --all-features --all-targets --no-deps -- -D warnings
-  {{uvrun}} ruff format --check
-  {{uvrun}} ruff check
-  {{uvrun}} pyright .
+[group('ci')]
+populate-cache profile=dev: (setup profile)
+  cargo test --no-run
 
-fix:
-  @just setup
-  cargo fmt
-  cargo clippy --all-features --all-targets --no-deps --fix
-  {{uvrun}} ruff format
-  {{uvrun}} ruff check --fix
 
-docs:
-  @just setup
-  just docs/build
-
-serve:
-	cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
-
+[group('build')]
 [working-directory:'tierkreis/frontend']
-prod:
+build-frontend:
   pnpm i
   pnpm run build
 
+
+[group('build')]
+build-wheel: build-frontend
+  maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
+
+
+# Run all linters and all tests.
+[group('dev')]
+check: typos lint test
+  
+
+# Run all test suites.
+[group('test')]
+test: rust-test python-test
+
+
+[group('rust recipes')]
+[group('test')]
+rust-test: setup
+  cargo test
+
+
+[group('python recipes')]
+[group('test')]
+python-test: setup
+  just uvrun dev pytest tierkreis {{pytestargs}}
+
+
+[group('python recipes')]
+[group('test')]
+workers-test: setup
+  just uvrun dev pytest tierkreis_workers/pytket_worker {{pytestargs}}
+
+
+# Lint all project files.
+[group('lint')]
+lint: rust-lint python-lint
+
+
+[group('lint')]
+typos:
+  typos
+
+[group('rust recipes')]
+[group('lint')]
+rust-lint:
+  cargo fmt --check
+  cargo clippy --all-features --all-targets --no-deps -- -D warnings
+
+
+[group('python recipes')]
+[group('lint')]
+python-lint: setup
+  just uvrun dev ruff check
+  just uvrun dev ruff format --check
+  just uvrun dev pyright .
+
+
+# Apply all lint fixes where possible.
+[group('fix')]
+fix: rust-fix python-fix
+
+
+[group('rust recipes')]
+[group('fix')]
+rust-fix:
+  cargo fmt
+  cargo clippy --all-features --all-targets --no-deps --fix
+
+
+[group('python recipes')]
+[group('fix')]
+python-fix: setup
+  just uvrun dev ruff check --fix
+  just uvrun dev ruff format
+  
+
+[group('docs')]
+docs profile=dev: (setup profile)
+  @just docs/build {{profile}}
+
+
+[group('dev')]
+serve:
+  cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
+
+
+[group('dev')]
 openapi:
-    cargo run --manifest-path tierkreis/Cargo.toml --bin tkr -- openapi tierkreis/openapi.json
+  cargo run --manifest-path tierkreis/Cargo.toml --bin tkr -- openapi tierkreis/openapi.json
 
-wheel:
-    just prod
-    maturin build --release --manifest-path tierkreis/Cargo.toml --out dist
 
-bindings-generate dir:
-  #!/usr/bin/env bash
-  cd {{dir}}
+# Generate the python type stubs for the Rust pyo3 bindings.
+#
+# They need fixing to satisfy the lint checks.
+[private]
+[working-directory:'tierkreis']
+tierkreis-py-stubs-gen:
   maturin generate-stubs --out . --features inspect
-  # Unclear why but changing the order of these seems to upset the lint task.
-  {{uvrun}} ruff check --fix
-  {{uvrun}} ruff format
 
+
+[private]
+tierkreis-py-stubs: tierkreis-py-stubs-gen python-fix
+
+
+[private]
 stubs-generate dir:
   #!/usr/bin/env bash
   cd {{dir}}
-  uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev' main.py --stubs-path ./stubs.py
+  @uvrun dev main.py --stubs-path ./stubs.py
+  {{ uvrun("dev", "main.py --stubs-path ./stubs.py") }}
 
-stubs-generate-api dir:
+
+workers := ["aer", "guppy", "ibmq", "nexus", "pytket", "quantinuum", "qulacs"]
+
+
+[private]
+worker-api-generate name:
   #!/usr/bin/env bash
-  cd {{dir}}
-  uv run --all-extras --config-settings-package tierkreis:build-args='--profile dev' main.py --stubs-path ../api/api.py
+  cd "tierkreis_workers/{{name}}_worker/tkr_{{name}}_worker_impl"
+  {{ uvrun("dev", "main.py --stubs-path ../api/api.py") }}
+  cd ../../..
+  cp 'tierkreis_workers/{{name}}_worker/api/api.py' 'tierkreis/tierkreis/{{name}}_worker.py'
 
-generate: 
-  @just setup
-  just bindings-generate 'tierkreis'
-  just stubs-generate 'tierkreis/tests/workers/graph'
 
-  just stubs-generate-api 'tierkreis_workers/aer_worker/tkr_aer_worker_impl'
-  just stubs-generate-api 'tierkreis_workers/guppy_worker/tkr_guppy_worker_impl'
-  just stubs-generate-api 'tierkreis_workers/ibmq_worker/tkr_ibmq_worker_impl'
-  just stubs-generate-api 'tierkreis_workers/nexus_worker/tkr_nexus_worker_impl'
-  just stubs-generate-api 'tierkreis_workers/pytket_worker/tkr_pytket_worker_impl'
-  just stubs-generate-api 'tierkreis_workers/quantinuum_worker/tkr_quantinuum_worker_impl'
-  just stubs-generate-api 'tierkreis_workers/qulacs_worker/tkr_qulacs_worker_impl'
+[private]
+workers-api-generate: *(worker-api-generate *workers) 
 
-  just stubs-generate-api 'docs/source/examples/example_workers/auth_worker/tkr_auth_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/error_worker/tkr_error_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/hello_world_worker/tkr_hello_world_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/multiple_outputs_worker/tkr_multiple_outputs_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/my_example_worker/tkr_my_example_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/qsci_worker/tkr_qsci_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/scipy_worker/tkr_scipy_worker_impl'
-  just stubs-generate-api 'docs/source/examples/example_workers/substitution_worker/tkr_substitution_worker_impl'
 
-  cp 'tierkreis_workers/aer_worker/api/api.py' tierkreis/tierkreis/aer_worker.py
-  cp 'tierkreis_workers/ibmq_worker/api/api.py' tierkreis/tierkreis/ibmq_worker.py
-  cp 'tierkreis_workers/nexus_worker/api/api.py' tierkreis/tierkreis/nexus_worker.py
-  cp 'tierkreis_workers/pytket_worker/api/api.py' tierkreis/tierkreis/pytket_worker.py
-  cp 'tierkreis_workers/quantinuum_worker/api/api.py' tierkreis/tierkreis/quantinuum_worker.py
-  cp 'tierkreis_workers/qulacs_worker/api/api.py' tierkreis/tierkreis/qulacs_worker.py
+docs-workers := ["auth", "error", "hello_world", "multiple_outputs", "my_example", "qsci", "scipy", "substitution"]
 
-check-stubs:
-  just generate
+
+[private]
+docs-worker-api-generate name:
+  #!/usr/bin/env bash
+  cd "docs/source/examples/example_workers/{{name}}_worker/tkr_{{name}}_worker_impl"
+  {{ uvrun("dev", "main.py --stubs-path ../api/api.py") }}
+
+
+[private]
+docs-workers-api-generate: *(docs-worker-api-generate *docs-workers) 
+
+
+[group('dev')]
+generate: setup tierkreis-py-stubs workers-api-generate docs-workers-api-generate
+  @just stubs-generate 'tierkreis/tests/workers/graph'
+
+
+# Check if there are any uncommitted changes in the working directory.
+[private]
+uncommitted:
   git update-index --refresh
   git diff-index --quiet HEAD --
+
+
+# Check stubs for differences against source control after regenerating them.
+[group('dev')]
+generate-check: generate uncommitted
+
+
+# Generate changelog entiries for a single sub-project from git history.
+[private]
+[group('changelog')]
+[working-directory:'tierkreis']
+tierkreis-changelog-generate:
+  git cliff -o CHANGELOG.md
+
+
+[private]
+[group('changelog')]
+worker-changelog-generate name:
+  #!/usr/bin/env bash
+  cd tierkreis_workers/{{name}}_worker
+  git cliff -o CHANGELOG.md
+
+
+[private]
+[group('changelog')]
+workers-changelog-generate: *(worker-changelog-generate *workers) 
 
 
 # Generate changelog entries for all sub-projects from git history.
-generate-changelogs:
-  @just generate-changelog tierkreis
-  @just generate-changelog tierkreis_visualization
-  @just generate-changelog tierkreis_workers/aer_worker
-  @just generate-changelog tierkreis_workers/guppy_worker
-  @just generate-changelog tierkreis_workers/ibmq_worker
-  @just generate-changelog tierkreis_workers/nexus_worker
-  @just generate-changelog tierkreis_workers/pytket_worker
-  @just generate-changelog tierkreis_workers/quantinuum_worker
-  @just generate-changelog tierkreis_workers/qulacs_worker
+[group('dev')]
+[group('changelog')]
+changelogs-generate: tierkreis-changelog-generate workers-changelog-generate
 
-# Generate changelog entiries for a single sub-project from git history.
-generate-changelog dir:
-    #!/usr/bin/env bash
-    cd {{dir}}
-    git cliff -o CHANGELOG.md
 
 # Check that the CHANGELOG has been updated to the latest version.
-check-changelog:
-  @just generate-changelogs
-  git update-index --refresh
-  git diff-index --quiet HEAD --
+[group('dev')]
+[group('changelog')]
+changelogs-check: changelogs-generate uncommitted

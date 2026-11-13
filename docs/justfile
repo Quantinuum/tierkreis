@@ -1,10 +1,13 @@
 sphinx_opts  := "-T"
-sphinx_build := "uv run --config-settings-package tierkreis:build-args='--profile dev' sphinx-build"
+sphinx_build := "sphinx-build"
 source_dir   := "source"
 build_dir    := "build"
 
 default:
   @just --list
 
-build:
-  {{sphinx_build}} -M html "{{source_dir}}" "{{build_dir}}" {{sphinx_opts}}
+uvrun profile +ARGS:
+  MATURIN_PEP517_ARGS="--profile {{profile}}" uv run --all-extras --config-settings-package tierkreis:build-args='--profile {{profile}}' {{ARGS}}
+
+build profile:
+  @just uvrun {{profile}} {{sphinx_build}} -M html "{{source_dir}}" "{{build_dir}}" {{sphinx_opts}}
