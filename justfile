@@ -38,12 +38,13 @@ build-wheel: build-frontend
 
 
 # Run all linters and all tests.
-check: lint test
+[group('dev')]
+check: typos lint test
   
 
 # Run all test suites.
 [group('test')]
-test: rust-test python-test workers-test
+test: rust-test python-test
 
 
 [group('rust recipes')]
@@ -66,7 +67,7 @@ workers-test: setup
 
 # Lint all project files.
 [group('lint')]
-lint: typos rust-lint python-lint
+lint: rust-lint python-lint
 
 
 [group('lint')]
@@ -83,8 +84,8 @@ rust-lint:
 [group('python recipes')]
 [group('lint')]
 python-lint: setup
-  just uvrun dev ruff format --check
   just uvrun dev ruff check
+  just uvrun dev ruff format --check
   just uvrun dev pyright .
 
 
@@ -103,8 +104,8 @@ rust-fix:
 [group('python recipes')]
 [group('fix')]
 python-fix: setup
-  just uvrun dev ruff format
   just uvrun dev ruff check --fix
+  just uvrun dev ruff format
   
 
 [group('docs')]
@@ -147,7 +148,7 @@ workers := ["aer", "guppy", "ibmq", "nexus", "pytket", "quantinuum", "qulacs"]
 
 
 [private]
-generate-worker-api name:
+worker-api-generate name:
   #!/usr/bin/env bash
   cd "tierkreis_workers/{{name}}_worker/tkr_{{name}}_worker_impl"
   {{ uvrun("dev", "main.py --stubs-path ../api/api.py") }}
@@ -156,49 +157,53 @@ generate-worker-api name:
 
 
 [parallel]
-generate-worker-apis: *(generate-worker-api *workers) 
+[private]
+workers-api-generate: *(worker-api-generate *workers) 
 
 
 docs-workers := ["auth", "error", "hello_world", "multiple_outputs", "my_example", "qsci", "scipy", "substitution"]
 
 
 [private]
-generate-docs-worker-api name:
+docs-worker-api-generate name:
   #!/usr/bin/env bash
   cd "docs/source/examples/example_workers/{{name}}_worker/tkr_{{name}}_worker_impl"
   {{ uvrun("dev", "main.py --stubs-path ../api/api.py") }}
 
 
 [parallel]
-generate-docs-worker-apis: *(generate-docs-worker-api *docs-workers) 
+[private]
+docs-workers-api-generate: *(docs-worker-api-generate *docs-workers) 
 
 
 [group('dev')]
-generate: setup tierkreis-py-stubs generate-worker-apis generate-docs-worker-apis
+generate: setup tierkreis-py-stubs workers-api-generate docs-workers-api-generate
   @just stubs-generate 'tierkreis/tests/workers/graph'
 
 
 # Check if there are any uncommitted changes in the working directory.
 [private]
-check-uncommitted:
+uncommitted:
   git update-index --refresh
   git diff-index --quiet HEAD --
 
 
 # Check stubs for differences against source control after regenerating them.
 [group('dev')]
-check-stubs: generate check-uncommitted
+generate-check: generate uncommitted
 
 
 # Generate changelog entiries for a single sub-project from git history.
 [private]
+[group('changelog')]
 [working-directory:'tierkreis']
-generate-tierkreis-changelog:
+tierkreis-changelog-generate:
   git cliff -o CHANGELOG.md
 
 
 [private]
-generate-worker-changelog name:
+[group('changelog')]
+worker-changelog-generate name:
   #!/usr/bin/env bash
   cd tierkreis_workers/{{name}}_worker
   git cliff -o CHANGELOG.md
@@ -206,14 +211,17 @@ generate-worker-changelog name:
 
 [private]
 [parallel]
-generate-worker-changelogs: *(generate-worker-changelog *workers) 
+[group('changelog')]
+workers-changelog-generate: *(worker-changelog-generate *workers) 
 
 
 # Generate changelog entries for all sub-projects from git history.
 [group('dev')]
-generate-changelogs: generate-tierkreis-changelog generate-worker-changelogs
+[group('changelog')]
+changelogs-generate: tierkreis-changelog-generate workers-changelog-generate
 
 
 # Check that the CHANGELOG has been updated to the latest version.
 [group('dev')]
-check-changelogs: generate-changelogs check-uncommitted
+[group('changelog')]
+changelogs-check: changelogs-generate uncommitted
