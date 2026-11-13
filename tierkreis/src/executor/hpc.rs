@@ -15,7 +15,7 @@ use std::{
 use futures::{FutureExt, SinkExt, StreamExt, channel::mpsc, future::BoxFuture, stream::BoxStream};
 use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
-use tokio::{task::AbortHandle, time::MissedTickBehavior};
+use tokio::{sync::watch, task::AbortHandle, time::MissedTickBehavior};
 use tracing::{instrument, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uuid::Uuid;
@@ -28,12 +28,14 @@ use crate::{
         send_queued, send_running,
     },
     executor::{
+        ExecutorHealth,
         commands::{validate_worker_commands, worker_invocation},
         hpc::spec::{
             ContainerSpec, HPCResourceSpec, JobSpec, MpiSpec, SchedulerStatus, SchedulerWrapper,
             UserSpec, shell_word,
         },
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+        spawn_supervised_executor,
     },
     location::Location,
     monitoring::{EnvironmentCarrier, inject_trace_context},
@@ -418,6 +420,7 @@ pub struct HPCExecutor<T: SchedulerWrapper> {
     cancel_sender: mpsc::Sender<Key>,
     event_receiver: Mutex<Option<EventReceiver>>,
     background_abort_handle: AbortHandle,
+    health_receiver: watch::Receiver<ExecutorHealth>,
     hpc_storage_name: String,
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
@@ -473,7 +476,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
-        let background = tokio::spawn(process_tasks(
+        let (background_abort_handle, health_receiver) = spawn_supervised_executor(process_tasks(
             scheduler.clone(),
             task_receiver,
             cancel_receiver,
@@ -486,7 +489,8 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
-            background_abort_handle: background.abort_handle(),
+            background_abort_handle,
+            health_receiver,
             hpc_storage_name: hpc_storage_name.into(),
             output_storage_name: output_storage_name.into(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
@@ -610,6 +614,10 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
 }
 
 impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
+    fn health(&self) -> watch::Receiver<ExecutorHealth> {
+        self.health_receiver.clone()
+    }
+
     // TODO: How to make sure this is run on the compute node?
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         async move {
