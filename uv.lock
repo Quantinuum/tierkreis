@@ -3592,7 +3592,7 @@ wheels = [
 
 [[package]]
 name = "tierkreis"
-version = "3.0.0"
+version = "3.0.1"
 source = { editable = "tierkreis" }
 dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
@@ -3693,7 +3693,7 @@ requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-aer-worker-impl"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/aer_worker" }
 dependencies = [
     { name = "pytket-qiskit", extra = ["aer"] },
@@ -3772,7 +3772,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-guppy-worker"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/guppy_worker/api" }
 dependencies = [
     { name = "tierkreis" },
@@ -3847,7 +3847,7 @@ requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-ibmq-worker-impl"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/ibmq_worker" }
 dependencies = [
     { name = "pytket" },
@@ -3951,7 +3951,7 @@ requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-nexus-worker-impl"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/nexus_worker" }
 dependencies = [
     { name = "hugr" },
@@ -3981,7 +3981,7 @@ requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-pytket-worker-impl"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/pytket_worker" }
 dependencies = [
     { name = "pytket" },
@@ -4052,7 +4052,7 @@ requires-dist = [
 
 [[package]]
 name = "tkr-quantinuum-worker"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/quantinuum_worker/api" }
 dependencies = [
     { name = "tierkreis" },
@@ -4093,7 +4093,7 @@ requires-dist = [{ name = "tierkreis" }]
 
 [[package]]
 name = "tkr-qulacs-worker-impl"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "tierkreis_workers/qulacs_worker" }
 dependencies = [
     { name = "pytket-qulacs" },
