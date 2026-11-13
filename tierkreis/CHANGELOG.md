@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Extreme justfile refactor
+
+## [3.0.0rc3] - 2026-11-10
+
+### Changed
+- Set many linux version for all ARM targets by @johnchildren in [#804](https://github.com/Quantinuum/tierkreis/pull/804)
+- Upgrade v3.0.0rc2 by @johnchildren in [#802](https://github.com/Quantinuum/tierkreis/pull/802)
+
+## [3.0.0rc2] - 2026-11-09
+
+### Fixed
+- Add back boolean builtins by @johnchildren in [#801](https://github.com/Quantinuum/tierkreis/pull/801)
+- Report node errors on orchestrator failure by @johnchildren in [#789](https://github.com/Quantinuum/tierkreis/pull/789)
+
+## [3.0.0rc1] - 2026-11-06
+
+### Changed
+- Prepare for v3.0.0rc1 by @johnchildren in [#796](https://github.com/Quantinuum/tierkreis/pull/796)
 - Remove Hugr dependency by @johnchildren in [#791](https://github.com/Quantinuum/tierkreis/pull/791)
 - Remove legacy controller code by @johnchildren in [#782](https://github.com/Quantinuum/tierkreis/pull/782)
 - Remove `script()` and `StdInOut` executor by @johnchildren in [#779](https://github.com/Quantinuum/tierkreis/pull/779)
@@ -715,7 +733,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove array type and add Vec type by @ss2165
 - Removed actix dependency from runtime. by @zrho
 
-[unreleased]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc0...HEAD
+[unreleased]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc3...HEAD
+[3.0.0rc3]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc2...v3.0.0rc3
+[3.0.0rc2]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc1...v3.0.0rc2
+[3.0.0rc1]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc0...v3.0.0rc1
 [3.0.0rc0]: https://github.com/Quantinuum/tierkreis/compare/v2.1.0...v3.0.0rc0
 [2.1.0]: https://github.com/Quantinuum/tierkreis/compare/v2.0.11...v2.1.0
 [2.0.11]: https://github.com/Quantinuum/tierkreis/compare/v2.0.10...v2.0.11
