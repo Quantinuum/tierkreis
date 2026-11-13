@@ -75,6 +75,8 @@ footer = """
 trim = true
 
 [git]
+# Match historical PEP 440 release candidates and SemVer release tags.
+tag_pattern = "^v?[0-9]+\\.[0-9]+\\.[0-9]+(?:rc[0-9]+|-[0-9A-Za-z.-]+)?$"
 # Parse commits according to the conventional commits specification.
 # See https://www.conventionalcommits.org
 conventional_commits = true
