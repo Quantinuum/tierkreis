@@ -156,7 +156,6 @@ worker-api-generate name:
   cp 'tierkreis_workers/{{name}}_worker/api/api.py' 'tierkreis/tierkreis/{{name}}_worker.py'
 
 
-[parallel]
 [private]
 workers-api-generate: *(worker-api-generate *workers) 
 
@@ -171,7 +170,6 @@ docs-worker-api-generate name:
   {{ uvrun("dev", "main.py --stubs-path ../api/api.py") }}
 
 
-[parallel]
 [private]
 docs-workers-api-generate: *(docs-worker-api-generate *docs-workers) 
 
@@ -210,7 +208,6 @@ worker-changelog-generate name:
 
 
 [private]
-[parallel]
 [group('changelog')]
 workers-changelog-generate: *(worker-changelog-generate *workers) 
 
