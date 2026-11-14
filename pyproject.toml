@@ -32,7 +32,7 @@ dev = [
 ]
 lint = [
     "isort>=9.0.2",
-    "ruff>=0.17.3",
+    "ruff>=0.17.4",
     "pyright>=1.1.414",
 ]
 test = [
@@ -40,13 +40,13 @@ test = [
     "pytest-asyncio>=1.4.1.post1,<1.5",
     "pytest-cov>=5.0,<8",
     "pytest-timeout>=2.4.0,<3",
-    "pydantic>=2.14.2",
+    "pydantic>=2.14.3",
 ]
 docs = [
     "sphinx>=8.2",
     "sphinx-autodoc2>=0.5.0",
     "myst-nb>=1.4.0",
     "furo>=2025.7.19",
-    "pyscf>=2.13.1",
+    "pyscf>=2.15.0",
     "sphinx-copybutton>=0.5.2"
 ]
