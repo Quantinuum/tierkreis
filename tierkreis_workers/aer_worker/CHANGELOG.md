@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.0.0] - 2026-11-13
 
 ### Changed
-- Prepare for 3.0 release
+- Prepare for 3.0 release by @johnchildren in [#812](https://github.com/Quantinuum/tierkreis/pull/812)
 - Allow profiles in justfile by @johnchildren in [#805](https://github.com/Quantinuum/tierkreis/pull/805)
 
 ## [3.0.0rc1] - 2026-11-06

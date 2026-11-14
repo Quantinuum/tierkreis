@@ -5,10 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-11-13
+
+### Fixed
+- Correct node type in internal graph builder by @johnchildren in [#771](https://github.com/Quantinuum/tierkreis/pull/771)
+
 ## [3.0.0] - 2026-11-13
 
 ### Changed
-- Prepare for 3.0 release
+- Prepare for 3.0 release by @johnchildren in [#812](https://github.com/Quantinuum/tierkreis/pull/812)
 - Allow profiles in justfile by @johnchildren in [#805](https://github.com/Quantinuum/tierkreis/pull/805)
 
 ## [3.0.0rc3] - 2026-11-10
@@ -734,6 +739,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove array type and add Vec type by @ss2165
 - Removed actix dependency from runtime. by @zrho
 
+[3.0.1]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc3...v3.0.0
 [3.0.0rc3]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc2...v3.0.0rc3
 [3.0.0rc2]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc1...v3.0.0rc2

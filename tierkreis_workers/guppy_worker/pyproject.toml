@@ -10,7 +10,7 @@ dependencies = [
     "hugr-qir",
     "pytket",
     "tket",
-    "tierkreis",
+    "tierkreis>=3.0.0",
     "tkr-guppy-worker"
 ]
 

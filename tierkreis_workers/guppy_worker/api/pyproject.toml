@@ -1,6 +1,6 @@
 [project]
 name = "tkr-guppy-worker"
-version = "0.2.1"
+version = "0.3.0"
 description = "The api for the Tierkreis guppy worker."
 requires-python = ">=3.12"
 authors = [ {name = "Quantinuum Tierkreis Team"} ]
