@@ -22,7 +22,7 @@ jobs:
           include_node: "yes"
 
       - name: Build frontend
-        run: just prod
+        run: just build-frontend
 
       - name: Build Python package
         run: |

@@ -1,12 +1,12 @@
 [project]
 name = "tkr-aer-worker-impl"
-version = "0.2.1"
+version = "0.3.0"
 description = "A Tierkreis worker for Aer."
 authors = [ {name = "Quantinuum Tierkreis Team"} ]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "tierkreis",
+    "tierkreis>=3.0.0",
     "pytket-qiskit[aer]",
     "tkr-aer-worker"
 ]

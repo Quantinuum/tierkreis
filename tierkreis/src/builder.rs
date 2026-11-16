@@ -75,7 +75,7 @@ pub(crate) fn if_else(graph: &mut WorkflowGraph) -> NodeIndex {
 
 pub(crate) fn eager_if_else(graph: &mut WorkflowGraph) -> NodeIndex {
     graph.add_node(
-        NodeDefinition::IfElse {},
+        NodeDefinition::EagerIfElse {},
         [
             "pred".to_string(),
             "if_true".to_string(),
@@ -156,4 +156,66 @@ where
 
 pub(crate) fn breakpoint(graph: &mut WorkflowGraph, node: NodeIndex) {
     graph.set_breakpoint(node);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::assert_matches;
+
+    use super::*;
+
+    #[test]
+    fn builder_methods_match_node_definitions() -> miette::Result<()> {
+        let mut wf = workflow(["out"]);
+
+        let input_node = input(&mut wf, "a");
+        assert_matches!(
+            wf.node_definition(input_node.0),
+            Some(NodeDefinition::Input { .. })
+        );
+
+        let constant_node = constant(&mut wf, 1)?;
+        assert_matches!(
+            wf.node_definition(constant_node.0),
+            Some(NodeDefinition::Const { .. })
+        );
+
+        let task_node = task(&mut wf, "worker", "task", [], []);
+        assert_matches!(
+            wf.node_definition(task_node),
+            Some(NodeDefinition::Task { .. })
+        );
+
+        let if_else_node = if_else(&mut wf);
+        assert_matches!(
+            wf.node_definition(if_else_node),
+            Some(NodeDefinition::IfElse { .. })
+        );
+
+        let eager_if_else_node = eager_if_else(&mut wf);
+        assert_matches!(
+            wf.node_definition(eager_if_else_node),
+            Some(NodeDefinition::EagerIfElse { .. })
+        );
+
+        let eval_node = eval(&mut wf, [], []);
+        assert_matches!(
+            wf.node_definition(eval_node),
+            Some(NodeDefinition::Eval { .. })
+        );
+
+        let loop_node = loop_node(&mut wf, [], []);
+        assert_matches!(
+            wf.node_definition(loop_node),
+            Some(NodeDefinition::Loop { .. })
+        );
+
+        let map_node = map_node(&mut wf, [], [], []);
+        assert_matches!(
+            wf.node_definition(map_node),
+            Some(NodeDefinition::Map { .. })
+        );
+
+        Ok(())
+    }
 }

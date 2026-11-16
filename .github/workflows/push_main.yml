@@ -19,9 +19,9 @@ jobs:
 
       - name: Set up deps
         uses: ./.github/actions/setup_deps
-
-      - name: Build docs
-        run: just docs
+        
+      - name: Build Docs
+        run: just docs release
 
       - name: Upload static files as artifact
         uses: actions/upload-pages-artifact@v3
