@@ -86,7 +86,7 @@ async def test_guppy_nexus_integration() -> None:
     config = qnx.models.HeliosConfig(
         system_name="Helios-1E",
         emulator_config=qnx.models.HeliosEmulatorConfig(
-            n_qubits=3, simulator=qnx.models.StatevectorSimulator()
+            simulator=qnx.models.StatevectorSimulator()
         ),
     )
     inputs = {
