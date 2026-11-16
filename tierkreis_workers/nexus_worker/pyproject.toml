@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "tierkreis>=3.0.0",
-    "qnexus==0.51.2",
+    "qnexus==0.51.3",
     "tkr-nexus-worker",
     "hugr"
 ]
