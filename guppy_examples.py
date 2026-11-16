@@ -1,3 +1,15 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "guppylang==1.2.1",
+#     "guppylang-internals==1.2.1",
+# ]
+# [tool.uv.sources]
+# # Patch in https://github.com/Quantinuum/guppylang/pull/2311
+# guppylang = { git = "https://github.com/Quantinuum/guppylang", subdirectory = "guppylang", rev = "57ef78030cb85686b923258ee654efc70bda2b6e" }
+# guppylang-internals = { git = "https://github.com/Quantinuum/guppylang", subdirectory = "guppylang-internals", rev = "57ef78030cb85686b923258ee654efc70bda2b6e" }
+# ///
+
 from collections.abc import Callable
 from pathlib import Path
 
@@ -23,7 +35,7 @@ def write_hugrs(func, file_prefix: str, pdfs:bool = False):
         with (Path(__file__).parent / f"{file_prefix}.pdf").open("wb") as f:
             f.write(pkg.modules[0].render_dot().pipe("pdf"))
 
-def test_doubler(validate):
+def doubler():
     @guppy
     def typed_doubler(x: int) -> int:
         return 2 * x
@@ -39,7 +51,7 @@ def test_doubler(validate):
     write_hugrs(main, "doubler")
 
 
-def test_doubler_indirect(validate):
+def doubler_indirect():
     @guppy.struct
     class DoublerOutput:
         a: int
@@ -60,7 +72,16 @@ def test_doubler_indirect(validate):
 
     write_hugrs(main, "doubler_indirect")
 
-def test_simple_if(validate):
+def simple_arith():
+    @guppy
+    def simple_arith(x: int, y: int) -> int:
+        prod = x * y
+        diff = y - x
+        return (prod * diff) + prod
+
+    write_hugrs(simple_arith, "simple_arith")
+
+def simple_if():
     @guppy
     def simple_if(x: int) -> int:
         if x > 10:
@@ -71,7 +92,7 @@ def test_simple_if(validate):
     write_hugrs(simple_if, "simple_if")
 
 
-def test_shortcircuit_if(validate):
+def shortcircuit_if():
     @guppy
     def shortcircuit_if(x: int) -> int:
         if x > 10 and x < 20:
@@ -81,7 +102,7 @@ def test_shortcircuit_if(validate):
 
     write_hugrs(shortcircuit_if, "shortcircuit_if")
 
-def test_multi_if(validate):
+def multi_if():
     @guppy
     def multi_if(x: int) -> int:
         if x > 10:
@@ -93,8 +114,7 @@ def test_multi_if(validate):
 
     write_hugrs(multi_if, "multi_if")
 
-# This one needs https://github.com/Quantinuum/guppylang/pull/2311
-def test_if(validate):
+def tierkreis_if():
     @guppy
     def main(x: int, y: int) -> int:
         (a, b) = (x, y) if x<y else (y, x)
@@ -102,7 +122,7 @@ def test_if(validate):
 
     write_hugrs(main, "tierkreis_if")
 
-def test_map(validate):
+def map():
     enable_experimental_features()
     @guppy
     def map_doubler(x: int) -> int:
@@ -122,7 +142,7 @@ def test_map(validate):
     disable_experimental_features()
 
 
-def test_loop(validate):
+def loop():
     @guppy
     def loop_multiple_acc(acc1: int, acc2: int) -> tuple[int, int]:
         acc3 = 0
@@ -141,14 +161,12 @@ def test_loop(validate):
 
 
 if __name__ == "__main__":
-    def validate(module):
-        pass
-    test_doubler(validate)
-    test_doubler_indirect(validate)
-    test_simple_if(validate)
-    test_shortcircuit_if(validate)
-    test_multi_if(validate)
-    test_if(validate)
-    test_map(validate)
-    test_loop(validate)
+    doubler()
+    doubler_indirect()
+    simple_if()
+    shortcircuit_if()
+    multi_if()
+    tierkreis_if()
+    map()
+    loop()
     
