@@ -77,7 +77,7 @@ serde_with = { version = "3.21.0", features = ["base64"] }
 hugr = "0.30.3"
 hugr-core = "0.30.3"
 reqwest-websocket = { version = "0.6.0", features = ["json"] }
-rand = "0.10.2"
+rand = "0.10.3"
 toml = "1.1.4"
 # Copied from hugr: "These public dependencies usually require breaking
 # changes downstream, so we try to be as permissive as possible."
