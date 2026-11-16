@@ -16,6 +16,7 @@ use portgraph::NodeIndex;
 use serde_json::Number;
 
 mod cfg;
+mod gating_path;
 use cfg::convert_cfg;
 use tket::passes::ComposablePass;
 use tket::passes::cfg::remove_cycles::RemoveCFGCyclesPass;

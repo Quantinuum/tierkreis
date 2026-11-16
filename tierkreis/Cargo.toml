@@ -84,7 +84,7 @@ toml = "1.1.4"
 petgraph = { version = ">= 0.8.3, < 0.9", default-features = false }
 itertools = "0.15.0"
 # Patch in branch acl/remove_cfg_cycles of tket, https://github.com/Quantinuum/tket2/pull/2113
-tket = { git = "https://github.com/quantinuum/tket2", "rev" = "b2bbd9d3c3e48e4f894b14287b7c1058a1cb5a03" }
+tket = { git = "https://github.com/quantinuum/tket2", "rev" = "77702dec11360456bcfb9576e7b7fe04e90d828b" }
 rust-embed = { version = "8.12.0", features = ["mime-guess"] }
 
 [target.'cfg(unix)'.dependencies]

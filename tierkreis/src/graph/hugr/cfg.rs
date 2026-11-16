@@ -5,9 +5,8 @@ use hugr::core::HugrNode;
 use hugr::{HugrView, OutgoingPort};
 use portgraph::NodeIndex;
 use tket::passes::cfg::dom_tree::{DomTreeWithBackedges, Path};
-use tket::passes::cfg::gating_path::GatingPath;
 
-use super::{GraphWithFuncs, convert_dfg, wire_up};
+use super::{GraphWithFuncs, convert_dfg, gating_path::GatingPath, wire_up};
 use crate::graph::WorkflowGraph;
 
 type DomTree<N> = DomTreeWithBackedges<N, GatingPath<N>>;
