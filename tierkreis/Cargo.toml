@@ -42,7 +42,7 @@ clap = { version = "4.6.0", features = ["derive"] }
 dashmap = "6.1.0"
 deadpool = { version = "0.13.0", features = ["rt_tokio_1"] }
 diesel = { version = "2.3.10", features = ["sqlite", "chrono", "returning_clauses_for_sqlite_3_35"] }
-diesel-async = { version = "0.9.0", features = ["deadpool", "migrations", "sqlite"] }
+diesel-async = { version = "0.10.0", features = ["deadpool", "migrations", "sqlite"] }
 diesel_migrations = "2.3.2"
 futures = "0.3.32"
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
@@ -55,7 +55,7 @@ portgraph = { version = "0.16.2", features = ["serde"] }
 pyo3 = { version = "0.30.1", optional = true, features = ["abi3", "abi3t", "chrono", "num-complex", "experimental-async", "uuid"] }
 pyo3-async-runtimes = { version = "0.30.0", optional = true, features = ["tokio", "tokio-runtime"] }
 regex = "1.12.3"
-libsqlite3-sys = { version = "0.37.0", features = ["bundled"] }
+libsqlite3-sys = { version = "0.40.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 serde_path_to_error = "0.1.20"
@@ -74,7 +74,7 @@ uuid = { version = "1.24.0", features = ["serde", "v7"] }
 which = { version = "8.0.2", features = ["regex"] }
 reqwest = { version = "0.13.4", features = ["cookies", "gzip", "json", "query"] }
 serde_with = { version = "3.21.0", features = ["base64"] }
-hugr = "0.30.3"
+hugr = "0.31.0"
 reqwest-websocket = { version = "0.6.0", features = ["json"] }
 rand = "0.10.2"
 toml = "1.1.4"
