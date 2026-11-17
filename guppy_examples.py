@@ -172,6 +172,30 @@ def nested_loop():
 
     write_hugrs(nested_loop, "nested_loop")
 
+def multi_exit_loop():
+    @guppy
+    def multi_exit_loop(i: int, j: int) -> int:
+        while i < 10:
+            if i + j > 20:
+                i *= j
+                break
+            i += j
+            j -= 1
+        return i + 7
+
+    write_hugrs(multi_exit_loop, "multi_exit_loop")
+
+def early_return_loop():
+    @guppy
+    def early_return(i: int, j: int) -> int:
+        while i < 10:
+            if i + j > 20:
+                return i * j
+            i += j
+            j -= 1
+        return i
+
+    write_hugrs(early_return, "early_return_loop")
 
 if __name__ == "__main__":
     doubler()
@@ -183,4 +207,6 @@ if __name__ == "__main__":
     map()
     loop()
     nested_loop()
+    multi_exit_loop()
+    early_return_loop()
     

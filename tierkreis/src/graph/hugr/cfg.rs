@@ -40,9 +40,10 @@ fn build_graph<N: HugrNode>(
     let this_block_outs = convert_dfg(hugr, dtn.node, graph, this_block_inputs.clone())?;
     // Edges from "root"
     assert_eq!(hugr.node_outputs(dtn.node).count(), bb.sum_rows.len());
-    // Guppy generates only unit sum branch predicates
+    // Guppy generates only unit sum boolean branch predicates, but RemoveCFGCyclesPass
+    // generates arbitrary SumTypes so TODO we need to handle these here.
     assert!(bb.sum_rows.iter().all(|row| row.is_empty()));
-    assert!([1, 2].contains(&bb.sum_rows.len())); // For now we support only two-way branches
+    assert!([1, 2].contains(&bb.sum_rows.len()));
     if bb.sum_rows.len() == 2 {
         block_preds.insert(dtn.node, this_block_outs[0].clone());
     }

@@ -400,6 +400,7 @@ fn const_val(value: &Value) -> miette::Result<serde_json::Value> {
             values,
             sum_type,
         }) => {
+            // TODO ALAN upgrade this to match make_tuple
             if sum_type == &SumType::new_unary(2) {
                 return Ok(serde_json::Value::Bool(*tag == 1));
             }
