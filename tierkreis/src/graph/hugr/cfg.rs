@@ -33,24 +33,25 @@ fn build_graph<N: HugrNode>(
         ));
     }
 
-    // values delivered to control-flow outports of various descendants
-    let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> = HashMap::new();
-
     // Compile body. (Easy - the complexity of this function is all about the branches!)
     let this_block_outs = convert_dfg(hugr, dtn.node, graph, this_block_inputs.clone())?;
 
     // Edges from "root"
     assert_eq!(hugr.node_outputs(dtn.node).count(), bb.sum_rows.len());
 
-    let (pred, new_block_outputs) = build_block_outputs(
-        dtn.node,
+    let (predicate, outputs) = build_block_outputs(
         graph,
         hugr.node_outputs(dtn.node),
         this_block_outs,
         &bb.sum_rows,
     );
-    block_preds.extend(pred.map(|p| (dtn.node, p)));
-    block_outputs.extend(new_block_outputs);
+    block_preds.extend(predicate.map(|p| (dtn.node, p)));
+
+    // values delivered to control-flow outports of various descendants
+    let mut block_outputs = outputs
+        .into_iter()
+        .map(|(p, outs)| ((dtn.node, p), outs))
+        .collect::<HashMap<_, _>>();
 
     // Any values delivered to the CFG's ExitBlock (iff in this DomTreeNode)
     let mut exit_node_outs = None;
@@ -83,14 +84,13 @@ fn build_graph<N: HugrNode>(
 /// Returns the predicate to insert into `block_preds` (if any), and the values
 /// delivered to each control-flow outport of this block.
 fn build_block_outputs<N: HugrNode>(
-    node: N,
     graph: &mut GraphWithFuncs<N>,
     node_outports: impl Iterator<Item = OutgoingPort>,
     mut block_outputs: Vec<(NodeIndex, String)>,
     sum_rows: &[TypeRow],
 ) -> (
     Option<(NodeIndex, String)>,
-    HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
+    HashMap<OutgoingPort, Vec<(NodeIndex, String)>>,
 ) {
     let (mut predicate, this_block_outs) = (block_outputs.remove(0), block_outputs);
 
@@ -101,7 +101,7 @@ fn build_block_outputs<N: HugrNode>(
     if sum_rows.len() == 1 {
         let mut outs = unpack_tuple(&mut graph.graph, predicate, sum_rows[0].len());
         outs.extend(this_block_outs);
-        return (None, HashMap::from([((node, OutgoingPort::from(0)), outs)]));
+        return (None, HashMap::from([(OutgoingPort::from(0), outs)]));
     }
 
     // values delivered to control-flow outports of various descendants
@@ -144,7 +144,7 @@ fn build_block_outputs<N: HugrNode>(
                 .chain((!pred_row.is_empty()).then(|| unpacked[pred_row.len() - 1][1].clone()))
                 .chain(this_block_outs.iter().cloned())
                 .collect();
-            ((node, p), outs)
+            (p, outs)
         })
         .collect();
 
