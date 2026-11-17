@@ -1,8 +1,7 @@
 use itertools::Itertools;
 use std::collections::HashMap;
 
-use hugr::core::HugrNode;
-use hugr::{HugrView, OutgoingPort};
+use hugr::{HugrView, OutgoingPort, core::HugrNode, types::TypeRow};
 use portgraph::NodeIndex;
 use tket::passes::cfg::dom_tree::{DomTreeWithBackedges, Path};
 
@@ -38,63 +37,20 @@ fn build_graph<N: HugrNode>(
     let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> = HashMap::new();
 
     // Compile body. (Easy - the complexity of this function is all about the branches!)
-    let (predicate, this_block_outs) = {
-        let mut all_outs = convert_dfg(hugr, dtn.node, graph, this_block_inputs.clone())?;
-        (all_outs.remove(0), all_outs)
-    };
+    let this_block_outs = convert_dfg(hugr, dtn.node, graph, this_block_inputs.clone())?;
+
     // Edges from "root"
     assert_eq!(hugr.node_outputs(dtn.node).count(), bb.sum_rows.len());
-    // Generate outputs of BB for each successor (each gets different unpacking of Sum).
-    // The code here is intended to handle arity > 2 but TODO we need to build conditional
-    // predicates differently for arity > 2, probably by converting to a chain of binary tests.
-    assert!([1, 2].contains(&bb.sum_rows.len()));
-    if bb.sum_rows.len() == 1 {
-        let mut outs = unpack_tuple(&mut graph.graph, predicate, bb.sum_rows[0].len());
-        outs.extend(this_block_outs);
-        block_outputs.insert((dtn.node, OutgoingPort::from(0)), outs);
-    } else if bb.sum_rows.iter().all(|row| row.is_empty()) {
-        block_preds.insert(dtn.node, predicate);
-        for p in hugr.node_outputs(dtn.node) {
-            block_outputs.insert((dtn.node, p), this_block_outs.clone());
-        }
-    } else {
-        let [tag, mut rest] = unpack_tuple(&mut graph.graph, predicate, 2)
-            .try_into()
-            .unwrap();
-        //tag is 0 or 1, which we need to map to true/false
-        let tag_bool = task(&mut graph.graph, "inmemory", "eq", ["a", "b"], ["value"]);
-        let (c, p) = constant(&mut graph.graph, 1).unwrap();
-        let eq_inputs = [tag, (c, p.to_string())];
-        wire_up(&mut graph.graph, &eq_inputs, tag_bool, ["a", "b"]);
-        let tag = (tag_bool, "value".to_string());
 
-        block_preds.insert(dtn.node, tag);
-        // Unpack the tuple only once for all values of `tag`. If some variants are shorter,
-        // corresponding unpacks will be unused - fine under lazy evaluation.
-        let max_elems = bb.sum_rows.iter().map(|row| row.len()).max().unwrap_or(0);
-        // Build vec where element [0] is unpacking of pair;
-        // unpacking of triple is [0].0 followed by [1];
-        // unpacking of quadruple is [0].0 followed by [1].0 followed by [2]; etc.
-        let do_not_use = (
-            NodeIndex::new(NodeIndex::<u32>::max_index()),
-            "DO NOT USE".to_string(),
-        );
-        let mut unpacked = vec![[do_not_use, rest.clone()]];
-
-        for _ in 0..max_elems {
-            let elem_rest: [_; 2] = unpack_tuple(&mut graph.graph, rest, 2).try_into().unwrap();
-            [_, rest] = elem_rest.clone();
-            unpacked.push(elem_rest);
-        }
-        for (p, pred_row) in hugr.node_outputs(dtn.node).zip(&bb.sum_rows) {
-            let outs = (1..pred_row.len())
-                .map(|i| &unpacked[i])
-                .map(|[e, _]| e.clone())
-                .chain((!pred_row.is_empty()).then(|| unpacked[pred_row.len() - 1][1].clone()))
-                .collect();
-            block_outputs.insert((dtn.node, p), outs);
-        }
-    }
+    let (pred, new_block_outputs) = build_block_outputs(
+        dtn.node,
+        graph,
+        hugr.node_outputs(dtn.node),
+        this_block_outs,
+        &bb.sum_rows,
+    );
+    block_preds.extend(pred.map(|p| (dtn.node, p)));
+    block_outputs.extend(new_block_outputs);
 
     // Any values delivered to the CFG's ExitBlock (iff in this DomTreeNode)
     let mut exit_node_outs = None;
@@ -117,6 +73,84 @@ fn build_graph<N: HugrNode>(
             .map(|(src, _)| (src, block_outputs.remove(&src).unwrap()))
             .collect(),
     ))
+}
+
+/// Generates per-port outgoing values and optionally predicate for a block,
+/// given the values provided to its Output node.
+///
+/// (Thus, handles the unpacking of the BB predicate performed at the end of a [DataflowBlock]).
+///
+/// Returns the predicate to insert into `block_preds` (if any), and the values
+/// delivered to each control-flow outport of this block.
+fn build_block_outputs<N: HugrNode>(
+    node: N,
+    graph: &mut GraphWithFuncs<N>,
+    node_outports: impl Iterator<Item = OutgoingPort>,
+    mut block_outputs: Vec<(NodeIndex, String)>,
+    sum_rows: &[TypeRow],
+) -> (
+    Option<(NodeIndex, String)>,
+    HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
+) {
+    let (branch_ctl, this_block_outs) = (block_outputs.remove(0), block_outputs);
+
+    // Generate outputs of BB for each successor (each gets different unpacking of Sum).
+    // The code here is intended to handle arity > 2 but TODO we need to build conditional
+    // predicates differently for arity > 2, probably by converting to a chain of binary tests.
+    assert!([1, 2].contains(&sum_rows.len()));
+    if sum_rows.len() == 1 {
+        let mut outs = unpack_tuple(&mut graph.graph, branch_ctl, sum_rows[0].len());
+        outs.extend(this_block_outs);
+        return (None, HashMap::from([((node, OutgoingPort::from(0)), outs)]));
+    }
+
+    // values delivered to control-flow outports of various descendants
+    let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> = HashMap::new();
+
+    let predicate = if sum_rows.iter().all(|row| row.is_empty()) {
+        for p in node_outports {
+            block_outputs.insert((node, p), this_block_outs.clone());
+        }
+        branch_ctl
+    } else {
+        let [tag, mut rest] = unpack_tuple(&mut graph.graph, branch_ctl, 2)
+            .try_into()
+            .unwrap();
+        //tag is 0 or 1, which we need to map to true/false
+        let tag_bool = task(&mut graph.graph, "inmemory", "eq", ["a", "b"], ["value"]);
+        let (c, p) = constant(&mut graph.graph, 1).unwrap();
+        let eq_inputs = [tag, (c, p.to_string())];
+        wire_up(&mut graph.graph, &eq_inputs, tag_bool, ["a", "b"]);
+        let tag = (tag_bool, "value".to_string());
+
+        // Unpack the tuple only once for all values of `tag`. If some variants are shorter,
+        // corresponding unpacks will be unused - fine under lazy evaluation.
+        let max_elems = sum_rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        // Build vec where element [0] is unpacking of pair;
+        // unpacking of triple is [0].0 followed by [1];
+        // unpacking of quadruple is [0].0 followed by [1].0 followed by [2]; etc.
+        let do_not_use = (
+            NodeIndex::new(NodeIndex::<u32>::max_index()),
+            "DO NOT USE".to_string(),
+        );
+        let mut unpacked = vec![[do_not_use, rest.clone()]];
+
+        for _ in 0..max_elems {
+            let elem_rest: [_; 2] = unpack_tuple(&mut graph.graph, rest, 2).try_into().unwrap();
+            [_, rest] = elem_rest.clone();
+            unpacked.push(elem_rest);
+        }
+        for (p, pred_row) in node_outports.zip_eq(sum_rows) {
+            let outs = (1..pred_row.len())
+                .map(|i| &unpacked[i])
+                .map(|[e, _]| e.clone())
+                .chain((!pred_row.is_empty()).then(|| unpacked[pred_row.len() - 1][1].clone()))
+                .collect();
+            block_outputs.insert((node, p), outs);
+        }
+        tag
+    };
+    (Some(predicate), block_outputs)
 }
 
 pub(super) fn convert_cfg<H: HugrView>(
