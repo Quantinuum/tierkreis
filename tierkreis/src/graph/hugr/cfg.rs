@@ -57,7 +57,13 @@ fn build_graph<N: HugrNode>(
     let mut exit_node_outs = None;
 
     for (child_path, child) in &dtn.children {
-        let child_inputs = build_inputs(child_path, &mut graph.graph, &block_outputs, &block_preds);
+        let child_inputs = build_inputs(
+            child_path,
+            &mut graph.graph,
+            hugr,
+            &block_outputs,
+            &block_preds,
+        );
         let (exit_block_outs, exit_edge_outs) =
             build_graph(child, graph, hugr, child_inputs, block_preds)?;
         if let Some(exit_block_outs) = exit_block_outs {
@@ -110,12 +116,7 @@ fn build_block_outputs<N: HugrNode>(
         let [tag, mut rest] = unpack_tuple(&mut graph.graph, predicate, 2)
             .try_into()
             .unwrap();
-        //tag is 0 or 1, which we need to map to true/false
-        let tag_bool = task(&mut graph.graph, "inmemory", "eq", ["a", "b"], ["value"]);
-        let (c, p) = constant(&mut graph.graph, 1).unwrap();
-        let eq_inputs = [tag, (c, p.to_string())];
-        wire_up(&mut graph.graph, &eq_inputs, tag_bool, ["a", "b"]);
-        predicate = (tag_bool, "value".to_string());
+        predicate = tag;
 
         // Unpack the tuple only once for all values of `tag`. If some variants are shorter,
         // corresponding unpacks will be unused - fine under lazy evaluation.
@@ -170,9 +171,16 @@ pub(super) fn convert_cfg<H: HugrView>(
     Ok(outs.unwrap())
 }
 
+fn is_bool_predicate<N: HugrNode>(hugr: &impl HugrView<Node = N>, node: N) -> bool {
+    let df = hugr.get_optype(node).as_dataflow_block().unwrap();
+    assert_eq!(df.sum_rows.len(), 2); // TODO deal with >2-way branches
+    df.sum_rows.iter().all(|row| row.is_empty())
+}
+
 fn build_inputs<N: HugrNode>(
     gp: &GatingPath<N>,
     graph: &mut WorkflowGraph,
+    hugr: &impl HugrView<Node = N>,
     block_outputs: &HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
     block_preds: &HashMap<N, (NodeIndex, String)>,
 ) -> Vec<(NodeIndex, String)> {
@@ -183,14 +191,24 @@ fn build_inputs<N: HugrNode>(
             assert_eq!(opts.len(), 2); // TODO deal with >2-way branches
 
             if let Ok(path) = opts.iter().flatten().exactly_one() {
-                return build_inputs(path, graph, block_outputs, block_preds);
+                return build_inputs(path, graph, hugr, block_outputs, block_preds);
             }
             let (Some(fal), Some(tr)) = (&opts[0], &opts[1]) else {
                 panic!("Some branch must be present")
             };
-            let fal = build_inputs(fal, graph, block_outputs, block_preds);
-            let tr = build_inputs(tr, graph, block_outputs, block_preds);
-            let pred = block_preds.get(br).unwrap();
+            let fal = build_inputs(fal, graph, hugr, block_outputs, block_preds);
+            let tr = build_inputs(tr, graph, hugr, block_outputs, block_preds);
+            let mut pred = block_preds.get(br).unwrap();
+            let temp; // to keep alive
+            if !is_bool_predicate(hugr, *br) {
+                //tag is 0 or 1, which we need to map to true/false
+                let pred_as_bool = task(graph, "inmemory", "eq", ["a", "b"], ["value"]);
+                let (c, p) = constant(graph, 1).unwrap();
+                let eq_inputs = [pred.clone(), (c, p.to_string())];
+                wire_up(graph, &eq_inputs, pred_as_bool, ["a", "b"]);
+                temp = (pred_as_bool, "value".to_string());
+                pred = &temp;
+            }
             fal.iter()
                 .zip_eq(&tr)
                 .map(|(f, t)| {
