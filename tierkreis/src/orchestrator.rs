@@ -2620,37 +2620,37 @@ mod tests {
     }
 
     #[rstest]
-    #[case::simple_arith("../simple_arith.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 45}))]
-    #[case::doubler("../doubler.hugr", json!({"in0": 5, "in1": 7}), json!({"out0": 27}))]
-    #[case::doubler_minopt("../doubler_minopt.hugr", json!({"in0": 10, "in1": 2}), json!({"out0": 42}))]
-    #[case::doubler_indirect("../doubler_indirect.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 18}))]
-    #[case::doubler_indirect_minopt("../doubler_indirect_minopt.hugr", json!({"in0": 20, "in1": 7}), json!({"out0": 67}))]
-    #[case::simple_if("../simple_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
+    #[case::simple_arith("simple_arith.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 45}))]
+    #[case::doubler("doubler.hugr", json!({"in0": 5, "in1": 7}), json!({"out0": 27}))]
+    #[case::doubler_minopt("doubler_minopt.hugr", json!({"in0": 10, "in1": 2}), json!({"out0": 42}))]
+    #[case::doubler_indirect("doubler_indirect.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 18}))]
+    #[case::doubler_indirect_minopt("doubler_indirect_minopt.hugr", json!({"in0": 20, "in1": 7}), json!({"out0": 67}))]
+    #[case::simple_if("simple_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
     // for simple_if, minopt hugr is almost identical
-    #[case::simple_if_minopt("../simple_if_minopt.hugr", json!({"in0": 10}), json!({"out0": 20}))]
+    #[case::simple_if_minopt("simple_if_minopt.hugr", json!({"in0": 10}), json!({"out0": 20}))]
     // Similarly multi_if and multi_if_minopt are almost identical -> mixing cases
-    #[case::multi_if1("../multi_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
-    #[case::multi_if_minopt2("../multi_if_minopt.hugr", json!({"in0": 10}), json!({"out0": 20}))]
-    #[case::multi_if2("../multi_if.hugr", json!({"in0": 6}), json!({"out0": 12}))]
-    #[case::multi_if_minopt3("../multi_if_minopt.hugr", json!({"in0": 5}), json!({"out0": 15}))]
+    #[case::multi_if1("multi_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
+    #[case::multi_if_minopt2("multi_if_minopt.hugr", json!({"in0": 10}), json!({"out0": 20}))]
+    #[case::multi_if2("multi_if.hugr", json!({"in0": 6}), json!({"out0": 12}))]
+    #[case::multi_if_minopt3("multi_if_minopt.hugr", json!({"in0": 5}), json!({"out0": 15}))]
     // As are shortcircuit_if(,_minopt)
-    #[case::shortcircuit_if("../shortcircuit_if.hugr", json!({"in0": 5}), json!({"out0": 10}))]
-    #[case::shortcircuit_if2("../shortcircuit_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
-    #[case::shortcircuit_if_minopt("../shortcircuit_if_minopt.hugr", json!({"in0": 20}), json!({"out0": 40}))]
-    #[case::tierkreis_if("../tierkreis_if.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 6}))]
-    #[case::tierkreis_if_minopt("../tierkreis_if_minopt.hugr", json!({"in0": 2, "in1": 3}), json!({"out0": 7}))]
-    #[case::tierkreis_if("../tierkreis_if.hugr", json!({"in0": 20, "in1": -15}), json!({"out0": 7*35}))]
-    #[case::loop1("../tierkreis_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
-    #[case::loop_minopt1("../tierkreis_loop_minopt.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
-    #[case::loop2("../tierkreis_loop.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
-    #[case::loop_minopt2("../tierkreis_loop_minopt.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
-    #[case::nested_loop("../nested_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 13}))]
-    #[case::nested_loop2("../nested_loop.hugr", json!({"in0": 5, "in1": -1}), json!({"out0": 14}))]
-    #[case::nested_loop3("../nested_loop.hugr", json!({"in0": 5, "in1": 10}), json!({"out0": 15}))]
-    #[case::multi_exit_loop("../multi_exit_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 17}))]
-    #[case::multi_exit_loop2("../multi_exit_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 107}))]
-    #[case::early_return_loop("../early_return_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 10}))]
-    #[case::early_return_loop2("../early_return_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 100}))]
+    #[case::shortcircuit_if("shortcircuit_if.hugr", json!({"in0": 5}), json!({"out0": 10}))]
+    #[case::shortcircuit_if2("shortcircuit_if.hugr", json!({"in0": 11}), json!({"out0": 11}))]
+    #[case::shortcircuit_if_minopt("shortcircuit_if_minopt.hugr", json!({"in0": 20}), json!({"out0": 40}))]
+    #[case::tierkreis_if("tierkreis_if.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 6}))]
+    #[case::tierkreis_if_minopt("tierkreis_if_minopt.hugr", json!({"in0": 2, "in1": 3}), json!({"out0": 7}))]
+    #[case::tierkreis_if("tierkreis_if.hugr", json!({"in0": 20, "in1": -15}), json!({"out0": 7*35}))]
+    #[case::loop1("tierkreis_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
+    #[case::loop_minopt1("tierkreis_loop_minopt.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
+    #[case::loop2("tierkreis_loop.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
+    #[case::loop_minopt2("tierkreis_loop_minopt.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
+    #[case::nested_loop("nested_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 13}))]
+    #[case::nested_loop2("nested_loop.hugr", json!({"in0": 5, "in1": -1}), json!({"out0": 14}))]
+    #[case::nested_loop3("nested_loop.hugr", json!({"in0": 5, "in1": 10}), json!({"out0": 15}))]
+    #[case::multi_exit_loop("multi_exit_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 17}))]
+    #[case::multi_exit_loop2("multi_exit_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 107}))]
+    #[case::early_return_loop("early_return_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 10}))]
+    #[case::early_return_loop2("early_return_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 100}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_hugr_file(
@@ -2662,7 +2662,9 @@ mod tests {
         use std::fs::File;
         use std::io::BufReader;
 
-        let hugr = Hugr::load(BufReader::new(File::open(filename).unwrap()), None).unwrap();
+        let file = File::open(format!("../examples/guppy_hugrs/{}", filename)).unwrap();
+
+        let hugr = Hugr::load(BufReader::new(file), None).unwrap();
         let workflow_graph = WorkflowGraph::try_from(hugr).unwrap();
         workflow_graph.print("")?;
         run_workflows(workflow_graph, inputs, expected_outputs).await
