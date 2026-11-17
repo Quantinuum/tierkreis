@@ -123,6 +123,7 @@ def tierkreis_if():
     write_hugrs(main, "tierkreis_if")
 
 def map():
+    # Doesn't run in Tierkreis yet
     enable_experimental_features()
     @guppy
     def map_doubler(x: int) -> int:
