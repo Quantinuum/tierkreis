@@ -6,7 +6,8 @@ use hugr::{HugrView, OutgoingPort};
 use portgraph::NodeIndex;
 use tket::passes::cfg::dom_tree::{DomTreeWithBackedges, Path};
 
-use super::{GraphWithFuncs, convert_dfg, gating_path::GatingPath, wire_up};
+use super::{GraphWithFuncs, convert_dfg, gating_path::GatingPath, unpack_tuple, wire_up};
+use crate::builder::{constant, if_else, task};
 use crate::graph::WorkflowGraph;
 
 type DomTree<N> = DomTreeWithBackedges<N, GatingPath<N>>;
@@ -37,20 +38,62 @@ fn build_graph<N: HugrNode>(
     let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> = HashMap::new();
 
     // Compile body. (Easy - the complexity of this function is all about the branches!)
-    let this_block_outs = convert_dfg(hugr, dtn.node, graph, this_block_inputs.clone())?;
+    let (predicate, this_block_outs) = {
+        let mut all_outs = convert_dfg(hugr, dtn.node, graph, this_block_inputs.clone())?;
+        (all_outs.remove(0), all_outs)
+    };
     // Edges from "root"
     assert_eq!(hugr.node_outputs(dtn.node).count(), bb.sum_rows.len());
-    // Guppy generates only unit sum boolean branch predicates, but RemoveCFGCyclesPass
-    // generates arbitrary SumTypes so TODO we need to handle these here.
-    assert!(bb.sum_rows.iter().all(|row| row.is_empty()));
+    // Generate outputs of BB for each successor (each gets different unpacking of Sum).
+    // The code here is intended to handle arity > 2 but TODO we need to build conditional
+    // predicates differently for arity > 2, probably by converting to a chain of binary tests.
     assert!([1, 2].contains(&bb.sum_rows.len()));
-    if bb.sum_rows.len() == 2 {
-        block_preds.insert(dtn.node, this_block_outs[0].clone());
-    }
-    // Do not include predicate (the first output) in the block outputs - any predicate
-    // necessary will be built by the relevant GatingPath reading from block_preds
-    for p in hugr.node_outputs(dtn.node) {
-        block_outputs.insert((dtn.node, p), this_block_outs[1..].to_vec());
+    if bb.sum_rows.len() == 1 {
+        let mut outs = unpack_tuple(&mut graph.graph, predicate, bb.sum_rows[0].len());
+        outs.extend(this_block_outs);
+        block_outputs.insert((dtn.node, OutgoingPort::from(0)), outs);
+    } else if bb.sum_rows.iter().all(|row| row.is_empty()) {
+        block_preds.insert(dtn.node, predicate);
+        for p in hugr.node_outputs(dtn.node) {
+            block_outputs.insert((dtn.node, p), this_block_outs.clone());
+        }
+    } else {
+        let [tag, mut rest] = unpack_tuple(&mut graph.graph, predicate, 2)
+            .try_into()
+            .unwrap();
+        //tag is 0 or 1, which we need to map to true/false
+        let tag_bool = task(&mut graph.graph, "inmemory", "eq", ["a", "b"], ["value"]);
+        let (c, p) = constant(&mut graph.graph, 1).unwrap();
+        let eq_inputs = [tag, (c, p.to_string())];
+        wire_up(&mut graph.graph, &eq_inputs, tag_bool, ["a", "b"]);
+        let tag = (tag_bool, "value".to_string());
+
+        block_preds.insert(dtn.node, tag);
+        // Unpack the tuple only once for all values of `tag`. If some variants are shorter,
+        // corresponding unpacks will be unused - fine under lazy evaluation.
+        let max_elems = bb.sum_rows.iter().map(|row| row.len()).max().unwrap_or(0);
+        // Build vec where element [0] is unpacking of pair;
+        // unpacking of triple is [0].0 followed by [1];
+        // unpacking of quadruple is [0].0 followed by [1].0 followed by [2]; etc.
+        let do_not_use = (
+            NodeIndex::new(NodeIndex::<u32>::max_index()),
+            "DO NOT USE".to_string(),
+        );
+        let mut unpacked = vec![[do_not_use, rest.clone()]];
+
+        for _ in 0..max_elems {
+            let elem_rest: [_; 2] = unpack_tuple(&mut graph.graph, rest, 2).try_into().unwrap();
+            [_, rest] = elem_rest.clone();
+            unpacked.push(elem_rest);
+        }
+        for (p, pred_row) in hugr.node_outputs(dtn.node).zip(&bb.sum_rows) {
+            let outs = (1..pred_row.len())
+                .map(|i| &unpacked[i])
+                .map(|[e, _]| e.clone())
+                .chain((!pred_row.is_empty()).then(|| unpacked[pred_row.len() - 1][1].clone()))
+                .collect();
+            block_outputs.insert((dtn.node, p), outs);
+        }
     }
 
     // Any values delivered to the CFG's ExitBlock (iff in this DomTreeNode)
@@ -104,7 +147,9 @@ fn build_inputs<N: HugrNode>(
     match gp {
         GatingPath::Always(n, p) => block_outputs.get(&(*n, *p)).unwrap().clone(),
         GatingPath::Branch(br, opts) => {
-            assert_eq!(opts.len(), 2); // guppy only produces bools
+            // guppy only produces bools; non-unit-sums have been converted, but
+            assert_eq!(opts.len(), 2); // TODO deal with >2-way branches
+
             if let Ok(path) = opts.iter().flatten().exactly_one() {
                 return build_inputs(path, graph, block_outputs, block_preds);
             }
@@ -120,7 +165,7 @@ fn build_inputs<N: HugrNode>(
                     if f == t {
                         t.clone()
                     } else {
-                        let node = crate::builder::if_else(graph);
+                        let node = if_else(graph);
                         wire_up(
                             graph,
                             [pred, f, t],

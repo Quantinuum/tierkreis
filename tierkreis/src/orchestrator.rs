@@ -2647,8 +2647,10 @@ mod tests {
     #[case::nested_loop("../nested_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 13}))]
     #[case::nested_loop2("../nested_loop.hugr", json!({"in0": 5, "in1": -1}), json!({"out0": 14}))]
     #[case::nested_loop3("../nested_loop.hugr", json!({"in0": 5, "in1": 10}), json!({"out0": 15}))]
-    #[case::multi_exit_loop("../multi_exit_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 40}))]
-    #[case::early_return_loop("../early_return_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 40}))]
+    #[case::multi_exit_loop("../multi_exit_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 17}))]
+    #[case::multi_exit_loop2("../multi_exit_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 107}))]
+    #[case::early_return_loop("../early_return_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 10}))]
+    #[case::early_return_loop2("../early_return_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 100}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_hugr_file(
