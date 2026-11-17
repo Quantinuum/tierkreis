@@ -101,17 +101,15 @@ fn build_block_outputs<N: HugrNode>(
     let (mut predicate, this_block_outs) = (block_outputs.remove(0), block_outputs);
 
     // Generate outputs of BB for each successor (each gets different unpacking of Sum).
-    // The code here is intended to handle arity > 2 but TODO we need to build conditional
-    // predicates differently for arity > 2, probably by converting to a chain of binary tests.
     if sum_rows.len() == 1 {
         let mut outs = unpack_tuple(&mut graph.graph, predicate, sum_rows[0].len());
         outs.extend(this_block_outs);
         return (None, HashMap::from([(OutgoingPort::from(0), outs)]));
     }
 
-    // values delivered to control-flow outports of various descendants
+    // Handle arity > 2 by returning the tag (integer) for any non-bool predicate.
     let mut unpacked = Vec::new();
-    if !sum_rows.iter().all(|row| row.is_empty()) {
+    if !predicate_is_bool(sum_rows) {
         let [tag, mut rest] = unpack_tuple(&mut graph.graph, predicate, 2)
             .try_into()
             .unwrap();
@@ -135,6 +133,7 @@ fn build_block_outputs<N: HugrNode>(
             unpacked.push(elem_rest);
         }
     }
+
     let block_outputs = node_outports
         .zip_eq(sum_rows)
         .map(|(p, pred_row)| {
@@ -170,9 +169,8 @@ pub(super) fn convert_cfg<H: HugrView>(
     Ok(outs.unwrap())
 }
 
-fn is_bool_predicate<N: HugrNode>(hugr: &impl HugrView<Node = N>, node: N) -> bool {
-    let df = hugr.get_optype(node).as_dataflow_block().unwrap();
-    df.sum_rows == [TypeRow::new(), TypeRow::new()]
+fn predicate_is_bool(sum_rows: &[TypeRow]) -> bool {
+    sum_rows == [TypeRow::new(), TypeRow::new()]
 }
 
 fn build_inputs<N: HugrNode>(
@@ -186,45 +184,77 @@ fn build_inputs<N: HugrNode>(
         GatingPath::Always(n, p) => block_outputs.get(&(*n, *p)).unwrap().clone(),
         GatingPath::Branch(br, opts) => {
             // guppy only produces bools; non-unit-sums have been converted, but
+            // TODO deal with >2-way branches
+            let tag = block_preds.get(br).unwrap();
+            if let [Some(fal), Some(tr)] = &opts[..]
+                && predicate_is_bool(&hugr.get_optype(*br).as_dataflow_block().unwrap().sum_rows)
+            {
+                let fal = build_inputs(fal, graph, hugr, block_outputs, block_preds);
+                let tr = build_inputs(tr, graph, hugr, block_outputs, block_preds);
+                return build_if_else(graph, tag, tr, fal);
+            }
 
-            if let Ok(path) = opts.iter().flatten().exactly_one() {
-                return build_inputs(path, graph, hugr, block_outputs, block_preds);
-            }
-            let (Some(fal), Some(tr)) = (&opts[0], &opts[1]) else {
-                panic!("Some branch must be present")
-            };
-            let fal = build_inputs(fal, graph, hugr, block_outputs, block_preds);
-            let tr = build_inputs(tr, graph, hugr, block_outputs, block_preds);
-            let mut pred = block_preds.get(br).unwrap();
-            let temp; // to keep alive
-            if !is_bool_predicate(hugr, *br) {
-                //tag is 0 or 1, which we need to map to true/false
-                let pred_as_bool = task(graph, "inmemory", "eq", ["a", "b"], ["value"]);
-                let (c, p) = constant(graph, 1).unwrap();
-                let eq_inputs = [pred.clone(), (c, p.to_string())];
-                wire_up(graph, &eq_inputs, pred_as_bool, ["a", "b"]);
-                temp = (pred_as_bool, "value".to_string());
-                pred = &temp;
-            }
-            fal.iter()
-                .zip_eq(&tr)
-                .map(|(f, t)| {
-                    if f == t {
-                        t.clone()
-                    } else {
-                        let node = if_else(graph);
-                        wire_up(
-                            graph,
-                            [pred, f, t],
-                            node,
-                            vec!["pred", "if_false", "if_true"],
-                        );
-                        (node, "value".into())
-                    }
+            let present_opts = opts
+                .iter()
+                .enumerate()
+                .filter_map(|(i, opt)| {
+                    opt.as_ref().map(|path| {
+                        (
+                            i,
+                            build_inputs(path, graph, hugr, block_outputs, block_preds),
+                        )
+                    })
                 })
-                .collect()
+                .collect::<Vec<_>>();
+            build_if_else_tree(graph, tag, &present_opts)
         }
     }
+}
+
+fn build_if_else_tree(
+    graph: &mut WorkflowGraph,
+    tag: &(NodeIndex, String),
+    tagged_rows: &[(usize, Vec<(NodeIndex, String)>)],
+) -> Vec<(NodeIndex, String)> {
+    // we expect present_opts to be sorted.
+    if let [(_, vals)] = tagged_rows {
+        return vals.clone();
+    }
+    let (left, right) = tagged_rows.split_at(tagged_rows.len() / 2);
+    let op = if right.len() > 1 { "igte_s" } else { "eq" };
+    let cond = task(graph, "inmemory", op, ["a", "b"], ["value"]);
+    let (cst, p) = constant(graph, right[0].0).unwrap();
+    let cond_inputs = [tag.clone(), (cst, p.to_string())];
+    wire_up(graph, &cond_inputs, cond, ["a", "b"]);
+
+    let tr = build_if_else_tree(graph, tag, right);
+    let fal = build_if_else_tree(graph, tag, left);
+    build_if_else(graph, &(cond, "value".to_string()), tr, fal)
+}
+
+fn build_if_else(
+    graph: &mut WorkflowGraph,
+    pred: &(NodeIndex, String),
+    tr: Vec<(NodeIndex, String)>,
+    fal: Vec<(NodeIndex, String)>,
+) -> Vec<(NodeIndex, String)> {
+    tr.iter()
+        .zip_eq(&fal)
+        .map(|(t, f)| {
+            if t == f {
+                t.clone()
+            } else {
+                let node = if_else(graph);
+                wire_up(
+                    graph,
+                    [pred, f, t],
+                    node,
+                    vec!["pred", "if_false", "if_true"],
+                );
+                (node, "value".into())
+            }
+        })
+        .collect()
 }
 
 fn leaves<N: HugrNode>(
