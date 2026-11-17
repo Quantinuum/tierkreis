@@ -2651,6 +2651,10 @@ mod tests {
     #[case::multi_exit_loop2("multi_exit_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 107}))]
     #[case::early_return_loop("early_return_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 10}))]
     #[case::early_return_loop2("early_return_loop.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 100}))]
+    #[case::loop_3_exits("loop_3_exits.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 10}))]
+    #[case::loop_3_exits2("loop_3_exits.hugr", json!({"in0": 5, "in1": 20}), json!({"out0": 100}))]
+    #[case::loop_3_exits3("loop_3_exits.hugr", json!({"in0": -5, "in1": 20}), json!({"out0": -25}))]
+    #[case::loop_3_exits4("loop_3_exits.hugr", json!({"in0": -5, "in1": -10}), json!({"out0": -14}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_hugr_file(

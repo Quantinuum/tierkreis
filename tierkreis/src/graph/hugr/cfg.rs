@@ -103,7 +103,6 @@ fn build_block_outputs<N: HugrNode>(
     // Generate outputs of BB for each successor (each gets different unpacking of Sum).
     // The code here is intended to handle arity > 2 but TODO we need to build conditional
     // predicates differently for arity > 2, probably by converting to a chain of binary tests.
-    assert!([1, 2].contains(&sum_rows.len()));
     if sum_rows.len() == 1 {
         let mut outs = unpack_tuple(&mut graph.graph, predicate, sum_rows[0].len());
         outs.extend(this_block_outs);
@@ -173,8 +172,7 @@ pub(super) fn convert_cfg<H: HugrView>(
 
 fn is_bool_predicate<N: HugrNode>(hugr: &impl HugrView<Node = N>, node: N) -> bool {
     let df = hugr.get_optype(node).as_dataflow_block().unwrap();
-    assert_eq!(df.sum_rows.len(), 2); // TODO deal with >2-way branches
-    df.sum_rows.iter().all(|row| row.is_empty())
+    df.sum_rows == [TypeRow::new(), TypeRow::new()]
 }
 
 fn build_inputs<N: HugrNode>(
@@ -188,7 +186,6 @@ fn build_inputs<N: HugrNode>(
         GatingPath::Always(n, p) => block_outputs.get(&(*n, *p)).unwrap().clone(),
         GatingPath::Branch(br, opts) => {
             // guppy only produces bools; non-unit-sums have been converted, but
-            assert_eq!(opts.len(), 2); // TODO deal with >2-way branches
 
             if let Ok(path) = opts.iter().flatten().exactly_one() {
                 return build_inputs(path, graph, hugr, block_outputs, block_preds);

@@ -198,6 +198,22 @@ def early_return_loop():
 
     write_hugrs(early_return, "early_return_loop")
 
+def loop_3_exits():
+    @guppy
+    def loop_3_exits(i: int, j: int) -> int:
+        while i < 10:
+            if i + j > 20:
+                i *= j
+                break
+            if i - j < -10:
+                i -= j
+                break
+            i += j
+            j -= 1
+        return i
+
+    write_hugrs(loop_3_exits, "loop_3_exits")
+
 if __name__ == "__main__":
     doubler()
     doubler_indirect()
@@ -210,4 +226,5 @@ if __name__ == "__main__":
     nested_loop()
     multi_exit_loop()
     early_return_loop()
+    loop_3_exits()
     
