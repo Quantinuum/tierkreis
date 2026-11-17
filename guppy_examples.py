@@ -159,6 +159,19 @@ def loop():
 
     write_hugrs(loop_multiple_acc, "tierkreis_loop")
 
+def nested_loop():
+    @guppy
+    def nested_loop(i: int, j: int) -> int:
+        while i < 10 and j != 0:
+            i += j
+            while j > 0:
+                j -= i
+            # J negative
+            j = -j
+        return i
+
+    write_hugrs(nested_loop, "nested_loop")
+
 
 if __name__ == "__main__":
     doubler()
@@ -169,4 +182,5 @@ if __name__ == "__main__":
     tierkreis_if()
     map()
     loop()
+    nested_loop()
     

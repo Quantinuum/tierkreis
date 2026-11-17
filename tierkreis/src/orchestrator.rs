@@ -2644,6 +2644,9 @@ mod tests {
     #[case::loop_minopt1("../tierkreis_loop_minopt.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 5, "out1": 3}))]
     #[case::loop2("../tierkreis_loop.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
     #[case::loop_minopt2("../tierkreis_loop_minopt.hugr", json!({"in0": 1, "in1": 17}), json!({"out0": 27, "out1": 15}))]
+    #[case::nested_loop("../nested_loop.hugr", json!({"in0": 5, "in1": 3}), json!({"out0": 13}))]
+    #[case::nested_loop2("../nested_loop.hugr", json!({"in0": 5, "in1": -1}), json!({"out0": 14}))]
+    #[case::nested_loop3("../nested_loop.hugr", json!({"in0": 5, "in1": 10}), json!({"out0": 15}))]
     #[tokio::test]
     #[test_log::test]
     async fn run_hugr_file(

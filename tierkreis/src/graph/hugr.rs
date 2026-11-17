@@ -560,10 +560,10 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(ExtOpNode, Vec<String>, V
     ]
     .contains(eop.extension_id())
     {
-        // Assume everything works (we might need some renames?)
-        // and let the runtime fail if it doesn't.
+        // Single input "a" or double "a" & "b" looks correct, and many op names
+        // match (by design), so just let runtime fail if anything's amiss.
         static INPUT_PORT_NAMES: [&str; 2] = ["a", "b"];
-        assert_eq!(num_inputs, INPUT_PORT_NAMES.len());
+        assert!(num_inputs <= INPUT_PORT_NAMES.len());
         assert_eq!(num_outputs, 1);
         Ok((
             ExtOpNode::Task {
