@@ -1,5 +1,5 @@
 //! Functions for converting a [Hugr] into a [WorkflowGraph]
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::iter::once;
 
 use hugr::core::HugrNode;
@@ -27,6 +27,7 @@ use crate::builder::{eval, input, loop_node, task};
 struct GraphWithFuncs<N: HugrNode> {
     graph: WorkflowGraph,
     funcs: HashMap<N, NodeIndex>,
+    consts: HashMap<serde_json::Value, NodeIndex>,
 }
 
 impl<N: HugrNode> GraphWithFuncs<N> {
@@ -53,6 +54,7 @@ impl<N: HugrNode> GraphWithFuncs<N> {
             Self {
                 graph,
                 funcs: HashMap::new(),
+                consts: HashMap::new(),
             },
             input_results,
         )
@@ -73,6 +75,23 @@ impl<N: HugrNode> GraphWithFuncs<N> {
             .add_node(graph_const(wg)?, vec![], vec!["value".to_string()]);
         self.funcs.insert(node, new_node);
         Ok(new_node)
+    }
+
+    fn get_const(&mut self, value: serde_json::Value) -> (NodeIndex, String) {
+        let port = "value".to_string();
+        let ve = match self.consts.entry(value) {
+            Entry::Occupied(v) => return (*v.get(), port),
+            Entry::Vacant(ve) => ve,
+        };
+        let ni = self.graph.add_node(
+            NodeDefinition::Const {
+                value: ve.key().clone(),
+            },
+            [],
+            ["value".to_string()],
+        );
+        ve.insert(ni);
+        (ni, port)
     }
 
     fn add_node<INP: ToString, OUT: ToString, const N_OUTS: usize>(
@@ -137,16 +156,9 @@ fn convert_dataflow_op<H: HugrView>(
                 }
             };
             let value = const_val(&cst.value)?;
-            Ok(vec![(
-                graph.graph.add_node(
-                    NodeDefinition::Const { value },
-                    vec![],
-                    vec!["value".to_string()],
-                ),
-                "value".to_string(),
-            )])
+            Ok(vec![graph.get_const(value)])
         }
-        OpType::ExtensionOp(eop) => convert_ext_op(eop, &mut graph.graph, inputs),
+        OpType::ExtensionOp(eop) => convert_ext_op(eop, graph, inputs),
         OpType::CallIndirect(_) => {
             let mut ins = hugr.in_value_types(node);
             let (port, ty) = ins.next().unwrap();
@@ -208,22 +220,9 @@ fn convert_dataflow_op<H: HugrView>(
             }
             if variants.len() == 2 && variants[0].is_empty() && variants[1].is_empty() {
                 // boolean type represented as two empty variants
-                let node = graph.graph.add_node(
-                    NodeDefinition::Const {
-                        value: serde_json::Value::Bool(*tag == 1),
-                    },
-                    vec![],
-                    vec!["value".to_string()],
-                );
-                return Ok(vec![(node, "value".to_string())]);
+                return Ok(vec![graph.get_const(serde_json::Value::Bool(*tag == 1))]);
             }
-            let [tag] = graph.add_node::<String, _, _>(
-                NodeDefinition::Const {
-                    value: serde_json::Value::Number(serde_json::Number::from(*tag)),
-                },
-                vec![],
-                ["value"],
-            );
+            let tag = graph.get_const(serde_json::Value::Number(serde_json::Number::from(*tag)));
             let contents = make_tuple(graph, &inputs);
             Ok(vec![make_tuple(graph, &[tag, contents])])
         }
@@ -279,13 +278,7 @@ fn convert_tail_loop<H: HugrView>(
                 just_inouts,
             )
         };
-        let [continue_const] = g.add_node::<String, _, _>(
-            NodeDefinition::Const {
-                value: continue_val,
-            },
-            [],
-            ["value"],
-        );
+        let continue_const = g.get_const(continue_val);
         let should_continue = task(&mut g.graph, "builtins", "eq", ["a", "b"], ["value"]);
         wire_up(
             &mut g.graph,
@@ -346,7 +339,7 @@ fn make_tuple<N: HugrNode>(
     inputs: &[(NodeIndex, String)],
 ) -> (NodeIndex, String) {
     let [np] = match inputs {
-        [] => graph.add_node::<String, _, _>(unit_const(), vec![], ["value"]),
+        [] => [graph.get_const(unit_val())],
         [inp] => [inp.clone()],
         _ => {
             let rest = make_tuple(graph, &inputs[1..]);
@@ -386,11 +379,9 @@ fn unpack_tuple(
     }
 }
 
-fn unit_const() -> NodeDefinition {
+fn unit_val() -> serde_json::Value {
     // unit type, no data. Could represent as empty list?
-    NodeDefinition::Const {
-        value: serde_json::Value::Null,
-    }
+    serde_json::Value::Null
 }
 
 fn const_val(value: &Value) -> miette::Result<serde_json::Value> {
@@ -482,38 +473,35 @@ fn convert_dfg<H: HugrView>(
         .collect())
 }
 
-fn convert_ext_op(
+fn convert_ext_op<N: HugrNode>(
     eop: &ExtensionOp,
-    graph: &mut WorkflowGraph,
+    graph: &mut GraphWithFuncs<N>,
     inputs: Vec<(NodeIndex, String)>,
 ) -> miette::Result<Vec<(NodeIndex, String)>> {
     // Keep it simple for now, support only hugr ops that become a single node in the workflow graph
     let (node_def, inports, outports) = lookup_ext_op(eop)?;
-
-    let new_node = match node_def {
+    assert_eq!(inputs.len(), inports.len());
+    match node_def {
         ExtOpNode::Task {
             worker_name,
             task_name,
-        } => task(
-            graph,
-            &worker_name,
-            &task_name,
-            inports.iter().map(String::as_str),
-            outports.iter().map(String::as_str),
-        ),
-        ExtOpNode::Definition(node_def) => {
-            graph.add_node(node_def, inports.clone(), outports.clone())
+        } => {
+            let new_node = task(
+                &mut graph.graph,
+                &worker_name,
+                &task_name,
+                inports.iter().map(String::as_str),
+                outports.iter().map(String::as_str),
+            );
+            wire_up(&mut graph.graph, &inputs, new_node, &inports);
+            Ok(outports.into_iter().map(|port| (new_node, port)).collect())
         }
-    };
-
-    assert_eq!(inputs.len(), inports.len());
-    wire_up(graph, &inputs, new_node, &inports);
-
-    Ok(outports.into_iter().map(|port| (new_node, port)).collect())
+        ExtOpNode::Const(val) => Ok(vec![graph.get_const(val)]),
+    }
 }
 
 enum ExtOpNode {
-    Definition(NodeDefinition),
+    Const(serde_json::Value),
     Task {
         worker_name: String,
         task_name: String,
@@ -527,7 +515,7 @@ fn lookup_ext_op(eop: &ExtensionOp) -> miette::Result<(ExtOpNode, Vec<String>, V
     if let Ok(top) = TupleOpDef::from_op(eop) {
         return match top {
             TupleOpDef::MakeTuple if num_inputs == 0 => Ok((
-                ExtOpNode::Definition(unit_const()),
+                ExtOpNode::Const(unit_val()),
                 vec![],
                 vec!["value".to_string()],
             )),
@@ -667,6 +655,7 @@ pub(crate) mod test {
         let mut gwf = GraphWithFuncs::<Node> {
             graph: wg,
             funcs: HashMap::new(),
+            consts: HashMap::new(),
         };
         let tup = make_tuple(&mut gwf, &[a, b, c]);
         let mut wg = gwf.graph;
