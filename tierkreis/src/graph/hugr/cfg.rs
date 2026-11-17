@@ -92,28 +92,22 @@ fn build_block_outputs<N: HugrNode>(
     Option<(NodeIndex, String)>,
     HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>>,
 ) {
-    let (branch_ctl, this_block_outs) = (block_outputs.remove(0), block_outputs);
+    let (mut predicate, this_block_outs) = (block_outputs.remove(0), block_outputs);
 
     // Generate outputs of BB for each successor (each gets different unpacking of Sum).
     // The code here is intended to handle arity > 2 but TODO we need to build conditional
     // predicates differently for arity > 2, probably by converting to a chain of binary tests.
     assert!([1, 2].contains(&sum_rows.len()));
     if sum_rows.len() == 1 {
-        let mut outs = unpack_tuple(&mut graph.graph, branch_ctl, sum_rows[0].len());
+        let mut outs = unpack_tuple(&mut graph.graph, predicate, sum_rows[0].len());
         outs.extend(this_block_outs);
         return (None, HashMap::from([((node, OutgoingPort::from(0)), outs)]));
     }
 
     // values delivered to control-flow outports of various descendants
-    let mut block_outputs: HashMap<(N, OutgoingPort), Vec<(NodeIndex, String)>> = HashMap::new();
-
-    let predicate = if sum_rows.iter().all(|row| row.is_empty()) {
-        for p in node_outports {
-            block_outputs.insert((node, p), this_block_outs.clone());
-        }
-        branch_ctl
-    } else {
-        let [tag, mut rest] = unpack_tuple(&mut graph.graph, branch_ctl, 2)
+    let mut unpacked = Vec::new();
+    if !sum_rows.iter().all(|row| row.is_empty()) {
+        let [tag, mut rest] = unpack_tuple(&mut graph.graph, predicate, 2)
             .try_into()
             .unwrap();
         //tag is 0 or 1, which we need to map to true/false
@@ -121,7 +115,7 @@ fn build_block_outputs<N: HugrNode>(
         let (c, p) = constant(&mut graph.graph, 1).unwrap();
         let eq_inputs = [tag, (c, p.to_string())];
         wire_up(&mut graph.graph, &eq_inputs, tag_bool, ["a", "b"]);
-        let tag = (tag_bool, "value".to_string());
+        predicate = (tag_bool, "value".to_string());
 
         // Unpack the tuple only once for all values of `tag`. If some variants are shorter,
         // corresponding unpacks will be unused - fine under lazy evaluation.
@@ -133,23 +127,27 @@ fn build_block_outputs<N: HugrNode>(
             NodeIndex::new(NodeIndex::<u32>::max_index()),
             "DO NOT USE".to_string(),
         );
-        let mut unpacked = vec![[do_not_use, rest.clone()]];
+        unpacked.push([do_not_use, rest.clone()]);
 
         for _ in 0..max_elems {
             let elem_rest: [_; 2] = unpack_tuple(&mut graph.graph, rest, 2).try_into().unwrap();
             [_, rest] = elem_rest.clone();
             unpacked.push(elem_rest);
         }
-        for (p, pred_row) in node_outports.zip_eq(sum_rows) {
+    }
+    let block_outputs = node_outports
+        .zip_eq(sum_rows)
+        .map(|(p, pred_row)| {
             let outs = (1..pred_row.len())
                 .map(|i| &unpacked[i])
                 .map(|[e, _]| e.clone())
                 .chain((!pred_row.is_empty()).then(|| unpacked[pred_row.len() - 1][1].clone()))
+                .chain(this_block_outs.iter().cloned())
                 .collect();
-            block_outputs.insert((node, p), outs);
-        }
-        tag
-    };
+            ((node, p), outs)
+        })
+        .collect();
+
     (Some(predicate), block_outputs)
 }
 
