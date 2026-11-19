@@ -64,7 +64,10 @@ function getHandlesFromEdges(id: string, edges: PyEdge[]) {
       inputs.push(edge.to_port);
     }
   });
-  return { inputs, outputs };
+  return {
+    inputs: [...new Set(inputs)].sort(),
+    outputs: [...new Set(outputs)].sort(),
+  };
 }
 
 function parseNodeValue(value: unknown): string | null {
@@ -155,12 +158,17 @@ function parseEdges(edges: PyEdge[], parentId?: string): Edge[] {
   const uniqueCount: Map<string, number> = new Map();
   const prefix = parentId ? `${parentId}:` : "";
   return edges.map((edge) => {
-    const id = prefix + edge.from_node + "-" + prefix + edge.to_node;
-    const count = uniqueCount.get(id) || 0;
-    uniqueCount.set(id, count + 1);
+    const semanticId = JSON.stringify([
+      prefix + edge.from_node,
+      edge.from_port,
+      prefix + edge.to_node,
+      edge.to_port,
+    ]);
+    const count = uniqueCount.get(semanticId) || 0;
+    uniqueCount.set(semanticId, count + 1);
     return {
       type: "custom-edge",
-      id: `${prefix}${edge.from_node}:${count}:${prefix}${edge.to_node}`,
+      id: count === 0 ? semanticId : `${semanticId}:${count}`,
       source: edge.from_node.toString(),
       target: edge.to_node.toString(),
       sourceHandle: prefix + edge.from_node + "_" + edge.from_port,

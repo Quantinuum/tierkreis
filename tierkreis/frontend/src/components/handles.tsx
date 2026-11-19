@@ -27,7 +27,7 @@ export const InputHandleArray = ({
         width: "100%",
       }}
     >
-      {[...new Set(handles)].map((key) => {
+      {[...new Set(handles)].sort().map((key) => {
         const handleId = id + "_" + key.toString();
         return (
           <div
@@ -98,7 +98,7 @@ export const OutputHandleArray = ({
         width: "100%",
       }}
     >
-      {[...new Set(handles)].map((key) => {
+      {[...new Set(handles)].sort().map((key) => {
         const handleId = id + "-" + key.toString();
         return (
           <div

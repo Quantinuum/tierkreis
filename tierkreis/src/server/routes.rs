@@ -10,7 +10,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{
     sync::watch,
     time::{MissedTickBehavior, interval},
@@ -202,7 +206,7 @@ pub async fn list_nodes(
     Query(query): Query<GraphsQuery>,
 ) -> HandlerResult<Json<GraphsResponse>> {
     if let Some(graph_data) = &state.display_graph {
-        let mut graphs = HashMap::new();
+        let mut graphs = BTreeMap::new();
         for loc_str in &query.locs {
             let location = parse_location(loc_str)?;
             let graph = super::nodes::build_graph_data_py_graph(graph_data, &location)?;
@@ -222,11 +226,31 @@ pub async fn list_nodes(
     tracing::info!("Listing nodes for {}", run_id);
 
     // TODO can we somehow avoid loading the entire graph (e.g. only the nested ones we need)
-    let (_name, top_level_graph) = state.runtime_state.load_workflow(workflow_id).await?;
+    let top_level_graph =
+        if let Some(graph) = state.graph_cache.workflows.read().await.get(&workflow_id) {
+            Arc::clone(graph)
+        } else {
+            let (_name, graph) = state.runtime_state.load_workflow(workflow_id).await?;
+            let graph = Arc::new(graph);
+            state
+                .graph_cache
+                .workflows
+                .write()
+                .await
+                .insert(workflow_id, Arc::clone(&graph));
+            graph
+        };
 
-    let mut graphs = HashMap::new();
+    let mut graphs = BTreeMap::new();
     for loc_str in &query.locs {
-        let result = load_graph(&top_level_graph, loc_str).await?;
+        let result = load_graph(
+            &top_level_graph,
+            loc_str,
+            run_state.as_ref(),
+            &state.asset_registry,
+            &state.graph_cache,
+        )
+        .await?;
         let py_graph = match result {
             GraphLoadResult::Eval { graph, prefix } => {
                 build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?
@@ -382,12 +406,32 @@ pub async fn get_input(
         .await?;
 
     let workflow_id = run_state.workflow_id();
-    let (_name, top_level_graph) = state.runtime_state.load_workflow(workflow_id).await?;
+    let top_level_graph =
+        if let Some(graph) = state.graph_cache.workflows.read().await.get(&workflow_id) {
+            Arc::clone(graph)
+        } else {
+            let (_name, graph) = state.runtime_state.load_workflow(workflow_id).await?;
+            let graph = Arc::new(graph);
+            state
+                .graph_cache
+                .workflows
+                .write()
+                .await
+                .insert(workflow_id, Arc::clone(&graph));
+            graph
+        };
 
     let loc = parse_location(&node_location_str)?;
     let node_location = loc.to_string();
     let parent_location = loc.parent();
-    let result = load_graph(&top_level_graph, &parent_location.to_string()).await?;
+    let result = load_graph(
+        &top_level_graph,
+        &parent_location.to_string(),
+        run_state.as_ref(),
+        &state.asset_registry,
+        &state.graph_cache,
+    )
+    .await?;
     let py_graph = match result {
         GraphLoadResult::Eval { graph, prefix } => {
             build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?
@@ -589,6 +633,7 @@ mod tests {
             runtime_state,
             asset_registry: Arc::new(HashMap::new()),
             display_graph: None,
+            graph_cache: Arc::new(crate::server::models::GraphCache::default()),
         };
         let app = Router::new()
             .route(
