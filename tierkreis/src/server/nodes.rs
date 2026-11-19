@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use miette::Context;
+use miette::{Context, IntoDiagnostic};
 use portgraph::NodeIndex;
 use serde_json::Value;
 
@@ -9,25 +9,55 @@ use crate::graph::{LegacyNodeDef, LegacyWorkflowGraph, NodeDefinition, WorkflowG
 use crate::location::{Location, LocationComponent};
 use crate::server::AssetStorageRegistry;
 use crate::server::models::{
-    NodeInputs, NodeStatus, PyEdge, PyGraph, PyNode, node_status_from_state,
+    GraphCache, NodeInputs, NodeStatus, PyEdge, PyGraph, PyNode, SubgraphCacheKey,
+    node_status_from_state,
 };
 use crate::state::{WorkflowRunState, interface::NodeState};
+use crate::workflow_state_query::load_subgraph_from_asset;
+use std::sync::Arc;
+
+fn sort_py_graph(nodes: &mut [PyNode], edges: &mut [PyEdge]) {
+    edges.sort_by(|left, right| {
+        (
+            &left.from_node,
+            &left.from_port,
+            &left.to_node,
+            &left.to_port,
+        )
+            .cmp(&(
+                &right.from_node,
+                &right.from_port,
+                &right.to_node,
+                &right.to_port,
+            ))
+    });
+    for node in nodes {
+        node.inputs.sort_by(|left, right| {
+            (&left.port, &left.from_node, &left.from_port).cmp(&(
+                &right.port,
+                &right.from_node,
+                &right.from_port,
+            ))
+        });
+    }
+}
+
 /// The result of resolving a location to a graph view.
 pub enum GraphLoadResult {
     /// Show the nodes of this workflow graph (standard eval/top-level view).
     Eval {
-        graph: WorkflowGraph,
+        graph: Arc<WorkflowGraph>,
         prefix: Location,
     },
     /// Show loop iteration placeholder nodes for this loop node.
     LoopIterations {
         loop_node_location: Location,
-        subgraph: WorkflowGraph,
+        subgraph: Arc<WorkflowGraph>,
     },
     /// Show map element placeholder nodes for this map node.
     MapIterations {
         map_node_location: Location,
-        subgraph: WorkflowGraph,
+        subgraph: Arc<WorkflowGraph>,
     },
 }
 
@@ -189,6 +219,8 @@ pub async fn build_loop_py_graph(
             });
         }
     }
+
+    sort_py_graph(&mut nodes, &mut edges);
 
     Ok(PyGraph { nodes, edges })
 }
@@ -403,6 +435,8 @@ pub async fn build_py_graph(
             executor: def.executor().map(std::string::ToString::to_string),
         });
     }
+
+    sort_py_graph(&mut nodes, &mut edges);
 
     Ok(PyGraph { nodes, edges })
 }
@@ -648,31 +682,109 @@ fn graph_data_value(value: &Value) -> String {
     }
 }
 
-/// Load a subgraph from a Const node that contains a serialized `WorkflowGraph`.
-fn load_subgraph_from_const_node(
+/// Load the graph asset connected to an Eval, Loop, or Map node.
+async fn load_subgraph_from_input(
     workflow_graph: &WorkflowGraph,
     node_index: portgraph::NodeIndex,
-) -> miette::Result<WorkflowGraph> {
-    tracing::info!("Loading subgraph from Const node {node_index:?}");
-    let (source_node, _source_port) = workflow_graph
+    parent_location: &Location,
+    run_state: &dyn WorkflowRunState,
+    asset_registry: &AssetStorageRegistry,
+    graph_cache: &GraphCache,
+) -> miette::Result<Arc<WorkflowGraph>> {
+    let (source_node, source_port) = workflow_graph
         .connected_input_by_port_name(node_index, "graph")
         .wrap_err_with(|| {
             format!("No connected input by port name 'graph' for node {node_index:?}")
         })?;
+    let source_port_name = workflow_graph.get_port_name(source_port)?;
+    let source_location = parent_location.with_node(source_node);
+    let source_state = run_state.read(&source_location).await?;
+
+    if let Some(asset_spec) = source_state
+        .outputs
+        .as_ref()
+        .and_then(|outputs| outputs.get(source_port_name))
+    {
+        let cache_key = SubgraphCacheKey::Asset {
+            storage_name: asset_spec.storage_name.clone(),
+            key: asset_spec.asset_key,
+        };
+        if let Some(graph) = graph_cache.subgraphs.read().await.get(&cache_key) {
+            return Ok(Arc::clone(graph));
+        }
+        let graph = Arc::new(
+            load_subgraph_from_asset(asset_registry, asset_spec.clone())
+                .await
+                .wrap_err_with(|| format!("Failed to load graph input for node {node_index:?}"))?,
+        );
+        graph_cache
+            .subgraphs
+            .write()
+            .await
+            .insert(cache_key, Arc::clone(&graph));
+        return Ok(graph);
+    }
+
+    // Constants can be displayed before their output asset has been materialized.
     let source_def = workflow_graph
         .node_definition(source_node)
         .ok_or_else(|| miette::miette!("Node definition missing for {source_node:?}"))?;
     if let NodeDefinition::Const { value } = source_def {
-        if let Ok(val) = serde_json::from_value::<WorkflowGraph>(value.clone()) {
-            tracing::info!("Loaded subgraph from Const node {node_index:?}: {:?}", val);
-            Ok(val)
+        let cache_key = SubgraphCacheKey::Inline {
+            run_id: run_state.run_id(),
+            attempt: run_state.attempt(),
+            node_location: parent_location.with_node(node_index).to_string(),
+        };
+        if let Some(graph) = graph_cache.subgraphs.read().await.get(&cache_key) {
+            return Ok(Arc::clone(graph));
+        }
+        let graph = if let Ok(graph) = serde_json::from_value::<WorkflowGraph>(value.clone()) {
+            graph
         } else {
             let legacy_val = serde_json::from_value::<LegacyWorkflowGraph>(value.clone())
-                .map_err(|_| miette::miette!("Fallback Failed"))?;
-            Ok(legacy_val.to_workflow_graph()?)
-        }
+                .into_diagnostic()
+                .wrap_err("Constant graph input is not a valid graph")?;
+            legacy_val.to_workflow_graph()?
+        };
+        let graph = Arc::new(graph);
+        graph_cache
+            .subgraphs
+            .write()
+            .await
+            .insert(cache_key, Arc::clone(&graph));
+        Ok(graph)
     } else {
-        Err(miette::miette!("Node {node_index:?} is not a Const node"))
+        Err(miette::miette!(
+            "Graph input for node {} is not available yet; producer {} has no '{}' output",
+            parent_location.with_node(node_index),
+            source_location,
+            source_port_name,
+        ))
+    }
+}
+
+struct SubgraphResolver<'a> {
+    run_state: &'a dyn WorkflowRunState,
+    asset_registry: &'a AssetStorageRegistry,
+    graph_cache: &'a GraphCache,
+}
+
+impl SubgraphResolver<'_> {
+    async fn load(
+        &self,
+        workflow_graph: &WorkflowGraph,
+        node_index: NodeIndex,
+        parent_location: &Location,
+    ) -> miette::Result<Arc<WorkflowGraph>> {
+        load_subgraph_from_input(
+            workflow_graph,
+            node_index,
+            parent_location,
+            self.run_state,
+            self.asset_registry,
+            self.graph_cache,
+        )
+        .await
     }
 }
 
@@ -682,12 +794,15 @@ fn load_subgraph_from_const_node(
 /// If the location string is invalid, if a node in the path is not found, or if a node
 /// in the path is not an Eval, Loop, or Map node.
 pub async fn load_graph(
-    top_level_graph: &WorkflowGraph,
+    top_level_graph: &Arc<WorkflowGraph>,
     location_str: &str,
+    run_state: &dyn WorkflowRunState,
+    asset_registry: &AssetStorageRegistry,
+    graph_cache: &GraphCache,
 ) -> miette::Result<GraphLoadResult> {
     if location_str.is_empty() || location_str == "-" {
         return Ok(GraphLoadResult::Eval {
-            graph: top_level_graph.clone(),
+            graph: Arc::clone(top_level_graph),
             prefix: Location::root(),
         });
     }
@@ -695,9 +810,14 @@ pub async fn load_graph(
     let loc = Location::new(location_str)?;
     let components: Vec<&LocationComponent> = loc.components().collect();
     let n = components.len();
+    let resolver = SubgraphResolver {
+        run_state,
+        asset_registry,
+        graph_cache,
+    };
 
     // Walk the location path component by component, descending into subgraphs.
-    let mut current_graph = top_level_graph.clone();
+    let mut current_graph = Arc::clone(top_level_graph);
     let mut prefix = Location::root();
 
     for (i, component) in components.iter().enumerate() {
@@ -710,8 +830,8 @@ pub async fn load_graph(
 
                 match def {
                     NodeDefinition::Eval { .. } => {
+                        current_graph = resolver.load(&current_graph, *node, &prefix).await?;
                         prefix = node_loc;
-                        current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
                     }
                     NodeDefinition::Loop { .. } => {
                         // If the next component is a LoopIndex, descend and continue walking.
@@ -719,10 +839,10 @@ pub async fn load_graph(
                         let next_is_loop_index = i + 1 < n
                             && matches!(components[i + 1], LocationComponent::LoopIndex { .. });
                         if next_is_loop_index {
+                            current_graph = resolver.load(&current_graph, *node, &prefix).await?;
                             prefix = node_loc;
-                            current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
                         } else {
-                            let subgraph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            let subgraph = resolver.load(&current_graph, *node, &prefix).await?;
                             return Ok(GraphLoadResult::LoopIterations {
                                 loop_node_location: node_loc,
                                 subgraph,
@@ -735,10 +855,10 @@ pub async fn load_graph(
                         let next_is_map_index = i + 1 < n
                             && matches!(components[i + 1], LocationComponent::MapIndex { .. });
                         if next_is_map_index {
+                            current_graph = resolver.load(&current_graph, *node, &prefix).await?;
                             prefix = node_loc;
-                            current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
                         } else {
-                            let subgraph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            let subgraph = resolver.load(&current_graph, *node, &prefix).await?;
                             return Ok(GraphLoadResult::MapIterations {
                                 map_node_location: node_loc,
                                 subgraph,
@@ -848,6 +968,107 @@ mod graph_data_conversion_tests {
         assert_eq!(graph.nodes.len(), 1);
         assert_eq!(graph.nodes[0].id, "N0.N0");
         assert_eq!(graph.nodes[0].value.as_deref(), Some("nested"));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod runtime_subgraph_tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use crate::{
+        asset_storage::{
+            AssetKey, AssetKind, AssetSpec, AssetStorage, AssetStorageRegistry, InMemoryStorage,
+        },
+        event::{NodeEvent, NodeStatus as EventNodeStatus, WorkflowRunEvent},
+        graph::{NodeDefinition, WorkflowGraph},
+        location::Location,
+        server::models::GraphCache,
+        state::{InMemoryRuntimeState, RuntimeState},
+    };
+
+    use super::{GraphLoadResult, load_graph};
+
+    #[tokio::test]
+    async fn loads_dynamic_subgraph_from_runtime_asset() -> miette::Result<()> {
+        let mut top_level = WorkflowGraph::new([]);
+        let producer = top_level.add_node(
+            NodeDefinition::Task {
+                worker_name: "worker".to_string(),
+                task_name: "make_graph".to_string(),
+                context: None,
+                executor: None,
+            },
+            [],
+            ["graph".to_string()],
+        );
+        let eval = top_level.add_node(
+            NodeDefinition::Eval {
+                context: None,
+                executor: None,
+            },
+            ["graph".to_string()],
+            [],
+        );
+        top_level.link_nodes_by_port_name(producer, "graph", eval, "graph")?;
+
+        let dynamic_graph = WorkflowGraph::new(["dynamic_output".to_string()]);
+        let asset_key = AssetKey::new();
+        let storage = InMemoryStorage::new();
+        storage
+            .save(&asset_key, serde_json::to_vec(&dynamic_graph).unwrap())
+            .await?;
+        let asset_registry: AssetStorageRegistry = Arc::new(HashMap::from([(
+            "memory".to_string(),
+            Box::new(storage) as Box<dyn AssetStorage>,
+        )]));
+
+        let top_level = Arc::new(top_level);
+        let runtime_state = InMemoryRuntimeState::new();
+        let workflow_id = runtime_state
+            .save_workflow(None, top_level.as_ref().clone())
+            .await?;
+        let run_state = runtime_state
+            .new_workflow_run_state(workflow_id, HashMap::new())
+            .await?;
+        run_state
+            .write(WorkflowRunEvent::NodeEvents(vec![NodeEvent {
+                loc: Location::root().with_node(producer),
+                name: None,
+                status: EventNodeStatus::Complete {
+                    outputs: HashMap::from([(
+                        "graph".to_string(),
+                        AssetSpec {
+                            kind: AssetKind::Memory,
+                            storage_name: "memory".to_string(),
+                            asset_key,
+                        },
+                    )]),
+                },
+            }]))
+            .await?;
+
+        let cache = GraphCache::default();
+        let loaded = load_graph(
+            &top_level,
+            &Location::root().with_node(eval).to_string(),
+            run_state.as_ref(),
+            &asset_registry,
+            &cache,
+        )
+        .await?;
+
+        let GraphLoadResult::Eval { graph, .. } = loaded else {
+            panic!("Eval location did not load an Eval graph");
+        };
+        assert_eq!(
+            graph
+                .input_names(graph.output_idx())?
+                .cloned()
+                .collect::<Vec<_>>(),
+            ["dynamic_output"]
+        );
+        assert_eq!(cache.subgraphs.read().await.len(), 1);
         Ok(())
     }
 }

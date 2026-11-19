@@ -2,15 +2,15 @@
 The models module defines the data structures used by the server.
 */
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use tokio::sync::watch;
+use tokio::sync::{RwLock, watch};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetStorageRegistry,
-    graph::{LegacyWorkflowGraph, NodeDefinition},
+    asset_storage::{AssetKey, AssetStorageRegistry},
+    graph::{LegacyWorkflowGraph, NodeDefinition, WorkflowGraph},
     state::interface::{NodeState, RuntimeState, RuntimeWatchState},
 };
 use axum::{
@@ -42,6 +42,26 @@ pub struct AppState {
     pub asset_registry: AssetStorageRegistry,
     pub update_receiver: watch::Receiver<RuntimeWatchState>,
     pub display_graph: Option<Arc<LegacyWorkflowGraph>>,
+    pub graph_cache: Arc<GraphCache>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SubgraphCacheKey {
+    Asset {
+        storage_name: String,
+        key: AssetKey,
+    },
+    Inline {
+        run_id: Uuid,
+        attempt: u32,
+        node_location: String,
+    },
+}
+
+#[derive(Debug, Default)]
+pub struct GraphCache {
+    pub workflows: RwLock<HashMap<Uuid, Arc<WorkflowGraph>>>,
+    pub subgraphs: RwLock<HashMap<SubgraphCacheKey, Arc<WorkflowGraph>>>,
 }
 
 /// Runtime metadata returned by `/api/info`.
@@ -237,7 +257,7 @@ pub struct PyGraph {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct GraphsResponse {
     /// Map from location string to the graph at that location.
-    pub graphs: HashMap<String, PyGraph>,
+    pub graphs: BTreeMap<String, PyGraph>,
 }
 
 /// Query parameters for the `/workflows/{workflow_id}/graphs` endpoint.

@@ -62,6 +62,7 @@ async fn server(
         asset_registry,
         update_receiver,
         display_graph,
+        graph_cache: Arc::new(models::GraphCache::default()),
     };
 
     let (api_http_router, api): (axum::Router<models::AppState>, OpenApi) = OpenApiRouter::new()
