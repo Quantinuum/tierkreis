@@ -23,6 +23,7 @@ use tempfile::NamedTempFile;
 use tokio::{
     io::AsyncReadExt,
     process::Command,
+    sync::watch,
     task::{AbortHandle, JoinHandle},
 };
 use tracing::{Instrument, instrument};
@@ -39,8 +40,10 @@ use crate::{
         send_cancelled, send_complete, send_error, send_queued, send_running,
     },
     executor::{
+        ExecutorHealth,
         commands::{WorkerCommands, validate_worker_commands, worker_invocation},
         interface::{Executor, TaskHandle, TaskPlan, WorkerSpec},
+        spawn_supervised_executor,
     },
     location::Location,
     monitoring::{CommandEnvCarrier, inject_trace_context},
@@ -387,6 +390,7 @@ pub struct SubprocessExecutor {
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
     background_abort_handle: AbortHandle,
+    health_receiver: watch::Receiver<ExecutorHealth>,
 
     // The name of the storage that the subprocess will read
     // and write files from. Must be file based.
@@ -446,7 +450,7 @@ impl SubprocessExecutor {
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         let abort_handles = HashMap::new();
-        let background_task = tokio::spawn(process_tasks(
+        let (background_abort_handle, health_receiver) = spawn_supervised_executor(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
@@ -461,7 +465,8 @@ impl SubprocessExecutor {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
-            background_abort_handle: background_task.abort_handle(),
+            background_abort_handle,
+            health_receiver,
             subprocess_storage_name: subprocess_storage_name.to_string(),
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry,
@@ -614,6 +619,10 @@ fn write_input_paths(
 }
 
 impl Executor for SubprocessExecutor {
+    fn health(&self) -> watch::Receiver<ExecutorHealth> {
+        self.health_receiver.clone()
+    }
+
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         self.workers().boxed()
     }

@@ -7,10 +7,12 @@ use std::collections::{HashMap, HashSet};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde_json::Value;
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::asset_storage::interface::AssetSpec;
 use crate::event::{NodeStatus, RuntimeEvent};
+use crate::executor::ExecutorHealth;
 use crate::location::Location;
 
 /// A node location and its recovered status.
@@ -73,6 +75,8 @@ pub struct WorkerSpec {
 
 /// The [Executor] defines the minimum methods required for Task execution.
 pub trait Executor: Send + Sync {
+    /// Subscribe to the health of the executor's long-lived dispatcher.
+    fn health(&self) -> watch::Receiver<ExecutorHealth>;
     /// Return a list of the Workers available to the Executor with their metadata.
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>>;
     /// Dispatch a list of [`TaskPlan`]s to be run on an [Executor], returning a list of Task
