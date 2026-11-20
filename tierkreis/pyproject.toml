@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 stubs = [
-    "ruff>=0.17.4",
+    "ruff>=0.17.5",
 ]
 
 [dependency-groups]
