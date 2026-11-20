@@ -101,8 +101,7 @@ pub async fn build_loop_py_graph(
     // Output port names come from the input ports of the subgraph's Output node.
     let output_names: Vec<String> = subgraph
         .input_names(subgraph.output_idx())
-        .map(|it| it.cloned().collect())
-        .unwrap_or_default();
+        .map_or_default(|it| it.cloned().collect());
 
     // The loop node carries loop_index = Some(n) meaning "iteration n is current".
     // Virtual Li locations have no NodeState of their own.
@@ -214,8 +213,7 @@ pub async fn build_map_py_graph(
     // Output port names come from the input ports of the subgraph's Output node.
     let output_names: Vec<String> = subgraph
         .input_names(subgraph.output_idx())
-        .map(|it| it.cloned().collect())
-        .unwrap_or_default();
+        .map_or_default(|it| it.cloned().collect());
 
     // The map node state carries a bit-vector: set by SetRunningMap / MapElemComplete.
     // Virtual Mi locations have no NodeState of their own.
@@ -310,8 +308,7 @@ pub async fn build_py_graph(
         // Collect output port names.
         let output_names: Vec<String> = workflow_graph
             .output_names(node_idx)
-            .map(|it| it.cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
+            .map_or_default(|it| it.cloned().collect::<Vec<_>>());
 
         // Collect incoming connections for all input ports.
         let input_links: Vec<_> = workflow_graph.input_links(node_idx).collect();
