@@ -23,12 +23,12 @@ pub enum LocationComponent {
     },
     /// The [`LoopIndex`] of a Loop node, independent from the [`NodeIndex`] of the Loop node.
     LoopIndex {
-        /// The index of the "virtual" loop node within in the graph.
+        /// The index of the "virtual" loop node within the graph.
         index: u32,
     },
     /// The [`MapIndex`] of a Map node, independent from the [`NodeIndex`] of the Map node.
     MapIndex {
-        /// The index of the "virtual" map element within in the graph.
+        /// The index of the "virtual" map element within the graph.
         index: u32,
     },
 }
@@ -69,6 +69,18 @@ impl std::fmt::Display for LocationComponent {
         }
         Ok(())
     }
+}
+
+/// `LocationKind` represents the possible places a Location can represent.
+pub enum LocationKind {
+    /// The "root" location, which is an empty path.
+    Root,
+    /// A standard node location, which is a node in a graph.
+    Node,
+    /// A loop location, which is a particular iteration of a loop.
+    Loop,
+    /// A map location, which is a particular member in a map.
+    Map,
 }
 
 /// A [`Location`] struct describes where a computation is happening in a higher
@@ -142,6 +154,18 @@ impl Location {
     #[must_use]
     pub fn is_root(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Returns the `LocationKind` of the Location, which is determined by the type
+    /// of the last `LocationComponent` in the path.
+    #[must_use]
+    pub fn kind(&self) -> LocationKind {
+        match self.0.last() {
+            None => LocationKind::Root,
+            Some(LocationComponent::Node { .. }) => LocationKind::Node,
+            Some(LocationComponent::LoopIndex { .. }) => LocationKind::Loop,
+            Some(LocationComponent::MapIndex { .. }) => LocationKind::Map,
+        }
     }
 
     /// Returns true if the Location represents an iteration of a loop.

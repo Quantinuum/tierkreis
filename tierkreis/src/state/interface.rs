@@ -226,7 +226,7 @@ pub trait RuntimeState: Debug + Send + Sync {
             for location in locs {
                 let location_invalidated = build_node_copy_filter(
                     workflow_graph.clone(),
-                    &source_state,
+                    &*source_state,
                     asset_storage_registry,
                     location,
                 )

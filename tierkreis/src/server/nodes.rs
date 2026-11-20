@@ -3,15 +3,17 @@ use std::collections::{BTreeMap, HashMap};
 use miette::Context;
 use portgraph::NodeIndex;
 use serde_json::Value;
+use tracing::debug;
 
 use crate::asset_storage::{load_asset, load_assets};
 use crate::graph::{LegacyNodeDef, LegacyWorkflowGraph, NodeDefinition, WorkflowGraph};
-use crate::location::{Location, LocationComponent};
+use crate::location::{Location, LocationComponent, LocationKind};
 use crate::server::AssetStorageRegistry;
 use crate::server::models::{
     NodeInputs, NodeStatus, PyEdge, PyGraph, PyNode, node_status_from_state,
 };
 use crate::state::{WorkflowRunState, interface::NodeState};
+use crate::workflow_state_query::find_subgraph_input;
 /// The result of resolving a location to a graph view.
 pub enum GraphLoadResult {
     /// Show the nodes of this workflow graph (standard eval/top-level view).
@@ -676,42 +678,72 @@ fn load_subgraph_from_const_node(
     }
 }
 
-/// Resolve the graph view for a given `location_str`.
+/// Resolve the graph view for a given `location`, first using the `RuntimeState` then
+/// falling back to tracing to a connected constant node on failure.
+///
 /// # Errors
 ///
 /// If the location string is invalid, if a node in the path is not found, or if a node
 /// in the path is not an Eval, Loop, or Map node.
-pub async fn load_graph(
-    top_level_graph: &WorkflowGraph,
-    location_str: &str,
+pub async fn load_graph_from_state_or_const(
+    mut workflow: WorkflowGraph,
+    workflow_run_state: &dyn WorkflowRunState,
+    asset_storage_registry: &AssetStorageRegistry,
+    location: &Location,
 ) -> miette::Result<GraphLoadResult> {
-    if location_str.is_empty() || location_str == "-" {
-        return Ok(GraphLoadResult::Eval {
-            graph: top_level_graph.clone(),
-            prefix: Location::root(),
-        });
+    let subgraph = find_subgraph_input(
+        workflow.clone(),
+        workflow_run_state,
+        asset_storage_registry,
+        location,
+    )
+    .await;
+
+    match subgraph {
+        Ok(subgraph) => {
+            // The kind of the location of the prefix can be inspected to infer the
+            // context in which the graph is being used.
+            let parent = location.parent();
+            return match parent.kind() {
+                LocationKind::Root | LocationKind::Node => Ok(GraphLoadResult::Eval {
+                    graph: subgraph,
+                    prefix: location.clone(),
+                }),
+                LocationKind::Loop => Ok(GraphLoadResult::LoopIterations {
+                    loop_node_location: location.clone(),
+                    subgraph,
+                }),
+                LocationKind::Map => Ok(GraphLoadResult::MapIterations {
+                    map_node_location: location.clone(),
+                    subgraph,
+                }),
+            };
+        }
+        Err(_) => {
+            debug!(
+                "Could not find subgraph in runtime state, falling back to inspecting connected constant nodes."
+            );
+        }
     }
 
-    let loc = Location::new(location_str)?;
-    let components: Vec<&LocationComponent> = loc.components().collect();
+    let components: Vec<&LocationComponent> = location.components().collect();
     let n = components.len();
 
     // Walk the location path component by component, descending into subgraphs.
-    let mut current_graph = top_level_graph.clone();
     let mut prefix = Location::root();
 
     for (i, component) in components.iter().enumerate() {
         match component {
             LocationComponent::Node { node } => {
                 let node_loc = prefix.with_node(*node);
-                let def = current_graph
+                let def = workflow
                     .node_definition(*node)
                     .ok_or_else(|| miette::miette!("Node {node:?} not found in graph"))?;
 
                 match def {
                     NodeDefinition::Eval { .. } => {
                         prefix = node_loc;
-                        current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                        workflow = load_subgraph_from_const_node(&workflow, *node)?;
                     }
                     NodeDefinition::Loop { .. } => {
                         // If the next component is a LoopIndex, descend and continue walking.
@@ -720,9 +752,9 @@ pub async fn load_graph(
                             && matches!(components[i + 1], LocationComponent::LoopIndex { .. });
                         if next_is_loop_index {
                             prefix = node_loc;
-                            current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            workflow = load_subgraph_from_const_node(&workflow, *node)?;
                         } else {
-                            let subgraph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            let subgraph = load_subgraph_from_const_node(&workflow, *node)?;
                             return Ok(GraphLoadResult::LoopIterations {
                                 loop_node_location: node_loc,
                                 subgraph,
@@ -736,9 +768,9 @@ pub async fn load_graph(
                             && matches!(components[i + 1], LocationComponent::MapIndex { .. });
                         if next_is_map_index {
                             prefix = node_loc;
-                            current_graph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            workflow = load_subgraph_from_const_node(&workflow, *node)?;
                         } else {
-                            let subgraph = load_subgraph_from_const_node(&current_graph, *node)?;
+                            let subgraph = load_subgraph_from_const_node(&workflow, *node)?;
                             return Ok(GraphLoadResult::MapIterations {
                                 map_node_location: node_loc,
                                 subgraph,
@@ -761,7 +793,7 @@ pub async fn load_graph(
         }
     }
     Ok(GraphLoadResult::Eval {
-        graph: current_graph,
+        graph: workflow,
         prefix,
     })
 }

@@ -555,7 +555,7 @@ impl Runtime {
 
         let workflow = find_subgraph_input(
             workflow,
-            &workflow_run_state,
+            &*workflow_run_state,
             &self.asset_storage_registry,
             loop_location,
         )

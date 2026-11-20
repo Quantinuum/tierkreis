@@ -3,7 +3,6 @@
 use std::{
     collections::{HashMap, HashSet},
     ops::BitOrAssign,
-    sync::Arc,
 };
 
 use bitvec::vec::BitVec;
@@ -18,7 +17,7 @@ use crate::{
 };
 
 pub(crate) async fn collect_node_states(
-    workflow_run_state: &Arc<dyn WorkflowRunState>,
+    workflow_run_state: &dyn WorkflowRunState,
     workflow_graph: &WorkflowGraph,
     parent_loc: &Location,
 ) -> miette::Result<HashMap<Location, NodeState>> {
@@ -146,7 +145,7 @@ impl NodeCopyFilter {
 // are dependent on the result of the specified Location's output.
 pub(crate) async fn build_node_copy_filter(
     mut workflow: WorkflowGraph,
-    workflow_run_state: &Arc<dyn WorkflowRunState>,
+    workflow_run_state: &dyn WorkflowRunState,
     asset_storage_registry: &AssetStorageRegistry,
     location: Location,
 ) -> miette::Result<NodeCopyFilter> {
@@ -208,7 +207,7 @@ pub(crate) async fn build_node_copy_filter(
 /// Find the `graph` input to a Node at a specified Location and return it.
 pub(crate) async fn find_subgraph_input(
     mut workflow: WorkflowGraph,
-    workflow_run_state: &Arc<dyn WorkflowRunState>,
+    workflow_run_state: &dyn WorkflowRunState,
     asset_storage_registry: &AssetStorageRegistry,
     location: &Location,
 ) -> Result<WorkflowGraph, miette::Error> {
@@ -218,6 +217,7 @@ pub(crate) async fn find_subgraph_input(
             crate::location::LocationComponent::Node { node } => {
                 let node_states =
                     collect_node_states(workflow_run_state, &workflow, &parent_location).await?;
+                // TODO: Handle recursive graphs?
                 let graph_asset_spec =
                     collect_input(&workflow, &node_states, &parent_location, *node, "graph")?;
 
@@ -385,7 +385,7 @@ mod tests {
     #[tokio::test]
     async fn find_invalidated_task() -> miette::Result<()> {
         let (asset_storage_registry, _, _dir) = test_storage_registry([], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -394,7 +394,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N1")?,
         )
@@ -414,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn find_invalidated_triple_task_start() -> miette::Result<()> {
         let (asset_storage_registry, _, _dir) = test_storage_registry([], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -423,7 +423,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2")?,
         )
@@ -446,7 +446,7 @@ mod tests {
     #[tokio::test]
     async fn find_invalidated_triple_task_end() -> miette::Result<()> {
         let (asset_storage_registry, _, _dir) = test_storage_registry([], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -455,7 +455,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N4")?,
         )
@@ -476,7 +476,7 @@ mod tests {
     async fn find_invalidated_task_in_eval() -> miette::Result<()> {
         let (asset_storage_registry, asset_sets, _dir) =
             test_storage_registry([json!({"value": example_task_graph()?})], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -507,7 +507,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2.N1")?,
         )
@@ -531,7 +531,7 @@ mod tests {
     async fn find_invalidated_task_in_loop() -> miette::Result<()> {
         let (asset_storage_registry, asset_sets, _dir) =
             test_storage_registry([json!({"value": example_task_graph()?})], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -563,7 +563,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2.L0.N1")?,
         )
@@ -589,7 +589,7 @@ mod tests {
     async fn find_invalidated_task_in_loop_iteration() -> miette::Result<()> {
         let (asset_storage_registry, asset_sets, _dir) =
             test_storage_registry([json!({"value": example_task_graph()?})], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -633,7 +633,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2.L1.N1")?,
         )
@@ -659,7 +659,7 @@ mod tests {
     async fn find_invalidated_task_in_loop_mid_iteration() -> miette::Result<()> {
         let (asset_storage_registry, asset_sets, _dir) =
             test_storage_registry([json!({"value": example_task_graph()?})], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -715,7 +715,7 @@ mod tests {
 
         let invalid_locations = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2.L1.N1")?,
         )
@@ -741,7 +741,7 @@ mod tests {
     async fn find_invalidated_task_in_map() -> miette::Result<()> {
         let (asset_storage_registry, asset_sets, _dir) =
             test_storage_registry([json!({"value": example_task_graph()?})], []).await;
-        let state = Arc::new(InMemoryRuntimeState::new());
+        let state = Box::new(InMemoryRuntimeState::new());
         let source_state = state
             .new_workflow_run_state(Uuid::now_v7(), HashMap::new())
             .await?;
@@ -772,7 +772,7 @@ mod tests {
 
         let invalid_locations1 = build_node_copy_filter(
             graph.clone(),
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2.M0.N1")?,
         )
@@ -796,7 +796,7 @@ mod tests {
 
         let invalid_locations2 = build_node_copy_filter(
             graph,
-            &source_state,
+            &*source_state,
             &asset_storage_registry,
             Location::new("N2.M2.N1")?,
         )
