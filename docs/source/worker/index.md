@@ -217,12 +217,17 @@ To run the worker inside a graph you will need `uv add tkr-<worker>-impl` too.
 The following outlines the functionality of the prepackaged workers by the tierkreis maintainers.
 Currently the following workers are provided as separate packages on pypi:
 
+- Guppy
 - IBMQ
 - Qiskit Aer
 - Pytket
 - Quantinuum Nexus
 - Quantinuum Backend
 - Qulacs
+
+#### Guppy
+Compile and run quantim programs written in [guppy][https://guppylang.org].
+More detailed docs [here](native_workers/guppy_worker.md)
 
 #### Qiskit Aer
 
