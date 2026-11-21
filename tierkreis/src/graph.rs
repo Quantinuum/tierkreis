@@ -2,7 +2,7 @@
 This module defines the Workflow graph representation.
 */
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use bitvec::vec::BitVec;
 use miette::{Context, IntoDiagnostic, miette};
@@ -451,33 +451,33 @@ pub(crate) enum LegacyNodeDef {
     #[serde(rename = "function")]
     Func {
         function_name: String,
-        inputs: HashMap<String, ValueRef>,
+        inputs: BTreeMap<String, ValueRef>,
         #[serde(default)]
-        outputs: HashMap<String, Vec<u32>>,
+        outputs: BTreeMap<String, Vec<u32>>,
     },
     #[serde(rename = "eval")]
     Eval {
         graph: ValueRef,
-        inputs: HashMap<String, ValueRef>,
+        inputs: BTreeMap<String, ValueRef>,
         #[serde(default)]
-        outputs: HashMap<String, Vec<u32>>,
+        outputs: BTreeMap<String, Vec<u32>>,
     },
     #[serde(rename = "loop")]
     Loop {
         body: ValueRef,
-        inputs: HashMap<String, ValueRef>,
+        inputs: BTreeMap<String, ValueRef>,
         continue_port: String,
         #[serde(default)]
-        outputs: HashMap<String, Vec<u32>>,
+        outputs: BTreeMap<String, Vec<u32>>,
         #[serde(default)]
         name: Option<String>,
     },
     #[serde(rename = "map")]
     Map {
         body: ValueRef,
-        inputs: HashMap<String, ValueRef>,
+        inputs: BTreeMap<String, ValueRef>,
         #[serde(default)]
-        outputs: HashMap<String, Vec<u32>>,
+        outputs: BTreeMap<String, Vec<u32>>,
     },
     #[serde(rename = "const")]
     Const { value: serde_json::Value },
@@ -502,7 +502,7 @@ pub(crate) enum LegacyNodeDef {
         default_none: bool,
     },
     #[serde(rename = "output")]
-    Output { inputs: HashMap<String, ValueRef> },
+    Output { inputs: BTreeMap<String, ValueRef> },
 }
 
 impl LegacyNodeDef {
@@ -862,7 +862,7 @@ impl ConversionState {
 
     fn convert_output(
         &mut self,
-        inputs: HashMap<String, ValueRef>,
+        inputs: BTreeMap<String, ValueRef>,
         metadata: Option<&LegacyNodeMetadata>,
     ) {
         let incoming = inputs.len();
@@ -975,8 +975,8 @@ impl ConversionState {
     fn convert_eval(
         &mut self,
         graph_source: ValueRef,
-        inputs: HashMap<String, ValueRef>,
-        outputs: HashMap<String, Vec<u32>>,
+        inputs: BTreeMap<String, ValueRef>,
+        outputs: BTreeMap<String, Vec<u32>>,
         metadata: Option<&LegacyNodeMetadata>,
     ) {
         let incoming = inputs.len();
@@ -1004,8 +1004,8 @@ impl ConversionState {
     fn convert_loop(
         &mut self,
         graph_source: ValueRef,
-        inputs: HashMap<String, ValueRef>,
-        outputs: HashMap<String, Vec<u32>>,
+        inputs: BTreeMap<String, ValueRef>,
+        outputs: BTreeMap<String, Vec<u32>>,
         name: Option<String>,
         metadata: Option<&LegacyNodeMetadata>,
     ) {
@@ -1037,8 +1037,8 @@ impl ConversionState {
     fn convert_map(
         &mut self,
         graph_source: ValueRef,
-        inputs: HashMap<String, ValueRef>,
-        outputs: HashMap<String, Vec<u32>>,
+        inputs: BTreeMap<String, ValueRef>,
+        outputs: BTreeMap<String, Vec<u32>>,
         metadata: Option<&LegacyNodeMetadata>,
     ) {
         let incoming = inputs.len();
@@ -1075,8 +1075,8 @@ impl ConversionState {
     fn convert_func(
         &mut self,
         function_name: &str,
-        inputs: HashMap<String, ValueRef>,
-        outputs: HashMap<String, Vec<u32>>,
+        inputs: BTreeMap<String, ValueRef>,
+        outputs: BTreeMap<String, Vec<u32>>,
         metadata: Option<&LegacyNodeMetadata>,
     ) -> Result<(), miette::Error> {
         let incoming = inputs.len();
