@@ -81,6 +81,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/{workflow_id}/nodes/{node_location_str}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notify the frontend to refresh graph state, including changes from another process.
+         * @description # Errors
+         *
+         *     Returns an error if the node location string cannot be parsed or the workflow run is unknown.
+         */
+        get: operations["subscribe_node_updates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
         parameters: {
             query?: never;
@@ -263,6 +285,10 @@ export interface components {
         };
         /** @description A node in the workflow graph, with its current execution status. */
         PyNode: {
+            /** @description Execution context requested for this node. */
+            context?: string | null;
+            /** @description Executor requested for this node. */
+            executor?: string | null;
             /** @description ISO-8601 timestamp when the node finished, or `""` if not finished. */
             finished_time: string;
             /** @description Human-readable display name derived from the node definition. */
@@ -403,6 +429,29 @@ export interface operations {
             };
             /** @description Error loading log detail */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    subscribe_node_updates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Graph refresh notifications */
+            101: {
                 headers: {
                     [name: string]: unknown;
                 };

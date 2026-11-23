@@ -35,6 +35,16 @@ minimumReleaseAgeExclude:
   - seroval@1.6.1
   - seroval@1.6.3
   - source-map-js@1.2.2
+  - '@typescript-eslint/eslint-plugin@8.73.0'
+  - '@typescript-eslint/parser@8.73.0'
+  - '@typescript-eslint/project-service@8.73.0'
+  - '@typescript-eslint/scope-manager@8.73.0'
+  - '@typescript-eslint/tsconfig-utils@8.73.0'
+  - '@typescript-eslint/type-utils@8.73.0'
+  - '@typescript-eslint/types@8.73.0'
+  - '@typescript-eslint/typescript-estree@8.73.0'
+  - '@typescript-eslint/utils@8.73.0'
+  - '@typescript-eslint/visitor-keys@8.73.0'
 minimumReleaseAgeStrict: true
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 43200 # 30 days, See https://pnpm.io/settings#trustpolicyignoreafter
