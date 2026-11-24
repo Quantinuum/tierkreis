@@ -5,8 +5,8 @@ Tierkreis combines task-based workers with context dependent execution on variou
 
 See Tierkreis in action:
 
-<video autoplay muted loop style="max-width: 100%;">
-  <source src="../_static/demo_wf.mp4" type="video/mp4">
+<video autoplay muted loop style="display: block; max-width: 100%; margin: 0 auto;">
+  <source src="_static/demo_wf.mp4" type="video/mp4">
 </video>
 
 ## Motivation & Goal
