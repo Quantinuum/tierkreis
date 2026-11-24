@@ -21,8 +21,8 @@ use crate::{
     server::{
         models::{GraphsQuery, GraphsResponse, HandlerResult},
         nodes::{
-            GraphLoadResult, build_loop_py_graph, build_map_py_graph, build_py_graph, load_graph,
-            try_load_output_value, try_load_outputs,
+            GraphLoadResult, build_loop_py_graph, build_map_py_graph, build_py_graph,
+            load_graph_from_state_or_const, try_load_output_value, try_load_outputs,
         },
     },
     state::{RuntimeWatchState, WorkflowRunState},
@@ -226,7 +226,13 @@ pub async fn list_nodes(
 
     let mut graphs = HashMap::new();
     for loc_str in &query.locs {
-        let result = load_graph(&top_level_graph, loc_str).await?;
+        let result = load_graph_from_state_or_const(
+            top_level_graph.clone(),
+            &*run_state,
+            &state.asset_registry,
+            &parse_location(loc_str)?,
+        )
+        .await?;
         let py_graph = match result {
             GraphLoadResult::Eval { graph, prefix } => {
                 build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?
@@ -387,7 +393,13 @@ pub async fn get_input(
     let loc = parse_location(&node_location_str)?;
     let node_location = loc.to_string();
     let parent_location = loc.parent();
-    let result = load_graph(&top_level_graph, &parent_location.to_string()).await?;
+    let result = load_graph_from_state_or_const(
+        top_level_graph,
+        &*run_state,
+        &state.asset_registry,
+        &parent_location,
+    )
+    .await?;
     let py_graph = match result {
         GraphLoadResult::Eval { graph, prefix } => {
             build_py_graph(&graph, run_state.as_ref(), &prefix, &state.asset_registry).await?
