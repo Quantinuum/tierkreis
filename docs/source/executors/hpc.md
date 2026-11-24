@@ -3,6 +3,45 @@
 The Rust runtime can submit worker commands through PBS, PJSUB, or Slurm. The
 runtime and compute nodes must share the configured file asset storage.
 
+## Configuration Options
+
+Executors are defined in `tierkreis.toml`
+
+Configure an executor under `[executors.<name>]`:
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `type` | Yes | Must be `"Hpc"`. |
+| `hpc_storage_name` | Yes | Registered asset storage used to stage inputs and outputs for compute nodes. It must be accessible from the scheduler jobs. |
+| `output_storage_name` | Yes | Registered asset storage where completed outputs are written. |
+| `scheduler` | Yes | Scheduler adapter: `"pbs"`, `"pjsub"`, or `"slurm"`. |
+| `poll_interval_secs` | No | How often to check submitted jobs, in seconds. Defaults to `1`. |
+| `worker_commands` | No | Table mapping worker namespaces to command argument arrays. If omitted for a worker, the executor uses `tkr-<namespace-with-hyphens>-worker`. |
+| `resources` | Yes | Resources available to this executor; see the fields below. |
+
+The `[executors.<name>.resources]` table accepts:
+```{note}
+The defined resources should define the __maximally__ available resources on the executor. 
+```
+| Option | Required | Description |
+| --- | --- | --- |
+| `nodes` | Yes | Number of nodes. |
+| `cores_per_node` | No | CPU cores per node. |
+| `memory_per_node_gb` | No | Memory per node, in GiB. |
+| `gpus_per_node` | No | GPUs per node. |
+| `qpus` | No | List of QPU identifiers. |
+| `gres` | No | List of scheduler-specific generic resource requests. |
+
+
+
+
+```{important}
+In HPC environments it is common that environments differ between login and compute nodes.
+Make sure that workers are available on compute nodes or provide `worker_commands`.
+```
+
+### Example: Slurm
+
 ```toml
 default_storage_name = "file"
 default_executor_name = "slurm"
@@ -25,30 +64,7 @@ mpi_worker = ["uv", "run", "/shared/workers/mpi_worker/main.py"]
 nodes = 2
 cores_per_node = 8
 gpus_per_node = 0
-
-[runtime_state]
-type = "Sqlite"
-memory = false
-url = "/shared/tierkreis/state.db"
 ```
-
-Scheduler resources are deployment limits. Per-workflow requirements belong in
-a resource profile, for example `resource_profiles/cluster/hpc.toml`:
-
-```toml
-executor = "slurm"
-nodes = 2
-cpu = 8
-walltime = "01:00:00"
-
-[env]
-OMP_NUM_THREADS = "8"
-```
-
-Select the profile with `new_default("cluster")`, the `TKR_ENV` environment
-variable, or `profile="cluster"` on `start_new_run`. Scheduler-specific queue,
-account, MPI, and extra arguments can also be supplied by the profile.
-
 
 ## Fugaku: PJSUB
 
@@ -84,32 +100,23 @@ nodes = 1
 cores_per_node = 48
 gpus_per_node = 0
 
-[runtime_state]
-type = "Sqlite"
-memory = false
-url = "/shared/tierkreis/state.db"
 ```
 
-Put site- and workflow-specific requirements in a resource profile such as
-`resource_profiles/fugaku/compute.toml`:
+Account,queue, and other Fugaku-specific PJSUB options belong in the profile's
+`extra_scheduler_args` or `extras.flags`.
+
+For example, use the following resource profile alongside the executor
+configuration above:
 
 ```toml
 executor = "pjsub"
 nodes = 1
 cpu = 48
-walltime = "00:15:00"
+walltime = "01:00:00"
 
-[env]
-UV_PROJECT_ENVIRONMENT = "compute_venv"
-
-[extra_scheduler_args]
-"--no-check-directory" = true
+[extras]
+flags = ["--no-check-directory"]
 ```
-
-Select the profile on the workflow or when starting the run. Tasks without an
-HPC context continue to use the default local subprocess executor. Account,
-queue, and other Fugaku-specific PJSUB options belong in the profile's native
-or extra scheduler arguments.
 
 
 ## MPI
@@ -153,7 +160,3 @@ No wrapper or Tierkreis MPI environment variables are needed. Do not start a
 second MPI launcher inside the worker.
 
 Set `launcher = []` to run the worker command without an MPI launcher.
-
-The legacy PSI/J executor is not supported by the Rust runtime. Existing PSI/J
-documentation is retained only as legacy reference and should not be used for
-new workflows.
