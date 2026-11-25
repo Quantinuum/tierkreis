@@ -3,7 +3,7 @@ This module defines the queries for reading the workflow state from the `SQlite`
 */
 use std::collections::HashMap;
 use std::hash::BuildHasher;
-use std::ops::BitXorAssign;
+use std::ops::{BitAndAssign, Not};
 
 use bitvec::vec::BitVec;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -1180,13 +1180,19 @@ pub fn copy_node_states<'a>(
             let map_completed = node_copy_filter
                 .reset_map_elems
                 .get(&row.node_location)
-                .and_then(|bit_mask| {
-                    row.map_completed.clone().map(|existing| {
-                        let mut new = BitVec::<u8, bitvec::order::Lsb0>::from_vec(existing);
-                        new.bitxor_assign(bit_mask);
-                        new.into_vec()
-                    })
-                });
+                .map_or_else(
+                    || row.map_completed.clone(),
+                    |bit_mask| {
+                        row.map_completed.clone().map(|existing| {
+                            let mut new = BitVec::<u8, bitvec::order::Lsb0>::from_vec(existing);
+                            let mut bit_mask = bit_mask.clone();
+                            bit_mask.resize(new.len(), false);
+                            new.bitand_assign(bit_mask.not());
+                            new.into_vec()
+                        })
+                    },
+                );
+
             let new_row = if is_truncated {
                 // Reset all timestamps
                 UpsertNodeState {
