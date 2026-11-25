@@ -7,7 +7,7 @@ state is not persisted beyond the lifetime of the process.
 */
 use std::{
     collections::HashMap,
-    ops::{BitOrAssign, BitXorAssign},
+    ops::{BitAndAssign, BitOrAssign, Not},
     sync::Arc,
 };
 
@@ -651,10 +651,12 @@ impl WorkflowRunState for InMemoryWorkflowRunState {
                         if let Some(index) = node_copy_filter.reset_loop_index.get(loc) {
                             state.loop_index = Some(*index);
                         }
-                        if let Some(bitset) = node_copy_filter.reset_map_elems.get(loc)
+                        if let Some(bit_mask) = node_copy_filter.reset_map_elems.get(loc)
                             && let Some(map_completed) = state.map_completed.as_mut()
                         {
-                            map_completed.bitxor_assign(bitset);
+                            let mut bit_mask = bit_mask.clone();
+                            bit_mask.resize(map_completed.len(), false);
+                            map_completed.bitand_assign(bit_mask.not());
                         }
 
                         (loc.clone(), state)
