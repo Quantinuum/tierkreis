@@ -223,6 +223,15 @@ mod tierkreis {
         #[pyo3(get)]
         pub execution_context: Option<String>,
     }
+    #[pymethods]
+    impl PyNodeState {
+        fn __repr__(&self) -> String {
+            format!(
+                "NodeState(name={:?}, status={:?}, execution_context={:?})",
+                self.name, self.status, self.execution_context
+            )
+        }
+    }
 
     #[pyclass(name = "WorkflowSummary")]
     #[derive(Debug)]

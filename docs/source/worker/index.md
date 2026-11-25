@@ -6,11 +6,13 @@ kernelspec:
 
 # Workers
 
-A worker implements _atomic_ functionalities that will not be broken further by the controller.
+A worker implements _atomic_ functionalities that will not be broken further by the runtime.
 Tierkreis workers come in three flavors:
 
 - Builtin workers, provided by Tierkreis itself
-- User defined workers, by using the `@worker.task()` decorator or writing external ones
+- User defined workers
+  - by using the `@worker.task()` decorator in Python (called native)
+  - by wrapping arbitrary binaries  (called external)
 - Prepackaged workers from the Tierkreis developers
 
 ```{important}
@@ -32,6 +34,33 @@ native_workers/pytket_worker.md
 native_workers/quantinuum_worker.md
 native_workers/qulacs_worker.md
 ```
+
+
+## The Worker Protocol
+
+Every worker exposes named functions (tasks) with declared input and output
+ports. The port names and types form the worker's interface (`api.py`), which workflows
+use to connect tasks and validate values. The Tierkreis runtime manages the input and
+output values through its storage layer and checkpoints them; other side effects, such as writing
+additional files, are not tracked.
+
+Workers are typically called as a binary with a single argument.
+The call itself is managed by the assigned executor.
+For example invoking a native worker through the subprocess executor will call the following in a shell
+```
+tkr-<worker-name>-impl call_args
+```
+Other executors can modify how this worker is invoked, e.g. wrapping the call in a SLURM batch script.
+The `call_args` is the only argument; it is the path to a JSON [`WorkerCallArgs`](#tierkreis.data.location.WorkerCallArgs) document. 
+It identifies the function to run and maps input and output port names to file paths. 
+The worker must read each input from its path and write each result to the corresponding output path. 
+It should signal successful completion using a 0 exit; on failure, it should exit with a non-zero status.
+```{Important}
+Deprecation notice: Some of the fields are no longer supported by the runtime:
+`log_path`, `error_path`, `done_path`
+```
+See [External Workers](external_workers.md) for details and an example.
+
 
 ## Generating workers from the cli
 
@@ -69,9 +98,6 @@ The `impl.py` file is the location where you defined your worker task.
 Here you can decorate a python function with `@worker.task()` to declare a worker task.
 At runtime, `main.py` will be called by an executor (more on [executors](../executors/index.md)) and search for the correct task in it.
 See [Running Prepackaged Workers](#running-workers) for details on executing workers.
-
-The inputs and outputs are preserved with the storage layer and be tracked by Tierkreis.
-Other side-effects (e.g., writing a separate file) won't be checked.
 
 When writing a workflow you don't need to call this function directly.
 Instead you need to provide the so-called function **stubs** to the task definition, which are available in `api.py`
@@ -114,7 +140,7 @@ As alternative, you are free to publish the worker packages on pypi and add them
 ## Worker code
 
 Writing workers requires adding the `task` decorator.
-Here we will provide a simple example, the full code is in [](../examples/hello_world_graph.ipynb)
+Here we will provide a simple example, the full code is in [](../examples/first_graph.ipynb)
 Our worker will consist of a single function returning a string.
 We first instantiate a `Worker` class, which is constructed using the name of the worker.
 The name of the worker tells the executor which worker a task comes from.
@@ -141,13 +167,24 @@ but for now we keep things simple.
 For more information please see [Complex types in Tierkreis Python workers](complex_types.md).
 ```
 
-### Logging and Errors
+## Logging and Errors
 
-The Tierkreis controller will automatically collect logs and errors from workers by adding a file handler, additionally redirecting any worker output from `stdout` and `stderr` to `errors_path` and `logs_path` automatically.
-Any other output, e.g. writing debug information to a log file won't be captured.
-For convenience you can use the builtin logging functionality `worker.logger` which is an instance of a `logging.Logger`.
-Raising an exception in a worker task will terminate the graph execution.
-An example of this can be found in the [advanced examples](../examples/errors_and_debugging.ipynb)
+Stderr is automatically forwarded to the runtime in case of an error.
+Other outputs are discarded. 
+
+### OpenTelemetry tracing
+
+When runtime tracing is enabled, executors propagate
+the current OpenTelemetry context to workers through environment variables.
+An external worker can extract the W3C trace context from `TRACEPARENT` and,
+when present, `TRACESTATE`, then use it as the parent for its own spans.
+These environment names are uppercase; a standard W3C propagator may need
+them mapped to the lowercase `traceparent` and `tracestate` carrier keys.
+
+Configure an OpenTelemetry SDK and exporter in the worker to send its spans
+to a collector, and flush them before the worker exits. The runtime can be
+configured with `OTEL_EXPORTER_OTLP_ENDPOINT`; make the collector endpoint
+available to the worker as well, including on HPC compute nodes.
 
 ## Using worker tasks
 
@@ -212,64 +249,16 @@ Installing `uv add tkr-<worker>` will only provide you with the stubs, not the i
 To run the worker inside a graph you will need `uv add tkr-<worker>-impl` too.
 ```
 
-### TKR Workers
-
 The following outlines the functionality of the prepackaged workers by the tierkreis maintainers.
 Currently the following workers are provided as separate packages on pypi:
 
-- Guppy
-- IBMQ
-- Qiskit Aer
-- Pytket
-- Quantinuum Nexus
-- Quantinuum Backend
-- Qulacs
+| Worker | Functionality | Documentation |
+|---|---|---|
+| Guppy | Compile and run quantum programs written in Guppy. | [Guppy worker](native_workers/guppy_worker.md) |
+| IBMQ | Compile and run quantum circuits locally with IBMQ. | [IBMQ worker](native_workers/ibmq_worker.md) |
+| Qiskit Aer | Compile and run quantum circuits locally with Qiskit Aer. | [Qiskit Aer worker](native_workers/aer_worker.md) |
+| Pytket | Optimize circuits with the pytket compiler suite. The worker includes a subset of common operations; for a custom compilation pipeline, build your own worker. See this [example](../examples/hamiltonian.ipynb). | [Pytket worker](native_workers/pytket_worker.md) |
+| Quantinuum Nexus | Interface to the Quantinuum Nexus platform. | [Nexus worker](native_workers/nexus_worker.md) |
+| Quantinuum Backend | Compile and run quantum circuits locally with Quantinuum backends. | [Quantinuum worker](native_workers/quantinuum_worker.md) |
+| Qulacs | Compile and run quantum circuits locally with Qulacs. | [Qulacs worker](native_workers/qulacs_worker.md) |
 
-#### Guppy
-Compile and run quantim programs written in [guppy][https://guppylang.org].
-More detailed docs [here](native_workers/guppy_worker.md)
-
-#### Qiskit Aer
-
-Compile and run quantum circuits locally with Qiskit Aer.
-More detailed docs [here](native_workers/aer_worker.md).
-
-#### IBMQ
-
-Compile and run quantum circuits locally with IBMQ.
-More detailed docs [here](native_workers/ibmq_worker.md).
-
-#### Pytket
-
-The pytket compiler suite to optimize circuits.
-The worker only contains a subset of common operations.
-For a custom compilation pipeline it is advised to build your own worker.
-
-More detailed docs [here](native_workers/pytket_worker.md).
-
-**Installation**
-
-```sh
-pip install tkr-pytket-worker
-```
-
-will install an executable Python script `tkr_pytket_worker` into your virtual environment.
-
-**Example**
-
-See the [example](../examples/hamiltonian.ipynb)
-
-#### Quantinuum Nexus
-
-Interface to the Quantinuum Nexus platform.
-More detailed docs [here](native_workers/nexus_worker.md).
-
-#### Quantinuum Backend
-
-Compile and run quantum circuits locally with Quantinuum backends.
-More detailed docs [here](native_workers/quantinuum_worker.md).
-
-#### Qulacs
-
-Compile and run quantum circuits locally with Qulacs.
-More detailed docs [here](native_workers/qulacs_worker.md).

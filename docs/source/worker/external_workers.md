@@ -1,16 +1,12 @@
 # External Workers
 
-Tierkreis does not put any restrictions on workers except the general [contract](../executors/index.md).
+Tierkreis does not put any restrictions on workers except the general [protocol](../worker/index.md).
 This means that you can also write workers in your preferred language and interface it with Tierkreis.
-To incorporate the worker into a Tierkreis graph, you can either describe the interface using a subset of [TypeSpec](https://typespec.io) to generate stubs for your worker or use the untyped functions in the graph builder.
-To run a command-line worker, configure it in the
-[`SubprocessExecutor`](../executors/shell.md). The conventional command name is
-discovered automatically, or `worker_commands` can select an arbitrary binary
-or script. Write a custom executor only when the subprocess protocol is not
-sufficient.
+To incorporate the worker into a Tierkreis graph, you can describe the interface using a subset of [TypeSpec](https://typespec.io) to generate stubs for your worker.
+External workers typically run on the Subprocess or HPC Executors
+There the conventional command name is discovered automatically (for HPC they need a common installation path for compute nodes), or `worker_commands` can select an arbitrary binary or script.
 
-For a complete shell-worker example, see the
-[`signing_graph`](../examples/signing_graph.ipynb) tutorial.
+For a working example, see the [`signing_graph`](../examples/signing_graph.ipynb) tutorial.
 
 ## IDL
 
@@ -66,6 +62,20 @@ if __name__ == "__main__":
     namespace.write_stubs(tsp_path.parent / "stubs.py")
 ```
 
+## Registering External Workers with Executors
+
+Package external programs behind the Tierkreis worker protocol and assign them
+to an Executor with `worker_commands`. 
+
+```toml
+[executors.subprocess.worker_commands]
+openssl_worker = ["/opt/workers/openssl_worker/main.sh"]
+```
+
+This will register a worker named `openssl_worker` which will be called through subprocess executor.
+It would invoke `/opt/workers/openssl_worker/main.sh worker_args` at runtime.
+
+
 ## Parsing Inputs and Outputs
 
 The subprocess executor passes one argument to the invoked command: the path
@@ -77,12 +87,24 @@ such as `jq`; workers in other languages can use their standard JSON parser.
 
 ### Errors and Logging
 
-`WorkerCallArgs` also supplies `done_path`, `error_path`, and an optional
-`logs_path`. A protocol-compatible worker touches `done_path` after writing all
-outputs and writes a useful message to `error_path` when it fails. A non-zero
-exit status also tells the executor that the task failed.
+Stderr is automatically forwarded to the runtime in case of an error.
+Other outputs are discarded. 
 
-### C++ Example
+### OpenTelemetry tracing
+
+When runtime tracing is enabled, the Subprocess and HPC executors propagate
+the current OpenTelemetry context to workers through environment variables.
+An external worker can extract the W3C trace context from `TRACEPARENT` and,
+when present, `TRACESTATE`, then use it as the parent for its own spans.
+These environment names are uppercase; a standard W3C propagator may need
+them mapped to the lowercase `traceparent` and `tracestate` carrier keys.
+
+Configure an OpenTelemetry SDK and exporter in the worker to send its spans
+to a collector, and flush them before the worker exits. The runtime can be
+configured with `OTEL_EXPORTER_OTLP_ENDPOINT`; make the collector endpoint
+available to the worker as well, including on HPC compute nodes.
+
+## C++ Example
 
 This example shows how to parse the following interface:
 

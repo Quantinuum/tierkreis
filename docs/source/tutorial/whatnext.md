@@ -43,6 +43,4 @@ Finally documentation on executors
 
 [A general overview](../executors/index.md)
 
-[Shell Executors](../executors/shell.md)
-
 [Running workers with HPC Executors](../executors/hpc.md)

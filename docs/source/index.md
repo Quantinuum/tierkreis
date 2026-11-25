@@ -5,8 +5,8 @@ Tierkreis combines task-based workers with context dependent execution on variou
 
 See Tierkreis in action:
 
-<video autoplay muted loop style="max-width: 100%;">
-  <source src="../_static/demo_wf.mp4" type="video/mp4">
+<video autoplay muted loop style="display: block; max-width: 100%; margin: 0 auto;">
+  <source src="_static/demo_wf.mp4" type="video/mp4">
 </video>
 
 ## Motivation & Goal
@@ -35,6 +35,24 @@ Some of its core features are listed below:
 5. Errors and Reporting: Localized errors and debugging tools help narrow down issues. Detailed logging and OTEL provide system information.
 Automatic checkpoints help recover after errors without recomputing previous tasks.
 6. Proprietary Workers: By exposing the API users can use your software without access to the source. Third-party dependencies are minimized.
+
+## Installation
+
+Tierkreis consist of multiple packages:
+
+- `tierkreis`: the core functionality including the
+- independent [workers](./tutorial/core_concepts) consisting of API and implementation packages
+    - `tkr-*-worker`: **only the API**
+    - `tkr-*-worker-impl`: API + Implementation 
+
+The libraries can be installed with `pip` but we recommend using [uv](https://docs.astral.sh/uv/) read more in the [Getting Started](./tutorial/index.md) docs.
+
+```
+uv add tierkreis
+uv add tkr-*-worker
+```
+
+
 
 ## Introduction
 
@@ -84,7 +102,6 @@ For more advanced topics see the specific contents below.
 
 ```{toctree}
 :maxdepth: 3
-installation.md
 tutorial/index
 ```
 
