@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-11-14
+
+### Changed
+- Prepare for 3.0.1 release by @johnchildren in [#819](https://github.com/Quantinuum/tierkreis/pull/819)
+
 ## [3.0.0] - 2026-11-13
 
 ### Changed
@@ -67,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release all packages by @johnchildren in [#96](https://github.com/Quantinuum/tierkreis/pull/96)
 - Further refactoring of workers by @johnchildren in [#88](https://github.com/Quantinuum/tierkreis/pull/88)
 
+[3.0.1]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc1...v3.0.0
 [3.0.0rc1]: https://github.com/Quantinuum/tierkreis/compare/v2.1.0...v3.0.0rc1
 [2.1.0]: https://github.com/Quantinuum/tierkreis/compare/v2.0.4...v2.1.0

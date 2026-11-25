@@ -5,7 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.1] - 2026-11-13
+## [3.1.0] - 2026-11-25
+
+### Changed
+- Doc improvements by @philipp-seitz in [#838](https://github.com/Quantinuum/tierkreis/pull/838)
+- Enable dynamic graph loading in visualiser by @johnchildren in [#837](https://github.com/Quantinuum/tierkreis/pull/837)
+- Upgrade node dependencies by @johnchildren in [#836](https://github.com/Quantinuum/tierkreis/pull/836)
+- Update node dependencies by @johnchildren in [#829](https://github.com/Quantinuum/tierkreis/pull/829)
+- Upgrade QRMI dep to 0.27.0 by @johnchildren in [#828](https://github.com/Quantinuum/tierkreis/pull/828)
+- Upgrade Rust dependencies by @johnchildren in [#827](https://github.com/Quantinuum/tierkreis/pull/827)
+- Bump the uv group across 3 directories with 1 update by @dependabot[bot] in [#820](https://github.com/Quantinuum/tierkreis/pull/820)
+
+### Fixed
+- Correct handling of retry filters for maps by @johnchildren in [#840](https://github.com/Quantinuum/tierkreis/pull/840)
+- Use deterministic ordering for loading ports by @johnchildren in [#834](https://github.com/Quantinuum/tierkreis/pull/834)
+- Fix lint errors flagged by rust 1.100 by @johnchildren in [#833](https://github.com/Quantinuum/tierkreis/pull/833)
+
+## [3.0.1] - 2026-11-14
+
+### Changed
+- Prepare for 3.0.1 release by @johnchildren in [#819](https://github.com/Quantinuum/tierkreis/pull/819)
 
 ### Fixed
 - Correct node type in internal graph builder by @johnchildren in [#771](https://github.com/Quantinuum/tierkreis/pull/771)
@@ -739,6 +758,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove array type and add Vec type by @ss2165
 - Removed actix dependency from runtime. by @zrho
 
+[3.1.0]: https://github.com/Quantinuum/tierkreis/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc3...v3.0.0
 [3.0.0rc3]: https://github.com/Quantinuum/tierkreis/compare/v3.0.0rc2...v3.0.0rc3
