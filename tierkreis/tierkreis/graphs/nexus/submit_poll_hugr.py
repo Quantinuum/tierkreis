@@ -3,15 +3,16 @@
 # ruff: noqa: F821
 from typing import NamedTuple
 
-from tierkreis.builder import Graph
-from tierkreis.builtins import at, sleep
-from tierkreis.models import TKR, OpaqueType, Workflow
-from tierkreis.nexus_worker import (
+from nexus_worker import (
     get_results,
     is_running,
     start_single_job,
     upload_hugr,
 )
+
+from tierkreis.builder import Graph
+from tierkreis.builtins import at, sleep
+from tierkreis.models import TKR, OpaqueType, Workflow
 
 type Package = OpaqueType["hugr.package.Package"]
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]
