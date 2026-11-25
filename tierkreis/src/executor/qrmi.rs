@@ -21,7 +21,10 @@ use qrmi::{
     models::{Payload, TaskStatus},
 };
 use serde::{Deserialize, Serialize};
-use tokio::{sync::Mutex as AsyncMutex, task::AbortHandle};
+use tokio::{
+    sync::{Mutex as AsyncMutex, watch},
+    task::AbortHandle,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -33,8 +36,9 @@ use crate::{
         send_queued, send_running,
     },
     executor::{
-        Executor,
+        Executor, ExecutorHealth,
         interface::{TaskPlan, WorkerSpec},
+        spawn_supervised_executor,
     },
     location::Location,
 };
@@ -465,6 +469,7 @@ pub struct QrmiExecutor {
     cancel_sender: CancelSender,
     event_receiver: Mutex<Option<EventReceiver>>,
     background_abort_handle: AbortHandle,
+    health_receiver: watch::Receiver<ExecutorHealth>,
     output_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
 }
@@ -513,7 +518,7 @@ impl QrmiExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
-        let background_task = tokio::spawn(process_tasks(
+        let (background_abort_handle, health_receiver) = spawn_supervised_executor(process_tasks(
             Arc::clone(&resource),
             task_receiver,
             cancel_receiver,
@@ -528,7 +533,8 @@ impl QrmiExecutor {
             task_sender,
             cancel_sender,
             event_receiver: Mutex::new(Some(event_receiver)),
-            background_abort_handle: background_task.abort_handle(),
+            background_abort_handle,
+            health_receiver,
             output_storage_name: output_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
         })
@@ -536,6 +542,10 @@ impl QrmiExecutor {
 }
 
 impl Executor for QrmiExecutor {
+    fn health(&self) -> watch::Receiver<ExecutorHealth> {
+        self.health_receiver.clone()
+    }
+
     fn workers(&self) -> BoxFuture<'_, miette::Result<Vec<WorkerSpec>>> {
         futures::future::ok(vec![WorkerSpec {
             worker_name: WORKER_NAME.to_string(),
