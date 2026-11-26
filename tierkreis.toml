@@ -14,6 +14,13 @@ type = "Subprocess"
 subprocess_storage_name = "file"
 output_storage_name = "file"
 
+
+[logging_config]
+log_file = "./.runtime/tierkreis.log"
+log_format = "compact"
+log_level = "debug"
+service_name = "tierkreis"
+
 [runtime_state]
 type = "Sqlite"
 memory = false
