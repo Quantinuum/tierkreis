@@ -22,7 +22,7 @@ use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
-use crate::state::interface::{WorkflowRunStateSummary, WorkflowSummary};
+use crate::state::interface::{WorkflowRunStateSummary};
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
     UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
@@ -32,31 +32,6 @@ use crate::workflow_state_query::NodeCopyFilter;
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
-}
-
-/// List saved workflow identifiers and names without loading graph definitions.
-///
-/// # Errors
-///
-/// Returns an error if the database query fails or an identifier is invalid.
-pub async fn list_workflows(
-    conn: &mut impl AsyncConnection<Backend = Sqlite>,
-) -> miette::Result<Vec<WorkflowSummary>> {
-    use crate::state::schema::workflows::dsl as wf;
-
-    let rows = wf::workflows
-        .select((wf::id, wf::name))
-        .load::<(String, Option<String>)>(conn)
-        .await
-        .into_diagnostic()?;
-    rows.into_iter()
-        .map(|(id, name)| {
-            Ok(WorkflowSummary {
-                workflow_id: uuid::Uuid::parse_str(&id).into_diagnostic()?,
-                name,
-            })
-        })
-        .collect()
 }
 
 /// Read a workflow graph from the workflows table.
