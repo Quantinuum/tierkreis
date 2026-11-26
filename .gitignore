@@ -168,3 +168,6 @@ devenv.local.nix
 
 # Test directory lockfiles
 tierkreis/tests/workers/**/uv.lock
+
+# local runtime directory defined in tierkreis.toml
+/.runtime
