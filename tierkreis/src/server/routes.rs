@@ -1,4 +1,7 @@
-use super::models::{AppState, RuntimeMetadata, WorkflowDisplay};
+use super::models::{
+    AppError, AppState, AttemptDisplay, AttemptQuery, RestartResponse, RuntimeMetadata,
+    WorkflowDisplay, WorkflowRunDisplay,
+};
 
 use axum::{
     Json,
@@ -10,7 +13,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{
     sync::watch,
     time::{MissedTickBehavior, interval},
@@ -36,6 +43,27 @@ pub async fn get_info() -> Json<RuntimeMetadata> {
     })
 }
 
+async fn selected_run(
+    state: &AppState,
+    workflow_id: Uuid,
+    run_id: Uuid,
+    attempt: u32,
+) -> HandlerResult<Arc<dyn WorkflowRunState>> {
+    if !state
+        .runtime_state
+        .has_workflow_run_attempt(workflow_id, run_id, attempt)
+        .await?
+    {
+        return Err(AppError::not_found(&format!(
+            "Unknown workflow {workflow_id}, run {run_id}, attempt {attempt}"
+        )));
+    }
+    Ok(state
+        .runtime_state
+        .load_workflow_run_state(run_id, attempt)
+        .await?)
+}
+
 /// Notify the frontend to refresh graph state, including changes from another process.
 ///
 /// # Errors
@@ -43,37 +71,30 @@ pub async fn get_info() -> Json<RuntimeMetadata> {
 /// Returns an error if the node location string cannot be parsed or the workflow run is unknown.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
     ),
-    responses((status = 101, description = "Graph refresh notifications"))
+    responses(
+        (status = 101, description = "Graph refresh notifications"),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
+    )
 )]
 pub async fn subscribe_node_updates(
     State(state): State<AppState>,
-    Path((run_id, location_str)): Path<(Uuid, String)>,
+    Path((workflow_id, run_id, location_str)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<AttemptQuery>,
     websocket: WebSocketUpgrade,
 ) -> HandlerResult<Response> {
     parse_location(&location_str)?;
+    let selected = selected_run(&state, workflow_id, run_id, query.attempt).await?;
     let run_state = if state.display_graph.is_some() {
         None
     } else {
-        if !state
-            .runtime_state
-            .list_workflow_run_summaries()
-            .await?
-            .iter()
-            .any(|summary| summary.run_id == run_id)
-        {
-            return Err(miette::miette!("Unknown workflow run {run_id}").into());
-        }
-        Some(
-            state
-                .runtime_state
-                .load_workflow_run_state(run_id, 0)
-                .await?,
-        )
+        Some(selected)
     };
     let mut update_receiver = state.update_receiver;
     update_receiver.mark_unchanged();
@@ -149,34 +170,57 @@ async fn stream_node_updates(
 #[utoipa::path(
     get,
     path = "/workflows/",
-    responses((status = OK, body = Vec<WorkflowDisplay>))
+    responses(
+        (status = OK, body = Vec<WorkflowDisplay>),
+        (status = 500, description = "Error listing workflows", body = String, content_type = "text/plain"),
+    )
 )]
 pub async fn list_workflows(
     State(state): State<AppState>,
 ) -> HandlerResult<Json<Vec<WorkflowDisplay>>> {
     let summaries = state.runtime_state.list_workflow_run_summaries().await?;
-
-    let displays: Vec<WorkflowDisplay> = summaries
-        .into_iter()
-        .map(|s| {
-            let (id_int, _) = s.run_id.as_u64_pair();
-            let errors: Vec<String> = s
-                .errored_locations
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect();
-            WorkflowDisplay {
-                id: s.run_id, // TODO: THIS IS THE RUN_ID NOT THE WORKFLOW_ID, FIX THIS THIS ALSO AFFECTS `list_nodes()`
-                id_int,
-                name: s.name,
-                start_time: s.started_time.map_or_else(String::new, |t| t.to_rfc3339()),
-                errors,
-                tkr_version: env!("CARGO_PKG_VERSION").to_string(), // TODO: store the metadata in the database
-            }
-        })
-        .collect();
-
-    Ok(Json(displays))
+    let mut workflows: BTreeMap<Uuid, (Option<String>, BTreeMap<Uuid, Vec<AttemptDisplay>>)> = BTreeMap::new();
+    for summary in summaries {
+        let (_, runs) = workflows
+            .entry(summary.workflow_id)
+            .or_insert_with(|| (summary.name.clone(), BTreeMap::new()));
+        runs.entry(summary.run_id)
+            .or_default()
+            .push(AttemptDisplay {
+                attempt: summary.attempt,
+                start_time: summary.started_time.map(|time| time.to_rfc3339()),
+                queued_time: summary.queued_time.map(|time| time.to_rfc3339()),
+                complete_time: summary.complete_time.map(|time| time.to_rfc3339()),
+                cancelled_time: summary.cancelled_time.map(|time| time.to_rfc3339()),
+                error_time: summary.error_time.map(|time| time.to_rfc3339()),
+                errors: summary
+                    .errored_locations
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                tkr_version: env!("CARGO_PKG_VERSION").to_string(),
+            });
+    }
+    Ok(Json(
+        workflows
+            .into_iter()
+            .map(|(workflow_id, (name, runs))| WorkflowDisplay {
+                workflow_id,
+                name,
+                runs: runs
+                    .into_iter()
+                    .rev()
+                    .map(|(workflow_run_id, mut attempts)| {
+                        attempts.sort_by_key(|attempt| attempt.attempt);
+                        WorkflowRunDisplay {
+                            workflow_run_id,
+                            attempts,
+                        }
+                    })
+                    .collect(),
+            })
+            .collect(),
+    ))
 }
 
 /// Get the graphs for a specific workflow.
@@ -186,21 +230,24 @@ pub async fn list_workflows(
 /// Returns an internal server error if the workflow is not found or if the graph cannot be built.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/graphs",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/graphs",
     params(
         ("workflow_id" = Uuid, Path, description =" The workflow uuid"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
         GraphsQuery,
     ),
     responses(
         (status = OK, body = GraphsResponse),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
         (status = 500, description = "Error building graph"),
     )
 )]
 pub async fn list_nodes(
     State(state): State<AppState>,
-    Path(run_id): Path<Uuid>, //TODO currently we only have the RUN_ID from the frontend
+    Path((workflow_id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<GraphsQuery>,
 ) -> HandlerResult<Json<GraphsResponse>> {
+    let run_state = selected_run(&state, workflow_id, run_id, query.attempt).await?;
     if let Some(graph_data) = &state.display_graph {
         let mut graphs = HashMap::new();
         for loc_str in &query.locs {
@@ -210,14 +257,6 @@ pub async fn list_nodes(
         }
         return Ok(Json(GraphsResponse { graphs }));
     }
-
-    // Once we get the actual workflow ID the logic needs to be reversed
-    // Or the frontend needs to start submitting run_ids
-    let run_state = state
-        .runtime_state
-        .load_workflow_run_state(run_id, 0)
-        .await?;
-    let workflow_id = run_state.workflow_id();
 
     tracing::info!("Listing nodes for {}", run_id);
 
@@ -283,31 +322,31 @@ fn parse_location(s: &str) -> miette::Result<Location> {
 /// Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}/outputs",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
     ),
     responses(
         (status = OK, description = "JSON object of port name to value"),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
         (status = 500, description = "Error loading outputs"),
     )
 )]
 pub async fn get_all_outputs(
     State(state): State<AppState>,
-    Path((run_id, location_str)): Path<(Uuid, String)>,
+    Path((workflow_id, run_id, location_str)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<AttemptQuery>,
 ) -> HandlerResult<Json<HashMap<String, serde_json::Value>>> {
+    let run_state = selected_run(&state, workflow_id, run_id, query.attempt).await?;
     if let Some(graph_data) = &state.display_graph {
         let location = parse_location(&location_str)?;
         return Ok(Json(super::nodes::graph_data_outputs(
             graph_data, &location,
         )?));
     }
-
-    let run_state = state
-        .runtime_state
-        .load_workflow_run_state(run_id, 0)
-        .await?;
 
     let loc = parse_location(&location_str)?;
     let node_state = run_state.read(&loc).await?;
@@ -323,21 +362,25 @@ pub async fn get_all_outputs(
 /// Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}/outputs/{port_name}",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
         ("port_name" = String, Path, description = "Output port name"),
     ),
     responses(
         (status = OK, description = "Raw output value as JSON or text"),
-        (status = 404, description = "Output not found"),
+        (status = 404, description = "Workflow run attempt or output not found", body = String, content_type = "text/plain"),
     )
 )]
 pub async fn get_single_output(
     State(state): State<AppState>,
-    Path((run_id, node_location_str, port_name)): Path<(Uuid, String, String)>,
+    Path((workflow_id, run_id, node_location_str, port_name)): Path<(Uuid, Uuid, String, String)>,
+    Query(query): Query<AttemptQuery>,
 ) -> HandlerResult<Json<serde_json::Value>> {
+    let run_state = selected_run(&state, workflow_id, run_id, query.attempt).await?;
     if let Some(graph_data) = &state.display_graph {
         let location = parse_location(&node_location_str)?;
         let outputs = super::nodes::graph_data_outputs(graph_data, &location)?;
@@ -348,11 +391,6 @@ pub async fn get_single_output(
                 .unwrap_or(serde_json::Value::Null),
         ));
     }
-
-    let run_state = state
-        .runtime_state
-        .load_workflow_run_state(run_id, 0)
-        .await?;
 
     let loc = parse_location(&node_location_str)?;
     let node_state = run_state.read(&loc).await?;
@@ -367,27 +405,26 @@ pub async fn get_single_output(
 /// Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the input value cannot be loaded.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}/inputs/{port_name}",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
         ("port_name" = String, Path, description = "Output port name"),
     ),
     responses(
         (status = OK, description = "Input value as JSON or text"),
-        (status = 404, description = "Input not found"),
+        (status = 404, description = "Workflow run attempt or input not found", body = String, content_type = "text/plain"),
     )
 )]
 pub async fn get_input(
     State(state): State<AppState>,
-    Path((run_id, node_location_str, port_name)): Path<(Uuid, String, String)>,
+    Path((workflow_id, run_id, node_location_str, port_name)): Path<(Uuid, Uuid, String, String)>,
+    Query(query): Query<AttemptQuery>,
 ) -> HandlerResult<Response> {
-    let run_state = state
-        .runtime_state
-        .load_workflow_run_state(run_id, 0)
-        .await?;
+    let run_state = selected_run(&state, workflow_id, run_id, query.attempt).await?;
 
-    let workflow_id = run_state.workflow_id();
     let (_name, top_level_graph) = state.runtime_state.load_workflow(workflow_id).await?;
 
     let loc = parse_location(&node_location_str)?;
@@ -463,24 +500,25 @@ pub async fn get_input(
 /// Returns an internal server error if the workflow run state cannot be loaded or if the error logs cannot be loaded.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}/errors",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}/errors",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
     ),
     responses(
         (status = OK, description = "Error detail for the node"),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
         (status = 500, description = "Error loading error detail"),
     )
 )]
 pub async fn get_node_errors(
     State(state): State<AppState>,
-    Path((run_id, location_str)): Path<(Uuid, String)>,
+    Path((workflow_id, run_id, location_str)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<AttemptQuery>,
 ) -> HandlerResult<Response> {
-    let run_state = state
-        .runtime_state
-        .load_workflow_run_state(run_id, 0)
-        .await?;
+    let run_state = selected_run(&state, workflow_id, run_id, query.attempt).await?;
 
     let loc = parse_location(&location_str)?;
     let node_state = run_state.read(&loc).await?;
@@ -490,43 +528,49 @@ pub async fn get_node_errors(
         .into_response())
 }
 
-/// Restart a task node and return the locations invalidated by the restart.
+/// Restart a task node and return the new attempt and invalidated locations.
 ///
 /// # Errors
 ///
 /// Returns an internal server error if the workflow run or node cannot be restarted.
 #[utoipa::path(
     post,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}/restart",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}/restart",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
     ),
     responses(
-        (status = OK, body = Vec<String>),
+        (status = OK, body = RestartResponse),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
         (status = 500, description = "Error restarting node"),
     )
 )]
 pub async fn restart_node(
     State(state): State<AppState>,
-    Path((run_id, location_str)): Path<(Uuid, String)>,
-) -> HandlerResult<Json<Vec<String>>> {
+    Path((workflow_id, run_id, location_str)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<AttemptQuery>,
+) -> HandlerResult<Json<RestartResponse>> {
+    selected_run(&state, workflow_id, run_id, query.attempt).await?;
     if state.display_graph.is_some() {
-        return Ok(Json(Vec::new()));
+        return Err(miette::miette!("Static graphs cannot be restarted").into());
     }
 
     let location = parse_location(&location_str)?;
-    let (_, invalidated) = state
+    let (attempt, invalidated) = state
         .runtime_state
-        .restart_task(&state.asset_registry, run_id, 0, vec![location])
+        .restart_task(&state.asset_registry, run_id, query.attempt, vec![location])
         .await?;
 
-    Ok(Json(
-        invalidated
+    Ok(Json(RestartResponse {
+        attempt,
+        invalidated: invalidated
             .into_iter()
             .map(|location| location.to_string())
             .collect(),
-    ))
+    }))
 }
 
 #[allow(unused)]
@@ -537,20 +581,25 @@ pub async fn restart_node(
 /// Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/nodes/{node_location_str}/logs",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}/logs",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
     ),
     responses(
         (status = OK, description = "Log detail for the node"),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
         (status = 500, description = "Error loading log detail"),
     )
 )]
 pub async fn get_node_logs(
     State(state): State<AppState>,
-    Path((run_id, location_str)): Path<(Uuid, String)>,
+    Path((workflow_id, run_id, location_str)): Path<(Uuid, Uuid, String)>,
+    Query(query): Query<AttemptQuery>,
 ) -> HandlerResult<Response> {
+    selected_run(&state, workflow_id, run_id, query.attempt).await?;
     Ok("Not implemented".to_string().into_response())
 }
 
@@ -562,19 +611,24 @@ pub async fn get_node_logs(
 /// Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
 #[utoipa::path(
     get,
-    path = "/workflows/{workflow_id}/logs",
+    path = "/workflows/{workflow_id}/runs/{workflow_run_id}/logs",
     params(
-        ("workflow_id" = Uuid, Path, description = "Run ID"),
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
     ),
     responses(
         (status = OK, description = "Log detail for the workflow"),
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
         (status = 500, description = "Error loading log detail"),
     )
 )]
 pub async fn get_workflow_logs(
     State(state): State<AppState>,
-    Path(run_id): Path<Uuid>,
+    Path((workflow_id, run_id)): Path<(Uuid, Uuid)>,
+    Query(query): Query<AttemptQuery>,
 ) -> HandlerResult<Response> {
+    selected_run(&state, workflow_id, run_id, query.attempt).await?;
     Ok("Not implemented".to_string().into_response())
 }
 
@@ -595,7 +649,13 @@ mod tests {
     async fn node_update_socket(
         runtime_state: Arc<dyn RuntimeState>,
         run_id: Uuid,
+        attempt: u32,
     ) -> (TestServer, TestWebSocket) {
+        let run_state = runtime_state
+            .load_workflow_run_state(run_id, attempt)
+            .await
+            .unwrap();
+        let workflow_id = run_state.workflow_id();
         let state = AppState {
             update_receiver: runtime_state.listen(),
             runtime_state,
@@ -604,13 +664,15 @@ mod tests {
         };
         let app = Router::new()
             .route(
-                "/workflows/{workflow_id}/nodes/{node_location_str}",
+                "/workflows/{workflow_id}/runs/{workflow_run_id}/nodes/{node_location_str}",
                 get(subscribe_node_updates),
             )
             .with_state(state);
         let server = TestServer::builder().http_transport().build(app);
         let socket = server
-            .get_websocket(&format!("/workflows/{run_id}/nodes/-"))
+            .get_websocket(&format!(
+                "/workflows/{workflow_id}/runs/{run_id}/nodes/-?attempt={attempt}"
+            ))
             .await
             .into_websocket()
             .await;
@@ -618,10 +680,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case::in_memory(false)]
-    #[case::sqlite(true)]
+    #[case::in_memory(false, 0)]
+    #[case::sqlite(true, 0)]
+    #[case::in_memory_retry(false, 1)]
+    #[case::sqlite_retry(true, 1)]
     #[tokio::test(flavor = "multi_thread")]
-    async fn runtime_events_refresh_before_next_poll(#[case] sqlite: bool) -> miette::Result<()> {
+    async fn runtime_events_refresh_before_next_poll(
+        #[case] sqlite: bool,
+        #[case] attempt: u32,
+    ) -> miette::Result<()> {
         let runtime_state: Arc<dyn RuntimeState> = if sqlite {
             Arc::new(SqliteRuntimeState::try_new_in_memory().await?)
         } else {
@@ -633,7 +700,14 @@ mod tests {
         let run_state = runtime_state
             .new_workflow_run_state(workflow_id, HashMap::new())
             .await?;
-        let (_server, mut socket) = node_update_socket(runtime_state, run_state.run_id()).await;
+        let run_state = if attempt == 0 {
+            run_state
+        } else {
+            run_state.write(WorkflowRunEvent::Completed {}).await?;
+            runtime_state.new_attempt(run_state.run_id()).await?
+        };
+        let (_server, mut socket) =
+            node_update_socket(runtime_state, run_state.run_id(), attempt).await;
         timeout(
             Duration::from_secs(2),
             socket.assert_receive_text("refresh"),
@@ -683,7 +757,7 @@ mod tests {
         let reader = Arc::new(SqliteRuntimeState::try_new_with_url(database_url).await?);
         let mut updates = reader.listen();
         updates.mark_unchanged();
-        let (_server, mut socket) = node_update_socket(reader, run_state.run_id()).await;
+        let (_server, mut socket) = node_update_socket(reader, run_state.run_id(), 0).await;
         timeout(
             Duration::from_secs(2),
             socket.assert_receive_text("refresh"),

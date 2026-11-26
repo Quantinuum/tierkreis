@@ -65,12 +65,20 @@ def visualize_graph(graph_data: GraphData | Workflow | Graph, port: int = 3000) 
     else:
         raise TimeoutError("Timed out waiting for the Tierkreis visualization server")
 
-    if not workflows:
+    if not workflows or not workflows[0]["runs"]:
         raise RuntimeError("The Rust server did not register the graph")
 
+    workflow = workflows[0]
+    run = workflow["runs"][0]
+    if not run["attempts"]:
+        raise RuntimeError("The Rust server did not register a graph attempt")
+    attempt = run["attempts"][0]["attempt"]
     print(f"Tierkreis visualization is running at {base_url}", flush=True)
     print("Press Ctrl+C to stop the server.", flush=True)
-    webbrowser.open(f"{base_url}/workflows/{workflows[0]['id']}/nodes/-")
+    webbrowser.open(
+        f"{base_url}/workflows/{workflow['workflow_id']}"
+        f"/runs/{run['workflow_run_id']}/nodes/-?attempt={attempt}"
+    )
     try:
         while not stopped.wait(timeout=0.1):
             pass
