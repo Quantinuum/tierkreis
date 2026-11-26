@@ -156,6 +156,8 @@ async fn stream_node_updates(
     }
 }
 
+type WorkflowAttemptMap = BTreeMap<Uuid, Vec<AttemptDisplay>>;
+type WorkflowNameMap = BTreeMap<Uuid, (Option<String>, WorkflowAttemptMap)>;
 /// List all workflows in the database, returning a summary of each.
 ///
 /// # Errors
@@ -173,8 +175,7 @@ pub async fn list_workflows(
     State(state): State<AppState>,
 ) -> HandlerResult<Json<Vec<WorkflowDisplay>>> {
     let summaries = state.runtime_state.list_workflow_run_summaries().await?;
-    let mut workflows: BTreeMap<Uuid, (Option<String>, BTreeMap<Uuid, Vec<AttemptDisplay>>)> =
-        BTreeMap::new();
+    let mut workflows: WorkflowNameMap = BTreeMap::new();
     for summary in summaries {
         let (_, runs) = workflows
             .entry(summary.workflow_id)
