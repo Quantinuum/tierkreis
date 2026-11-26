@@ -64,7 +64,6 @@ pub struct WorkflowRunStateSummary {
     pub errored_locations: Vec<Location>,
 }
 
-
 /// [`NodeState`] is a struct that stores the possible state that a node
 /// in the Workflow graph can be in.
 ///
@@ -131,15 +130,6 @@ impl NodeState {
 /// state when the process last exited. Implementations without durable storage
 /// may treat this as a no-op.
 pub trait RuntimeState: Debug + Send + Sync {
-
-    /// Check workflow/run/attempt identity
-    fn has_workflow_run_attempt(
-        &self,
-        workflow_id: Uuid,
-        run_id: Uuid,
-        attempt: u32,
-    ) -> BoxFuture<'_, miette::Result<bool>>;
-
     /// Retrieve the [`WorkflowGraph`] specified by id.
     fn load_workflow(
         &self,

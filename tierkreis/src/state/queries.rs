@@ -22,7 +22,7 @@ use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
-use crate::state::interface::{WorkflowRunStateSummary};
+use crate::state::interface::WorkflowRunStateSummary;
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
     UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
@@ -104,34 +104,6 @@ pub async fn read_workflow_run(
         .await
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to query workflow run"))
-}
-
-/// Check that a run attempt belongs to a workflow.
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
-pub async fn has_workflow_run(
-    conn: &mut impl AsyncConnection<Backend = Sqlite>,
-    workflow_id: uuid::Uuid,
-    run_id: uuid::Uuid,
-    attempt: u32,
-) -> miette::Result<bool> {
-    use crate::state::schema::{workflow_run_attempts::dsl as wra, workflow_runs::dsl as wr};
-
-    let Ok(attempt) = i32::try_from(attempt) else {
-        return Ok(false);
-    };
-    diesel::select(diesel::dsl::exists(
-        wr::workflow_runs
-            .inner_join(wra::workflow_run_attempts)
-            .filter(wr::workflow_id.eq(workflow_id.to_string()))
-            .filter(wr::id.eq(run_id.to_string()))
-            .filter(wra::attempt.eq(attempt)),
-    ))
-    .get_result(conn)
-    .await
-    .into_diagnostic()
 }
 
 /// Insert a workflow run row.
