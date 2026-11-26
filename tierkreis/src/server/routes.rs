@@ -361,7 +361,6 @@ pub async fn get_all_outputs(
     get,
     path = "/runs/{workflow_run_id}/nodes/{node_location_str}/outputs/{port_name}",
     params(
-        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
         ("workflow_run_id" = Uuid, Path, description = "Run ID"),
         AttemptQuery,
         ("node_location_str" = String, Path, description = "Location string"),
