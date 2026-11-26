@@ -8,23 +8,25 @@ const fetchClient = createFetchClient<paths>({
 });
 const $api = createClient(fetchClient);
 
-export const fetchLogs = async (workflow_id: string) => {
-  const res = await fetchClient.GET("/api/workflows/{workflow_id}/logs", {
-    params: { path: { workflow_id } },
+export const fetchLogs = async (workflow_run_id: string) => {
+  const res = await fetchClient.GET("/api/runs/{workflow_run_id}/logs", {
+    params: { path: { workflow_run_id } },
     parseAs: "text",
   });
   return res.error ? "Failed to fetch logs." : res.data || "No logs.";
 };
 
 export const fetchOutput = async (
-  workflow_id: string,
+  workflow_run_id: string,
   node_location_str: string,
   port_name: string,
 ) => {
   const res = await fetchClient.GET(
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}",
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs/{port_name}",
     {
-      params: { path: { workflow_id, node_location_str, port_name } },
+      params: {
+        path: { workflow_run_id, node_location_str, port_name },
+      },
       parseAs: "text",
     },
   );
@@ -32,13 +34,13 @@ export const fetchOutput = async (
 };
 
 export const fetchOutputs = async (
-  workflow_id: string,
+  workflow_run_id: string,
   node_location_str: string,
 ) => {
   const res = await fetchClient.GET(
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs",
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs",
     {
-      params: { path: { workflow_id, node_location_str } },
+      params: { path: { workflow_run_id, node_location_str } },
       parseAs: "text",
     },
   );
@@ -46,53 +48,52 @@ export const fetchOutputs = async (
 };
 
 export const fetchErrors = async (
-  workflow_id: string,
+  workflow_run_id: string,
   node_location_str: string,
 ) => {
-  const params = { path: { workflow_id, node_location_str } };
+  const params = { path: { workflow_run_id, node_location_str } };
   const res = await fetchClient.GET(
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors",
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/errors",
     { params, parseAs: "text" },
   );
   return res.data ?? "No errors.";
 };
 
 export const fetchNodeLogs = async (
-  workflow_id: string,
+  workflow_run_id: string,
   node_location_str: string,
 ) => {
-  const params = { path: { workflow_id, node_location_str } };
+  const params = { path: { workflow_run_id, node_location_str } };
   const res = await fetchClient.GET(
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs",
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/logs",
     { params, parseAs: "text" },
   );
   return res.data ?? "No logs.";
 };
 
 export const restartNode = async (
-  workflow_id: string,
+  workflow_run_id: string,
   node_location_str: string,
-): Promise<string[]> => {
-  const params = { path: { workflow_id, node_location_str } };
+) => {
+  const params = { path: { workflow_run_id, node_location_str } };
   const res = await fetchClient.POST(
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/restart",
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/restart",
     { params },
   );
-  if (res.error) {
-    console.log("Failed to restart node.");
-    return [];
+  if (!res.response.ok || !res.data) {
+    throw new Error(res.error ? String(res.error) : "Failed to restart node.");
   }
-  return res.data ?? [];
+  return res.data;
 };
 
 export const useInfoQuery = () => $api.useQuery("get", "/api/info");
 export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
-export const useLogsQuery = (workflow_id: string) =>
-  $api.useQuery("get", "/api/workflows/{workflow_id}/logs", {
-    params: { path: { workflow_id } },
+export const useLogsQuery = (workflow_run_id: string) =>
+  $api.useQuery("get", "/api/runs/{workflow_run_id}/logs", {
+    params: { path: { workflow_run_id } },
     parseAs: "text",
   });
-export const useEvalQuery = (workflow_id: string, openEvals: string[]) =>
-  $api.useQuery("get", "/api/workflows/{workflow_id}/graphs", {
-    params: { path: { workflow_id }, query: { locs: openEvals } },
+export const useEvalQuery = (workflow_run_id: string, openEvals: string[]) =>
+  $api.useQuery("get", "/api/runs/{workflow_run_id}/graphs", {
+    params: { path: { workflow_run_id }, query: { locs: openEvals } },
   });
