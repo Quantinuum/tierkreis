@@ -3,21 +3,22 @@
 # ruff: noqa: F821
 from typing import Literal, NamedTuple
 
-from tierkreis.aer_worker import (
+from aer_worker import (
     get_compiled_circuit as aer_compile,
 )
-from tierkreis.aer_worker import (
+from aer_worker import (
     run_circuit as aer_run,
 )
+from qulacs_worker import (
+    get_compiled_circuit as qulacs_compile,
+)
+from qulacs_worker import (
+    run_circuit as qulacs_run,
+)
+
 from tierkreis.builder import Graph
 from tierkreis.builtins import str_eq, tkr_zip, untuple
 from tierkreis.models import TKR, OpaqueType, Workflow
-from tierkreis.qulacs_worker import (
-    get_compiled_circuit as qulacs_compile,
-)
-from tierkreis.qulacs_worker import (
-    run_circuit as qulacs_run,
-)
 
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]
 type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]

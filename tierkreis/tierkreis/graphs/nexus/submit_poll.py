@@ -3,15 +3,16 @@
 # ruff: noqa: F821
 from typing import NamedTuple
 
-from tierkreis.builder import Graph
-from tierkreis.builtins import sleep
-from tierkreis.models import TKR, OpaqueType, Workflow
-from tierkreis.nexus_worker import (
+from nexus_worker import (
     get_results,
     is_running,
     start_execute_job,
     upload_circuit,
 )
+
+from tierkreis.builder import Graph
+from tierkreis.builtins import sleep
+from tierkreis.models import TKR, OpaqueType, Workflow
 
 type Circuit = OpaqueType["pytket._tket.circuit.Circuit"]
 type BackendResult = OpaqueType["pytket.backends.backendresult.BackendResult"]

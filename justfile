@@ -152,8 +152,6 @@ worker-api-generate name:
   #!/usr/bin/env bash
   cd "tierkreis_workers/{{name}}_worker/tkr_{{name}}_worker_impl"
   {{ uvrun("dev", "main.py --stubs-path ../api/api.py") }}
-  cd ../../..
-  cp 'tierkreis_workers/{{name}}_worker/api/api.py' 'tierkreis/tierkreis/{{name}}_worker.py'
 
 
 [private]
