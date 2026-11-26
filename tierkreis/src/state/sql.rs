@@ -26,22 +26,11 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
-    asset_storage::AssetSpec,
-    event::{NodeEvent, WorkflowRunEvent},
-    graph::WorkflowGraph,
-    state::{
-        interface::{RuntimeWatchState, WorkflowRunStateSummary},
-        models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun},
-        queries::{
-            add_run_attempt_metadata, copy_inputs, copy_node_states, get_workflow_run_summary,
-            insert_workflow, insert_workflow_run, insert_workflow_run_attempt,
-            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries, max_attempt,
-            read_node_state, read_node_states, read_node_states_by_name, read_run_attempt_metadata,
-            read_workflow, read_workflow_run, read_workflow_run_input_from_location,
-            read_workflow_run_inputs, update_node_state, update_workflow_run,
+    asset_storage::AssetSpec, event::{NodeEvent, WorkflowRunEvent}, graph::WorkflowGraph, state::{
+        interface::{RuntimeWatchState, WorkflowRunStateSummary}, models::{NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, UpsertWorkflowRun}, queries::{
+            add_run_attempt_metadata, copy_inputs, copy_node_states, get_workflow_run_summary, has_workflow_run, insert_workflow, insert_workflow_run, insert_workflow_run_attempt, insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries, max_attempt, read_node_state, read_node_states, read_node_states_by_name, read_run_attempt_metadata, read_workflow, read_workflow_run, read_workflow_run_input_from_location, read_workflow_run_inputs, update_node_state, update_workflow_run,
         },
-    },
-    workflow_state_query::NodeCopyFilter,
+    }, workflow_state_query::NodeCopyFilter,
 };
 use crate::{
     event::{NodeStatus, RunningStateUpdate},
@@ -271,6 +260,19 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
+    fn has_workflow_run_attempt(
+        &self,
+        workflow_id: Uuid,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> BoxFuture<'_, miette::Result<bool>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            has_workflow_run(&mut conn, workflow_id, run_id, attempt).await
+        }
+        .boxed()
+    }
+
     fn load_workflow(
         &self,
         workflow_id: Uuid,

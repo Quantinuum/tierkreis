@@ -22,7 +22,7 @@ use serde_json;
 
 use crate::asset_storage::AssetSpec;
 use crate::location::Location;
-use crate::state::interface::WorkflowRunStateSummary;
+use crate::state::interface::{WorkflowRunStateSummary, WorkflowSummary};
 use crate::state::models::{
     NewNodeOutput, NewWorkflow, NewWorkflowRun, NewWorkflowRunInput, NodeOutput, NodeState,
     UpsertNodeState, UpsertWorkflowRun, Workflow, WorkflowRun, WorkflowRunAttempt,
@@ -32,6 +32,31 @@ use crate::workflow_state_query::NodeCopyFilter;
 
 fn utc_timestamp(ts: NaiveDateTime) -> DateTime<Utc> {
     DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc)
+}
+
+/// List saved workflow identifiers and names without loading graph definitions.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails or an identifier is invalid.
+pub async fn list_workflows(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+) -> miette::Result<Vec<WorkflowSummary>> {
+    use crate::state::schema::workflows::dsl as wf;
+
+    let rows = wf::workflows
+        .select((wf::id, wf::name))
+        .load::<(String, Option<String>)>(conn)
+        .await
+        .into_diagnostic()?;
+    rows.into_iter()
+        .map(|(id, name)| {
+            Ok(WorkflowSummary {
+                workflow_id: uuid::Uuid::parse_str(&id).into_diagnostic()?,
+                name,
+            })
+        })
+        .collect()
 }
 
 /// Read a workflow graph from the workflows table.
@@ -104,6 +129,34 @@ pub async fn read_workflow_run(
         .await
         .into_diagnostic()
         .wrap_err_with(|| miette!("Failed to query workflow run"))
+}
+
+/// Check that a run attempt belongs to a workflow.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn has_workflow_run(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+    workflow_id: uuid::Uuid,
+    run_id: uuid::Uuid,
+    attempt: u32,
+) -> miette::Result<bool> {
+    use crate::state::schema::{workflow_run_attempts::dsl as wra, workflow_runs::dsl as wr};
+
+    let Ok(attempt) = i32::try_from(attempt) else {
+        return Ok(false);
+    };
+    diesel::select(diesel::dsl::exists(
+        wr::workflow_runs
+            .inner_join(wra::workflow_run_attempts)
+            .filter(wr::workflow_id.eq(workflow_id.to_string()))
+            .filter(wr::id.eq(run_id.to_string()))
+            .filter(wra::attempt.eq(attempt)),
+    ))
+    .get_result(conn)
+    .await
+    .into_diagnostic()
 }
 
 /// Insert a workflow run row.

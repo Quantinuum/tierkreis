@@ -94,6 +94,21 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
+    fn has_workflow_run_attempt(
+        &self,
+        workflow_id: Uuid,
+        run_id: Uuid,
+        attempt: u32,
+    ) -> BoxFuture<'_, miette::Result<bool>> {
+        future::ok(
+            self.inner
+                .runs
+                .get(&(run_id, attempt))
+                .is_some_and(|run| run.workflow_id == workflow_id),
+        )
+        .boxed()
+    }
+
     fn load_workflow(
         &self,
         workflow_id: Uuid,
