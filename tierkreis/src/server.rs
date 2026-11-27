@@ -35,6 +35,7 @@ fn api_router() -> OpenApiRouter<models::AppState> {
         .routes(routes!(routes::get_single_output))
         .routes(routes!(routes::get_input))
         .routes(routes!(routes::get_node_errors))
+        .routes(routes!(routes::get_node_metadata))
         .routes(routes!(routes::get_node_logs))
         .routes(routes!(routes::get_workflow_logs))
         .routes(routes!(routes::restart_node))
