@@ -26,6 +26,7 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
     navigate({
       to: "/runs/$wrid/nodes/$loc",
       params: { wrid: wid, loc: node_loc },
+      search: (previous) => previous,
     });
   };
 
