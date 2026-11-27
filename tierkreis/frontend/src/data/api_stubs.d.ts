@@ -147,6 +147,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get metadata for a specific node in a workflow run.
+         *     TODO: Use for profile/executor data
+         */
+        get: operations["get_node_metadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs": {
         parameters: {
             query?: never;
@@ -227,6 +247,28 @@ export interface paths {
          *     Returns an internal server error if the database query fails.
          */
         get: operations["list_workflows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/graphs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get graphs from a workflow definition without creating a run.
+         * @description # Errors
+         *
+         *     Returns an error if the workflow or requested static subgraph cannot be loaded.
+         */
+        get: operations["list_workflow_nodes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -603,6 +645,40 @@ export interface operations {
             };
         };
     };
+    get_node_metadata: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Metadata retrieval is not implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_all_outputs: {
         parameters: {
             query?: {
@@ -740,6 +816,40 @@ export interface operations {
                 };
             };
             /** @description Error listing workflows */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    list_workflow_nodes: {
+        parameters: {
+            query?: {
+                /** @description Location strings to fetch graphs for (repeatable). */
+                locs?: string[];
+            };
+            header?: never;
+            path: {
+                /** @description Workflow ID */
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphsResponse"];
+                };
+            };
+            /** @description Error loading workflow graph */
             500: {
                 headers: {
                     [name: string]: unknown;

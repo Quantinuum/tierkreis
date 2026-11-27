@@ -369,6 +369,58 @@
         }
       }
     },
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/metadata": {
+      "get": {
+        "summary": "Get metadata for a specific node in a workflow run.\nTODO: Use for profile/executor data",
+        "operationId": "get_node_metadata",
+        "parameters": [
+          {
+            "name": "workflow_run_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "node_location_str",
+            "in": "path",
+            "description": "Location string",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Metadata retrieval is not implemented"
+          }
+        }
+      }
+    },
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs": {
       "get": {
         "summary": "List all outputs for a specific node in a workflow run, returning a map of port name to value.",
@@ -569,6 +621,58 @@
           },
           "500": {
             "description": "Error listing workflows",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflows/{workflow_id}/graphs": {
+      "get": {
+        "summary": "Get graphs from a workflow definition without creating a run.",
+        "description": "# Errors\n\nReturns an error if the workflow or requested static subgraph cannot be loaded.",
+        "operationId": "list_workflow_nodes",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "description": "Workflow ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locs",
+            "in": "query",
+            "description": "Location strings to fetch graphs for (repeatable).",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error loading workflow graph",
             "content": {
               "text/plain": {
                 "schema": {

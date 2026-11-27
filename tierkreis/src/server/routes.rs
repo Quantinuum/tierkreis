@@ -26,10 +26,11 @@ use tokio::{
 use crate::{
     location::Location,
     server::{
-        models::{GraphsQuery, GraphsResponse, HandlerResult},
+        models::{GraphsQuery, GraphsResponse, HandlerResult, WorkflowGraphsQuery},
         nodes::{
             GraphLoadResult, build_loop_py_graph, build_map_py_graph, build_py_graph,
-            load_graph_from_state_or_const, try_load_output_value, try_load_outputs,
+            build_static_py_graph, load_graph_from_state_or_const, load_static_graph,
+            try_load_output_value, try_load_outputs,
         },
     },
     state::{RuntimeWatchState, WorkflowRunState},
@@ -175,7 +176,13 @@ pub async fn list_workflows(
     State(state): State<AppState>,
 ) -> HandlerResult<Json<Vec<WorkflowDisplay>>> {
     let summaries = state.runtime_state.list_workflow_run_summaries().await?;
-    let mut workflows: WorkflowNameMap = BTreeMap::new();
+    let mut workflows: WorkflowNameMap = state
+        .runtime_state
+        .list_workflows()
+        .await?
+        .into_iter()
+        .map(|(id, name)| (id, (name, BTreeMap::new())))
+        .collect();
     for summary in summaries {
         let (_, runs) = workflows
             .entry(summary.workflow_id)
@@ -217,6 +224,43 @@ pub async fn list_workflows(
             })
             .collect(),
     ))
+}
+
+/// Get graphs from a workflow definition without creating a run.
+///
+/// # Errors
+///
+/// Returns an error if the workflow or requested static subgraph cannot be loaded.
+#[utoipa::path(
+    get,
+    path = "/workflows/{workflow_id}/graphs",
+    params(
+        ("workflow_id" = Uuid, Path, description = "Workflow ID"),
+        WorkflowGraphsQuery,
+    ),
+    responses(
+        (status = OK, body = GraphsResponse),
+        (status = 500, description = "Error loading workflow graph", body = String, content_type = "text/plain"),
+    )
+)]
+pub async fn list_workflow_nodes(
+    State(state): State<AppState>,
+    Path(workflow_id): Path<Uuid>,
+    Query(query): Query<WorkflowGraphsQuery>,
+) -> HandlerResult<Json<GraphsResponse>> {
+    let (_, workflow) = state.runtime_state.load_workflow(workflow_id).await?;
+    let mut graphs = HashMap::new();
+    for loc_str in &query.locs {
+        let location = parse_location(loc_str)?;
+        let graph = if let Some(graph_data) = &state.display_graph {
+            super::nodes::build_graph_data_py_graph(graph_data, &location)?
+        } else {
+            let graph = load_static_graph(workflow.clone(), &location)?;
+            build_static_py_graph(&graph, &location, &state.asset_registry).await?
+        };
+        graphs.insert(loc_str.clone(), graph);
+    }
+    Ok(Json(GraphsResponse { graphs }))
 }
 
 /// Get the graphs for a specific workflow.

@@ -56,6 +56,33 @@ pub async fn read_workflow(
     Ok(workflow)
 }
 
+/// List saved workflow identifiers and names.
+///
+/// # Errors
+///
+/// Returns an error if the database query or UUID parsing fails.
+pub async fn list_workflows(
+    conn: &mut impl AsyncConnection<Backend = Sqlite>,
+) -> miette::Result<Vec<(uuid::Uuid, Option<String>)>> {
+    use crate::state::schema::workflows::dsl as wf;
+
+    let rows = wf::workflows
+        .select((wf::id, wf::name))
+        .get_results::<(String, Option<String>)>(conn)
+        .await
+        .into_diagnostic()
+        .wrap_err("Failed to list workflows")?;
+    rows.into_iter()
+        .map(|(id, name)| {
+            let id = id
+                .parse()
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Invalid workflow UUID: {id}"))?;
+            Ok((id, name))
+        })
+        .collect()
+}
+
 /// Insert a workflow graph to the workflows table.
 ///
 /// # Errors
