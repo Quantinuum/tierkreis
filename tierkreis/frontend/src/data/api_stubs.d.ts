@@ -67,10 +67,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the logs for a specific workflow run, returning the log detail as a string.
+         * Get captured worker logs across the nodes of a workflow run.
          * @description # Errors
          *
-         *     Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+         *     Returns an error if the runtime state cannot read the requested log page.
          */
         get: operations["get_workflow_logs"];
         put?: never;
@@ -155,10 +155,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get the logs for a specific node in a workflow run, returning the log detail as a string.
+         * Get captured worker logs for a specific node in a workflow run.
          * @description # Errors
          *
-         *     Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+         *     Returns an error if the runtime state cannot read the requested log page.
          */
         get: operations["get_node_logs"];
         put?: never;
@@ -246,6 +246,11 @@ export interface components {
                 [key: string]: components["schemas"]["PyGraph"];
             };
         };
+        /**
+         * @description The origin of a worker log record.
+         * @enum {string}
+         */
+        LogSource: "stdout" | "stderr" | "builtin" | "provider";
         /** @description Describes a connection into an input port of a node. */
         NodeInputs: {
             /** @description The location of the node providing the value. */
@@ -313,6 +318,46 @@ export interface components {
         /** @description Runtime metadata returned by `/api/info`. */
         RuntimeMetadata: {
             version: string;
+        };
+        WorkerLogPage: {
+            /**
+             * Format: int64
+             * @description Cursor to use for the next page when more records are available.
+             */
+            next_cursor?: number | null;
+            /** @description Records in ingestion order. */
+            records: components["schemas"]["WorkerLogRecord"][];
+        };
+        /** @description A chunk of output recorded for a task. */
+        WorkerLogRecord: {
+            /**
+             * Format: int32
+             * @description Workflow attempt number.
+             */
+            attempt: number;
+            /**
+             * Format: date-time
+             * @description Time the runtime collected the message.
+             */
+            collected_at: string;
+            /**
+             * Format: int64
+             * @description Cursor in ingestion order.
+             */
+            cursor: number;
+            /** @description Configured executor name. */
+            executor: string;
+            /** @description Canonical task-node location. */
+            location: string;
+            /** @description Captured output or diagnostic text. */
+            message: string;
+            /**
+             * Format: uuid
+             * @description Workflow run UUID.
+             */
+            run_id: string;
+            /** @description Origin of the message. */
+            source: components["schemas"]["LogSource"];
         };
         /** @description Workflow display information returned by `/api/workflows/`. */
         WorkflowDisplay: {
@@ -410,7 +455,18 @@ export interface operations {
     };
     get_workflow_logs: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Workflow attempt number. Defaults to 0. */
+                attempt?: number;
+                /** @description Return records strictly after this cursor. */
+                after?: number;
+                /** @description Maximum records per page. Defaults to 100. */
+                limit?: number;
+                /** @description Restrict results to one stream or diagnostic source. */
+                source?: components["schemas"]["LogSource"];
+                /** @description Select plain text (default) or structured JSON. */
+                format?: "text" | "json";
+            };
             header?: never;
             path: {
                 /** @description Run ID */
@@ -420,14 +476,33 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Log detail for the workflow */
+            /** @description Worker log page */
             200: {
+                headers: {
+                    /** @description Cursor for the next page, if available */
+                    "X-Next-Cursor"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "application/json": components["schemas"]["WorkerLogPage"];
+                };
+            };
+            /** @description Invalid log query */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Error loading log detail */
+            /** @description Unknown run or attempt */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error loading worker logs */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -523,7 +598,18 @@ export interface operations {
     };
     get_node_logs: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Workflow attempt number. Defaults to 0. */
+                attempt?: number;
+                /** @description Return records strictly after this cursor. */
+                after?: number;
+                /** @description Maximum records per page. Defaults to 100. */
+                limit?: number;
+                /** @description Restrict results to one stream or diagnostic source. */
+                source?: components["schemas"]["LogSource"];
+                /** @description Select plain text (default) or structured JSON. */
+                format?: "text" | "json";
+            };
             header?: never;
             path: {
                 /** @description Run ID */
@@ -535,14 +621,33 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Log detail for the node */
+            /** @description Worker log page */
             200: {
+                headers: {
+                    /** @description Cursor for the next page, if available */
+                    "X-Next-Cursor"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                    "application/json": components["schemas"]["WorkerLogPage"];
+                };
+            };
+            /** @description Invalid log query */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Error loading log detail */
+            /** @description Unknown run or attempt */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error loading worker logs */
             500: {
                 headers: {
                     [name: string]: unknown;

@@ -53,6 +53,10 @@ use crate::{
     },
 };
 
+mod worker_logs;
+
+use crate::worker_logs::{LogSource, TaskLogKey, WorkerLogBatch, WorkerLogQuery, WorkerLogRecord};
+
 /// Embedded Diesel migrations
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
@@ -271,6 +275,52 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
+    fn append_worker_log<'a>(
+        &'a self,
+        key: &'a TaskLogKey,
+        batch: WorkerLogBatch,
+    ) -> BoxFuture<'a, miette::Result<bool>> {
+        async move {
+            let key = key.clone();
+            self.get_conn()
+                .await?
+                .spawn_blocking(move |conn| worker_logs::append(conn, &key, &batch))
+                .await
+                .into_diagnostic()
+        }
+        .boxed()
+    }
+
+    fn worker_log_offset<'a>(
+        &'a self,
+        key: &'a TaskLogKey,
+        source: LogSource,
+    ) -> BoxFuture<'a, miette::Result<i64>> {
+        async move {
+            let key = key.clone();
+            self.get_conn()
+                .await?
+                .spawn_blocking(move |conn| worker_logs::offset(conn, &key, source))
+                .await
+                .into_diagnostic()
+        }
+        .boxed()
+    }
+
+    fn read_worker_logs(
+        &self,
+        query: WorkerLogQuery,
+    ) -> BoxFuture<'_, miette::Result<Option<Vec<WorkerLogRecord>>>> {
+        async move {
+            self.get_conn()
+                .await?
+                .spawn_blocking(move |conn| worker_logs::read(conn, query))
+                .await
+                .into_diagnostic()
+        }
+        .boxed()
+    }
+
     fn load_workflow(
         &self,
         workflow_id: Uuid,

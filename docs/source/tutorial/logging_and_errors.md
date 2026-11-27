@@ -27,8 +27,30 @@ and locations paused at breakpoints. For lower-level debugging,
 name, and execution context for the requested location strings.
 
 Set `-v` on `tkr run`, or call `config.set_log_level("debug")` before
-`new_from_config(config)`, to enable runtime debug logging. Worker logs remain
-owned by the selected executor or remote service.
+`new_from_config(config)`, to enable runtime debug logging.
+
+## Worker logs
+
+Open a task in the workflow viewer to read its worker logs. If a task failed,
+select **View worker logs** in its error dialog. The workflow list also opens
+a combined log for all task nodes in a run. Subprocess and HPC output can
+appear during execution. Provider diagnostics appear when Nexus or QRMI
+supplies them.
+
+The viewer's HTTP API exposes the same logs as plain text or structured JSON.
+For example, request
+`/api/workflows/{run_id}/nodes/N3.M0.N1/logs?format=json&attempt=1&source=stderr`
+to inspect one nested task. The route without `/nodes/{location}` combines
+all task logs for the requested attempt. The default attempt is zero. Pass
+`next_cursor` as `after` for the next page, or poll after the last record's
+`cursor` as more output arrives. Plain-text pages return `X-Next-Cursor`
+when another page is available.
+
+Logs are retained with runtime state, with a 1 MiB payload limit per task.
+Use persistent SQLite state to access them after the runtime exits. A restart
+keeps previously captured logs under the attempt that ran the task. HPC
+capture uses the same shared Tierkreis directory as the worker arguments, and
+output becomes visible as the worker flushes it to disk.
 
 ## Restarting failed or selected work
 

@@ -39,6 +39,7 @@ use crate::{
         },
     },
     location::Location,
+    worker_logs::{LogSource, TaskLogSink, TaskLogWriter},
 };
 pub use client::NexusClientConfig;
 
@@ -50,6 +51,7 @@ struct BackgroundTaskPlan {
     job_id: Uuid,
     outputs: HashMap<String, AssetSpec>,
     parent_span: tracing::Span,
+    logs: Option<TaskLogWriter>,
 }
 
 #[derive(Clone)]
@@ -237,13 +239,22 @@ async fn monitor_task(
                 .await
                 .wrap_err("Failed to listen for job status")?;
 
+            let mut previous_status = None;
             'outer: loop {
                 while let Some(job_status) = job_status_stream
                     .try_next()
                     .await
                     .wrap_err("Failed while listening for job status")?
                 {
-                    match job_status.status() {
+                    let status = job_status.status();
+                    if let Some(logs) = &internal_task.logs
+                        && previous_status.as_ref() != Some(&job_status)
+                    {
+                        logs.write(LogSource::Provider, &job_status.to_string())
+                            .await;
+                        previous_status = Some(job_status);
+                    }
+                    match status {
                         StatusEnum::Submitted | StatusEnum::Cancelling | StatusEnum::Retrying => {}
                         StatusEnum::Queued | StatusEnum::Running => {
                             send_running(
@@ -544,11 +555,20 @@ impl Executor for NexusExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
+        self.execute_with_logs(task_plans, None)
+    }
+
+    fn execute_with_logs(
+        &self,
+        task_plans: Vec<TaskPlan>,
+        logs: Option<TaskLogSink>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut task_sender = self.task_sender.clone();
             self.client.refresh_tokens().await?;
 
             for task_plan in task_plans {
+                let task_logs = logs.as_ref().map(|logs| logs.for_task(&task_plan));
                 if task_plan.worker_name != "nexus_worker" {
                     return Err(miette!("Unknown worker: `{}`", task_plan.worker_name));
                 }
@@ -606,6 +626,7 @@ impl Executor for NexusExecutor {
                         job_id,
                         outputs,
                         parent_span,
+                        logs: task_logs,
                     })
                     .await
                     .into_diagnostic()?;
@@ -774,6 +795,11 @@ mod tests {
             .await;
             send_ws_message(
                 &mut socket,
+                &json!({"status": "SUBMITTED", "message": "job is submitted"}),
+            )
+            .await;
+            send_ws_message(
+                &mut socket,
                 &json!({"status": "QUEUED", "message": "job is queued"}),
             )
             .await;
@@ -842,6 +868,12 @@ mod tests {
     /// Test a scenario where we execute a hugr.
     #[tokio::test]
     async fn execute_hugr() -> miette::Result<()> {
+        use crate::{
+            state::{InMemoryRuntimeState, RuntimeState},
+            worker_logs::{WorkerLogQuery, test_log_sink},
+        };
+        let state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
+        let (run, sink) = test_log_sink(Arc::clone(&state), "nexus").await?;
         let app = happy_test_app();
         let (config, _server, _token_dir) = test_config_for_app(app).await?;
 
@@ -867,44 +899,41 @@ mod tests {
         let executor = NexusExecutor::try_new(&config, &registry, output_storage_name).await?;
         let stream = executor.listen()?;
         executor
-            .execute(vec![TaskPlan {
-                worker_name: "nexus_worker".to_string(),
-                task_name: "submit_and_run".to_string(),
-                inputs,
-                outputs,
-                ..Default::default()
-            }])
+            .execute_with_logs(
+                vec![TaskPlan {
+                    workflow_run_id: run.run_id(),
+                    worker_name: "nexus_worker".to_string(),
+                    task_name: "submit_and_run".to_string(),
+                    inputs,
+                    outputs,
+                    ..Default::default()
+                }],
+                Some(sink),
+            )
             .await?;
 
         let events = stream.take(4).collect::<Vec<_>>().await;
-        assert_eq!(events.len(), 4);
+        let statuses = events
+            .iter()
+            .map(|event| {
+                let RuntimeEvent::WorkflowRun {
+                    event: WorkflowRunEvent::NodeEvents(nodes),
+                    ..
+                } = event
+                else {
+                    panic!("Expected a node event");
+                };
+                &nodes[0].status
+            })
+            .collect::<Vec<_>>();
         assert_matches!(
-            events[0],
-            RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvents(ref node_events),
-                ..
-            } if matches!(node_events[0].status, NodeStatus::Queued { .. })
-        );
-        assert_matches!(
-            events[1],
-            RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvents(ref node_events),
-                ..
-            } if matches!(node_events[0].status, NodeStatus::Running { .. })
-        );
-        assert_matches!(
-            events[2],
-            RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvents(ref node_events),
-                ..
-            } if matches!(node_events[0].status, NodeStatus::Running { .. })
-        );
-        assert_matches!(
-            events[3],
-            RuntimeEvent::WorkflowRun {
-                event: WorkflowRunEvent::NodeEvents(ref node_events),
-                ..
-            } if matches!(node_events[0].status, NodeStatus::Complete { .. })
+            statuses.as_slice(),
+            [
+                NodeStatus::Queued { .. },
+                NodeStatus::Running { .. },
+                NodeStatus::Running { .. },
+                NodeStatus::Complete { .. },
+            ]
         );
 
         assert_registry_contains_values(
@@ -919,6 +948,29 @@ mod tests {
         )
         .await;
 
+        let records = state
+            .read_worker_logs(WorkerLogQuery {
+                run_id: run.run_id(),
+                attempt: 0,
+                location: Some(Location::root()),
+                after: 0,
+                source: Some(LogSource::Provider),
+                limit: 100,
+            })
+            .await?
+            .unwrap();
+        assert_eq!(
+            records
+                .iter()
+                .map(|record| record.message.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Submitted: job is submitted",
+                "Queued: job is queued",
+                "Running: job is running",
+                "Completed: job is completed"
+            ]
+        );
         Ok(())
     }
 

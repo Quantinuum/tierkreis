@@ -132,7 +132,7 @@ impl Runtime {
         tracing::info!("Starting Tierkreis runtime");
 
         let mut runtime = Self {
-            orchestrator,
+            orchestrator: orchestrator.with_worker_logs(Arc::clone(&runtime_state)),
             state: runtime_state,
             asset_storage_registry,
             default_storage_name: config.default_storage_name.clone(),
@@ -1143,6 +1143,22 @@ mod tests {
         let node = state.read(&location).await?;
         assert!(node.complete_time.is_some());
         assert_eq!(node.execution_context.as_deref(), Some("only"));
+        let logs = runtime
+            .state
+            .read_worker_logs(crate::worker_logs::WorkerLogQuery {
+                run_id,
+                attempt,
+                location: Some(location),
+                source: None,
+                after: 0,
+                limit: 10,
+            })
+            .await?
+            .unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].executor, "memory");
+        assert_eq!(logs[0].source, crate::worker_logs::LogSource::Builtin);
+        assert_eq!(logs[0].message, "Running builtin sleep");
         Ok(())
     }
 

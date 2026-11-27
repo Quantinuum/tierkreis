@@ -1,9 +1,13 @@
 import { LoadingIndicator } from "@/components/StatusIndicator";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import { WorkerLogs } from "@/components/worker-logs";
 import { WorkflowDisplay } from "@/data/api_types";
 import { loc_parent } from "@/data/loc";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Download, AlertCircle } from "lucide-react";
+import { FileText, AlertCircle } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -33,21 +37,22 @@ const NodeLink = (props: { wid: string; loc: string }) => {
 const errorLinks = (wid: string, errors: string[]) => {
   return errors.map((x) => <NodeLink wid={wid} loc={x} />);
 };
-const getLogs = async (wid: string) => {
-  window.open(`/api/workflows/${wid}/logs`, "_blank");
-};
-
-const logsLink = (wid: string) => {
-  return (
-    <Button
-      className="cursor-pointer"
-      size="icon"
-      onClick={async () => await getLogs(wid)}
-    >
-      <Download />
-    </Button>
-  );
-};
+const logsLink = (wid: string) => (
+  <Dialog>
+    <DialogTrigger asChild>
+      <Button className="cursor-pointer" size="icon" aria-label="View workflow logs">
+        <FileText />
+      </Button>
+    </DialogTrigger>
+    <DialogContent className="w-[90vw] h-[90vh] flex flex-col">
+      <DialogHeader>
+        <DialogTitle>Workflow logs</DialogTitle>
+        <DialogDescription>{wid}</DialogDescription>
+      </DialogHeader>
+      <WorkerLogs workflowId={wid} />
+    </DialogContent>
+  </Dialog>
+);
 
 export const WorkflowsTableRow = (props: {
   row: WorkflowDisplay;

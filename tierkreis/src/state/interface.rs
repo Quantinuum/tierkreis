@@ -21,6 +21,7 @@ use crate::{
     executor::interface::TaskHandle,
     graph::WorkflowGraph,
     location::Location,
+    worker_logs::{LogSource, TaskLogKey, WorkerLogBatch, WorkerLogQuery, WorkerLogRecord},
     workflow_state_query::{NodeCopyFilter, build_node_copy_filter},
 };
 
@@ -130,6 +131,33 @@ impl NodeState {
 /// state when the process last exited. Implementations without durable storage
 /// may treat this as a no-op.
 pub trait RuntimeState: Debug + Send + Sync {
+    /// Append task output, advancing a replayable source's offset atomically.
+    /// Returns whether the task's log budget has been exhausted.
+    fn append_worker_log<'a>(
+        &'a self,
+        _key: &'a TaskLogKey,
+        _batch: WorkerLogBatch,
+    ) -> BoxFuture<'a, miette::Result<bool>> {
+        futures::future::ok(false).boxed()
+    }
+
+    /// Read the number of bytes ingested from a replayable task stream.
+    fn worker_log_offset<'a>(
+        &'a self,
+        _key: &'a TaskLogKey,
+        _source: LogSource,
+    ) -> BoxFuture<'a, miette::Result<i64>> {
+        futures::future::ok(0).boxed()
+    }
+
+    /// Return logs for a run attempt, or None when the run attempt does not exist.
+    fn read_worker_logs(
+        &self,
+        _query: WorkerLogQuery,
+    ) -> BoxFuture<'_, miette::Result<Option<Vec<WorkerLogRecord>>>> {
+        futures::future::ok(None).boxed()
+    }
+
     /// Retrieve the [`WorkflowGraph`] specified by id.
     fn load_workflow(
         &self,

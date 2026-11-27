@@ -40,7 +40,8 @@ use crate::{
     graph::{NodeDefinition, ValuePresence, WorkflowGraph},
     location::Location,
     resource_profiles::{ResolvedContext, ResourceProfiles},
-    state::{WorkflowRunState, interface::NodeState},
+    state::{RuntimeState, WorkflowRunState, interface::NodeState},
+    worker_logs::TaskLogSink,
     workflow_state_query::{collect_input, collect_inputs, load_subgraph_from_asset},
 };
 
@@ -472,6 +473,7 @@ pub struct Orchestrator {
 
     default_executor_name: String,
     executor_registry: ExecutorRegistry,
+    worker_log_state: Option<Arc<dyn RuntimeState>>,
 
     default_storage_name: String,
     asset_storage_registry: AssetStorageRegistry,
@@ -510,9 +512,15 @@ impl Orchestrator {
 
             default_executor_name: default_executor_name.to_string(),
             executor_registry: Arc::clone(executor_registry),
+            worker_log_state: None,
             default_storage_name: default_storage_name.to_string(),
             asset_storage_registry: Arc::clone(asset_storage_registry),
         })
+    }
+
+    pub(crate) fn with_worker_logs(mut self, state: Arc<dyn RuntimeState>) -> Self {
+        self.worker_log_state = Some(state);
+        self
     }
 
     /// Create a stream of [`Action`]s based on [`OrchstrationContext`] and a [`WorkflowGraph`].
@@ -1678,8 +1686,12 @@ impl Orchestrator {
             {
                 Ok(executor) => {
                     let locations: Vec<_> = tasks.iter().map(|task| task.loc.clone()).collect();
+                    let logs = self
+                        .worker_log_state
+                        .as_ref()
+                        .map(|state| TaskLogSink::new(Arc::clone(state), &name));
                     if let Err(err) = executor
-                        .execute(tasks)
+                        .execute_with_logs(tasks, logs)
                         .await
                         .wrap_err_with(|| format!("Could not run Task Nodes on `{name}`"))
                     {

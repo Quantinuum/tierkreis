@@ -98,8 +98,8 @@
     },
     "/api/workflows/{workflow_id}/logs": {
       "get": {
-        "summary": "Get the logs for a specific workflow run, returning the log detail as a string.",
-        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.",
+        "summary": "Get captured worker logs across the nodes of a workflow run.",
+        "description": "# Errors\n\nReturns an error if the runtime state cannot read the requested log page.",
         "operationId": "get_workflow_logs",
         "parameters": [
           {
@@ -111,14 +111,96 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "description": "Workflow attempt number. Defaults to 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Return records strictly after this cursor.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum records per page. Defaults to 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Restrict results to one stream or diagnostic source.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LogSource"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Select plain text (default) or structured JSON.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "text",
+                "json"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Log detail for the workflow"
+            "description": "Worker log page",
+            "headers": {
+              "X-Next-Cursor": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "description": "Cursor for the next page, if available"
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerLogPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid log query"
+          },
+          "404": {
+            "description": "Unknown run or attempt"
           },
           "500": {
-            "description": "Error loading log detail"
+            "description": "Error loading worker logs"
           }
         }
       }
@@ -239,8 +321,8 @@
     },
     "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
       "get": {
-        "summary": "Get the logs for a specific node in a workflow run, returning the log detail as a string.",
-        "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.",
+        "summary": "Get captured worker logs for a specific node in a workflow run.",
+        "description": "# Errors\n\nReturns an error if the runtime state cannot read the requested log page.",
         "operationId": "get_node_logs",
         "parameters": [
           {
@@ -261,14 +343,96 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "description": "Workflow attempt number. Defaults to 0.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Return records strictly after this cursor.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum records per page. Defaults to 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Restrict results to one stream or diagnostic source.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LogSource"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Select plain text (default) or structured JSON.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "text",
+                "json"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Log detail for the node"
+            "description": "Worker log page",
+            "headers": {
+              "X-Next-Cursor": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "description": "Cursor for the next page, if available"
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerLogPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid log query"
+          },
+          "404": {
+            "description": "Unknown run or attempt"
           },
           "500": {
-            "description": "Error loading log detail"
+            "description": "Error loading worker logs"
           }
         }
       }
@@ -420,6 +584,16 @@
             }
           }
         }
+      },
+      "LogSource": {
+        "type": "string",
+        "description": "The origin of a worker log record.",
+        "enum": [
+          "stdout",
+          "stderr",
+          "builtin",
+          "provider"
+        ]
       },
       "NodeInputs": {
         "type": "object",
@@ -607,6 +781,82 @@
         "properties": {
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "WorkerLogPage": {
+        "type": "object",
+        "required": [
+          "records"
+        ],
+        "properties": {
+          "next_cursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Cursor to use for the next page when more records are available."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkerLogRecord"
+            },
+            "description": "Records in ingestion order."
+          }
+        }
+      },
+      "WorkerLogRecord": {
+        "type": "object",
+        "description": "A chunk of output recorded for a task.",
+        "required": [
+          "cursor",
+          "run_id",
+          "attempt",
+          "location",
+          "collected_at",
+          "executor",
+          "source",
+          "message"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Workflow attempt number.",
+            "minimum": 0
+          },
+          "collected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the runtime collected the message."
+          },
+          "cursor": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cursor in ingestion order."
+          },
+          "executor": {
+            "type": "string",
+            "description": "Configured executor name."
+          },
+          "location": {
+            "type": "string",
+            "description": "Canonical task-node location."
+          },
+          "message": {
+            "type": "string",
+            "description": "Captured output or diagnostic text."
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Workflow run UUID."
+          },
+          "source": {
+            "$ref": "#/components/schemas/LogSource",
+            "description": "Origin of the message."
           }
         }
       },
