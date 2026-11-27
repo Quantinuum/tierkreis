@@ -34,6 +34,8 @@ diesel::table! {
         error_detail -> Nullable<Text>,
         handle -> Nullable<Text>,
         execution_context -> Nullable<Text>,
+        stdout_log_path -> Nullable<Text>,
+        stderr_log_path -> Nullable<Text>,
     }
 }
 

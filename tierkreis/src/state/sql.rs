@@ -637,11 +637,12 @@ impl WorkflowRunState for SqliteWorkflowRunState {
             let mut conn = self.get_conn().await?;
             let attempt = self.attempt.try_into().into_diagnostic()?;
             let now = Utc::now().naive_utc();
+            let run_id_str = self.run_id.to_string();
 
             let node_updates = locations
                 .iter()
                 .map(|location| UpsertNodeState {
-                    run_id: self.run_id.to_string(),
+                    run_id: &run_id_str,
                     attempt,
                     node_location: location.clone(),
                     unpaused_time: Some(now),
@@ -712,6 +713,7 @@ impl SqliteWorkflowRunState {
         let workflow_run_id_str = self.run_id.to_string();
         let attempt = self.attempt.try_into().into_diagnostic()?;
         let now = Utc::now().naive_utc();
+        let run_id_str = self.run_id.to_string();
 
         let mut subgraph_inputs = Vec::new();
         let mut node_outputs = Vec::new();
@@ -719,10 +721,10 @@ impl SqliteWorkflowRunState {
             .iter()
             .map(|event| {
                 let mut row = UpsertNodeState {
-                    run_id: self.run_id.to_string(),
+                    run_id: &run_id_str,
                     attempt,
                     node_location: event.loc.clone(),
-                    name: event.name.clone(),
+                    name: event.name.as_deref(),
                     ..Default::default()
                 };
                 match event.status {
@@ -730,11 +732,11 @@ impl SqliteWorkflowRunState {
                         ref execution_context,
                     } => {
                         row.scheduled_time = Some(now);
-                        row.execution_context.clone_from(execution_context);
+                        row.execution_context = execution_context.as_deref();
                     }
                     NodeStatus::Queued { ref handle } => {
                         row.queued_time = Some(now);
-                        row.handle.clone_from(handle);
+                        row.handle = handle.as_deref();
                     }
                     NodeStatus::Paused {} => {
                         row.paused_time = Some(now);
@@ -846,8 +848,8 @@ impl SqliteWorkflowRunState {
                         ref detail,
                     } => {
                         row.error_time = Some(now);
-                        row.error = Some(error.clone());
-                        row.error_detail.clone_from(detail);
+                        row.error = Some(error);
+                        row.error_detail = detail.as_deref();
                     }
                 }
 
