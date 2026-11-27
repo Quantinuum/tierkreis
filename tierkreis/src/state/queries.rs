@@ -331,6 +331,14 @@ pub fn update_node_state<'a>(
                         ns::map_completed,
                     )),
                     ns::handle.eq(coalesce_text(excluded(ns::handle), ns::handle)),
+                    ns::stdout_log_path.eq(coalesce_text(
+                        excluded(ns::stdout_log_path),
+                        ns::stdout_log_path,
+                    )),
+                    ns::stdout_log_path.eq(coalesce_text(
+                        excluded(ns::stderr_log_path),
+                        ns::stderr_log_path,
+                    )),
                     ns::execution_context.eq(coalesce_text(
                         excluded(ns::execution_context),
                         ns::execution_context,
@@ -459,7 +467,7 @@ pub async fn read_node_state(
         let handle = db_node.handle.clone();
 
         Ok(crate::state::interface::NodeState {
-            name: db_node.name.clone(),
+            name: db_node.name,
             scheduled_time: db_node.scheduled_time.map(utc_timestamp),
             queued_time: db_node.queued_time.map(utc_timestamp),
             paused_time: db_node.paused_time.map(utc_timestamp),
@@ -471,11 +479,21 @@ pub async fn read_node_state(
             cond: db_node.cond,
             loop_index,
             map_completed,
-            error: db_node.error.clone(),
-            error_detail: db_node.error_detail.clone(),
+            error: db_node.error,
+            error_detail: db_node.error_detail,
             outputs,
             handle,
-            execution_context: db_node.execution_context.clone(),
+            stdout_log_path: db_node
+                .stdout_log_path
+                .map(|x| x.parse())
+                .transpose()
+                .into_diagnostic()?,
+            stderr_log_path: db_node
+                .stderr_log_path
+                .map(|x| x.parse())
+                .transpose()
+                .into_diagnostic()?,
+            execution_context: db_node.execution_context,
         })
     } else {
         Ok(crate::state::interface::NodeState::default())
@@ -544,7 +562,7 @@ pub async fn read_node_states_by_name(
         states.insert(
             db_node.node_location,
             crate::state::interface::NodeState {
-                name: db_node.name.clone(),
+                name: db_node.name,
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),
                 paused_time: db_node.paused_time.map(utc_timestamp),
@@ -556,11 +574,21 @@ pub async fn read_node_states_by_name(
                 cond: db_node.cond,
                 loop_index,
                 map_completed,
-                error: db_node.error.clone(),
-                error_detail: db_node.error_detail.clone(),
+                error: db_node.error,
+                error_detail: db_node.error_detail,
                 outputs,
                 handle,
-                execution_context: db_node.execution_context.clone(),
+                stdout_log_path: db_node
+                    .stdout_log_path
+                    .map(|x| x.parse())
+                    .transpose()
+                    .into_diagnostic()?,
+                stderr_log_path: db_node
+                    .stderr_log_path
+                    .map(|x| x.parse())
+                    .transpose()
+                    .into_diagnostic()?,
+                execution_context: db_node.execution_context,
             },
         );
     }
@@ -630,7 +658,7 @@ pub async fn read_node_states(
         states.insert(
             db_node.node_location,
             crate::state::interface::NodeState {
-                name: db_node.name.clone(),
+                name: db_node.name,
                 scheduled_time: db_node.scheduled_time.map(utc_timestamp),
                 queued_time: db_node.queued_time.map(utc_timestamp),
                 paused_time: db_node.paused_time.map(utc_timestamp),
@@ -642,11 +670,21 @@ pub async fn read_node_states(
                 cond: db_node.cond,
                 loop_index,
                 map_completed,
-                error: db_node.error.clone(),
-                error_detail: db_node.error_detail.clone(),
+                error: db_node.error,
+                error_detail: db_node.error_detail,
                 outputs,
                 handle,
-                execution_context: db_node.execution_context.clone(),
+                stdout_log_path: db_node
+                    .stdout_log_path
+                    .map(|x| x.parse())
+                    .transpose()
+                    .into_diagnostic()?,
+                stderr_log_path: db_node
+                    .stderr_log_path
+                    .map(|x| x.parse())
+                    .transpose()
+                    .into_diagnostic()?,
+                execution_context: db_node.execution_context,
             },
         );
     }

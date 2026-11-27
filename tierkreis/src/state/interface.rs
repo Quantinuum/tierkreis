@@ -5,6 +5,7 @@ and [`WorkflowRunState`] implementations must satisfy.
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -106,6 +107,11 @@ pub struct NodeState {
     pub error: Option<String>,
     /// The detail of the error for the node if any.
     pub error_detail: Option<String>,
+
+    /// The path to the stdout logs if any.
+    pub stdout_log_path: Option<PathBuf>,
+    /// The path to the stderr logs if any.
+    pub stderr_log_path: Option<PathBuf>,
 
     /// The handle to the node
     pub handle: Option<TaskHandle>,
