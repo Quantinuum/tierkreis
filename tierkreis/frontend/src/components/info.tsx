@@ -5,58 +5,91 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoProps } from "./types";
-import { restartNode } from "@/data/api";
+import { restartNode, runUrl } from "@/data/api";
 import { Button } from "./ui/button";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NodeInputs } from "@/data/api_types";
+import { useQueryClient } from "@tanstack/react-query";
 export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
+  const attempt = search.attempt ?? 0;
+  const queryClient = useQueryClient();
+  const [restartError, setRestartError] = useState<string>();
+  const [restarting, setRestarting] = useState(false);
 
   const restartHandle = async () => {
-    const invalid = await restartNode(
-      props.info.workflow_id,
-      props.info.node_location,
-    );
+    setRestartError(undefined);
+    setRestarting(true);
+    try {
+      const invalid = await restartNode(
+        props.info.workflow_id,
+        props.info.node_location,
+        attempt,
+      );
 
-    const isValid = (openNode: string) => {
-      for (const invalidatedNode of invalid.invalidated) {
-        if (openNode.startsWith(invalidatedNode)) return false;
-      }
-      return true;
-    };
+      const isValid = (openNode: string) => {
+        for (const invalidatedNode of invalid.invalidated) {
+          if (openNode.startsWith(invalidatedNode)) return false;
+        }
+        return true;
+      };
 
-    const openEvals = search.openEvals?.filter(isValid);
-    const openLoops = search.openLoops?.filter(isValid);
-    const openMaps = search.openMaps?.filter(isValid);
+      const openEvals = search.openEvals?.filter(isValid);
+      const openLoops = search.openLoops?.filter(isValid);
+      const openMaps = search.openMaps?.filter(isValid);
 
-    navigate({ to: ".", search: { openEvals, openLoops, openMaps } });
-    props.closer();
+      // Invalidate the workflow queries to refresh the data after restart
+      await queryClient.invalidateQueries({
+        queryKey: ["get", "/api/workflows/"],
+      });
+      await navigate({
+        to: ".",
+        search: { attempt: invalid.attempt, openEvals, openLoops, openMaps },
+      });
+      props.closer();
+    } catch (error) {
+      setRestartError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRestarting(false);
+    }
   };
   const getOutput = async (output_name: string) => {
     window.open(
-      `/api/workflows/${props.info.workflow_id}/nodes/${props.info.node_location}/outputs/${output_name}`,
+      runUrl(
+        props.info.workflow_id,
+        attempt,
+        `nodes/${encodeURIComponent(props.info.node_location)}/outputs/${encodeURIComponent(output_name)}`,
+      ),
       "_blank",
     );
   };
   const getInput = async (input: NodeInputs) => {
     window.open(
-      `/api/workflows/${props.info.workflow_id}/nodes/${input.from_node}/inputs/${input.from_port}`,
+      runUrl(
+        props.info.workflow_id,
+        attempt,
+        `nodes/${encodeURIComponent(props.info.node_location)}/inputs/${encodeURIComponent(input.port)}`,
+      ),
       "_blank",
     );
   };
 
   const getMetadata = async () => {
     window.open(
-      `/api/workflows/${props.info.workflow_id}/nodes/${props.info.node_location}/metadata`,
+      `/api/runs/${props.info.workflow_id}/nodes/${props.info.node_location}/metadata`,
       "_blank",
     );
   };
 
   const restartButton = (
-    <Button className="cursor-pointer mt-2" onClick={restartHandle}>
+    <Button
+      disabled={restarting}
+      className="cursor-pointer mt-2"
+      onClick={restartHandle}
+    >
       Restart
     </Button>
   );
@@ -161,6 +194,11 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           </div>
         )}
 
+      {restartError && (
+        <p role="alert" className="text-nexus-red">
+          {restartError}
+        </p>
+      )}
       {restartButton}
     </DialogContent>
   );

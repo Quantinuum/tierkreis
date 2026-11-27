@@ -8,6 +8,7 @@ import {
   useEvalQuery,
   useWorkflowsQuery,
   useLogsQuery,
+  runUrl,
 } from "../../../../data/api";
 import { updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
@@ -17,6 +18,7 @@ import { amalgamateGraphData } from "@/graph/amalgamateGraph";
 
 export default function NodePage(props: {
   workflow_id: string;
+  attempt: number;
   node_location_str: string;
   openEvals: string[];
   openLoops: string[];
@@ -26,8 +28,8 @@ export default function NodePage(props: {
   const node_location_str = props.node_location_str;
 
   const workflowsQuery = useWorkflowsQuery();
-  const logsQuery = useLogsQuery(workflow_id);
-  const { data, refetch } = useEvalQuery(workflow_id, [
+  const logsQuery = useLogsQuery(workflow_id, props.attempt);
+  const { data, error, refetch } = useEvalQuery(workflow_id, props.attempt, [
     node_location_str,
     ...props.openEvals,
     ...props.openLoops,
@@ -35,7 +37,7 @@ export default function NodePage(props: {
   ]);
 
   const [stored_graph, setG] = useLocalStorageState<Graph>(
-    workflow_id + node_location_str,
+    JSON.stringify([workflow_id, props.attempt, node_location_str]),
     { defaultValue: { nodes: [], edges: [] } },
   );
 
@@ -85,15 +87,41 @@ export default function NodePage(props: {
   }, [props, workflow_id, node_location_str, setG, data]);
 
   useEffect(() => {
-    const url = `/api/runs/${workflow_id}/nodes/${node_location_str}`;
+    const url = runUrl(
+      workflow_id,
+      props.attempt,
+      `nodes/${encodeURIComponent(node_location_str)}`,
+    );
     const ws = new WebSocket(url);
-    ws.onmessage = () => refetch();
+    ws.onmessage = () => {
+      // current graph
+      void refetch();
+      // sidebar
+      void workflowsQuery.refetch();
+    };
     return () => ws.close();
-  }, [workflow_id, node_location_str, refetch]);
+  }, [
+    workflow_id,
+    props.attempt,
+    node_location_str,
+    refetch,
+    workflowsQuery.refetch,
+  ]);
+
+  if (error)
+    return (
+      <div role="alert">Failed to load workflow attempt: {String(error)}</div>
+    );
+  if (workflowsQuery.error)
+    return (
+      <div role="alert">
+        Failed to load workflows: {String(workflowsQuery.error)}
+      </div>
+    );
 
   return (
     <GraphView
-      key={workflow_id + node_location_str}
+      key={JSON.stringify([workflow_id, props.attempt, node_location_str])}
       nodes={stored_graph.nodes ?? []}
       edges={stored_graph.edges ?? []}
       onNodesChange={onNodesChange}

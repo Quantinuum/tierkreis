@@ -9,8 +9,8 @@ export const Route = createFileRoute("/workflows/")({
 function RouteComponent() {
   const { data, error } = useWorkflowsQuery();
   const { data: infoData, error: infoError } = useInfoQuery();
-  if (error) return <div>Error {error}</div>;
-  console.log("Checking workflow version", infoData, infoError);
+  if (error) return <div role="alert">Failed to load workflows: {String(error)}</div>;
+  if (infoError) return <div role="alert">Failed to load runtime information: {String(infoError)}</div>;
   return (
     <div className="p-8">
       <div className="text-4xl pb-8">Tierkreis workflows</div>
