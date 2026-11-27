@@ -246,7 +246,7 @@ pub fn update_node_state<'a>(
     conn: &'a mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &'a str,
     attempt: i32,
-    mut node_updates: Vec<UpsertNodeState>,
+    mut node_updates: Vec<UpsertNodeState<'a>>,
     node_outputs: Vec<(Location, NewNodeOutput<'a>)>,
 ) -> impl Future<Output = miette::Result<bool>> + Send + 'a {
     use crate::state::schema::node_states::dsl as ns;
@@ -327,7 +327,7 @@ async fn merge_map_complete_fields(
     conn: &mut impl AsyncConnection<Backend = Sqlite>,
     run_id: &str,
     attempt: i32,
-    node_updates: &mut [UpsertNodeState],
+    node_updates: &mut [UpsertNodeState<'_>],
 ) -> Result<(), diesel::result::Error> {
     use crate::state::schema::node_states::dsl as ns;
 
@@ -1196,40 +1196,19 @@ pub fn copy_node_states<'a>(
             let new_row = if is_truncated {
                 // Reset all timestamps
                 UpsertNodeState {
-                    name: row.name.clone(),
-                    run_id: run_id.to_string(),
+                    name: row.name.as_deref(),
+                    run_id,
                     attempt: dest_attempt,
                     node_location: row.node_location.clone(),
                     cond: row.cond, // retained to preserve conditional state even when truncated
                     loop_index,
                     map_size: row.map_size,
                     map_completed,
-                    execution_context: row.execution_context.clone(),
+                    execution_context: row.execution_context.as_deref(),
                     ..Default::default()
                 }
             } else {
-                UpsertNodeState {
-                    name: row.name.clone(),
-                    run_id: run_id.to_string(),
-                    attempt: dest_attempt,
-                    node_location: row.node_location.clone(),
-                    scheduled_time: row.scheduled_time,
-                    paused_time: row.paused_time,
-                    unpaused_time: row.unpaused_time,
-                    queued_time: row.queued_time,
-                    running_time: row.running_time,
-                    complete_time: row.complete_time,
-                    cancelled_time: row.cancelled_time,
-                    error_time: row.error_time,
-                    cond: row.cond,
-                    loop_index,
-                    map_size: row.map_size,
-                    map_completed,
-                    handle: row.handle.clone(),
-                    error: row.error.clone(),
-                    error_detail: row.error_detail.clone(),
-                    execution_context: row.execution_context.clone(),
-                }
+                build_new_upsert_node_state(run_id, dest_attempt, &row, loop_index, map_completed)
             };
 
             let new_id: i32 = diesel::insert_into(ns::node_states)
@@ -1258,6 +1237,39 @@ pub fn copy_node_states<'a>(
         res.into_diagnostic()
             .wrap_err("Failed to copy node states to new attempt")
     })
+}
+
+fn build_new_upsert_node_state<'a>(
+    run_id: &'a str,
+    dest_attempt: i32,
+    row: &'a NodeState,
+    loop_index: Option<i32>,
+    map_completed: Option<Vec<u8>>,
+) -> UpsertNodeState<'a> {
+    UpsertNodeState {
+        name: row.name.as_deref(),
+        run_id,
+        attempt: dest_attempt,
+        node_location: row.node_location.clone(),
+        scheduled_time: row.scheduled_time,
+        paused_time: row.paused_time,
+        unpaused_time: row.unpaused_time,
+        queued_time: row.queued_time,
+        running_time: row.running_time,
+        complete_time: row.complete_time,
+        cancelled_time: row.cancelled_time,
+        error_time: row.error_time,
+        cond: row.cond,
+        loop_index,
+        map_size: row.map_size,
+        map_completed,
+        handle: row.handle.as_deref(),
+        error: row.error.as_deref(),
+        error_detail: row.error_detail.as_deref(),
+        execution_context: row.execution_context.as_deref(),
+        stdout_log_path: row.stdout_log_path.as_deref(),
+        stderr_log_path: row.stderr_log_path.as_deref(),
+    }
 }
 
 async fn copy_outputs(

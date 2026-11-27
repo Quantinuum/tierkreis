@@ -1,3 +1,5 @@
+// `Insertable` generates a `&Option<&T>` which gets flagged by clippy.
+#![allow(clippy::ref_option_ref)]
 #![allow(missing_docs)]
 use crate::location::Location;
 use crate::state::schema::{
@@ -122,15 +124,17 @@ pub struct NodeState {
     pub error_detail: Option<String>,
     pub handle: Option<String>,
     pub execution_context: Option<String>,
+    pub stdout_log_path: Option<String>,
+    pub stderr_log_path: Option<String>,
 }
 
 #[derive(Insertable, AsChangeset, Default, Debug)]
 #[diesel(belongs_to(WorkflowRun, foreign_key = run_id))]
 #[diesel(table_name = crate::state::schema::node_states)]
 #[diesel(treat_none_as_default_value = false)]
-pub struct UpsertNodeState {
-    pub name: Option<String>,
-    pub run_id: String,
+pub struct UpsertNodeState<'a> {
+    pub name: Option<&'a str>,
+    pub run_id: &'a str,
     pub attempt: i32,
     pub node_location: Location,
     pub scheduled_time: Option<NaiveDateTime>,
@@ -145,10 +149,12 @@ pub struct UpsertNodeState {
     pub loop_index: Option<i32>,
     pub map_size: Option<i32>,
     pub map_completed: Option<Vec<u8>>,
-    pub error: Option<String>,
-    pub error_detail: Option<String>,
-    pub handle: Option<String>,
-    pub execution_context: Option<String>,
+    pub error: Option<&'a str>,
+    pub error_detail: Option<&'a str>,
+    pub handle: Option<&'a str>,
+    pub execution_context: Option<&'a str>,
+    pub stdout_log_path: Option<&'a str>,
+    pub stderr_log_path: Option<&'a str>,
 }
 
 // -----------------------------------------------------------------------------
