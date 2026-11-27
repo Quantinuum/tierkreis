@@ -571,6 +571,9 @@ pub async fn restart_node(
 
 /// Get metadata for a specific node in a workflow run.
 /// TODO: Use for profile/executor data
+/// # Errors
+///
+/// Returns an internal server error if the workflow run or node metadata cannot be retrieved.
 #[utoipa::path(
     get,
     path = "/runs/{workflow_run_id}/nodes/{node_location_str}/metadata",
