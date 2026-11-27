@@ -115,7 +115,7 @@ docs profile=dev: (setup profile)
 
 [group('dev')]
 serve:
-  cargo run --manifest-path tierkreis/Cargo.toml --release --bin tkr -- serve 
+  just uvrun dev tkr serve --config tierkreis.toml
 
 
 [group('dev')]

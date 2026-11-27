@@ -18,18 +18,25 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-pub struct AppError(miette::Report);
+pub struct AppError(StatusCode, miette::Report);
+
+impl AppError {
+    #[must_use]
+    pub fn not_found(message: &str) -> Self {
+        Self(StatusCode::NOT_FOUND, miette::miette!("{message}"))
+    }
+}
 
 impl<E: Into<miette::Report>> From<E> for AppError {
     fn from(err: E) -> Self {
-        AppError(err.into())
+        AppError(StatusCode::INTERNAL_SERVER_ERROR, err.into())
     }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let body = format!("{:#}", self.0);
-        (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
+        let body = format!("{:#}", self.1);
+        (self.0, body).into_response()
     }
 }
 
@@ -53,15 +60,40 @@ pub struct RuntimeMetadata {
 /// Workflow display information returned by `/api/workflows/`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WorkflowDisplay {
-    /// Currently the run UUID, no attempt/workflow
-    pub id: Uuid,
-    pub id_int: u64,
+    pub workflow_id: Uuid,
     pub name: Option<String>,
-    pub start_time: String,
-    /// Errored Nodes are taken from Errored time
+    pub runs: Vec<WorkflowRunDisplay>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WorkflowRunDisplay {
+    pub workflow_run_id: Uuid,
+    pub attempts: Vec<AttemptDisplay>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AttemptDisplay {
+    pub attempt: u32,
+    pub start_time: Option<String>,
+    pub queued_time: Option<String>,
+    pub complete_time: Option<String>,
+    pub cancelled_time: Option<String>,
+    pub error_time: Option<String>,
     pub errors: Vec<String>,
     pub tkr_version: String,
-    // TODO: wf id / attempt
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct AttemptQuery {
+    #[serde(default)]
+    pub attempt: u32,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RestartResponse {
+    pub attempt: u32,
+    pub invalidated: Vec<String>,
 }
 
 /// The status of a node in the workflow graph.
@@ -240,9 +272,11 @@ pub struct GraphsResponse {
     pub graphs: HashMap<String, PyGraph>,
 }
 
-/// Query parameters for the `/workflows/{workflow_id}/graphs` endpoint.
+/// Query parameters for run-scoped graph requests.
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct GraphsQuery {
+    #[serde(default)]
+    pub attempt: u32,
     /// Location strings to fetch graphs for (repeatable).
     #[serde(default)]
     pub locs: Vec<String>,

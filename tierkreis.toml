@@ -1,0 +1,27 @@
+default_storage_name = "file"
+default_executor_name = "subprocess"
+
+[asset_storage.file]
+type = "File"
+asset_dir = "./.runtime/tierkreis-assets"
+
+[executors.memory]
+type = "Memory"
+output_storage_name = "file"
+
+[executors.subprocess]
+type = "Subprocess"
+subprocess_storage_name = "file"
+output_storage_name = "file"
+
+
+[logging_config]
+log_file = "./.runtime/tierkreis.log"
+log_format = "compact"
+log_level = "debug"
+service_name = "tierkreis"
+
+[runtime_state]
+type = "Sqlite"
+memory = false
+url = "./.runtime/tierkreis.sqlite"
