@@ -35,10 +35,11 @@ use crate::{
         queries::{
             add_run_attempt_metadata, copy_inputs, copy_node_states, get_workflow_run_summary,
             insert_workflow, insert_workflow_run, insert_workflow_run_attempt,
-            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries, max_attempt,
-            read_node_state, read_node_states, read_node_states_by_name, read_run_attempt_metadata,
-            read_workflow, read_workflow_run, read_workflow_run_input_from_location,
-            read_workflow_run_inputs, update_node_state, update_workflow_run,
+            insert_workflow_run_inputs, list_active_runs, list_workflow_run_summaries,
+            list_workflows, max_attempt, read_node_state, read_node_states,
+            read_node_states_by_name, read_run_attempt_metadata, read_workflow, read_workflow_run,
+            read_workflow_run_input_from_location, read_workflow_run_inputs, update_node_state,
+            update_workflow_run,
         },
     },
     workflow_state_query::NodeCopyFilter,
@@ -271,6 +272,14 @@ impl Debug for SqliteRuntimeState {
 }
 
 impl RuntimeState for SqliteRuntimeState {
+    fn list_workflows(&self) -> BoxFuture<'_, miette::Result<Vec<(Uuid, Option<String>)>>> {
+        async move {
+            let mut conn = self.get_conn().await?;
+            list_workflows(&mut conn).await
+        }
+        .boxed()
+    }
+
     fn load_workflow(
         &self,
         workflow_id: Uuid,

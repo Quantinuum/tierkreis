@@ -8,7 +8,7 @@ import { bg_color } from "@/components/colors";
 import { useSearch } from "@tanstack/react-router";
 
 export function SimpleNode({ data }: NodeProps<BackendNode>) {
-  const { attempt } = useSearch({ from: "/runs/_/$wrid/nodes/$loc/" });
+  const { attempt = 0 } = useSearch({ strict: false });
   let name = data.title;
   if (data.value) {
     name = data.value;

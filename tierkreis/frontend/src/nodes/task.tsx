@@ -14,7 +14,7 @@ import { type BackendNode } from "./types";
 import { useSearch } from "@tanstack/react-router";
 
 export function TaskNode({ data }: NodeProps<BackendNode>) {
-  const { attempt } = useSearch({ from: "/runs/_/$wrid/nodes/$loc/" });
+  const { attempt = 0 } = useSearch({ strict: false });
   let name = data.title;
   if (name == "Function") {
     name = data.name;

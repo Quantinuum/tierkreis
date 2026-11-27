@@ -109,6 +109,10 @@ export const restartNode = async (
 
 export const useInfoQuery = () => $api.useQuery("get", "/api/info");
 export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
+export const useWorkflowGraphQuery = (workflow_id: string, locs: string[]) =>
+  $api.useQuery("get", "/api/workflows/{workflow_id}/graphs", {
+    params: { path: { workflow_id }, query: { locs } },
+  });
 export const useLogsQuery = (workflow_run_id: string, attempt: number) =>
   $api.useQuery("get", "/api/runs/{workflow_run_id}/logs", {
     params: { path: { workflow_run_id }, query: { attempt } },

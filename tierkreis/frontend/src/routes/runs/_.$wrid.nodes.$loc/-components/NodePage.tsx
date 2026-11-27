@@ -15,15 +15,18 @@ import useLocalStorageState from "use-local-storage-state";
 import { GraphView } from "./GraphView";
 import { Graph } from "@/graph/models";
 import { amalgamateGraphData } from "@/graph/amalgamateGraph";
+import { PyGraph, WorkflowDisplay } from "@/data/api_types";
+import { useParams } from "@tanstack/react-router";
 
-export default function NodePage(props: {
+type NodePageProps = {
   workflow_id: string;
-  attempt: number;
   node_location_str: string;
   openEvals: string[];
   openLoops: string[];
   openMaps: string[];
-}) {
+};
+
+export default function NodePage(props: NodePageProps & { attempt: number }) {
   const workflow_id = props.workflow_id;
   const node_location_str = props.node_location_str;
 
@@ -35,56 +38,6 @@ export default function NodePage(props: {
     ...props.openLoops,
     ...props.openMaps,
   ]);
-
-  const [stored_graph, setG] = useLocalStorageState<Graph>(
-    JSON.stringify([workflow_id, props.attempt, node_location_str]),
-    { defaultValue: { nodes: [], edges: [] } },
-  );
-
-  const onNodesChange = useCallback(
-    (changes: NodeChange<BackendNode>[]) => {
-      setG((gSnapshot: Graph) => {
-        const ns = applyNodeChanges(changes, gSnapshot.nodes);
-        return { nodes: ns, edges: gSnapshot.edges };
-      });
-    },
-    [setG],
-  );
-
-  const [info, setInfo] = useState<InfoProps>({
-    type: "Logs",
-    content: logsQuery.error
-      ? "Failed to fetch logs."
-      : logsQuery.data || "No logs.",
-    workflow_id,
-    node_location: node_location_str,
-    has_error: false,
-  });
-
-  useEffect(() => {
-    const evalData = data?.graphs ?? {};
-    if (Object.keys(evalData).length == 0) return;
-    const { nodes, edges } = amalgamateGraphData(
-      evalData,
-      props.openEvals,
-      props.openLoops,
-      props.openMaps,
-    );
-
-    const newG = parseGraph(
-      { nodes, edges },
-      workflow_id,
-      props.openEvals,
-      props.openLoops,
-      props.openMaps,
-    );
-    if (workflow_id === "00000000-0000-0000-0000-000000000000") {
-      // value used in vis_graph python function -> avoid local storage.
-      setG(updateGraph({ nodes: [], edges: [] }, newG));
-    } else {
-      setG((oldG: Graph) => updateGraph(oldG, newG));
-    }
-  }, [props, workflow_id, node_location_str, setG, data]);
 
   useEffect(() => {
     const url = runUrl(
@@ -120,12 +73,100 @@ export default function NodePage(props: {
     );
 
   return (
+    <NodeGraph
+      {...props}
+      storageKey={JSON.stringify([
+        workflow_id,
+        props.attempt,
+        node_location_str,
+      ])}
+      graphs={data?.graphs}
+      workflows={workflowsQuery.data ?? []}
+      initialContent={
+        logsQuery.error ? "Failed to fetch logs." : logsQuery.data || "No logs."
+      }
+    />
+  );
+}
+
+export function NodeGraph(
+  props: NodePageProps & {
+    storageKey: string;
+    graphs?: Record<string, PyGraph>;
+    workflows: WorkflowDisplay[];
+    initialContent: string;
+  },
+) {
+  const workflow_id = props.workflow_id;
+  const node_location_str = props.node_location_str;
+  const { wid: workflowDefinitionId } = useParams({ strict: false });
+  const [stored_graph, setG] = useLocalStorageState<Graph>(props.storageKey, {
+    defaultValue: { nodes: [], edges: [] },
+  });
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange<BackendNode>[]) => {
+      setG((gSnapshot: Graph) => {
+        const ns = applyNodeChanges(changes, gSnapshot.nodes);
+        return { nodes: ns, edges: gSnapshot.edges };
+      });
+    },
+    [setG],
+  );
+
+  const [info, setInfo] = useState<InfoProps>({
+    type: "Logs",
+    content: props.initialContent,
+    workflow_id,
+    node_location: node_location_str,
+    has_error: false,
+  });
+
+  useEffect(() => {
+    const evalData = props.graphs ?? {};
+    if (Object.keys(evalData).length == 0) return;
+    const { nodes, edges } = amalgamateGraphData(
+      evalData,
+      workflowDefinitionId
+        ? [...props.openEvals, ...props.openLoops, ...props.openMaps]
+        : props.openEvals,
+      workflowDefinitionId ? [] : props.openLoops,
+      workflowDefinitionId ? [] : props.openMaps,
+    );
+
+    const newG = parseGraph(
+      { nodes, edges },
+      workflow_id,
+      props.openEvals,
+      props.openLoops,
+      props.openMaps,
+    );
+    for (const node of newG.nodes) {
+      if (node.parentId === node_location_str) node.parentId = undefined;
+    }
+    setG((oldG: Graph) => updateGraph(oldG, newG));
+  }, [
+    props.graphs,
+    props.openEvals,
+    props.openLoops,
+    props.openMaps,
+    workflowDefinitionId,
+    workflow_id,
+    node_location_str,
+    setG,
+  ]);
+
+  return (
     <GraphView
-      key={JSON.stringify([workflow_id, props.attempt, node_location_str])}
-      nodes={stored_graph.nodes ?? []}
+      key={props.storageKey}
+      nodes={(stored_graph.nodes ?? []).map((node) =>
+        node.parentId === node_location_str
+          ? { ...node, parentId: undefined }
+          : node,
+      )}
       edges={stored_graph.edges ?? []}
       onNodesChange={onNodesChange}
-      workflows={workflowsQuery.data ?? []}
+      workflows={props.workflows}
       workflow_id={workflow_id}
       loc={node_location_str}
       infoProps={info}

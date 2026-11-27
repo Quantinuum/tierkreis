@@ -20,14 +20,22 @@ export function MapNode({ data: node_data }: NodeProps<BackendNode>) {
   const navigate = useNavigate();
   const wid = node_data.workflowId;
   const node_loc = node_data.node_location;
-  let { loc } = useParams({ strict: false });
+  let { loc, wid: workflowDefinitionId } = useParams({ strict: false });
   loc = loc ?? "-";
   const handleDoubleClick = () => {
-    navigate({
-      to: "/runs/$wrid/nodes/$loc",
-      params: { wrid: wid, loc: node_loc },
-      search: (previous) => previous,
-    });
+    if (workflowDefinitionId) {
+      navigate({
+        to: "/workflows/$wid/nodes/$loc",
+        params: { wid, loc: node_loc },
+        search: (previous) => previous,
+      });
+    } else {
+      navigate({
+        to: "/runs/$wrid/nodes/$loc",
+        params: { wrid: wid, loc: node_loc },
+        search: (previous) => previous,
+      });
+    }
   };
 
   if (node_data.is_expanded) {

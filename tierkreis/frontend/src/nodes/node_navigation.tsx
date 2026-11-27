@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { NodeType } from "@/data/api_types";
-import { Link } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { Minus, Plus } from "lucide-react";
 
 type SearchData = {
@@ -17,6 +17,7 @@ export const ZoomInButton = (props: {
   node_type: NodeType;
 }) => {
   const { wid, loc, node_loc, node_type } = props;
+  const { wid: workflowDefinitionId } = useParams({ strict: false });
 
   const params = { wrid: wid, loc };
   const search = (prev: SearchData): SearchData => {
@@ -32,13 +33,19 @@ export const ZoomInButton = (props: {
   };
   return (
     <Button className="flex-none m-1" variant="default" size="icon">
-      <Link
-        to="/runs/$wrid/nodes/$loc"
-        params={params}
-        search={(p) => search(p)}
-      >
-        <Plus />
-      </Link>
+      {workflowDefinitionId ? (
+        <Link
+          to="/workflows/$wid/nodes/$loc"
+          params={{ wid, loc }}
+          search={search}
+        >
+          <Plus />
+        </Link>
+      ) : (
+        <Link to="/runs/$wrid/nodes/$loc" params={params} search={search}>
+          <Plus />
+        </Link>
+      )}
     </Button>
   );
 };
@@ -48,6 +55,7 @@ export const ZoomOutButton = (props: {
   loc: string;
   node_loc: string;
 }) => {
+  const { wid: workflowDefinitionId } = useParams({ strict: false });
   const params = { wrid: props.wid, loc: props.loc };
   const search = (prev: SearchData): SearchData => {
     const openEvals = prev.openEvals?.filter(
@@ -63,9 +71,19 @@ export const ZoomOutButton = (props: {
   };
   return (
     <Button className="flex-none m-1" variant="secondary" size="icon">
-      <Link to="/runs/$wrid/nodes/$loc" params={params} search={search}>
-        <Minus />
-      </Link>
+      {workflowDefinitionId ? (
+        <Link
+          to="/workflows/$wid/nodes/$loc"
+          params={{ wid: props.wid, loc: props.loc }}
+          search={search}
+        >
+          <Minus />
+        </Link>
+      ) : (
+        <Link to="/runs/$wrid/nodes/$loc" params={params} search={search}>
+          <Minus />
+        </Link>
+      )}
     </Button>
   );
 };

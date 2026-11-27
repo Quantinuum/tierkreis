@@ -30,6 +30,7 @@ fn api_router() -> OpenApiRouter<models::AppState> {
         .routes(routes!(routes::get_info))
         .routes(routes!(routes::subscribe_node_updates))
         .routes(routes!(routes::list_workflows))
+        .routes(routes!(routes::list_workflow_nodes))
         .routes(routes!(routes::list_nodes))
         .routes(routes!(routes::get_all_outputs))
         .routes(routes!(routes::get_single_output))
@@ -154,14 +155,11 @@ pub async fn serve_with_config(
 pub async fn serve_graph(graph_json: &str, port: u16) -> miette::Result<()> {
     let display_graph: LegacyWorkflowGraph = serde_json::from_str(graph_json).into_diagnostic()?;
     let runtime_state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
-    let workflow_id = runtime_state
+    let _workflow_id = runtime_state
         .save_workflow(
             Some("Graph".to_string()),
             WorkflowGraph::new(std::iter::empty::<String>()),
         )
-        .await?;
-    let _run_state = runtime_state
-        .new_workflow_run_state(workflow_id, std::collections::HashMap::new())
         .await?;
     let asset_registry = asset_storage_registry_from_config(&RuntimeConfig::default())?;
     server(

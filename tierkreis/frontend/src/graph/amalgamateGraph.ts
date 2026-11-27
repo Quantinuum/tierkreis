@@ -46,7 +46,7 @@ const rewireEvals = (ev: string, ng: NestedGraph) => {
   const children = ng.childrenOfOpen.get(ev) ?? [];
   for (const e of ng.inEdges.get(ev) ?? []) {
     // The graph body input should remain flowing into the outer EVAL.
-    if (e.to_port === "body") continue;
+    if (e.to_port === "body" || e.to_port === "graph") continue;
 
     const newTarget = children.find(
       (x) => x.function_name === "input" && x.value === e.to_port,

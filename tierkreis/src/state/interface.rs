@@ -122,6 +122,9 @@ impl NodeState {
     }
 }
 
+/// Identifier and optional name of a saved workflow.
+pub type WorkflowSummary = (Uuid, Option<String>);
+
 /// [`RuntimeState`] is an interface to the state of the overall tierkreis runtime, across
 /// all of the running and completed Workflows.
 ///
@@ -141,6 +144,9 @@ pub trait RuntimeState: Debug + Send + Sync {
         name: Option<String>,
         workflow_graph: WorkflowGraph,
     ) -> BoxFuture<'_, miette::Result<Uuid>>;
+
+    /// List saved workflow identifiers and names, including workflows without runs.
+    fn list_workflows(&self) -> BoxFuture<'_, miette::Result<Vec<WorkflowSummary>>>;
 
     /// Create a new [`WorkflowRunState`] for a Workflow in the [`RuntimeState`] specified by id.
     ///

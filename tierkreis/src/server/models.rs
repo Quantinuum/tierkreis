@@ -281,3 +281,11 @@ pub struct GraphsQuery {
     #[serde(default)]
     pub locs: Vec<String>,
 }
+
+/// Query parameters for workflow definition graph requests.
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct WorkflowGraphsQuery {
+    /// Location strings to fetch graphs for (repeatable).
+    #[serde(default)]
+    pub locs: Vec<String>,
+}

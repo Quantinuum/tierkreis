@@ -121,6 +121,17 @@ impl RuntimeState for InMemoryRuntimeState {
         future::ok(workflow_id).boxed()
     }
 
+    fn list_workflows(&self) -> BoxFuture<'_, miette::Result<Vec<(Uuid, Option<String>)>>> {
+        future::ok(
+            self.inner
+                .workflows
+                .iter()
+                .map(|workflow| (*workflow.key(), workflow.value().0.clone()))
+                .collect(),
+        )
+        .boxed()
+    }
+
     fn new_workflow_run_state_with_metadata(
         &self,
         workflow_id: Uuid,

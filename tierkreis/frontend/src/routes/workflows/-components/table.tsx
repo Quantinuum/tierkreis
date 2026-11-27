@@ -10,6 +10,8 @@ import { LoadingRow, AttemptsTableRow } from "./row";
 import { ColumnHeader } from "./header";
 import { AttemptDisplay, WorkflowDisplay } from "@/data/api_types";
 import { attemptStatus, latestAttempt, runPhrase } from "@/data/workflows";
+import { Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
 
 function AttemptsTable(props: {
   data: AttemptDisplay[];
@@ -108,6 +110,22 @@ export function WorkflowsTable(props: {
                 <span className={`ml-3 text-sm ${status.className}`}>
                   Last: {status.label}
                 </span>
+              )}
+              {workflow.runs.length === 0 && (
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="ml-3"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Link
+                    to="/workflows/$wid/nodes/$loc"
+                    params={{ wid: workflow.workflow_id, loc: "-" }}
+                  >
+                    View Graph Definition
+                  </Link>
+                </Button>
               )}
             </summary>
             <div className="border-t p-3">

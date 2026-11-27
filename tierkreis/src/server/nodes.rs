@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use miette::Context;
-use portgraph::NodeIndex;
+use portgraph::{NodeIndex, multiportgraph::SubportIndex};
 use serde_json::Value;
 use tracing::debug;
 
@@ -291,6 +291,87 @@ pub async fn build_py_graph(
     parent_location: &Location,
     asset_registry: &AssetStorageRegistry,
 ) -> miette::Result<PyGraph> {
+    build_workflow_graph(
+        workflow_graph,
+        Some(run_state),
+        parent_location,
+        asset_registry,
+    )
+    .await
+}
+
+/// Build a read-only graph from a saved workflow definition.
+///
+/// # Errors
+///
+/// Returns an error if the graph cannot be built.
+pub async fn build_static_py_graph(
+    workflow_graph: &WorkflowGraph,
+    parent_location: &Location,
+    asset_registry: &AssetStorageRegistry,
+) -> miette::Result<PyGraph> {
+    build_workflow_graph(workflow_graph, None, parent_location, asset_registry).await
+}
+
+async fn edge_value(
+    run_state: Option<&dyn WorkflowRunState>,
+    location: &Location,
+    port: &str,
+    definition: Option<&NodeDefinition>,
+    asset_registry: &AssetStorageRegistry,
+) -> Option<String> {
+    if let Some(run_state) = run_state {
+        let state = run_state.read(location).await.unwrap_or_default();
+        try_load_output_value(port, &state, asset_registry)
+            .await
+            .ok()
+            .map(|value| value.to_string())
+    } else {
+        match definition {
+            Some(NodeDefinition::Const { value }) if port == "value" => {
+                Some(graph_data_value(value))
+            }
+            _ => None,
+        }
+    }
+}
+
+async fn node_value(
+    definition: &NodeDefinition,
+    input_links: &[(SubportIndex, SubportIndex)],
+    workflow_graph: &WorkflowGraph,
+    run_state: Option<&dyn WorkflowRunState>,
+    parent_location: &Location,
+    asset_registry: &AssetStorageRegistry,
+) -> Option<String> {
+    match definition {
+        NodeDefinition::Const { value } if run_state.is_none() => Some(graph_data_value(value)),
+        NodeDefinition::Const { value } => Some(serde_json::to_string(value).unwrap_or_default()),
+        NodeDefinition::Input { name, .. } => Some(name.clone()),
+        NodeDefinition::Output {} if input_links.len() == 1 => {
+            let run_state = run_state?;
+            let (_, output_sub) = &input_links[0];
+            let port = workflow_graph.get_port_name((*output_sub).into()).ok()?;
+            let source = workflow_graph.port_node(*output_sub).ok()?;
+            edge_value(
+                Some(run_state),
+                &parent_location.with_node(source),
+                port,
+                None,
+                asset_registry,
+            )
+            .await
+        }
+        _ => None,
+    }
+}
+
+async fn build_workflow_graph(
+    workflow_graph: &WorkflowGraph,
+    run_state: Option<&dyn WorkflowRunState>,
+    parent_location: &Location,
+    asset_registry: &AssetStorageRegistry,
+) -> miette::Result<PyGraph> {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
 
@@ -303,8 +384,16 @@ pub async fn build_py_graph(
             .ok_or_else(|| miette::miette!("Node definition missing for {node_idx:?}"))?;
 
         let node_type = def.node_type();
-        let function_name = def.function_name();
-        let state = run_state.read(&node_location).await?;
+        let function_name = if run_state.is_none() && matches!(def, NodeDefinition::Input { .. }) {
+            "input".to_string()
+        } else {
+            def.function_name()
+        };
+        let state = if let Some(run_state) = run_state {
+            run_state.read(&node_location).await?
+        } else {
+            NodeState::default()
+        };
         let status = node_status_from_state(&state);
 
         // Collect output port names.
@@ -342,46 +431,34 @@ pub async fn build_py_graph(
                 node_location_str,
                 port_name
             );
-            let node_state = run_state.read(&from_location).await.unwrap_or_default();
+            let value = edge_value(
+                run_state,
+                &from_location,
+                from_port_name,
+                workflow_graph.node_definition(from_node_idx),
+                asset_registry,
+            )
+            .await;
 
             edges.push(PyEdge {
                 from_node: from_location.to_string(),
                 from_port: from_port_name.clone(),
                 to_node: node_location_str.clone(),
                 to_port: port_name.clone(),
-                value: try_load_output_value(from_port_name, &node_state, asset_registry)
-                    .await
-                    .ok()
-                    .map(|v| v.to_string()),
+                value,
                 conditional,
             });
         }
 
-        // Determine node value string.
-        let value = match def {
-            NodeDefinition::Const { value } => {
-                Some(serde_json::to_string(value).unwrap_or_default())
-            }
-            NodeDefinition::Input { name, .. } => Some(name.clone()),
-            NodeDefinition::Output {} if input_links.len() == 1 => {
-                // Show the single input value if available.
-                let (_, output_sub) = &input_links[0];
-                let output_port: portgraph::PortIndex = (*output_sub).into();
-                let from_port_name = workflow_graph.get_port_name(output_port).ok().cloned();
-                let from_node_idx = workflow_graph.port_node(*output_sub).ok();
-                if let (Some(port), Some(src_node)) = (from_port_name, from_node_idx) {
-                    let src_loc = parent_location.with_node(src_node);
-                    let src_state = run_state.read(&src_loc).await.unwrap_or_default();
-                    try_load_output_value(&port, &src_state, asset_registry)
-                        .await
-                        .ok()
-                        .map(|v| v.to_string())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
+        let value = node_value(
+            def,
+            &input_links,
+            workflow_graph,
+            run_state,
+            parent_location,
+            asset_registry,
+        )
+        .await;
 
         nodes.push(PyNode {
             id: node_location_str.clone(),
@@ -640,7 +717,7 @@ fn graph_data_static_value(node: &LegacyNodeDef, port: &str) -> Option<String> {
 }
 
 fn graph_data_value(value: &Value) -> String {
-    if value.get("nodes").is_some() {
+    if value.get("nodes").is_some() || value.get("node_definitions").is_some() {
         "Graph".to_string()
     } else {
         value.to_string()
@@ -673,6 +750,36 @@ fn load_subgraph_from_const_node(
     } else {
         Err(miette::miette!("Node {node_index:?} is not a Const node"))
     }
+}
+
+/// Resolve a location using only subgraphs stored in constant nodes.
+///
+/// # Errors
+///
+/// Returns an error if the location is invalid or its graph is not statically available.
+pub fn load_static_graph(
+    mut workflow: WorkflowGraph,
+    location: &Location,
+) -> miette::Result<WorkflowGraph> {
+    for component in location.components() {
+        if let LocationComponent::Node { node } = component {
+            match workflow.node_definition(*node) {
+                Some(
+                    NodeDefinition::Eval { .. }
+                    | NodeDefinition::Loop { .. }
+                    | NodeDefinition::Map { .. },
+                ) => {
+                    workflow = load_subgraph_from_const_node(&workflow, *node)?;
+                }
+                _ => {
+                    return Err(miette::miette!(
+                        "Node {node:?} at {location} has no static subgraph"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(workflow)
 }
 
 /// Resolve the graph view for a given `location`, first using the `RuntimeState` then
