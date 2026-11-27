@@ -593,7 +593,6 @@ pub async fn get_node_metadata(
     Ok((StatusCode::NOT_IMPLEMENTED, "Not implemented").into_response())
 }
 
-
 #[allow(unused_variables)]
 /// Get the logs for a specific node in a workflow run, returning the log detail as a string.
 ///
