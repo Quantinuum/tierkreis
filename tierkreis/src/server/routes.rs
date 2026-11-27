@@ -594,6 +594,7 @@ pub async fn get_node_metadata(
 }
 
 
+#[allow(unused_variables)]
 /// Get the logs for a specific node in a workflow run, returning the log detail as a string.
 ///
 /// # Errors

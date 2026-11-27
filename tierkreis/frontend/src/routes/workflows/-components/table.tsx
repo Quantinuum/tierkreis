@@ -9,7 +9,7 @@ import { useState } from "react";
 import { LoadingRow, AttemptsTableRow } from "./row";
 import { ColumnHeader } from "./header";
 import { AttemptDisplay, WorkflowDisplay } from "@/data/api_types";
-import { attemptStatus, latestAttempt } from "@/data/workflows";
+import { attemptStatus, latestAttempt, runPhrase } from "@/data/workflows";
 
 function AttemptsTable(props: {
   data: AttemptDisplay[];
@@ -116,8 +116,11 @@ export function WorkflowsTable(props: {
               )}
               {workflow.runs.map((run) => (
                 <section key={run.workflow_run_id} className="mb-3 last:mb-0">
-                  <h2 className="bg-muted/40 p-2 text-sm font-medium break-all">
-                    Run {run.workflow_run_id}
+                  <h2
+                    className="bg-muted/40 p-2 text-sm font-medium break-all"
+                    title={run.workflow_run_id}
+                  >
+                    {runPhrase(run.workflow_run_id)}
                   </h2>
                   <div className="overflow-x-auto">
                     <AttemptsTable

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Link, useSearch } from "@tanstack/react-router";
 import { WorkflowDisplay } from "@/data/api_types";
-import { attemptStatus } from "@/data/workflows";
+import { attemptStatus, runPhrase } from "@/data/workflows";
 import { Fragment } from "react";
 
 export function WorkflowSidebar({
@@ -47,8 +47,11 @@ export function WorkflowSidebar({
                 )}
                 {workflow.runs.map((run) => (
                   <div key={run.workflow_run_id} className="mb-2">
-                    <p className="px-2 py-1 text-xs break-all">
-                      Run {run.workflow_run_id}
+                    <p
+                      className="px-2 py-1 text-xs break-all"
+                      title={run.workflow_run_id}
+                    >
+                      {runPhrase(run.workflow_run_id)}
                     </p>
                     <SidebarMenu>
                       {run.attempts.map((item) => {
