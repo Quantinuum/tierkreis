@@ -45,8 +45,8 @@ impl ResourceSettings {
 }
 
 impl RuntimeConfig {
-    pub(crate) fn logging_config(&self) -> &Option<LoggingConfig> {
-        &self.logging_config
+    pub(crate) fn logging_config(&self) -> Option<&LoggingConfig> {
+        self.logging_config.as_ref()
     }
 
     /// Select a deployment profile for this runtime configuration.

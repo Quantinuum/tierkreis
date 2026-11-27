@@ -263,19 +263,19 @@ fn init(config: &LoggingConfig, with_telemetry: bool) {
 }
 
 /// Initialize logging without OpenTelemetry.
-pub fn init_logging(logging_config: &Option<LoggingConfig>) {
-    init(
-        logging_config.as_ref().unwrap_or(&LoggingConfig::default()),
-        false,
-    );
+pub fn init_logging(logging_config: Option<&LoggingConfig>) {
+    match logging_config {
+        Some(config) => init(config, false),
+        None => init(&LoggingConfig::default(), false),
+    }
 }
 
 /// Initialize the runtime subscriber with logging and OpenTelemetry.
-pub fn init_logging_and_tracing(logging_config: &Option<LoggingConfig>) {
-    init(
-        logging_config.as_ref().unwrap_or(&LoggingConfig::default()),
-        true,
-    );
+pub fn init_logging_and_tracing(logging_config: Option<&LoggingConfig>) {
+    match logging_config {
+        Some(config) => init(config, true),
+        None => init(&LoggingConfig::default(), true),
+    }
 }
 
 fn normalize_otel_env_key(key: &str) -> String {
