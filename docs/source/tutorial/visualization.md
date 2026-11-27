@@ -49,7 +49,7 @@ Programmatically this is available through:
 
 ```py
 from tierkreis.builder import Graph
-from tierkreis_visualization.visualize_graph import visualize_graph
+from tierkreis.viz import visualize_graph
 
 graph = Graph()
 visualize_graph(graph)
@@ -77,6 +77,10 @@ At the bottom left of the main view there are three control buttons from top to 
 ### Available Graphs
 
 Available graphs are listed in the sidebar by their name.
+Saved workflows without runs appear in the workflows table with a **View unrun
+graph** button. This opens the workflow definition using the same graph view as
+`visualize_graph`. Run-specific actions require a run and will fail for an
+unrun graph.
 
 ### Node Types
 
@@ -123,7 +127,8 @@ This will show their nested structure.
 ![node state example](../_static/visualization/Expanded.png)
 For `eval` nodes this will immediately be the nested graph;
 For `map`/`loop` nodes this will show the individual elements/iterations which each contain their own subgraph.
-For unevaluated graphs, this will only show a placeholder evaluation.
+For unrun graphs, this shows the statically available subgraph directly. A
+subgraph supplied dynamically at runtime cannot be displayed until it is known.
 To hide the graph again use the `-` button at the top right.
 The other two buttons allow for resizing the bounding box and moving the node _with all its children_.
 
