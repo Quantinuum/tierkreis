@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { Minus, Plus } from "lucide-react";
 
 type SearchData = {
+  attempt?: number;
   openEvals?: string[] | undefined;
   openLoops?: string[] | undefined;
   openMaps?: string[] | undefined;
@@ -27,7 +28,7 @@ export const ZoomInButton = (props: {
     else if (node_type == "loop") openLoops.push(node_loc);
     else if (node_type == "map") openMaps.push(node_loc);
 
-    return { openEvals, openLoops, openMaps };
+    return { attempt: prev.attempt, openEvals, openLoops, openMaps };
   };
   return (
     <Button className="flex-none m-1" variant="default" size="icon">
@@ -58,7 +59,7 @@ export const ZoomOutButton = (props: {
     const openMaps = prev.openMaps?.filter(
       (x) => !x.startsWith(props.node_loc),
     );
-    return { openEvals, openLoops, openMaps };
+    return { attempt: prev.attempt, openEvals, openLoops, openMaps };
   };
   return (
     <Button className="flex-none m-1" variant="secondary" size="icon">

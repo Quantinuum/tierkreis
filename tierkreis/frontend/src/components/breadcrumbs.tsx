@@ -7,7 +7,13 @@ const Breadcrumb = (props: { wrid: string; loc: string }) => {
   return (
     <>
       <div>/</div>
-      <Link to={"/runs/$wrid/nodes/$loc"} params={props} className="m-1 p-2">
+      {/* search={(previous) => previous} keeps the current query parameters in the URL */}
+      <Link
+        to={"/runs/$wrid/nodes/$loc"}
+        params={props}
+        search={(previous) => previous}
+        className="m-1 p-2"
+      >
         {name}
       </Link>
     </>
@@ -16,8 +22,11 @@ const Breadcrumb = (props: { wrid: string; loc: string }) => {
 
 export const Breadcrumbs = (props: { wid: string; loc: string }) => {
   const steps = loc_steps(props.loc);
+
   const slices = steps.map((_, i) => steps.slice(0, i + 1).join("."));
-  const crumbs = slices.map((x) => <Breadcrumb wrid={props.wid} loc={x} />);
+  const crumbs = slices.map((x) => (
+    <Breadcrumb key={x} wrid={props.wid} loc={x} />
+  ));
   return (
     <div className="border-b-1 h-12 flex items-center">
       <Link to={"/workflows"} className="m-1 p-2">

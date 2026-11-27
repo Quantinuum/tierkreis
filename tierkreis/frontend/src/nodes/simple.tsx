@@ -5,8 +5,10 @@ import { type BackendNode } from "./types";
 import { fetchOutput, fetchOutputs } from "@/data/api";
 import { loc_parent } from "@/data/loc";
 import { bg_color } from "@/components/colors";
+import { useSearch } from "@tanstack/react-router";
 
 export function SimpleNode({ data }: NodeProps<BackendNode>) {
+  const { attempt } = useSearch({ from: "/runs/_/$wrid/nodes/$loc/" });
   let name = data.title;
   if (data.value) {
     name = data.value;
@@ -29,6 +31,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
         data.workflowId,
         data.node_location,
         "value",
+        attempt,
       );
       data.setInfo?.({
         type: "Constant value",
@@ -45,6 +48,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
         data.workflowId,
         data.node_location,
         name,
+        attempt,
       );
       data.setInfo?.({
         type: "Input",
@@ -58,7 +62,7 @@ export function SimpleNode({ data }: NodeProps<BackendNode>) {
       });
     } else if (data.node_type === "output") {
       const parent = loc_parent(data.node_location);
-      const content = await fetchOutputs(data.workflowId, parent);
+      const content = await fetchOutputs(data.workflowId, parent, attempt);
       data.setInfo?.({
         type: "Output",
         content: content ?? "No value available.",

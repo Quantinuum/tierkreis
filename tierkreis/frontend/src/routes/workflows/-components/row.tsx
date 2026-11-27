@@ -1,8 +1,10 @@
 import { LoadingIndicator } from "@/components/StatusIndicator";
 import { Button } from "@/components/ui/button";
-import { WorkflowDisplay } from "@/data/api_types";
+import { AttemptDisplay } from "@/data/api_types";
+import { attemptStatus } from "@/data/workflows";
+import { runUrl } from "@/data/api";
 import { loc_parent } from "@/data/loc";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Download, AlertCircle } from "lucide-react";
 import {
   Tooltip,
@@ -12,17 +14,15 @@ import {
 } from "@/components/ui/tooltip";
 
 function check_semver_matches(v: string, target: string) {
-  if (!v) return false;
-  const parts = v.split(".");
-  if (parts.length < 3) return false;
   return v === target;
 }
 
-const NodeLink = (props: { wrid: string; loc: string }) => {
+const NodeLink = (props: { runId: string; loc: string; attempt: number }) => {
   return (
     <Link
       to="/runs/$wrid/nodes/$loc"
-      params={{ wrid: props.wrid, loc: loc_parent(props.loc) }}
+      params={{ wrid: props.runId, loc: loc_parent(props.loc) }}
+      search={{ attempt: props.attempt }}
       className="hover:underline ml-2"
     >
       {props.loc}
@@ -30,83 +30,77 @@ const NodeLink = (props: { wrid: string; loc: string }) => {
   );
 };
 
-const errorLinks = (wrid: string, errors: string[]) => {
-  return errors.map((x) => <NodeLink wrid={wrid} loc={x} />);
-};
-const getLogs = async (wrid: string) => {
-  window.open(`/api/runs/${wrid}/logs`, "_blank");
+const errorLinks = (runId: string, attempt: number, errors: string[]) => {
+  return errors.map((loc) => (
+    <NodeLink key={loc} runId={runId} loc={loc} attempt={attempt} />
+  ));
 };
 
-const logsLink = (wid: string) => {
+const getLogs = (runId: string, attempt: number) => {
+  window.open(runUrl(runId, attempt, "logs"), "_blank");
+};
+
+const logsLink = (runId: string, attempt: number) => {
   return (
     <Button
       className="cursor-pointer"
       size="icon"
-      onClick={async () => await getLogs(wid)}
+      aria-label={`Download logs for attempt ${attempt}`}
+      onClick={() => getLogs(runId, attempt)}
     >
       <Download />
     </Button>
   );
 };
 
-export const WorkflowsTableRow = (props: {
-  row: WorkflowDisplay;
+export const AttemptsTableRow = (props: {
+  row: AttemptDisplay;
+  runId: string;
   targetVersion: string;
 }) => {
-  const navigate = useNavigate();
-  const r = props.row;
-  const first = r.runs[0]?.attempts[0]; // TODO
-  const handleRowClick = () => {
-    navigate({
-      to: "/runs/$wrid/nodes/$loc",
-      params: { wrid: r.runs[0]?.workflow_run_id ?? "-", loc: "-" }, // TODO
-    });
-  };
-  if (!first || !first.start_time) return null; // TODO handle missing first attempt
-
-  const d = new Date(first.start_time);
-  const d_display = `${d.toDateString()}, ${d.toLocaleTimeString()}`;
+  const { row, runId } = props;
+  const status = attemptStatus(row);
+  const date = row.start_time
+    ? new Date(row.start_time).toLocaleString()
+    : "Not started";
   return (
     <tr className="hover:bg-gray-50">
-      <td className="p-4 border-t-1 cursor-pointer" onClick={handleRowClick}>
-        {r.name}
+      <td className="p-4 border-t-1">
+        <Link
+          to="/runs/$wrid/nodes/$loc"
+          params={{ wrid: runId, loc: "-" }}
+          search={{ attempt: row.attempt }}
+          className="hover:underline"
+        >
+          Attempt {row.attempt}
+        </Link>
       </td>
-      <td className="p-4 border-t-1 cursor-pointer" onClick={handleRowClick}>
-        {r.workflow_id}
-      </td>
-      <td className="p-4 border-t-1 cursor-pointer" onClick={handleRowClick}>
-        {d_display}
-      </td>
+      <td className={`p-4 border-t-1 ${status.className}`}>{status.label}</td>
+      <td className="p-4 border-t-1">{date}</td>
       <td className="p-4 border-t-1">
         <div className="flex items-center gap-2">
-          {first.tkr_version}
-          {first.tkr_version &&
-            (() => {
-              const isOutdated = !check_semver_matches(
-                first.tkr_version,
-                props.targetVersion,
-              );
-              return isOutdated ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertCircle className="w-4 h-4 text-nexus-red" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      This workflow was run with a different version of
-                      tierkreis and may not be displayed correctly.
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : null;
-            })()}
+          {row.tkr_version}
+          {row.tkr_version &&
+            !check_semver_matches(row.tkr_version, props.targetVersion) && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertCircle className="w-4 h-4 text-nexus-red" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    This workflow was run with a different version of tierkreis
+                    and may not be displayed correctly.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
         </div>
       </td>
       <td className="p-4 border-t-1">
-        {errorLinks(r.workflow_id, first.errors)}
+        {errorLinks(runId, row.attempt, row.errors)}
       </td>
-      <td className="p-4 border-t-1 flex justify-center">
-        {logsLink(r.workflow_id)}
+      <td className="p-4 border-t-1 text-center">
+        {logsLink(runId, row.attempt)}
       </td>
     </tr>
   );
@@ -114,20 +108,12 @@ export const WorkflowsTableRow = (props: {
 
 export function LoadingRow() {
   return (
-    <tr style={{ color: "rgba(0,0,0,0)" }}>
-      <td className="p-4 border-t-1">
+    <tr>
+      <td className="p-4">
         <LoadingIndicator>
-          <span></span>
+          <span>Loading workflows...</span>
         </LoadingIndicator>
       </td>
-
-      <td className="p-4 border-t-1 ">00000000-0000-0000-0000-000000000000</td>
-      <td className="p-4 border-t-1 ">
-        {new Date().toDateString()}, {new Date().toLocaleTimeString()}
-      </td>
-      <td className="p-4 border-t-1"></td>
-      <td className="p-4 border-t-1"></td>
-      <td className="p-4 border-t-1"></td>
     </tr>
   );
 }

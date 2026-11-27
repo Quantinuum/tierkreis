@@ -11,8 +11,10 @@ import { DialogTrigger } from "@/components/ui/dialog";
 import { fetchErrors, fetchNodeLogs } from "@/data/api";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
+import { useSearch } from "@tanstack/react-router";
 
 export function TaskNode({ data }: NodeProps<BackendNode>) {
+  const { attempt } = useSearch({ from: "/runs/_/$wrid/nodes/$loc/" });
   let name = data.title;
   if (name == "Function") {
     name = data.name;
@@ -22,7 +24,7 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
     const workflow_id = data.workflowId;
     const node_location = data.node_location;
     if (data.node_type === "function") {
-      const content = await fetchNodeLogs(data.workflowId, data.node_location);
+      const content = await fetchNodeLogs(data.workflowId, data.node_location, attempt);
       data.setInfo?.({
         type: "Logs",
         content,
@@ -40,7 +42,7 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
     }
   };
   const handleErrorClick = async () => {
-    const errors = await fetchErrors(data.workflowId, data.node_location);
+    const errors = await fetchErrors(data.workflowId, data.node_location, attempt);
     data.setInfo?.({
       type: "Errors",
       content: errors,

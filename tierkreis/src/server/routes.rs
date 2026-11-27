@@ -569,7 +569,34 @@ pub async fn restart_node(
     }))
 }
 
-#[allow(unused)]
+/// Get metadata for a specific node in a workflow run.
+/// TODO: Use for profile/executor data
+/// # Errors
+///
+/// Returns an internal server error if the workflow run or node metadata cannot be retrieved.
+#[utoipa::path(
+    get,
+    path = "/runs/{workflow_run_id}/nodes/{node_location_str}/metadata",
+    params(
+        ("workflow_run_id" = Uuid, Path, description = "Run ID"),
+        AttemptQuery,
+        ("node_location_str" = String, Path, description = "Location string"),
+    ),
+    responses(
+        (status = 404, description = "Workflow run attempt not found", body = String, content_type = "text/plain"),
+        (status = 501, description = "Metadata retrieval is not implemented"),
+    )
+)]
+pub async fn get_node_metadata(
+    State(state): State<AppState>,
+    Path((run_id, _location_str)): Path<(Uuid, String)>,
+    Query(query): Query<AttemptQuery>,
+) -> HandlerResult<Response> {
+    selected_run(&state, run_id, query.attempt).await?;
+    Ok((StatusCode::NOT_IMPLEMENTED, "Not implemented").into_response())
+}
+
+#[allow(unused_variables)]
 /// Get the logs for a specific node in a workflow run, returning the log detail as a string.
 ///
 /// # Errors
@@ -598,7 +625,6 @@ pub async fn get_node_logs(
     Ok("Not implemented".to_string().into_response())
 }
 
-#[allow(unused)]
 /// Get the logs for a specific workflow run, returning the log detail as a string.
 ///
 /// # Errors
