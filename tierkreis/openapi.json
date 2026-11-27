@@ -30,41 +30,30 @@
         }
       }
     },
-    "/api/workflows/": {
-      "get": {
-        "summary": "List all workflows in the database, returning a summary of each.",
-        "description": "# Errors\n\nReturns an internal server error if the database query fails.",
-        "operationId": "list_workflows",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/WorkflowDisplay"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workflows/{workflow_id}/graphs": {
+    "/api/runs/{workflow_run_id}/graphs": {
       "get": {
         "summary": "Get the graphs for a specific workflow.",
         "description": "# Errors\n\nReturns an internal server error if the workflow is not found or if the graph cannot be built.",
         "operationId": "list_nodes",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
-            "description": " The workflow uuid",
+            "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -90,20 +79,30 @@
               }
             }
           },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error building graph"
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/logs": {
+    "/api/runs/{workflow_run_id}/logs": {
       "get": {
         "summary": "Get the logs for a specific workflow run, returning the log detail as a string.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.",
         "operationId": "get_workflow_logs",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
@@ -111,11 +110,31 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Log detail for the workflow"
+          },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "500": {
             "description": "Error loading log detail"
@@ -123,20 +142,30 @@
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}": {
       "get": {
         "summary": "Notify the frontend to refresh graph state, including changes from another process.",
         "description": "# Errors\n\nReturns an error if the node location string cannot be parsed or the workflow run is unknown.",
         "operationId": "subscribe_node_updates",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -152,24 +181,44 @@
         "responses": {
           "101": {
             "description": "Graph refresh notifications"
+          },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/errors": {
       "get": {
         "summary": "Get the error logs for a specific node in a workflow run, returning the error detail as a string.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the error logs cannot be loaded.",
         "operationId": "get_node_errors",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -186,26 +235,46 @@
           "200": {
             "description": "Error detail for the node"
           },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error loading error detail"
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/inputs/{port_name}": {
       "get": {
         "summary": "Get the input for a specific port of a node in a workflow run, returning the raw value as JSON or text.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the input value cannot be loaded.",
         "operationId": "get_input",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -232,25 +301,42 @@
             "description": "Input value as JSON or text"
           },
           "404": {
-            "description": "Input not found"
+            "description": "Workflow run attempt or input not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/logs": {
       "get": {
         "summary": "Get the logs for a specific node in a workflow run, returning the log detail as a string.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.",
         "operationId": "get_node_logs",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -267,26 +353,46 @@
           "200": {
             "description": "Log detail for the node"
           },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error loading log detail"
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs": {
       "get": {
         "summary": "List all outputs for a specific node in a workflow run, returning a map of port name to value.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.",
         "operationId": "get_all_outputs",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -303,26 +409,46 @@
           "200": {
             "description": "JSON object of port name to value"
           },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Error loading outputs"
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs/{port_name}": {
       "get": {
         "summary": "List the output for a specific port of a node in a workflow run, returning the raw value as JSON or text.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.",
         "operationId": "get_single_output",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -349,25 +475,42 @@
             "description": "Raw output value as JSON or text"
           },
           "404": {
-            "description": "Output not found"
+            "description": "Workflow run attempt or output not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/restart": {
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/restart": {
       "post": {
-        "summary": "Restart a task node and return the locations invalidated by the restart.",
+        "summary": "Restart a task node and return the new attempt and invalidated locations.",
         "description": "# Errors\n\nReturns an internal server error if the workflow run or node cannot be restarted.",
         "operationId": "restart_node",
         "parameters": [
           {
-            "name": "workflow_id",
+            "name": "workflow_run_id",
             "in": "path",
             "description": "Run ID",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
             }
           },
           {
@@ -385,10 +528,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "$ref": "#/components/schemas/RestartResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow run attempt not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -398,10 +548,95 @@
           }
         }
       }
+    },
+    "/api/workflows/": {
+      "get": {
+        "summary": "List all workflows in the database, returning a summary of each.",
+        "description": "# Errors\n\nReturns an internal server error if the database query fails.",
+        "operationId": "list_workflows",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowDisplay"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error listing workflows",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AttemptDisplay": {
+        "type": "object",
+        "required": [
+          "attempt",
+          "errors",
+          "tkr_version"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "cancelled_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "complete_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "queued_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "start_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tkr_version": {
+            "type": "string"
+          }
+        }
+      },
       "GraphsResponse": {
         "type": "object",
         "description": "Response containing graphs for multiple requested locations.",
@@ -598,6 +833,26 @@
           }
         }
       },
+      "RestartResponse": {
+        "type": "object",
+        "required": [
+          "attempt",
+          "invalidated"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "invalidated": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "RuntimeMetadata": {
         "type": "object",
         "description": "Runtime metadata returned by `/api/info`.",
@@ -614,41 +869,44 @@
         "type": "object",
         "description": "Workflow display information returned by `/api/workflows/`.",
         "required": [
-          "id",
-          "id_int",
-          "start_time",
-          "errors",
-          "tkr_version"
+          "workflow_id",
+          "runs"
         ],
         "properties": {
-          "errors": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Errored Nodes are taken from Errored time"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "Currently the run UUID, no attempt/workflow"
-          },
-          "id_int": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
           "name": {
             "type": [
               "string",
               "null"
             ]
           },
-          "start_time": {
-            "type": "string"
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunDisplay"
+            }
           },
-          "tkr_version": {
-            "type": "string"
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "WorkflowRunDisplay": {
+        "type": "object",
+        "required": [
+          "workflow_run_id",
+          "attempts"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttemptDisplay"
+            }
+          },
+          "workflow_run_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       }

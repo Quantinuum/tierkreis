@@ -15,7 +15,7 @@ struct Args {
 fn main() -> miette::Result<()> {
     let args = Args::parse();
     let logging_config = LoggingConfig::new_with_custom_name("tkr-builtins");
-    init_logging_and_tracing(&Some(logging_config));
+    init_logging_and_tracing(Some(&logging_config));
 
     let call_args = args
         .call_args

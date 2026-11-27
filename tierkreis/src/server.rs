@@ -19,6 +19,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::{
     asset_storage::AssetStorageRegistry,
     graph::{LegacyWorkflowGraph, WorkflowGraph},
+    monitoring::init_logging_and_tracing,
     runtime::{RuntimeConfig, asset_storage_registry_from_config},
     state::{InMemoryRuntimeState, RuntimeState},
 };
@@ -133,6 +134,7 @@ pub async fn serve_with_config(
         Some(path) => RuntimeConfig::from_file(path)?,
         None => RuntimeConfig::load()?,
     };
+    init_logging_and_tracing(config.logging_config());
     let runtime_state = config.persistent_viewer_state().await?;
     let asset_registry = asset_storage_registry_from_config(&config)?;
     server(runtime_state, asset_registry, host, port, None).await

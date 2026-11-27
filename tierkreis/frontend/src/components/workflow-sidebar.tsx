@@ -27,21 +27,21 @@ export function WorkflowSidebar({
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {workflows.map((workflow) => (
-                <SidebarMenuItem key={workflow.id}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={workflowId === workflow.id}
-                  >
-                    <Link
-                      to={"/workflows/$wid/nodes/$loc"}
-                      params={{ wid: workflow.id, loc: "-" }}
-                    >
-                      <span>{workflow.name}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {workflows.map((workflow) => {
+                const wrid = workflow.runs[0]?.workflow_run_id ?? "-";
+                return (
+                  <SidebarMenuItem key={wrid}>
+                    <SidebarMenuButton asChild isActive={workflowId === wrid}>
+                      <Link
+                        to={"/runs/$wrid/nodes/$loc"}
+                        params={{ wrid: wrid, loc: "-" }}
+                      >
+                        <span>{workflow.name}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

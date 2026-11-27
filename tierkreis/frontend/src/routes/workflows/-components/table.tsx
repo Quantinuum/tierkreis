@@ -18,18 +18,25 @@ export function WorkflowsTable(props: {
   const columnHelper = createColumnHelper<WorkflowDisplay>();
   const columns = [
     columnHelper.accessor("name", { header: "Name" }),
-    columnHelper.accessor("id", {
+    columnHelper.accessor("runs.workflow_run_id", {
       header: "id",
-      sortingFn: (x, y) => x.original.id_int - y.original.id_int,
+      sortingFn: (x, y) =>
+        (x.original.runs[0]?.workflow_run_id ?? "").localeCompare(
+          y.original.runs[0]?.workflow_run_id ?? "",
+        ),
     }),
-    columnHelper.accessor("start_time", {
+    columnHelper.accessor("runs.attempts.start_time", {
       header: "Start time",
       invertSorting: true,
     }),
-    columnHelper.accessor("tkr_version", { header: "TKR version" }),
-    columnHelper.accessor("errors", {
+    columnHelper.accessor("runs.attempts.tkr_version", {
+      header: "TKR version",
+    }),
+    columnHelper.accessor("runs.attempts.errors", {
       header: "Errors",
-      sortingFn: (x, y) => y.original.errors.length - x.original.errors.length,
+      sortingFn: (x, y) =>
+        (y.original.runs[0]?.attempts[0]?.errors.length ?? 0) -
+        (x.original.runs[0]?.attempts[0]?.errors.length ?? 0),
     }),
     {
       header: "Logs",

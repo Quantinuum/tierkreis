@@ -17,7 +17,7 @@ export const ZoomInButton = (props: {
 }) => {
   const { wid, loc, node_loc, node_type } = props;
 
-  const params = { wid: wid, loc };
+  const params = { wrid: wid, loc };
   const search = (prev: SearchData): SearchData => {
     const openEvals = [...(prev.openEvals ?? [])];
     const openLoops = [...(prev.openLoops ?? [])];
@@ -32,7 +32,7 @@ export const ZoomInButton = (props: {
   return (
     <Button className="flex-none m-1" variant="default" size="icon">
       <Link
-        to="/workflows/$wid/nodes/$loc"
+        to="/runs/$wrid/nodes/$loc"
         params={params}
         search={(p) => search(p)}
       >
@@ -47,7 +47,7 @@ export const ZoomOutButton = (props: {
   loc: string;
   node_loc: string;
 }) => {
-  const params = { wid: props.wid, loc: props.loc };
+  const params = { wrid: props.wid, loc: props.loc };
   const search = (prev: SearchData): SearchData => {
     const openEvals = prev.openEvals?.filter(
       (x) => !x.startsWith(props.node_loc),
@@ -62,7 +62,7 @@ export const ZoomOutButton = (props: {
   };
   return (
     <Button className="flex-none m-1" variant="secondary" size="icon">
-      <Link to="/workflows/$wid/nodes/$loc" params={params} search={search}>
+      <Link to="/runs/$wrid/nodes/$loc" params={params} search={search}>
         <Minus />
       </Link>
     </Button>

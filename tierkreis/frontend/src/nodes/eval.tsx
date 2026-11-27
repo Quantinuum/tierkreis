@@ -24,8 +24,8 @@ export function EvalNode({ data: node_data }: NodeProps<BackendNode>) {
   loc = loc ?? "-";
   const handleDoubleClick = () => {
     navigate({
-      to: "/workflows/$wid/nodes/$loc",
-      params: { wid, loc: node_loc },
+      to: "/runs/$wrid/nodes/$loc",
+      params: { wrid: wid, loc: node_loc },
     });
   };
 

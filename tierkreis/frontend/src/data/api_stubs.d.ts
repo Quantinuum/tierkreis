@@ -15,6 +15,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{workflow_run_id}/graphs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the graphs for a specific workflow.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow is not found or if the graph cannot be built.
+         */
+        get: operations["list_nodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the logs for a specific workflow run, returning the log detail as a string.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+         */
+        get: operations["get_workflow_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notify the frontend to refresh graph state, including changes from another process.
+         * @description # Errors
+         *
+         *     Returns an error if the node location string cannot be parsed or the workflow run is unknown.
+         */
+        get: operations["subscribe_node_updates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the error logs for a specific node in a workflow run, returning the error detail as a string.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run state cannot be loaded or if the error logs cannot be loaded.
+         */
+        get: operations["get_node_errors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/inputs/{port_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the input for a specific port of a node in a workflow run, returning the raw value as JSON or text.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the input value cannot be loaded.
+         */
+        get: operations["get_input"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the logs for a specific node in a workflow run, returning the log detail as a string.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+         */
+        get: operations["get_node_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all outputs for a specific node in a workflow run, returning a map of port name to value.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.
+         */
+        get: operations["get_all_outputs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs/{port_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the output for a specific port of a node in a workflow run, returning the raw value as JSON or text.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.
+         */
+        get: operations["get_single_output"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{workflow_run_id}/nodes/{node_location_str}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart a task node and return the new attempt and invalidated locations.
+         * @description # Errors
+         *
+         *     Returns an internal server error if the workflow run or node cannot be restarted.
+         */
+        post: operations["restart_node"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/": {
         parameters: {
             query?: never;
@@ -37,208 +235,21 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/workflows/{workflow_id}/graphs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the graphs for a specific workflow.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow is not found or if the graph cannot be built.
-         */
-        get: operations["list_nodes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the logs for a specific workflow run, returning the log detail as a string.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
-         */
-        get: operations["get_workflow_logs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Notify the frontend to refresh graph state, including changes from another process.
-         * @description # Errors
-         *
-         *     Returns an error if the node location string cannot be parsed or the workflow run is unknown.
-         */
-        get: operations["subscribe_node_updates"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/errors": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the error logs for a specific node in a workflow run, returning the error detail as a string.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run state cannot be loaded or if the error logs cannot be loaded.
-         */
-        get: operations["get_node_errors"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/inputs/{port_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the input for a specific port of a node in a workflow run, returning the raw value as JSON or text.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the input value cannot be loaded.
-         */
-        get: operations["get_input"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get the logs for a specific node in a workflow run, returning the log detail as a string.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
-         */
-        get: operations["get_node_logs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all outputs for a specific node in a workflow run, returning a map of port name to value.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the outputs cannot be loaded.
-         */
-        get: operations["get_all_outputs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/outputs/{port_name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List the output for a specific port of a node in a workflow run, returning the raw value as JSON or text.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run state cannot be loaded, if the node state cannot be read, or if the output value cannot be loaded.
-         */
-        get: operations["get_single_output"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workflows/{workflow_id}/nodes/{node_location_str}/restart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Restart a task node and return the locations invalidated by the restart.
-         * @description # Errors
-         *
-         *     Returns an internal server error if the workflow run or node cannot be restarted.
-         */
-        post: operations["restart_node"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AttemptDisplay: {
+            /** Format: int32 */
+            attempt: number;
+            cancelled_time?: string | null;
+            complete_time?: string | null;
+            error_time?: string | null;
+            errors: string[];
+            queued_time?: string | null;
+            start_time?: string | null;
+            tkr_version: string;
+        };
         /** @description Response containing graphs for multiple requested locations. */
         GraphsResponse: {
             /** @description Map from location string to the graph at that location. */
@@ -310,24 +321,26 @@ export interface components {
             /** @description A human-readable value associated with the node (const value, input name, etc.). */
             value?: string | null;
         };
+        RestartResponse: {
+            /** Format: int32 */
+            attempt: number;
+            invalidated: string[];
+        };
         /** @description Runtime metadata returned by `/api/info`. */
         RuntimeMetadata: {
             version: string;
         };
         /** @description Workflow display information returned by `/api/workflows/`. */
         WorkflowDisplay: {
-            /** @description Errored Nodes are taken from Errored time */
-            errors: string[];
-            /**
-             * Format: uuid
-             * @description Currently the run UUID, no attempt/workflow
-             */
-            id: string;
-            /** Format: int64 */
-            id_int: number;
             name?: string | null;
-            start_time: string;
-            tkr_version: string;
+            runs: components["schemas"]["WorkflowRunDisplay"][];
+            /** Format: uuid */
+            workflow_id: string;
+        };
+        WorkflowRunDisplay: {
+            attempts: components["schemas"]["AttemptDisplay"][];
+            /** Format: uuid */
+            workflow_run_id: string;
         };
     };
     responses: never;
@@ -357,6 +370,358 @@ export interface operations {
             };
         };
     };
+    list_nodes: {
+        parameters: {
+            query?: {
+                attempt?: number;
+                /** @description Location strings to fetch graphs for (repeatable). */
+                locs?: string[];
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphsResponse"];
+                };
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Error building graph */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_workflow_logs: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Log detail for the workflow */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Error loading log detail */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    subscribe_node_updates: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Graph refresh notifications */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    get_node_errors: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Error detail for the node */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Error loading error detail */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_input: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+                /** @description Output port name */
+                port_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Input value as JSON or text */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt or input not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    get_node_logs: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Log detail for the node */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Error loading log detail */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_all_outputs: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON object of port name to value */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Error loading outputs */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_single_output: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+                /** @description Output port name */
+                port_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Raw output value as JSON or text */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow run attempt or output not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    restart_node: {
+        parameters: {
+            query?: {
+                attempt?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Run ID */
+                workflow_run_id: string;
+                /** @description Location string */
+                node_location_str: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestartResponse"];
+                };
+            };
+            /** @description Workflow run attempt not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Error restarting node */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_workflows: {
         parameters: {
             query?: never;
@@ -374,273 +739,14 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowDisplay"][];
                 };
             };
-        };
-    };
-    list_nodes: {
-        parameters: {
-            query?: {
-                /** @description Location strings to fetch graphs for (repeatable). */
-                locs?: string[];
-            };
-            header?: never;
-            path: {
-                /** @description The workflow uuid */
-                workflow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
+            /** @description Error listing workflows */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GraphsResponse"];
+                    "text/plain": string;
                 };
-            };
-            /** @description Error building graph */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_workflow_logs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Log detail for the workflow */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Error loading log detail */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    subscribe_node_updates: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Graph refresh notifications */
-            101: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_node_errors: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Error detail for the node */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Error loading error detail */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_input: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-                /** @description Output port name */
-                port_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Input value as JSON or text */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Input not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_node_logs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Log detail for the node */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Error loading log detail */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_all_outputs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description JSON object of port name to value */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Error loading outputs */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_single_output: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-                /** @description Output port name */
-                port_name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Raw output value as JSON or text */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Output not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    restart_node: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Run ID */
-                workflow_id: string;
-                /** @description Location string */
-                node_location_str: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string[];
-                };
-            };
-            /** @description Error restarting node */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
