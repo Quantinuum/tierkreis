@@ -8,9 +8,12 @@ const fetchClient = createFetchClient<paths>({
 });
 const $api = createClient(fetchClient);
 
-export const fetchLogs = async (workflow_run_id: string) => {
+export const runUrl = (workflow_run_id: string, attempt: number, resource: string) =>
+  `${import.meta.env.BASE_URL}api/runs/${encodeURIComponent(workflow_run_id)}/${resource}?attempt=${attempt}`;
+
+export const fetchLogs = async (workflow_run_id: string, attempt: number) => {
   const res = await fetchClient.GET("/api/runs/{workflow_run_id}/logs", {
-    params: { path: { workflow_run_id }, query: { attempt: 0 } },
+    params: { path: { workflow_run_id }, query: { attempt } },
     parseAs: "text",
   });
   return res.error ? "Failed to fetch logs." : res.data || "No logs.";
@@ -20,13 +23,14 @@ export const fetchOutput = async (
   workflow_run_id: string,
   node_location_str: string,
   port_name: string,
+  attempt: number,
 ) => {
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs/{port_name}",
     {
       params: {
         path: { workflow_run_id, node_location_str, port_name },
-        query: { attempt: 0 },
+        query: { attempt },
       },
       parseAs: "text",
     },
@@ -37,13 +41,14 @@ export const fetchOutput = async (
 export const fetchOutputs = async (
   workflow_run_id: string,
   node_location_str: string,
+  attempt: number,
 ) => {
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs",
     {
       params: {
         path: { workflow_run_id, node_location_str },
-        query: { attempt: 0 },
+        query: { attempt },
       },
       parseAs: "text",
     },
@@ -54,40 +59,43 @@ export const fetchOutputs = async (
 export const fetchErrors = async (
   workflow_run_id: string,
   node_location_str: string,
+  attempt: number,
 ) => {
   const params = {
     path: { workflow_run_id, node_location_str },
-    query: { attempt: 0 },
+    query: { attempt },
   };
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/errors",
     { params, parseAs: "text" },
   );
-  return res.data ?? "No errors.";
+  return res.error ? "Failed to fetch errors." : res.data ?? "No errors.";
 };
 
 export const fetchNodeLogs = async (
   workflow_run_id: string,
   node_location_str: string,
+  attempt: number,
 ) => {
   const params = {
     path: { workflow_run_id, node_location_str },
-    query: { attempt: 0 },
+    query: { attempt },
   };
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/logs",
     { params, parseAs: "text" },
   );
-  return res.data ?? "No logs.";
+  return res.error ? "Failed to fetch logs." : res.data ?? "No logs.";
 };
 
 export const restartNode = async (
   workflow_run_id: string,
   node_location_str: string,
+  attempt: number,
 ) => {
   const params = {
     path: { workflow_run_id, node_location_str },
-    query: { attempt: 0 },
+    query: { attempt },
   };
   const res = await fetchClient.POST(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/restart",
@@ -101,15 +109,15 @@ export const restartNode = async (
 
 export const useInfoQuery = () => $api.useQuery("get", "/api/info");
 export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
-export const useLogsQuery = (workflow_run_id: string) =>
+export const useLogsQuery = (workflow_run_id: string, attempt: number) =>
   $api.useQuery("get", "/api/runs/{workflow_run_id}/logs", {
-    params: { path: { workflow_run_id }, query: { attempt: 0 } },
+    params: { path: { workflow_run_id }, query: { attempt } },
     parseAs: "text",
   });
-export const useEvalQuery = (workflow_run_id: string, openEvals: string[]) =>
+export const useEvalQuery = (workflow_run_id: string, attempt: number, openEvals: string[]) =>
   $api.useQuery("get", "/api/runs/{workflow_run_id}/graphs", {
     params: {
       path: { workflow_run_id },
-      query: { locs: openEvals, attempt: 0 },
+      query: { locs: openEvals, attempt },
     },
   });
