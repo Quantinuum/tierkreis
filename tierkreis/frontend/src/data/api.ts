@@ -10,7 +10,7 @@ const $api = createClient(fetchClient);
 
 export const fetchLogs = async (workflow_run_id: string) => {
   const res = await fetchClient.GET("/api/runs/{workflow_run_id}/logs", {
-    params: { path: { workflow_run_id } },
+    params: { path: { workflow_run_id }, query: { attempt: 0 } },
     parseAs: "text",
   });
   return res.error ? "Failed to fetch logs." : res.data || "No logs.";
@@ -26,6 +26,7 @@ export const fetchOutput = async (
     {
       params: {
         path: { workflow_run_id, node_location_str, port_name },
+        query: { attempt: 0 },
       },
       parseAs: "text",
     },
@@ -40,7 +41,10 @@ export const fetchOutputs = async (
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/outputs",
     {
-      params: { path: { workflow_run_id, node_location_str } },
+      params: {
+        path: { workflow_run_id, node_location_str },
+        query: { attempt: 0 },
+      },
       parseAs: "text",
     },
   );
@@ -51,7 +55,10 @@ export const fetchErrors = async (
   workflow_run_id: string,
   node_location_str: string,
 ) => {
-  const params = { path: { workflow_run_id, node_location_str } };
+  const params = {
+    path: { workflow_run_id, node_location_str },
+    query: { attempt: 0 },
+  };
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/errors",
     { params, parseAs: "text" },
@@ -63,7 +70,10 @@ export const fetchNodeLogs = async (
   workflow_run_id: string,
   node_location_str: string,
 ) => {
-  const params = { path: { workflow_run_id, node_location_str } };
+  const params = {
+    path: { workflow_run_id, node_location_str },
+    query: { attempt: 0 },
+  };
   const res = await fetchClient.GET(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/logs",
     { params, parseAs: "text" },
@@ -75,7 +85,10 @@ export const restartNode = async (
   workflow_run_id: string,
   node_location_str: string,
 ) => {
-  const params = { path: { workflow_run_id, node_location_str } };
+  const params = {
+    path: { workflow_run_id, node_location_str },
+    query: { attempt: 0 },
+  };
   const res = await fetchClient.POST(
     "/api/runs/{workflow_run_id}/nodes/{node_location_str}/restart",
     { params },
@@ -90,10 +103,13 @@ export const useInfoQuery = () => $api.useQuery("get", "/api/info");
 export const useWorkflowsQuery = () => $api.useQuery("get", "/api/workflows/");
 export const useLogsQuery = (workflow_run_id: string) =>
   $api.useQuery("get", "/api/runs/{workflow_run_id}/logs", {
-    params: { path: { workflow_run_id } },
+    params: { path: { workflow_run_id }, query: { attempt: 0 } },
     parseAs: "text",
   });
 export const useEvalQuery = (workflow_run_id: string, openEvals: string[]) =>
   $api.useQuery("get", "/api/runs/{workflow_run_id}/graphs", {
-    params: { path: { workflow_run_id }, query: { locs: openEvals } },
+    params: {
+      path: { workflow_run_id },
+      query: { locs: openEvals, attempt: 0 },
+    },
   });
