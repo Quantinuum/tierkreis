@@ -22,7 +22,7 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
     );
 
     const isValid = (openNode: string) => {
-      for (const invalidatedNode of invalid) {
+      for (const invalidatedNode of invalid.invalidated) {
         if (openNode.startsWith(invalidatedNode)) return false;
       }
       return true;

@@ -85,7 +85,7 @@ export default function NodePage(props: {
   }, [props, workflow_id, node_location_str, setG, data]);
 
   useEffect(() => {
-    const url = `/api/workflows/${workflow_id}/nodes/${node_location_str}`;
+    const url = `/api/runs/${workflow_id}/nodes/${node_location_str}`;
     const ws = new WebSocket(url);
     ws.onmessage = () => refetch();
     return () => ws.close();

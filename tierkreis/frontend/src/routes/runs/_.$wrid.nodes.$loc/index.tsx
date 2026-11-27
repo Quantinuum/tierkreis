@@ -17,6 +17,7 @@ export const Route = createFileRoute("/runs/_/$wrid/nodes/$loc/")({
 
 function RouteComponent() {
   const { wrid: workflow_run_id, loc } = Route.useParams();
+  console.log(workflow_run_id, loc);
   const { openEvals, openLoops, openMaps } = Route.useSearch();
   return (
     <NodePage

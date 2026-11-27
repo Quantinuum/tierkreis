@@ -18,11 +18,11 @@ function check_semver_matches(v: string, target: string) {
   return v === target;
 }
 
-const NodeLink = (props: { wid: string; loc: string }) => {
+const NodeLink = (props: { wrid: string; loc: string }) => {
   return (
     <Link
-      to="/workflows/$wid/nodes/$loc"
-      params={{ wid: props.wid, loc: loc_parent(props.loc) }}
+      to="/runs/$wrid/nodes/$loc"
+      params={{ wrid: props.wrid, loc: loc_parent(props.loc) }}
       className="hover:underline ml-2"
     >
       {props.loc}
@@ -30,11 +30,11 @@ const NodeLink = (props: { wid: string; loc: string }) => {
   );
 };
 
-const errorLinks = (wid: string, errors: string[]) => {
-  return errors.map((x) => <NodeLink wid={wid} loc={x} />);
+const errorLinks = (wrid: string, errors: string[]) => {
+  return errors.map((x) => <NodeLink wrid={wrid} loc={x} />);
 };
-const getLogs = async (wid: string) => {
-  window.open(`/api/workflows/${wid}/logs`, "_blank");
+const getLogs = async (wrid: string) => {
+  window.open(`/api/runs/${wrid}/logs`, "_blank");
 };
 
 const logsLink = (wid: string) => {
@@ -55,13 +55,16 @@ export const WorkflowsTableRow = (props: {
 }) => {
   const navigate = useNavigate();
   const r = props.row;
+  const first = r.runs[0]?.attempts[0]; // TODO
   const handleRowClick = () => {
     navigate({
-      to: "/workflows/$wid/nodes/$loc",
-      params: { wid: r.id, loc: "-" },
+      to: "/runs/$wrid/nodes/$loc",
+      params: { wrid: r.runs[0]?.workflow_run_id ?? "-", loc: "-" }, // TODO
     });
   };
-  const d = new Date(r.start_time);
+  if (!first || !first.start_time) return null; // TODO handle missing first attempt
+
+  const d = new Date(first.start_time);
   const d_display = `${d.toDateString()}, ${d.toLocaleTimeString()}`;
   return (
     <tr className="hover:bg-gray-50">
@@ -69,18 +72,18 @@ export const WorkflowsTableRow = (props: {
         {r.name}
       </td>
       <td className="p-4 border-t-1 cursor-pointer" onClick={handleRowClick}>
-        {r.id}
+        {r.workflow_id}
       </td>
       <td className="p-4 border-t-1 cursor-pointer" onClick={handleRowClick}>
         {d_display}
       </td>
       <td className="p-4 border-t-1">
         <div className="flex items-center gap-2">
-          {r.tkr_version}
-          {r.tkr_version &&
+          {first.tkr_version}
+          {first.tkr_version &&
             (() => {
               const isOutdated = !check_semver_matches(
-                r.tkr_version,
+                first.tkr_version,
                 props.targetVersion,
               );
               return isOutdated ? (
@@ -99,8 +102,12 @@ export const WorkflowsTableRow = (props: {
             })()}
         </div>
       </td>
-      <td className="p-4 border-t-1">{errorLinks(r.id, r.errors)}</td>
-      <td className="p-4 border-t-1 flex justify-center">{logsLink(r.id)}</td>
+      <td className="p-4 border-t-1">
+        {errorLinks(r.workflow_id, first.errors)}
+      </td>
+      <td className="p-4 border-t-1 flex justify-center">
+        {logsLink(r.workflow_id)}
+      </td>
     </tr>
   );
 };
