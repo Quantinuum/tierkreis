@@ -53,7 +53,7 @@ const logsLink = (runId: string, attempt: number) => {
   );
 };
 
-export const WorkflowsTableRow = (props: {
+export const AttemptsTableRow = (props: {
   row: AttemptDisplay;
   runId: string;
   targetVersion: string;
