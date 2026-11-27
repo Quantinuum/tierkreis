@@ -1,21 +1,32 @@
 import { loc_peek, loc_steps } from "@/data/loc";
-import { Link } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { ColorMap } from "./ColorMap";
 
 const Breadcrumb = (props: { wrid: string; loc: string }) => {
   const name = loc_peek(props.loc);
+  const { wid: workflowDefinitionId } = useParams({ strict: false });
   return (
     <>
       <div>/</div>
-      {/* search={(previous) => previous} keeps the current query parameters in the URL */}
-      <Link
-        to={"/runs/$wrid/nodes/$loc"}
-        params={props}
-        search={(previous) => previous}
-        className="m-1 p-2"
-      >
-        {name}
-      </Link>
+      {workflowDefinitionId ? (
+        <Link
+          to="/workflows/$wid/nodes/$loc"
+          params={{ wid: props.wrid, loc: props.loc }}
+          search={(previous) => previous}
+          className="m-1 p-2"
+        >
+          {name}
+        </Link>
+      ) : (
+        <Link
+          to="/runs/$wrid/nodes/$loc"
+          params={{ wrid: props.wrid, loc: props.loc }}
+          search={(previous) => previous}
+          className="m-1 p-2"
+        >
+          {name}
+        </Link>
+      )}
     </>
   );
 };

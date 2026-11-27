@@ -9,7 +9,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { WorkflowDisplay } from "@/data/api_types";
 import { attemptStatus, runPhrase } from "@/data/workflows";
 import { Fragment } from "react";
@@ -21,7 +21,8 @@ export function WorkflowSidebar({
   workflows: WorkflowDisplay[];
   workflowId: string;
 }) {
-  const { attempt } = useSearch({ from: "/runs/_/$wrid/nodes/$loc/" });
+  const { attempt } = useSearch({ strict: false });
+  const { wid: workflowDefinitionId } = useParams({ strict: false });
   return (
     <Sidebar>
       <SidebarContent>
@@ -41,9 +42,21 @@ export function WorkflowSidebar({
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 {workflow.runs.length === 0 && (
-                  <p className="px-2 text-xs text-muted-foreground">
-                    No runs yet.
-                  </p>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={workflowDefinitionId === workflow.workflow_id}
+                      >
+                        <Link
+                          to="/workflows/$wid/nodes/$loc"
+                          params={{ wid: workflow.workflow_id, loc: "-" }}
+                        >
+                          Graph Definition
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
                 )}
                 {workflow.runs.map((run) => (
                   <div key={run.workflow_run_id} className="mb-2">
