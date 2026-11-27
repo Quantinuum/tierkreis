@@ -28,7 +28,13 @@ export default function Layout({
     <SidebarProvider>
       <Dialog open={open} onOpenChange={setOpen}>
         <WorkflowSidebar workflows={workflows} workflowId={workflowId} />
-        <NodeInfo info={info} closer={dialogCloser} />
+        {open && (
+          <NodeInfo
+            key={`${info.workflow_id}:${info.node_location}:${info.type}`}
+            info={info}
+            closer={dialogCloser}
+          />
+        )}
         <main className="flex flex-col">
           <Breadcrumbs wid={workflowId} loc={loc} />
           {children}

@@ -42,7 +42,8 @@ impl LocationComponent {
     pub fn new(step: &str) -> miette::Result<Self> {
         match (step.get(0..1), step.get(1..)) {
             (Some("N"), Some(idx_str)) => Ok(LocationComponent::Node {
-                node: NodeIndex::new(idx_str.parse().into_diagnostic()?),
+                node: NodeIndex::try_from(idx_str.parse::<usize>().into_diagnostic()?)
+                    .into_diagnostic()?,
             }),
             (Some("L"), Some(idx_str)) => Ok(LocationComponent::LoopIndex {
                 index: idx_str.parse().into_diagnostic()?,

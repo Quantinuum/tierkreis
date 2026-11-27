@@ -4,6 +4,7 @@ pub mod pbs;
 pub mod pjsub;
 pub mod slurm;
 pub mod spec;
+mod worker_logs;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -39,6 +40,7 @@ use crate::{
     monitoring::{EnvironmentCarrier, inject_trace_context},
     resource_profiles::downcast,
     worker::WorkerCallArgs,
+    worker_logs::TaskLogSink,
 };
 
 #[derive(serde::Deserialize, Default)]
@@ -125,6 +127,8 @@ impl TryFrom<HashMap<String, serde_json::Value>> for ResourceRequest {
     }
 }
 
+use self::worker_logs::HpcLogs;
+
 struct BackgroundTaskPlan {
     workflow_run_id: Uuid,
     attempt: u32,
@@ -133,6 +137,7 @@ struct BackgroundTaskPlan {
     output_storage_name: String,
     job_id: TaskHandle,
     _worker_args: PathBuf,
+    logs: Option<HpcLogs>,
 }
 
 struct BackgroundTask {
@@ -142,13 +147,15 @@ struct BackgroundTask {
     outputs: HashMap<String, AssetSpec>,
     output_storage_name: String,
     _worker_args: PathBuf,
+    logs: Option<HpcLogs>,
 }
 
 enum TaskRegistration {
     Watching {
         job_id: String,
-        task: BackgroundTask,
+        task: Box<BackgroundTask>,
         status: Option<SchedulerStatus>,
+        cancel_requested: bool,
     },
     CancelBeforeRegistration,
 }
@@ -169,12 +176,18 @@ async fn process_cancelled_task<T: SchedulerWrapper>(
     loc: Location,
 ) -> miette::Result<()> {
     let key = (workflow_run_id, attempt, loc.clone());
-    let handle = job_handles.remove(&key);
-    match handle {
+    match job_handles.get_mut(&key) {
         // We know the job id, cancel the job.
-        Some(TaskRegistration::Watching { job_id, .. }) => {
-            tracing::info!("Cancelling job for node: {key:?}");
-            scheduler.cancel(job_id.clone()).await?;
+        Some(TaskRegistration::Watching {
+            job_id,
+            cancel_requested,
+            ..
+        }) => {
+            if !*cancel_requested {
+                tracing::info!("Cancelling job for node: {key:?}");
+                scheduler.cancel(job_id.clone()).await?;
+                *cancel_requested = true;
+            }
         }
         // We are already planning to cancel the job if we see this node.
         Some(TaskRegistration::CancelBeforeRegistration) => {}
@@ -190,7 +203,6 @@ async fn process_cancelled_task<T: SchedulerWrapper>(
 #[instrument(skip_all, err)]
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    job_handles: &mut JobHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
     status: SchedulerStatus,
@@ -201,7 +213,9 @@ async fn process_finished_task(
     let workflow_run_id = background_task.workflow_run_id;
     let attempt = background_task.attempt;
 
-    job_handles.remove(&(workflow_run_id, attempt, loc.clone()));
+    if let Some(logs) = &background_task.logs {
+        logs.collect(true).await;
+    }
 
     match status {
         SchedulerStatus::Complete => {
@@ -251,6 +265,7 @@ async fn monitor_task<T: SchedulerWrapper>(
         job_id,
         output_storage_name,
         _worker_args: worker_args,
+        logs,
     } = internal_task;
     let mut queued_event_sender = event_sender.clone();
     send_queued(
@@ -267,24 +282,26 @@ async fn monitor_task<T: SchedulerWrapper>(
         job_handles.get(&key),
         Some(TaskRegistration::CancelBeforeRegistration)
     );
+    if should_cancel {
+        scheduler.cancel(job_id.clone()).await?;
+    }
     job_handles.insert(
         key,
         TaskRegistration::Watching {
             job_id: job_id.clone(),
-            task: BackgroundTask {
+            task: Box::new(BackgroundTask {
                 workflow_run_id,
                 attempt,
                 loc,
                 outputs,
                 output_storage_name,
                 _worker_args: worker_args,
-            },
+                logs,
+            }),
             status: None,
+            cancel_requested: should_cancel,
         },
     );
-    if should_cancel {
-        scheduler.cancel(job_id).await?;
-    }
     Ok(())
 }
 
@@ -305,6 +322,14 @@ async fn check_jobs<T: SchedulerWrapper>(
         return Ok(());
     }
 
+    for registration in job_handles.values() {
+        if let TaskRegistration::Watching { task, .. } = registration
+            && let Some(logs) = &task.logs
+        {
+            logs.collect(false).await;
+        }
+    }
+
     let statuses = scheduler
         .check(
             &jobs
@@ -314,8 +339,17 @@ async fn check_jobs<T: SchedulerWrapper>(
         )
         .await?;
     for (key, job_id) in jobs {
-        let Some(status) = statuses.get(&job_id).cloned() else {
+        let Some(TaskRegistration::Watching {
+            cancel_requested, ..
+        }) = job_handles.get(&key)
+        else {
             continue;
+        };
+        let status = match statuses.get(&job_id) {
+            Some(status @ (SchedulerStatus::Queued | SchedulerStatus::Running)) => status.clone(),
+            _ if *cancel_requested => SchedulerStatus::Cancelled,
+            Some(status) => status.clone(),
+            None => continue,
         };
         match status {
             SchedulerStatus::Queued | SchedulerStatus::Running => {
@@ -346,14 +380,7 @@ async fn check_jobs<T: SchedulerWrapper>(
                 let Some(TaskRegistration::Watching { task, .. }) = job_handles.remove(&key) else {
                     continue;
                 };
-                process_finished_task(
-                    event_sender,
-                    job_handles,
-                    asset_storage_registry,
-                    task,
-                    status,
-                )
-                .await?;
+                process_finished_task(event_sender, asset_storage_registry, *task, status).await?;
             }
         }
     }
@@ -555,6 +582,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         task: &TaskPlan,
         worker_args_path: &Path,
         script_path: &Path,
+        logs: Option<&HpcLogs>,
     ) -> miette::Result<String> {
         let request = ResourceRequest::try_from(task.resources.clone())?;
         let hpc_environment: HashMap<String, String> =
@@ -576,6 +604,24 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
                 .join(" "),
         );
 
+        let mut mpi = request.mpi;
+        if let Some(logs) = logs {
+            let prefix = mpi.as_ref().map(MpiSpec::launch_prefix).unwrap_or_default();
+            let worker = if prefix.is_empty() {
+                command.clone()
+            } else {
+                format!("{prefix} {command}")
+            };
+            match logs.redirect(&worker) {
+                Ok(captured) => {
+                    command = captured;
+                    if let Some(mpi) = &mut mpi {
+                        mpi.launcher = Some(Vec::new());
+                    }
+                }
+                Err(err) => logs.warn(&err),
+            }
+        }
         let mut job_spec = JobSpec {
             name: format!("tierkreis-{}", task.workflow_run_id),
             command,
@@ -586,7 +632,7 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
             account: request.account,
             modules: request.modules,
             user: request.user,
-            mpi: request.mpi,
+            mpi,
             container: request.container,
             extra_scheduler_args: request.extra_scheduler_args,
             ..Default::default()
@@ -597,13 +643,9 @@ impl<T: SchedulerWrapper + 'static> HPCExecutor<T> {
         Ok(result)
     }
 
-    async fn is_job_active(&self, job_id: &str) -> miette::Result<String> {
+    async fn restore_job(&self, job_id: &str) -> miette::Result<String> {
         match self.scheduler.check(&[job_id]).await?.get(job_id) {
-            Some(
-                SchedulerStatus::Queued | SchedulerStatus::Complete | SchedulerStatus::Running,
-            ) => Ok(job_id.to_string()),
-            Some(SchedulerStatus::Cancelled) => Err(miette!("Job was cancelled")),
-            Some(SchedulerStatus::Error { message }) => Err(miette!("Job errored: {}", message)),
+            Some(_) => Ok(job_id.to_string()),
             _ => Err(miette!("Job not active")),
         }
     }
@@ -643,10 +685,27 @@ impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
+        self.execute_with_logs(task_plans, None)
+    }
+
+    fn execute_with_logs(
+        &self,
+        task_plans: Vec<TaskPlan>,
+        logs: Option<TaskLogSink>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
+                let mut task_logs = logs.as_ref().map(|logs| {
+                    HpcLogs::new(&self.tkr_tmp_dir, &task_plan, logs.for_task(&task_plan))
+                });
+                if let Some(logs) = &task_logs
+                    && let Err(err) = logs.prepare().await
+                {
+                    logs.warn(&err);
+                    task_logs = None;
+                }
                 let tmp_paths = self.reserve_tmp_paths(2)?;
                 let worker_args_path = &tmp_paths[0];
                 let script_path = &tmp_paths[1];
@@ -657,14 +716,19 @@ impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
                 // and it's still active, reattach to it instead of resubmitting.
                 // TODO: make the retry logic more explicit
                 let job_id = if let Some(job_id) = &task_plan.task_handle {
-                    self.is_job_active(job_id).await?
+                    self.restore_job(job_id).await?
                 } else {
                     let worker_args = self
                         .build_worker_call_args(&task_plan, output_paths)
                         .await?;
                     serde_json::to_writer(worker_args_file, &worker_args).into_diagnostic()?;
-                    self.start_single_job(&task_plan, worker_args_path, script_path)
-                        .await?
+                    self.start_single_job(
+                        &task_plan,
+                        worker_args_path,
+                        script_path,
+                        task_logs.as_ref(),
+                    )
+                    .await?
                 };
 
                 task_sender
@@ -676,6 +740,7 @@ impl<T: SchedulerWrapper + 'static> Executor for HPCExecutor<T> {
                         outputs,
                         output_storage_name: self.output_storage_name.clone(),
                         _worker_args: worker_args_path.clone(),
+                        logs: task_logs,
                     })
                     .await
                     .into_diagnostic()?;
@@ -762,6 +827,206 @@ mod tests {
         let mpi = request.mpi.ok_or_else(|| miette!("MPI spec is missing"))?;
         assert_eq!(mpi.proc.as_deref(), Some("4"));
         assert_eq!(mpi.launch_prefix(), "srun --mpi=pmix");
+        Ok(())
+    }
+
+    struct ScriptScheduler {
+        template: &'static str,
+        child: tokio::sync::Mutex<Option<tokio::process::Child>>,
+        submissions: std::sync::atomic::AtomicUsize,
+    }
+
+    impl SchedulerWrapper for ScriptScheduler {
+        async fn submit(&self, spec: JobSpec, path: &Path) -> miette::Result<String> {
+            let script = spec::ScriptTemplates::default().render(self.template, &spec)?;
+            tokio::fs::write(path, script).await.into_diagnostic()?;
+            let child = tokio::process::Command::new("sh")
+                .arg(path)
+                .kill_on_drop(true)
+                .spawn()
+                .into_diagnostic()?;
+            *self.child.lock().await = Some(child);
+            self.submissions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok("1".into())
+        }
+
+        async fn check(&self, _ids: &[&str]) -> miette::Result<HashMap<String, SchedulerStatus>> {
+            let mut child = self.child.lock().await;
+            let status = match child.as_mut().unwrap().try_wait().into_diagnostic()? {
+                None => SchedulerStatus::Running,
+                Some(status) if status.success() => SchedulerStatus::Complete,
+                Some(status) => SchedulerStatus::Error {
+                    message: status.to_string(),
+                },
+            };
+            Ok(HashMap::from([("1".into(), status)]))
+        }
+
+        async fn cancel(&self, _id: String) -> miette::Result<()> {
+            self.child
+                .lock()
+                .await
+                .as_mut()
+                .unwrap()
+                .kill()
+                .await
+                .into_diagnostic()
+        }
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hpc_logs_resume_at_last_offset(
+        #[values("slurm", "pbs", "pjsub")] template: &'static str,
+    ) -> miette::Result<()> {
+        use crate::{
+            state::{RuntimeState, SqliteRuntimeState},
+            worker_logs::{LogSource, WorkerLogQuery, test_log_sink},
+        };
+        let (registry, _, dir) = test_storage_registry([], []).await;
+        let database = dir.path().join("state.sqlite");
+        let database = database.to_str().unwrap();
+        let state: Arc<dyn RuntimeState> =
+            Arc::new(SqliteRuntimeState::try_new_with_url(database).await?);
+        let (run, sink) = test_log_sink(Arc::clone(&state), template).await?;
+        let run_id = run.run_id();
+        let scheduler = Arc::new(ScriptScheduler {
+            template,
+            child: tokio::sync::Mutex::new(None),
+            submissions: 0.into(),
+        });
+        let gate = dir.path().join("release");
+        let spool = dir.path().join("shared space's directory");
+        tokio::fs::create_dir(&spool).await.into_diagnostic()?;
+        let worker = format!(
+            "printf 'before-out'; printf 'before-err' >&2; \
+            while [ ! -f {} ]; do sleep 0.01; done; \
+            printf 'after-out'; printf 'after-err' >&2",
+            shell_word(gate.to_str().unwrap()),
+        );
+        let create_executor = || {
+            let mut executor = HPCExecutor::try_new(
+                &registry,
+                "file",
+                "memory",
+                Arc::clone(&scheduler),
+                HPCResourceSpec::default(),
+                Duration::from_millis(10),
+                HashMap::from([(
+                    "worker".into(),
+                    vec!["sh".into(), "-c".into(), worker.clone(), "worker".into()],
+                )]),
+            )?;
+            executor.tkr_tmp_dir.clone_from(&spool);
+            Ok::<_, miette::Report>(executor)
+        };
+        let loc = Location::new("N2.L3.N4")?;
+        let mut task = TaskPlan {
+            workflow_run_id: run_id,
+            loc: loc.clone(),
+            worker_name: "worker".into(),
+            resources: HashMap::from([("mpi".to_string(), json!({"launcher": ["env"]}))]),
+            ..Default::default()
+        };
+        let read_logs = |state: Arc<dyn RuntimeState>| {
+            let location = Some(loc.clone());
+            async move {
+                state
+                    .read_worker_logs(WorkerLogQuery {
+                        run_id,
+                        attempt: 0,
+                        location,
+                        after: 0,
+                        source: None,
+                        limit: 100,
+                    })
+                    .await
+            }
+        };
+        let executor = create_executor()?;
+        let mut events = executor.listen()?;
+        executor
+            .execute_with_logs(vec![task.clone()], Some(sink))
+            .await?;
+        let queued = tokio::time::timeout(Duration::from_secs(5), events.next())
+            .await
+            .into_diagnostic()?
+            .unwrap();
+        let RuntimeEvent::WorkflowRun {
+            event: WorkflowRunEvent::NodeEvents(nodes),
+            ..
+        } = queued
+        else {
+            panic!("Expected queued event");
+        };
+        let NodeStatus::Queued { handle } = &nodes[0].status else {
+            panic!("Expected job handle");
+        };
+        task.task_handle.clone_from(handle);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if read_logs(Arc::clone(&state)).await?.unwrap().len() == 2 {
+                    break Ok::<_, miette::Report>(());
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .into_diagnostic()??;
+        drop(events);
+        drop(executor);
+        drop(run);
+        drop(state);
+
+        let state: Arc<dyn RuntimeState> =
+            Arc::new(SqliteRuntimeState::try_new_with_url(database).await?);
+        let executor = create_executor()?;
+        let events = executor.listen()?;
+        let sink = TaskLogSink::new(Arc::clone(&state), template);
+        executor.execute_with_logs(vec![task], Some(sink)).await?;
+        tokio::fs::write(gate, []).await.into_diagnostic()?;
+
+        let completed = events.filter_map(|event| async {
+            if let RuntimeEvent::WorkflowRun {
+                event: WorkflowRunEvent::NodeEvents(nodes),
+                ..
+            } = event
+                && matches!(nodes[0].status, NodeStatus::Complete { .. })
+            {
+                Some(())
+            } else {
+                None
+            }
+        });
+        tokio::pin!(completed);
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(5), completed.next())
+                .await
+                .into_diagnostic()?,
+            Some(())
+        );
+        let records = read_logs(state).await?.unwrap();
+        for (source, expected) in [
+            (LogSource::Stdout, "before-outafter-out"),
+            (LogSource::Stderr, "before-errafter-err"),
+        ] {
+            assert_eq!(
+                records
+                    .iter()
+                    .filter(|record| record.source == source)
+                    .map(|record| record.message.as_str())
+                    .collect::<String>(),
+                expected
+            );
+        }
+        assert_eq!(
+            scheduler
+                .submissions
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
         Ok(())
     }
 

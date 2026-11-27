@@ -135,16 +135,25 @@ pub enum StatusEnum {
     Depleted,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Status {
     status: StatusEnum,
-    #[allow(unused)]
     message: String,
 }
 
 impl Status {
     pub fn status(&self) -> StatusEnum {
         self.status
+    }
+}
+
+impl std::fmt::Display for Status {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:?}", self.status)?;
+        if !self.message.is_empty() {
+            write!(formatter, ": {}", self.message)?;
+        }
+        Ok(())
     }
 }
 

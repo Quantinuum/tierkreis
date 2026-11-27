@@ -6,7 +6,7 @@ use axum::{
         Path, State, WebSocketUpgrade,
         ws::{CloseFrame, Message, WebSocket},
     },
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header::CACHE_CONTROL},
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::Query;
@@ -19,13 +19,17 @@ use tokio::{
 use crate::{
     location::Location,
     server::{
-        models::{GraphsQuery, GraphsResponse, HandlerResult},
+        models::{
+            GraphsQuery, GraphsResponse, HandlerResult, WorkerLogFormat, WorkerLogPage,
+            WorkerLogsParams,
+        },
         nodes::{
             GraphLoadResult, build_loop_py_graph, build_map_py_graph, build_py_graph,
             load_graph_from_state_or_const, try_load_output_value, try_load_outputs,
         },
     },
     state::{RuntimeWatchState, WorkflowRunState},
+    worker_logs::WorkerLogQuery,
 };
 use uuid::Uuid;
 
@@ -529,53 +533,138 @@ pub async fn restart_node(
     ))
 }
 
-#[allow(unused)]
-/// Get the logs for a specific node in a workflow run, returning the log detail as a string.
+/// Get captured worker logs for a specific node in a workflow run.
 ///
 /// # Errors
 ///
-/// Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+/// Returns an error if the runtime state cannot read the requested log page.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/nodes/{node_location_str}/logs",
     params(
         ("workflow_id" = Uuid, Path, description = "Run ID"),
         ("node_location_str" = String, Path, description = "Location string"),
+        WorkerLogsParams,
     ),
     responses(
-        (status = OK, description = "Log detail for the node"),
-        (status = 500, description = "Error loading log detail"),
+        (status = OK, description = "Worker log page",
+            content((String = "text/plain"), (WorkerLogPage = "application/json")),
+            headers(("X-Next-Cursor" = i64, description = "Cursor for the next page, if available"))),
+        (status = 400, description = "Invalid log query"),
+        (status = 404, description = "Unknown run or attempt"),
+        (status = 500, description = "Error loading worker logs"),
     )
 )]
 pub async fn get_node_logs(
     State(state): State<AppState>,
     Path((run_id, location_str)): Path<(Uuid, String)>,
+    Query(params): Query<WorkerLogsParams>,
 ) -> HandlerResult<Response> {
-    Ok("Not implemented".to_string().into_response())
+    match parse_location(&location_str) {
+        Ok(location) => read_worker_logs(&state, run_id, Some(location), params).await,
+        Err(_) => Ok((StatusCode::BAD_REQUEST, "Invalid node location").into_response()),
+    }
 }
 
-#[allow(unused)]
-/// Get the logs for a specific workflow run, returning the log detail as a string.
+/// Get captured worker logs across the nodes of a workflow run.
 ///
 /// # Errors
 ///
-/// Returns an internal server error if the workflow run state cannot be loaded or if the logs cannot be loaded.
+/// Returns an error if the runtime state cannot read the requested log page.
 #[utoipa::path(
     get,
     path = "/workflows/{workflow_id}/logs",
     params(
         ("workflow_id" = Uuid, Path, description = "Run ID"),
+        WorkerLogsParams,
     ),
     responses(
-        (status = OK, description = "Log detail for the workflow"),
-        (status = 500, description = "Error loading log detail"),
+        (status = OK, description = "Worker log page",
+            content((String = "text/plain"), (WorkerLogPage = "application/json")),
+            headers(("X-Next-Cursor" = i64, description = "Cursor for the next page, if available"))),
+        (status = 400, description = "Invalid log query"),
+        (status = 404, description = "Unknown run or attempt"),
+        (status = 500, description = "Error loading worker logs"),
     )
 )]
 pub async fn get_workflow_logs(
     State(state): State<AppState>,
     Path(run_id): Path<Uuid>,
+    Query(params): Query<WorkerLogsParams>,
 ) -> HandlerResult<Response> {
-    Ok("Not implemented".to_string().into_response())
+    read_worker_logs(&state, run_id, None, params).await
+}
+
+async fn read_worker_logs(
+    state: &AppState,
+    run_id: Uuid,
+    location: Option<Location>,
+    params: WorkerLogsParams,
+) -> HandlerResult<Response> {
+    use std::fmt::Write as _;
+
+    let limit = params.limit.unwrap_or(100);
+    let after = params.after.unwrap_or(0);
+    if !(1..=200).contains(&limit) || after < 0 {
+        return Ok((StatusCode::BAD_REQUEST, "Invalid log page bounds").into_response());
+    }
+
+    let Some(mut records) = state
+        .runtime_state
+        .read_worker_logs(WorkerLogQuery {
+            run_id,
+            attempt: params.attempt.unwrap_or(0),
+            location,
+            after,
+            source: params.source,
+            limit: limit + 1,
+        })
+        .await?
+    else {
+        return Ok((StatusCode::NOT_FOUND, "Unknown workflow run or attempt").into_response());
+    };
+    let has_more = records.len() > limit;
+    records.truncate(limit);
+    let next_cursor = records
+        .last()
+        .filter(|_| has_more)
+        .map(|record| record.cursor);
+
+    let mut response = match params.format.unwrap_or_default() {
+        WorkerLogFormat::Json => Json(WorkerLogPage {
+            records,
+            next_cursor,
+        })
+        .into_response(),
+        WorkerLogFormat::Text => {
+            let mut text = String::new();
+            for record in records {
+                write!(
+                    text,
+                    "[{} {} {} {}] ",
+                    record.collected_at.to_rfc3339(),
+                    record.location,
+                    record.executor,
+                    record.source
+                )
+                .expect("writing to String is infallible");
+                text.push_str(&record.message);
+                if !record.message.ends_with('\n') {
+                    text.push('\n');
+                }
+            }
+            text.into_response()
+        }
+    };
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if let Some(cursor) = next_cursor {
+        response
+            .headers_mut()
+            .insert("x-next-cursor", cursor.into());
+    }
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -591,6 +680,98 @@ mod tests {
         graph::WorkflowGraph,
         state::{InMemoryRuntimeState, RuntimeState, SqliteRuntimeState},
     };
+
+    #[rstest]
+    #[case::memory(false)]
+    #[case::sqlite(true)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn worker_log_routes_filter_and_page(#[case] sqlite: bool) -> miette::Result<()> {
+        use crate::{
+            executor::interface::TaskPlan,
+            worker_logs::{LogSource, test_log_sink},
+        };
+        let state: Arc<dyn RuntimeState> = if sqlite {
+            Arc::new(SqliteRuntimeState::try_new_in_memory().await?)
+        } else {
+            Arc::new(InMemoryRuntimeState::new())
+        };
+        let (run, sink) = test_log_sink(Arc::clone(&state), "local").await?;
+        let run_id = run.run_id();
+        let mut task = TaskPlan {
+            workflow_run_id: run_id,
+            loc: Location::new("N1.M0.N2")?,
+            ..Default::default()
+        };
+        let writer = sink.for_task(&task);
+        writer.write(LogSource::Stdout, "first line").await;
+        writer.write(LogSource::Stderr, "second line").await;
+        task.loc = Location::new("N1.M1.N2")?;
+        sink.for_task(&task)
+            .write(LogSource::Stderr, "other node")
+            .await;
+
+        let server = TestServer::new(
+            Router::new()
+                .route(
+                    "/workflows/{workflow_id}/nodes/{node_location_str}/logs",
+                    get(get_node_logs),
+                )
+                .route("/workflows/{workflow_id}/logs", get(get_workflow_logs))
+                .with_state(AppState {
+                    update_receiver: state.listen(),
+                    runtime_state: state,
+                    asset_registry: Arc::new(HashMap::new()),
+                    display_graph: None,
+                }),
+        );
+        let node = format!("/workflows/{run_id}/nodes/N1.M0.N2/logs");
+        let page = server.get(&format!("{node}?format=json&limit=1")).await;
+        page.assert_status_ok();
+        let json: serde_json::Value = page.json();
+        assert_eq!(json["records"][0]["message"], "first line");
+        let cursor = json["next_cursor"].as_i64().unwrap();
+        assert_eq!(
+            page.header("x-next-cursor").to_str().unwrap(),
+            cursor.to_string()
+        );
+
+        let text = server.get(&format!("{node}?after={cursor}")).await;
+        text.assert_status_ok();
+        assert!(text.text().contains("second line"));
+        assert!(!text.text().contains("other node"));
+        assert!(!text.headers().contains_key("x-next-cursor"));
+
+        let all = server
+            .get(&format!(
+                "/workflows/{run_id}/logs?source=stderr&format=json"
+            ))
+            .await;
+        let json: serde_json::Value = all.json();
+        assert_eq!(json["records"].as_array().unwrap().len(), 2);
+        assert_eq!(json["records"][1]["location"], "N1.M1.N2");
+        server
+            .get(&format!("{node}?attempt=1"))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+        server
+            .get(&format!("{node}?after=-1"))
+            .await
+            .assert_status_bad_request();
+        server
+            .get(&format!("{node}?limit=201"))
+            .await
+            .assert_status_bad_request();
+        server
+            .get(&format!("/workflows/{run_id}/nodes/N4294967295/logs"))
+            .await
+            .assert_status_bad_request();
+        let empty = server
+            .get(&format!("/workflows/{run_id}/nodes/N2/logs"))
+            .await;
+        empty.assert_status_ok();
+        assert_eq!(empty.text(), "");
+        Ok(())
+    }
 
     async fn node_update_socket(
         runtime_state: Arc<dyn RuntimeState>,

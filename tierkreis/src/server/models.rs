@@ -12,6 +12,7 @@ use crate::{
     asset_storage::AssetStorageRegistry,
     graph::{LegacyWorkflowGraph, NodeDefinition},
     state::interface::{NodeState, RuntimeState, RuntimeWatchState},
+    worker_logs::{LogSource, WorkerLogRecord},
 };
 use axum::{
     http::StatusCode,
@@ -246,4 +247,38 @@ pub struct GraphsQuery {
     /// Location strings to fetch graphs for (repeatable).
     #[serde(default)]
     pub locs: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkerLogFormat {
+    #[default]
+    Text,
+    Json,
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct WorkerLogsParams {
+    /// Workflow attempt number. Defaults to 0.
+    pub attempt: Option<u32>,
+    /// Return records strictly after this cursor.
+    #[param(minimum = 0)]
+    pub after: Option<i64>,
+    /// Maximum records per page. Defaults to 100.
+    #[param(minimum = 1, maximum = 200)]
+    pub limit: Option<usize>,
+    /// Restrict results to one stream or diagnostic source.
+    pub source: Option<LogSource>,
+    /// Select plain text (default) or structured JSON.
+    #[param(inline)]
+    pub format: Option<WorkerLogFormat>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkerLogPage {
+    /// Records in ingestion order.
+    pub records: Vec<WorkerLogRecord>,
+    /// Cursor to use for the next page when more records are available.
+    pub next_cursor: Option<i64>,
 }

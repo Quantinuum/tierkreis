@@ -17,7 +17,7 @@ use futures::{
 };
 use miette::{Context, IntoDiagnostic, miette};
 use qrmi::{
-    QuantumResource,
+    QrmiError, QuantumResource,
     models::{Payload, TaskStatus},
 };
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,7 @@ use crate::{
         interface::{TaskPlan, WorkerSpec},
     },
     location::Location,
+    worker_logs::{LogSource, TaskLogSink, TaskLogWriter},
 };
 
 const WORKER_NAME: &str = "qrmi_worker";
@@ -212,6 +213,7 @@ struct BackgroundTask {
     loc: Location,
     task_id: String,
     output: AssetSpec,
+    logs: Option<TaskLogWriter>,
 }
 
 impl BackgroundTask {
@@ -297,6 +299,30 @@ fn construct_resource(config: &QrmiExecutorConfig) -> miette::Result<Box<dyn Qua
     Ok(resource)
 }
 
+async fn collect_provider_logs(resource: &Resource, task: &BackgroundTask) -> Option<String> {
+    let result = tokio::time::timeout(Duration::from_secs(3), async {
+        resource.lock().await.task_logs(&task.task_id).await
+    })
+    .await;
+    match result {
+        Ok(Ok(logs)) => {
+            if let Some(writer) = &task.logs {
+                writer.write(LogSource::Provider, &logs).await;
+            }
+            Some(logs)
+        }
+        Ok(Err(QrmiError::UnsupportedFunction(_))) => None,
+        Ok(Err(err)) => {
+            tracing::warn!(task_id = %task.task_id, "Could not fetch QRMI task logs: {err}");
+            None
+        }
+        Err(err) => {
+            tracing::warn!(task_id = %task.task_id, "Timed out fetching QRMI task logs: {err}");
+            None
+        }
+    }
+}
+
 async fn monitor_task(
     resource: Resource,
     mut event_sender: EventSender,
@@ -339,6 +365,9 @@ async fn monitor_task(
                     }
                 }
                 TaskStatus::Completed => {
+                    if task.logs.is_some() {
+                        let _ = collect_provider_logs(&resource, &task).await;
+                    }
                     let result = resource
                         .lock()
                         .await
@@ -365,15 +394,15 @@ async fn monitor_task(
                     break;
                 }
                 TaskStatus::Failed => {
-                    let logs = resource
-                        .lock()
+                    let logs = collect_provider_logs(&resource, &task)
                         .await
-                        .task_logs(&task.task_id)
-                        .await
-                        .map_or_else(|_| String::new(), |logs| format!(": {logs}"));
+                        .map_or_else(String::new, |logs| format!(": {logs}"));
                     return Err(miette!("QRMI task `{}` failed{logs}", task.task_id));
                 }
                 TaskStatus::Cancelled => {
+                    if task.logs.is_some() {
+                        let _ = collect_provider_logs(&resource, &task).await;
+                    }
                     send_cancelled(
                         &mut event_sender,
                         task.workflow_run_id,
@@ -544,9 +573,18 @@ impl Executor for QrmiExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
+        self.execute_with_logs(task_plans, None)
+    }
+
+    fn execute_with_logs(
+        &self,
+        task_plans: Vec<TaskPlan>,
+        logs: Option<TaskLogSink>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
         async move {
             let mut task_sender = self.task_sender.clone();
             for task_plan in task_plans {
+                let task_logs = logs.as_ref().map(|logs| logs.for_task(&task_plan));
                 if task_plan.worker_name != WORKER_NAME {
                     return Err(miette!("Unknown worker: `{}`", task_plan.worker_name));
                 }
@@ -600,6 +638,7 @@ impl Executor for QrmiExecutor {
                         loc: task_plan.loc,
                         task_id,
                         output,
+                        logs: task_logs,
                     })
                     .await
                     .into_diagnostic()
@@ -665,6 +704,8 @@ mod tests {
         starts: usize,
         stops: Vec<String>,
         statuses: VecDeque<TaskStatus>,
+        logs: Option<qrmi::Result<String>>,
+        log_reads: usize,
     }
 
     struct FakeResource {
@@ -701,6 +742,15 @@ mod tests {
             Ok(state.statuses.pop_front().unwrap_or(TaskStatus::Completed))
         }
 
+        async fn task_logs(&mut self, _task_id: &str) -> qrmi::Result<String> {
+            let mut state = self.state.lock().unwrap();
+            state.log_reads += 1;
+            state
+                .logs
+                .take()
+                .unwrap_or_else(|| Err(QrmiError::UnsupportedFunction("task_logs".into())))
+        }
+
         async fn task_result(&mut self, _task_id: &str) -> qrmi::Result<TaskResult> {
             Ok(TaskResult {
                 value: self.result.clone(),
@@ -725,6 +775,8 @@ mod tests {
             starts: 0,
             stops: vec![],
             statuses: statuses.into_iter().collect(),
+            logs: None,
+            log_reads: 0,
         }));
         (
             Box::new(FakeResource {
@@ -803,6 +855,74 @@ mod tests {
         )
         .await;
         assert_eq!(state.lock().unwrap().starts, 1);
+        Ok(())
+    }
+
+    #[rstest::rstest]
+    #[case::completed(TaskStatus::Completed, Some(Ok("job logs".into())))]
+    #[case::failed(TaskStatus::Failed, Some(Ok("job logs".into())))]
+    #[case::cancelled(TaskStatus::Cancelled, Some(Ok("job logs".into())))]
+    #[case::unsupported(TaskStatus::Completed, None)]
+    #[case::unavailable(TaskStatus::Completed, Some(Err(QrmiError::EnvVarNotSet("test".into()))))]
+    #[tokio::test]
+    async fn qrmi_collects_terminal_diagnostics(
+        #[case] status: TaskStatus,
+        #[case] provider_logs: Option<qrmi::Result<String>>,
+    ) -> miette::Result<()> {
+        use crate::{
+            state::{InMemoryRuntimeState, RuntimeState},
+            worker_logs::{WorkerLogQuery, test_log_sink},
+        };
+        let state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
+        let (run, sink) = test_log_sink(Arc::clone(&state), "qrmi").await?;
+        let (registry, input_sets, _dir) = test_storage_registry(
+            [json!({"payload": {"type": "qiskit_primitive", "input": "{}", "program_id": "sampler"}})],
+            [],
+        ).await;
+        let (resource, resource_state) = fake_resource([status.clone()], &json!(null));
+        let has_logs = provider_logs.as_ref().is_some_and(Result::is_ok);
+        resource_state.lock().unwrap().logs = provider_logs;
+        let executor =
+            QrmiExecutor::try_new_with_resource(&config(), &registry, "memory", resource)?;
+        let mut task = task_plan(input_sets[0].clone());
+        task.workflow_run_id = run.run_id();
+        let events = executor.listen()?;
+        executor.execute_with_logs(vec![task], Some(sink)).await?;
+        let events =
+            tokio::time::timeout(Duration::from_secs(5), events.take(2).collect::<Vec<_>>())
+                .await
+                .into_diagnostic()?;
+        let RuntimeEvent::WorkflowRun {
+            event: WorkflowRunEvent::NodeEvents(nodes),
+            ..
+        } = &events[1]
+        else {
+            panic!("Expected a terminal task event");
+        };
+        match (status, &nodes[0].status) {
+            (TaskStatus::Completed, NodeStatus::Complete { .. })
+            | (TaskStatus::Cancelled, NodeStatus::Cancelled) => {}
+            (TaskStatus::Failed, NodeStatus::Error { error, detail }) => {
+                assert!(format!("{error} {detail:?}").contains("job logs"));
+            }
+            unexpected => panic!("Unexpected terminal state: {unexpected:?}"),
+        }
+        let records = state
+            .read_worker_logs(WorkerLogQuery {
+                run_id: run.run_id(),
+                attempt: 0,
+                location: None,
+                source: Some(LogSource::Provider),
+                after: 0,
+                limit: 100,
+            })
+            .await?
+            .unwrap();
+        assert_eq!(records.len(), usize::from(has_logs));
+        if has_logs {
+            assert_eq!(records[0].message, "job logs");
+        }
+        assert_eq!(resource_state.lock().unwrap().log_reads, 1);
         Ok(())
     }
 

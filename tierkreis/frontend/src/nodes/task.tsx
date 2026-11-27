@@ -8,7 +8,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DialogTrigger } from "@/components/ui/dialog";
-import { fetchErrors, fetchNodeLogs } from "@/data/api";
 import { type NodeProps } from "@xyflow/react";
 import { type BackendNode } from "./types";
 
@@ -18,38 +17,18 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
     name = data.name;
   }
 
-  const handleClick = async () => {
-    const workflow_id = data.workflowId;
-    const node_location = data.node_location;
-    if (data.node_type === "function") {
-      const content = await fetchNodeLogs(data.workflowId, data.node_location);
-      data.setInfo?.({
-        type: "Logs",
-        content,
-        workflow_id,
-        node_location,
-        started_time: data.started_time,
-        finished_time: data.finished_time,
-        output_names: data.output_names,
-        node_inputs: data.node_inputs,
-        has_error: data.has_error,
-        task_name: data.name,
-      });
-    } else {
-      return;
-    }
-  };
-  const handleErrorClick = async () => {
-    const errors = await fetchErrors(data.workflowId, data.node_location);
+  const handleClick = () => {
+    if (data.node_type !== "function") return;
     data.setInfo?.({
-      type: "Errors",
-      content: errors,
+      type: data.status === "Error" ? "Errors" : "Logs",
+      content: "",
       workflow_id: data.workflowId,
       node_location: data.node_location,
       started_time: data.started_time,
       finished_time: data.finished_time,
-      has_error: data.has_error,
+      output_names: data.output_names,
       node_inputs: data.node_inputs,
+      has_error: data.has_error,
       task_name: data.name,
     });
   };
@@ -57,7 +36,7 @@ export function TaskNode({ data }: NodeProps<BackendNode>) {
   return (
     <Card
       className={"w-[180px] drag-handle " + bg_color(data.status)}
-      onClick={data.status === "Error" ? handleErrorClick : handleClick}
+      onClick={handleClick}
     >
       <DialogTrigger asChild>
         <div>

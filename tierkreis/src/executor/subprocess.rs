@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use futures::{
@@ -21,8 +22,9 @@ use miette::{Context, IntoDiagnostic, miette};
 use regex::Regex;
 use tempfile::NamedTempFile;
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncRead, AsyncReadExt},
     process::Command,
+    sync::oneshot,
     task::{AbortHandle, JoinHandle},
 };
 use tracing::{Instrument, instrument};
@@ -45,6 +47,7 @@ use crate::{
     location::Location,
     monitoring::{CommandEnvCarrier, inject_trace_context},
     worker::WorkerCallArgs,
+    worker_logs::{CHUNK_BYTES, LogSource, TaskLogSink, TaskLogWriter, complete_utf8_prefix},
 };
 
 /// [`SubprocessResourceSpec`] determines what Resources should be available to the
@@ -67,6 +70,7 @@ struct BackgroundTaskPlan {
     worker_args: NamedTempFile,
     outputs: HashMap<String, AssetSpec>,
     handle: Option<TaskHandle>,
+    logs: Option<TaskLogWriter>,
 
     parent_span: tracing::Span,
 }
@@ -77,7 +81,7 @@ struct BackgroundTask {
     loc: Location,
     output_storage_name: String,
     outputs: HashMap<String, AssetSpec>,
-    stderr: JoinHandle<String>,
+    stderr: Option<String>,
 
     // Handles to temporary files to prevent deletion
     // until the task is complete.
@@ -90,22 +94,21 @@ type CancelSender = mpsc::Sender<(Uuid, u32, Location)>;
 type CancelReceiver = mpsc::Receiver<(Uuid, u32, Location)>;
 
 type RunningFutures<'a> =
-    FuturesUnordered<BoxFuture<'a, (BackgroundTask, miette::Result<ExitStatus>)>>;
-type AbortHandles = HashMap<(Uuid, u32, Location), AbortHandle>;
+    FuturesUnordered<BoxFuture<'a, (BackgroundTask, miette::Result<Option<ExitStatus>>)>>;
+type RunningCancellations = HashMap<(Uuid, u32, Location), oneshot::Sender<()>>;
 
 #[instrument(skip_all, err)]
 async fn process_cancelled_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut AbortHandles,
+    running_cancellations: &mut RunningCancellations,
     pending: &mut VecDeque<BackgroundTaskPlan>,
     workflow_run_id: Uuid,
     attempt: u32,
     loc: Location,
 ) -> miette::Result<()> {
-    let handle = abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
+    let handle = running_cancellations.remove(&(workflow_run_id, attempt, loc.clone()));
     if let Some(handle) = handle {
-        handle.abort();
-        send_cancelled(event_sender, workflow_run_id, attempt, loc).await?;
+        let _ = handle.send(());
     } else {
         // Try to handle cancelling pending tasks, not completely foolproof
         // if the task is still in the task channel however.
@@ -121,7 +124,6 @@ async fn process_cancelled_task(
 
 async fn process_finished_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut AbortHandles,
     asset_storage_registry: &AssetStorageRegistry,
     background_task: BackgroundTask,
     exit_status: ExitStatus,
@@ -131,8 +133,6 @@ async fn process_finished_task(
     let output_storage_name = background_task.output_storage_name;
     let workflow_run_id = background_task.workflow_run_id;
     let attempt = background_task.attempt;
-
-    abort_handles.remove(&(workflow_run_id, attempt, loc.clone()));
 
     if exit_status.success() {
         let outputs = transfer_assets(asset_storage_registry, &output_storage_name, &outputs).await;
@@ -145,7 +145,7 @@ async fn process_finished_task(
             }
         }
     } else {
-        let stderr = background_task.stderr.await.ok();
+        let stderr = background_task.stderr;
         event_sender
             .send(RuntimeEvent::WorkflowRun {
                 workflow_run_id,
@@ -169,7 +169,7 @@ async fn process_finished_task(
 #[instrument(skip_all, err)]
 async fn start_task(
     event_sender: &mut EventSender,
-    abort_handles: &mut AbortHandles,
+    running_cancellations: &mut RunningCancellations,
     running: &mut RunningFutures<'_>,
     worker_commands: &WorkerCommands,
     internal_task: BackgroundTaskPlan,
@@ -215,9 +215,10 @@ async fn start_task(
             &internal_task.worker_name,
             worker_args_path,
             &internal_task.environment,
+            internal_task.logs.is_some(),
         )
     };
-    let mut child = match res {
+    let child = match res {
         Ok(child) => child,
         Err(err) => {
             tracing::debug!(workflow_run_id = %workflow_run_id, attempt, loc = %loc, "Failed to spawn worker: {err}");
@@ -225,7 +226,6 @@ async fn start_task(
             return Ok(());
         }
     };
-    let stderr = read_stderr(&mut child);
     let process_identity = child.id().map(process_identity).transpose()?;
     let (pid, start_time) =
         process_identity.ok_or_else(|| miette!("Worker process did not have a PID"))?;
@@ -242,28 +242,33 @@ async fn start_task(
     let background_loc = loc.clone();
     let outputs = internal_task.outputs;
     let output_storage_name = internal_task.output_storage_name;
-    let task = tokio::task::spawn(async move { child.wait().instrument(parent_span).await });
+    let (cancel, cancel_request) = oneshot::channel();
+    let task = tokio::spawn(
+        wait_for_worker(child, internal_task.logs, cancel_request).instrument(parent_span),
+    );
 
-    abort_handles.insert((workflow_run_id, attempt, loc), task.abort_handle());
-    let task = task
-        .map(move |result| {
-            (
-                BackgroundTask {
-                    workflow_run_id,
-                    attempt,
-                    loc: background_loc,
-                    output_storage_name,
-                    outputs,
-                    stderr,
-                    _worker_args: worker_args,
-                },
-                result
-                    .map(|res| res.map_err(|err| miette!("Failed to run worker: {err}")))
-                    .map_err(|err| miette!("Failed to join task: {err}"))
-                    .flatten(),
-            )
-        })
-        .boxed();
+    running_cancellations.insert((workflow_run_id, attempt, loc), cancel);
+    let task = task.map(move |result| {
+        let (status, stderr) = match result {
+            Ok((status, stderr)) => (
+                status.into_diagnostic().wrap_err("Failed to run worker"),
+                stderr,
+            ),
+            Err(err) => (Err(miette!("Failed to join task: {err}")), None),
+        };
+        (
+            BackgroundTask {
+                workflow_run_id,
+                attempt,
+                loc: background_loc,
+                output_storage_name,
+                outputs,
+                stderr,
+                _worker_args: worker_args,
+            },
+            status,
+        )
+    });
 
     running.push(task.boxed());
 
@@ -278,7 +283,7 @@ async fn process_tasks(
     mut event_sender: EventSender,
     asset_storage_registry: AssetStorageRegistry,
     worker_commands: WorkerCommands,
-    mut abort_handles: AbortHandles,
+    mut running_cancellations: RunningCancellations,
     max_concurrency: NonZero<usize>,
 ) {
     let max_concurrency: usize = max_concurrency.into();
@@ -300,7 +305,7 @@ async fn process_tasks(
                 );
                 process_cancelled_task(
                     &mut event_sender,
-                    &mut abort_handles,
+                    &mut running_cancellations,
                     &mut pending,
                     workflow_run_id,
                     attempt,
@@ -317,8 +322,14 @@ async fn process_tasks(
                     loc = %task.loc,
                     "Task completed"
                 );
+                running_cancellations.remove(&(task.workflow_run_id, task.attempt, task.loc.clone()));
                 let exit_code = match result {
-                    Ok(exit_code) => exit_code,
+                    Ok(Some(exit_code)) => exit_code,
+                    Ok(None) => {
+                        send_cancelled(&mut event_sender, task.workflow_run_id, task.attempt, task.loc)
+                            .await.expect("Failed to send cancellation event");
+                        continue;
+                    }
                     Err(err) => {
                         send_error(
                             &mut event_sender,
@@ -335,7 +346,6 @@ async fn process_tasks(
 
                 process_finished_task(
                     &mut event_sender,
-                    &mut abort_handles,
                     &asset_storage_registry,
                     task,
                     exit_code,
@@ -348,7 +358,7 @@ async fn process_tasks(
                 let task = pending.pop_front().expect("Pending queue was unexpectedly empty");
                 start_task(
                     &mut event_sender,
-                    &mut abort_handles,
+                    &mut running_cancellations,
                     &mut running,
                     &worker_commands,
                     task,
@@ -445,14 +455,14 @@ impl SubprocessExecutor {
         let (task_sender, task_receiver) = mpsc::channel(64);
         let (event_sender, event_receiver) = mpsc::channel(64);
         let (cancel_sender, cancel_receiver) = mpsc::channel(64);
-        let abort_handles = HashMap::new();
+        let running_cancellations = HashMap::new();
         let background_task = tokio::spawn(process_tasks(
             task_receiver,
             cancel_receiver,
             event_sender,
             background_asset_storage_registry,
             worker_commands,
-            abort_handles,
+            running_cancellations,
             std::thread::available_parallelism().into_diagnostic()?,
         ));
 
@@ -521,6 +531,7 @@ fn spawn_worker(
     worker_name: &str,
     worker_args_path: &Path,
     environment: &HashMap<String, String>,
+    capture_stdout: bool,
 ) -> miette::Result<tokio::process::Child> {
     let (cmd, args) = worker_invocation(commands, worker_name, worker_args_path)?;
     let mut command = Command::new(&cmd);
@@ -531,7 +542,12 @@ fn spawn_worker(
 
     command
         .args(args)
-        .stdout(Stdio::null())
+        .kill_on_drop(true)
+        .stdout(if capture_stdout {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stderr(Stdio::piped());
 
     let child = command
@@ -589,14 +605,78 @@ fn parse_subprocess_handle(handle: &str) -> miette::Result<(u32, u64)> {
     Ok((pid, start_time))
 }
 
-fn read_stderr(child: &mut tokio::process::Child) -> tokio::task::JoinHandle<String> {
-    let mut stderr = child.stderr.take().unwrap();
-    tokio::spawn(async move {
-        let mut stderr_out = String::new();
-        // TODO: Redirect child output to file or db
-        let _ = stderr.read_to_string(&mut stderr_out).await;
-        stderr_out
-    })
+async fn wait_for_worker(
+    mut child: tokio::process::Child,
+    logs: Option<TaskLogWriter>,
+    cancel_request: oneshot::Receiver<()>,
+) -> (std::io::Result<Option<ExitStatus>>, Option<String>) {
+    let stdout = child
+        .stdout
+        .take()
+        .map(|pipe| tokio::spawn(capture_output(pipe, logs.clone(), LogSource::Stdout)));
+    let stderr = child
+        .stderr
+        .take()
+        .map(|pipe| tokio::spawn(capture_output(pipe, logs, LogSource::Stderr)));
+    let result = tokio::select! {
+        status = child.wait() => status.map(Some),
+        Ok(()) = cancel_request => child.kill().await.map(|()| None),
+    };
+    let (_, stderr) = tokio::join!(finish_capture(stdout), finish_capture(stderr));
+    (result, stderr)
+}
+
+async fn finish_capture(reader: Option<JoinHandle<String>>) -> Option<String> {
+    let mut reader = reader?;
+    // Descendants can inherit the pipe even after the direct worker exits.
+    if let Ok(result) = tokio::time::timeout(Duration::from_secs(2), &mut reader).await {
+        result.ok()
+    } else {
+        reader.abort();
+        tracing::warn!("Worker output pipe remained open after exit");
+        None
+    }
+}
+
+async fn capture_output(
+    mut pipe: impl AsyncRead + Unpin,
+    logs: Option<TaskLogWriter>,
+    source: LogSource,
+) -> String {
+    const STDERR_TAIL_BYTES: usize = 16 * 1024;
+    let mut buffer = [0; CHUNK_BYTES];
+    let mut pending = 0;
+    let mut tail = Vec::new();
+    loop {
+        let read = match pipe.read(&mut buffer[pending..]).await {
+            Ok(read) => read,
+            Err(err) => {
+                tracing::warn!(%source, "Failed to read worker output: {err}");
+                break;
+            }
+        };
+        let len = pending + read;
+        let end = if read == 0 {
+            len
+        } else {
+            complete_utf8_prefix(&buffer[..len])
+        };
+        let chunk = &buffer[..end];
+        if source == LogSource::Stderr {
+            let discard = (tail.len() + chunk.len()).saturating_sub(STDERR_TAIL_BYTES);
+            tail.drain(..discard);
+            tail.extend_from_slice(chunk);
+        }
+        if let Some(logs) = &logs {
+            logs.write(source, &String::from_utf8_lossy(chunk)).await;
+        }
+        if read == 0 {
+            break;
+        }
+        buffer.copy_within(end..len, 0);
+        pending = len - end;
+    }
+    String::from_utf8_lossy(&tail).into_owned()
 }
 
 // Write the paths of the inputs to the worker.
@@ -619,10 +699,19 @@ impl Executor for SubprocessExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
-        let fut = async {
+        self.execute_with_logs(task_plans, None)
+    }
+
+    fn execute_with_logs(
+        &self,
+        task_plans: Vec<TaskPlan>,
+        logs: Option<TaskLogSink>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        let fut = async move {
             let mut task_sender = self.task_sender.clone();
 
             for task_plan in task_plans {
+                let task_logs = logs.as_ref().map(|logs| logs.for_task(&task_plan));
                 if !task_plan.resources.is_empty() {
                     tracing::warn!("Subprocess executor does not implement resources");
                 }
@@ -692,6 +781,7 @@ impl Executor for SubprocessExecutor {
                         worker_args,
                         outputs,
                         handle: task_plan.task_handle,
+                        logs: task_logs,
                         parent_span: tracing::Span::current(),
                     })
                     .await
@@ -1327,6 +1417,119 @@ mod tests {
 
         executor.cancel(Uuid::nil(), 0, vec![loc]).await?;
 
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[case::complete(Some(0))]
+    #[case::fail(Some(1))]
+    #[case::cancel(None)]
+    #[tokio::test]
+    async fn subprocess_captures_output_before_exit(
+        #[case] exit: Option<i32>,
+    ) -> miette::Result<()> {
+        use crate::{
+            state::{InMemoryRuntimeState, RuntimeState},
+            worker_logs::{WorkerLogQuery, test_log_sink},
+        };
+        let state: Arc<dyn RuntimeState> = Arc::new(InMemoryRuntimeState::new());
+        let (run, sink) = test_log_sink(Arc::clone(&state), "process").await?;
+        let (registry, _, dir) = test_storage_registry(vec![], vec![]).await;
+        let gate = dir.path().join("release");
+        let shell = concat!(
+            "printf 'live stdout\n'; printf 'live stderr\n' >&2; ",
+            "printf '\\377' >&2; ",
+            "while [ ! -f \"$RELEASE\" ]; do sleep 0.01; done; ",
+            "printf 'final stdout'; printf 'final stderr' >&2; exit \"$EXIT_CODE\"",
+        );
+        let executor = SubprocessExecutor::try_new(
+            &registry,
+            "file",
+            "memory",
+            HashMap::from([(
+                "log-worker".into(),
+                vec!["sh".into(), "-c".into(), shell.into(), "log-worker".into()],
+            )]),
+        )?;
+        let loc = Location::new("N0.M1.N2")?;
+        let task = TaskPlan {
+            workflow_run_id: run.run_id(),
+            loc: loc.clone(),
+            worker_name: "log-worker".into(),
+            environment: HashMap::from([
+                ("RELEASE".into(), json!(gate)),
+                (
+                    "EXIT_CODE".into(),
+                    json!(exit.unwrap_or_default().to_string()),
+                ),
+            ]),
+            ..Default::default()
+        };
+        let events = executor.listen()?;
+        executor.execute_with_logs(vec![task], Some(sink)).await?;
+
+        let read = || {
+            state.read_worker_logs(WorkerLogQuery {
+                run_id: run.run_id(),
+                attempt: 0,
+                location: Some(loc.clone()),
+                after: 0,
+                source: None,
+                limit: 100,
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let records = read().await?.unwrap();
+                if [LogSource::Stdout, LogSource::Stderr].iter().all(|source| {
+                    records
+                        .iter()
+                        .any(|record| record.source == *source && record.message.contains("live"))
+                }) {
+                    return Ok::<_, miette::Report>(());
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .into_diagnostic()??;
+
+        if exit.is_some() {
+            tokio::fs::write(gate, []).await.into_diagnostic()?;
+        } else {
+            executor.cancel(run.run_id(), 0, vec![loc.clone()]).await?;
+        }
+        let terminal =
+            tokio::time::timeout(Duration::from_secs(5), events.take(4).collect::<Vec<_>>())
+                .await
+                .into_diagnostic()?;
+        let RuntimeEvent::WorkflowRun {
+            event: WorkflowRunEvent::NodeEvents(nodes),
+            ..
+        } = &terminal[3]
+        else {
+            panic!("Expected a terminal task event");
+        };
+        match (exit, &nodes[0].status) {
+            (None, NodeStatus::Cancelled) | (Some(0), NodeStatus::Complete { .. }) => {}
+            (
+                Some(1),
+                NodeStatus::Error {
+                    detail: Some(detail),
+                    ..
+                },
+            ) => assert!(detail.contains("final stderr")),
+            unexpected => panic!("Unexpected terminal state: {unexpected:?}"),
+        }
+        let records = read().await?.unwrap();
+        let stderr = records
+            .iter()
+            .filter(|record| record.source == LogSource::Stderr)
+            .map(|record| record.message.as_str())
+            .collect::<String>();
+        assert!(stderr.contains('�'));
+        assert_eq!(stderr.contains("final stderr"), exit.is_some());
         Ok(())
     }
 

@@ -20,6 +20,7 @@ pub mod runtime;
 pub mod server;
 pub mod state;
 pub mod worker;
+pub mod worker_logs;
 pub mod workflow_state_query;
 
 #[cfg(feature = "pyo3")]

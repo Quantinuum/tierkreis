@@ -5,15 +5,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { InfoProps } from "./types";
-import { restartNode } from "@/data/api";
+import { fetchErrors, restartNode } from "@/data/api";
 import { Button } from "./ui/button";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NodeInputs } from "@/data/api_types";
+import { useQuery } from "@tanstack/react-query";
+import { WorkerLogs } from "./worker-logs";
 export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
+  const [showLogs, setShowLogs] = useState(false);
+  const { workflow_id, node_location, type } = props.info;
+  const showingLogs = showLogs || type === "Logs";
+  const errors = useQuery({
+    queryKey: ["node-errors", workflow_id, node_location],
+    queryFn: () => fetchErrors(workflow_id, node_location),
+    enabled: type === "Errors" && !showLogs,
+  });
 
   const restartHandle = async () => {
     const invalid = await restartNode(
@@ -116,7 +126,7 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
       <DialogHeader>
         <DialogTitle>
           {" "}
-          {props.info.type}{" "}
+          {showingLogs ? "Logs" : type}{" "}
           {props.info.task_name && ` - ${props.info.task_name}`}
         </DialogTitle>
 
@@ -130,6 +140,11 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
           <br />
           {props.info.task_name && metadataButton()}
         </DialogDescription>
+        {type === "Errors" && (
+          <Button variant="outline" onClick={() => setShowLogs(!showLogs)}>
+            {showLogs ? "View errors" : "View worker logs"}
+          </Button>
+        )}
         {props.info.node_inputs &&
           props.info.node_inputs.length > 0 &&
           props.info.finished_time && (
@@ -151,15 +166,20 @@ export function NodeInfo(props: { info: InfoProps; closer: () => void }) {
             </div>
           )}
       </DialogHeader>
-      {props.info.content !== "Failed to fetch output." &&
-        !props.info.type?.includes("if/else") && (
+      {showingLogs ? (
+        <WorkerLogs workflowId={workflow_id} nodeLocation={node_location} />
+      ) : (
+        props.info.content !== "Failed to fetch output." &&
+        !type.includes("if/else") && (
           <div className="text-wrap overflow-y-auto overflow-x-hidden flex-1 mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="text-sm text-gray-500 mb-2">{props.info.type}</p>
             <pre className="whitespace-pre-wrap break-words">
-              {props.info.content}
+              {type === "Errors"
+                ? errors.data ?? (errors.isError ? "Failed to fetch errors." : "Loading errors…")
+                : props.info.content}
             </pre>
           </div>
-        )}
+        )
+      )}
 
       {restartButton}
     </DialogContent>

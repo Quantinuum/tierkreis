@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::asset_storage::interface::AssetSpec;
 use crate::event::{NodeStatus, RuntimeEvent};
 use crate::location::Location;
+use crate::worker_logs::TaskLogSink;
 
 /// A node location and its recovered status.
 pub type UniqueLocState = (Uuid, u32, Location, NodeStatus);
@@ -82,6 +83,15 @@ pub trait Executor: Send + Sync {
     /// stream provided by the [`Executor::listen`] method.
     /// This needs to handle the case when a Task has already started.
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>>;
+    /// Dispatch tasks with access to the runtime's worker log store.
+    fn execute_with_logs(
+        &self,
+        task_plans: Vec<TaskPlan>,
+        _logs: Option<TaskLogSink>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        self.execute(task_plans)
+    }
+
     /// Listen to a stream of [Event]s from the [Executor] about changes in Task state.
     ///
     /// Typically this method should only be called once and the stream should be only

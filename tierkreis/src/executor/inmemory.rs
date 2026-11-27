@@ -29,6 +29,7 @@ use crate::{
         interface::{TaskPlan, WorkerSpec},
     },
     location::Location,
+    worker_logs::{LogSource, TaskLogSink, TaskLogWriter},
 };
 
 /// [`InMemoryResourceSpec`] determines what Resources should be available to the
@@ -44,6 +45,7 @@ pub struct InMemoryEnvironmentSpec {}
 
 struct BackgroundTaskPlan {
     task_plan: TaskPlan,
+    logs: Option<TaskLogWriter>,
     output_storage_name: String,
     /// Captured from the caller so in-memory tasks inherit the parent trace context.
     parent_span: tracing::Span,
@@ -55,6 +57,7 @@ struct BackgroundTask {
     attempt: u32,
     loc: Location,
     output_storage_name: String,
+    logs: Option<TaskLogWriter>,
     task_output: miette::Result<HashMap<String, Vec<u8>>>,
 }
 
@@ -97,6 +100,9 @@ async fn process_finished_task(
     let outputs = match task_outputs {
         Ok(outputs) => outputs,
         Err(err) => {
+            if let Some(logs) = &background_task.logs {
+                logs.write(LogSource::Builtin, &format!("{err:#}")).await;
+            }
             send_error(event_sender, workflow_run_id, attempt, loc, &err).await?;
             return Ok(());
         }
@@ -141,6 +147,11 @@ async fn start_task(
     let task_loc = loc.clone();
 
     let task_name = task_plan.task_name;
+    let logs = internal_task.logs;
+    if let Some(logs) = &logs {
+        logs.write(LogSource::Builtin, &format!("Running builtin {task_name}"))
+            .await;
+    }
     let parent_span = internal_task.parent_span;
     let task = tokio::task::spawn_blocking(move || {
         parent_span.in_scope(|| {
@@ -156,6 +167,7 @@ async fn start_task(
                 attempt,
                 loc: task_loc,
                 output_storage_name,
+                logs,
                 task_output: run_builtin(&task_name, &inputs),
             })
         })
@@ -303,10 +315,19 @@ impl Executor for InMemoryExecutor {
     }
 
     fn execute(&self, task_plans: Vec<TaskPlan>) -> BoxFuture<'_, miette::Result<()>> {
-        let fut = async {
+        self.execute_with_logs(task_plans, None)
+    }
+
+    fn execute_with_logs(
+        &self,
+        task_plans: Vec<TaskPlan>,
+        logs: Option<TaskLogSink>,
+    ) -> BoxFuture<'_, miette::Result<()>> {
+        let fut = async move {
             let mut task_sender = self.task_sender.clone();
 
             for mut task_plan in task_plans {
+                let task_logs = logs.as_ref().map(|logs| logs.for_task(&task_plan));
                 let output_storage_name = task_plan
                     .output_storage_name
                     .take()
@@ -315,6 +336,7 @@ impl Executor for InMemoryExecutor {
                 task_sender
                     .send(BackgroundTaskPlan {
                         task_plan,
+                        logs: task_logs,
                         output_storage_name,
                         parent_span: tracing::Span::current(),
                     })

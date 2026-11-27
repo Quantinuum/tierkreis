@@ -4,11 +4,7 @@ import { parseGraph } from "@/graph/parseGraph";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useState } from "react";
 import { BackendNode } from "../../../../nodes/types";
-import {
-  useEvalQuery,
-  useWorkflowsQuery,
-  useLogsQuery,
-} from "../../../../data/api";
+import { useEvalQuery, useWorkflowsQuery } from "../../../../data/api";
 import { updateGraph } from "@/graph/updateGraph";
 import useLocalStorageState from "use-local-storage-state";
 import { GraphView } from "./GraphView";
@@ -26,7 +22,6 @@ export default function NodePage(props: {
   const node_location_str = props.node_location_str;
 
   const workflowsQuery = useWorkflowsQuery();
-  const logsQuery = useLogsQuery(workflow_id);
   const { data, refetch } = useEvalQuery(workflow_id, [
     node_location_str,
     ...props.openEvals,
@@ -51,9 +46,7 @@ export default function NodePage(props: {
 
   const [info, setInfo] = useState<InfoProps>({
     type: "Logs",
-    content: logsQuery.error
-      ? "Failed to fetch logs."
-      : logsQuery.data || "No logs.",
+    content: "",
     workflow_id,
     node_location: node_location_str,
     has_error: false,

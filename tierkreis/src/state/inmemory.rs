@@ -35,12 +35,17 @@ use crate::{
 };
 use crate::{state::interface::WorkflowRunStateSummary, workflow_state_query::NodeCopyFilter};
 
+use crate::worker_logs::{
+    LogSource, MemoryWorkerLogs, TaskLogKey, WorkerLogBatch, WorkerLogQuery, WorkerLogRecord,
+};
+
 /// [`RunAttemptState`] is the full state of a run.
 #[derive(Debug, Default)]
 struct RunAttemptState {
     workflow_id: Uuid,
     inputs: HashMap<Location, HashMap<String, AssetSpec>>,
     nodes: HashMap<Location, NodeState>,
+    logs: MemoryWorkerLogs,
     metadata: HashMap<String, String>,
     started_time: Option<chrono::DateTime<Utc>>,
     queued_time: Option<chrono::DateTime<Utc>>,
@@ -94,6 +99,53 @@ impl Default for InMemoryRuntimeState {
 }
 
 impl RuntimeState for InMemoryRuntimeState {
+    fn append_worker_log<'a>(
+        &'a self,
+        key: &'a TaskLogKey,
+        batch: WorkerLogBatch,
+    ) -> BoxFuture<'a, miette::Result<bool>> {
+        async move {
+            let mut run = self
+                .inner
+                .runs
+                .get_mut(&(key.run_id, key.attempt))
+                .filter(|run| !run.workflow_id.is_nil())
+                .ok_or_else(|| miette!("Unknown run attempt"))?;
+            Ok(run.logs.append(key, &batch))
+        }
+        .boxed()
+    }
+
+    fn worker_log_offset<'a>(
+        &'a self,
+        key: &'a TaskLogKey,
+        source: LogSource,
+    ) -> BoxFuture<'a, miette::Result<i64>> {
+        async move {
+            Ok(self
+                .inner
+                .runs
+                .get(&(key.run_id, key.attempt))
+                .map_or(0, |run| run.logs.offset(key, source)))
+        }
+        .boxed()
+    }
+
+    fn read_worker_logs(
+        &self,
+        query: WorkerLogQuery,
+    ) -> BoxFuture<'_, miette::Result<Option<Vec<WorkerLogRecord>>>> {
+        async move {
+            Ok(self
+                .inner
+                .runs
+                .get(&(query.run_id, query.attempt))
+                .filter(|run| !run.workflow_id.is_nil())
+                .map(|run| run.logs.read(&query)))
+        }
+        .boxed()
+    }
+
     fn load_workflow(
         &self,
         workflow_id: Uuid,
